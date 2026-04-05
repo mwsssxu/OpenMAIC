@@ -504,9 +504,8 @@ export function Stage({
             if (idx >= 0 && idx < allScenes.length - 1) {
               const currentScene = allScenes[idx];
               if (
-                currentScene.type === 'quiz' ||
                 currentScene.type === 'interactive' ||
-                currentScene.type === 'pbl'
+                currentScene.type === 'report'
               ) {
                 return;
               }
@@ -516,9 +515,8 @@ export function Stage({
               // Last scene exhausted but next is still generating — go to pending page
               const currentScene = allScenes[idx];
               if (
-                currentScene.type === 'quiz' ||
                 currentScene.type === 'interactive' ||
-                currentScene.type === 'pbl'
+                currentScene.type === 'report'
               ) {
                 return;
               }

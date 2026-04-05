@@ -61,14 +61,14 @@ export function formatAgentsForPrompt(agents?: AgentInfo[]): string {
   return lines.join('\n');
 }
 
-/** Extract the teacher agent's persona for injection into outline/content prompts */
-export function formatTeacherPersonaForPrompt(agents?: AgentInfo[]): string {
+/** Extract the lead analyst agent's persona for injection into outline/content prompts */
+export function formatAnalystPersonaForPrompt(agents?: AgentInfo[]): string {
   if (!agents || agents.length === 0) return '';
 
-  const teacher = agents.find((a) => a.role === 'teacher');
-  if (!teacher?.persona) return '';
+  const analyst = agents.find((a) => a.role === 'analyst');
+  if (!analyst?.persona) return '';
 
-  return `Teacher Persona:\nName: ${teacher.name}\n${teacher.persona}\n\nAdapt the content style and tone to match this teacher's personality. IMPORTANT: The teacher's name and identity must NOT appear on the slides — no "Teacher ${teacher.name}'s tips", no "Teacher's message", etc. Slides should read as neutral, professional visual aids.`;
+  return `Lead Analyst Persona:\nName: ${analyst.name}\n${analyst.persona}\n\nAdapt the content style and tone to match this analyst's personality. IMPORTANT: The analyst's name and identity must NOT appear on the slides — no "${analyst.name}'s analysis", no "Analyst's notes", etc. Slides should read as neutral, professional business documents.`;
 }
 
 /**

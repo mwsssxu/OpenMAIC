@@ -11,9 +11,8 @@ import type {
   SceneType,
   SceneContent,
   SlideContent,
-  QuizContent,
   InteractiveContent,
-  PBLContent,
+  ReportContent,
 } from '@/lib/types/stage';
 
 // ==================== Utility Functions ====================
@@ -72,16 +71,6 @@ export function createDefaultSlideContent(): SlideContent {
 }
 
 /**
- * Create default QuizContent
- */
-export function createDefaultQuizContent(): QuizContent {
-  return {
-    type: 'quiz',
-    questions: [],
-  };
-}
-
-/**
  * Create default InteractiveContent
  */
 export function createDefaultInteractiveContent(): InteractiveContent {
@@ -92,17 +81,13 @@ export function createDefaultInteractiveContent(): InteractiveContent {
 }
 
 /**
- * Create default PBLContent
+ * Create default ReportContent
  */
-export function createDefaultPBLContent(): PBLContent {
+export function createDefaultReportContent(): ReportContent {
   return {
-    type: 'pbl',
-    projectConfig: {
-      projectInfo: { title: '', description: '' },
-      agents: [],
-      issueboard: { agent_ids: [], issues: [], current_issue_id: null },
-      chat: { messages: [] },
-    },
+    type: 'report',
+    reportType: 'market',
+    sections: [],
   };
 }
 
@@ -113,12 +98,10 @@ export function createDefaultContent(type: SceneType): SceneContent {
   switch (type) {
     case 'slide':
       return createDefaultSlideContent();
-    case 'quiz':
-      return createDefaultQuizContent();
     case 'interactive':
       return createDefaultInteractiveContent();
-    case 'pbl':
-      return createDefaultPBLContent();
+    case 'report':
+      return createDefaultReportContent();
     default:
       throw new Error(`Unknown scene type: ${type}`);
   }

@@ -1,16 +1,16 @@
 // Stage and Scene data types
 import type { Slide } from '@/lib/types/slides';
 import type { Action } from '@/lib/types/action';
-import type { PBLProjectConfig } from '@/lib/pbl/types';
 
-export type SceneType = 'slide' | 'quiz' | 'interactive' | 'pbl';
+// 场景类型：幻灯片、交互式、商业报告
+export type SceneType = 'slide' | 'interactive' | 'report';
 
 export type StageMode = 'autonomous' | 'playback';
 
 export type Whiteboard = Omit<Slide, 'theme' | 'turningMode' | 'sectionTag' | 'type'>;
 
 /**
- * Stage - Represents the entire classroom/course
+ * Stage - Represents the entire analysis report/project
  */
 export interface Stage {
   id: string;
@@ -23,13 +23,13 @@ export interface Stage {
   style?: string;
   // Whiteboard data
   whiteboard?: Whiteboard[];
-  // Agent IDs selected when this classroom was created
+  // Agent IDs selected when this project was created
   agentIds?: string[];
   /**
    * Server-generated agent configurations.
-   * Embedded in persisted classroom JSON so clients can hydrate
+   * Embedded in persisted project JSON so clients can hydrate
    * the agent registry without relying on IndexedDB pre-population.
-   * Only present for API-generated classrooms.
+   * Only present for API-generated projects.
    */
   generatedAgentConfigs?: Array<{
     id: string;
@@ -43,7 +43,7 @@ export interface Stage {
 }
 
 /**
- * Scene - Represents a single page/scene in the course
+ * Scene - Represents a single page/scene in the report
  */
 export interface Scene {
   id: string;
@@ -76,7 +76,7 @@ export interface Scene {
 /**
  * Scene content based on type
  */
-export type SceneContent = SlideContent | QuizContent | InteractiveContent | PBLContent;
+export type SceneContent = SlideContent | InteractiveContent | ReportContent;
 
 /**
  * Slide content - PPTist Canvas data
@@ -85,31 +85,6 @@ export interface SlideContent {
   type: 'slide';
   // PPTist slide data structure
   canvas: Slide;
-}
-
-/**
- * Quiz content - React component props/data
- */
-export interface QuizContent {
-  type: 'quiz';
-  questions: QuizQuestion[];
-}
-
-export interface QuizOption {
-  label: string; // Display text
-  value: string; // Selection key: "A", "B", "C", "D"
-}
-
-export interface QuizQuestion {
-  id: string;
-  type: 'single' | 'multiple' | 'short_answer';
-  question: string;
-  options?: QuizOption[];
-  answer?: string[]; // Correct answer values: ["A"], ["A","C"], or undefined for text
-  analysis?: string; // Explanation shown after grading
-  commentPrompt?: string; // Grading guidance for text questions
-  hasAnswer?: boolean; // Whether auto-grading is possible
-  points?: number; // Points per question (default 1)
 }
 
 /**
@@ -123,11 +98,40 @@ export interface InteractiveContent {
 }
 
 /**
- * PBL content - Project-based learning
+ * Report content - Business analysis report
  */
-export interface PBLContent {
-  type: 'pbl';
-  projectConfig: PBLProjectConfig;
+export interface ReportContent {
+  type: 'report';
+  reportType: 'market' | 'competitive' | 'financial' | 'strategic';
+  sections: ReportSection[];
+  executiveSummary?: string;
+  data?: Record<string, unknown>;
+}
+
+/**
+ * Report section structure
+ */
+export interface ReportSection {
+  id: string;
+  title: string;
+  content: string;
+  charts?: ReportChart[];
+}
+
+/**
+ * Chart data for report sections
+ */
+export interface ReportChart {
+  id: string;
+  chartType: 'bar' | 'line' | 'pie' | 'radar' | 'scatter';
+  title: string;
+  data: {
+    labels: string[];
+    series: Array<{
+      name: string;
+      values: number[];
+    }>;
+  };
 }
 
 // Re-export generation types for convenience

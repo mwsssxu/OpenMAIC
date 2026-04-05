@@ -182,81 +182,51 @@ export function OutlinesEditor({
                 />
               </div>
 
-              {outline.type === 'quiz' && (
+              {outline.type === 'report' && (
                 <div className="p-3 bg-muted/50 rounded-lg space-y-3">
-                  <Label className="text-sm font-medium">测验配置</Label>
-                  <div className="grid grid-cols-3 gap-3">
+                  <Label className="text-sm font-medium">报告配置</Label>
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">题目数量</Label>
+                      <Label className="text-xs">报告类型</Label>
+                      <Select
+                        value={outline.reportConfig?.reportType || 'market'}
+                        onValueChange={(value) =>
+                          updateOutline(index, {
+                            reportConfig: {
+                              ...outline.reportConfig,
+                              reportType: value as 'market' | 'competitive' | 'financial' | 'strategic',
+                              targetAudience: outline.reportConfig?.targetAudience || '管理层',
+                            },
+                          })
+                        }
+                        disabled={isLoading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="market">市场分析</SelectItem>
+                          <SelectItem value="competitive">竞争分析</SelectItem>
+                          <SelectItem value="financial">财务报告</SelectItem>
+                          <SelectItem value="strategic">战略报告</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">目标受众</Label>
                       <Input
-                        type="number"
-                        value={outline.quizConfig?.questionCount || 3}
+                        value={outline.reportConfig?.targetAudience || '管理层'}
                         onChange={(e) =>
                           updateOutline(index, {
-                            quizConfig: {
-                              ...outline.quizConfig,
-                              questionCount: parseInt(e.target.value) || 3,
-                              difficulty: outline.quizConfig?.difficulty || 'medium',
-                              questionTypes: outline.quizConfig?.questionTypes || ['single'],
+                            reportConfig: {
+                              ...outline.reportConfig,
+                              targetAudience: e.target.value || '管理层',
+                              reportType: outline.reportConfig?.reportType || 'market',
                             },
                           })
                         }
-                        min={1}
-                        max={10}
                         disabled={isLoading}
                       />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">难度</Label>
-                      <Select
-                        value={outline.quizConfig?.difficulty || 'medium'}
-                        onValueChange={(value) =>
-                          updateOutline(index, {
-                            quizConfig: {
-                              ...outline.quizConfig,
-                              difficulty: value as 'easy' | 'medium' | 'hard',
-                              questionCount: outline.quizConfig?.questionCount || 3,
-                              questionTypes: outline.quizConfig?.questionTypes || ['single'],
-                            },
-                          })
-                        }
-                        disabled={isLoading}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="easy">简单</SelectItem>
-                          <SelectItem value="medium">中等</SelectItem>
-                          <SelectItem value="hard">困难</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">题型</Label>
-                      <Select
-                        value={outline.quizConfig?.questionTypes?.[0] || 'single'}
-                        onValueChange={(value) =>
-                          updateOutline(index, {
-                            quizConfig: {
-                              ...outline.quizConfig,
-                              questionTypes: [value as 'single' | 'multiple' | 'text'],
-                              questionCount: outline.quizConfig?.questionCount || 3,
-                              difficulty: outline.quizConfig?.difficulty || 'medium',
-                            },
-                          })
-                        }
-                        disabled={isLoading}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="single">单选</SelectItem>
-                          <SelectItem value="multiple">多选</SelectItem>
-                          <SelectItem value="text">简答</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
                   </div>
                 </div>

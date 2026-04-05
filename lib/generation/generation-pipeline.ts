@@ -19,7 +19,7 @@ export type {
 export {
   buildCourseContext,
   formatAgentsForPrompt,
-  formatTeacherPersonaForPrompt,
+  formatAnalystPersonaForPrompt,
   formatImageDescription,
   formatImagePlaceholder,
   buildVisionUserContent,

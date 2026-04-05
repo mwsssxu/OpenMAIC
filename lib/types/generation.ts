@@ -2,7 +2,7 @@
  * Generation Types - Two-Stage Content Generation System
  *
  * Stage 1: User requirements + documents → Scene Outlines (per-page)
- * Stage 2: Scene Outlines → Full Scenes (slide/quiz/interactive/pbl with actions)
+ * Stage 2: Scene Outlines → Full Scenes (slide/interactive/report with actions)
  */
 
 import type { ActionType } from './action';
@@ -93,11 +93,10 @@ export interface LegacyUserRequirements {
  */
 export interface SceneOutline {
   id: string;
-  type: 'slide' | 'quiz' | 'interactive' | 'pbl';
+  type: 'slide' | 'interactive' | 'report';
   title: string;
   description: string; // 1-2 sentences describing the purpose
   keyPoints: string[]; // 3-5 core key points
-  teachingObjective?: string;
   estimatedDuration?: number; // seconds
   order: number;
   language?: 'zh-CN' | 'en-US'; // Generation language (inherited from requirements)
@@ -105,12 +104,6 @@ export interface SceneOutline {
   suggestedImageIds?: string[]; // e.g., ["img_1", "img_3"]
   // AI-generated media requests (when PDF images are insufficient)
   mediaGenerations?: MediaGenerationRequest[]; // e.g., [{ type: 'image', prompt: '...', elementId: 'gen_img_1' }]
-  // Quiz-specific config
-  quizConfig?: {
-    questionCount: number;
-    difficulty: 'easy' | 'medium' | 'hard';
-    questionTypes: ('single' | 'multiple' | 'text')[];
-  };
   // Interactive-specific config
   interactiveConfig?: {
     conceptName: string;
@@ -118,20 +111,19 @@ export interface SceneOutline {
     designIdea: string;
     subject?: string;
   };
-  // PBL-specific config
-  pblConfig?: {
-    projectTopic: string;
-    projectDescription: string;
-    targetSkills: string[];
-    issueCount?: number;
-    language: 'zh-CN' | 'en-US';
+  // Report-specific config
+  reportConfig?: {
+    reportType: 'market' | 'competitive' | 'financial' | 'strategic';
+    targetAudience: string;
+    dataSources?: string[];
+    includeExecutiveSummary?: boolean;
   };
 }
 
 // ==================== Stage 3 Output: Generated Content ====================
 
 import type { PPTElement, SlideBackground } from './slides';
-import type { QuizQuestion } from './stage';
+import type { ReportSection, ReportChart } from './stage';
 
 /**
  * AI-generated slide content
@@ -140,24 +132,6 @@ export interface GeneratedSlideContent {
   elements: PPTElement[];
   background?: SlideBackground;
   remark?: string;
-}
-
-/**
- * AI-generated quiz content
- */
-export interface GeneratedQuizContent {
-  questions: QuizQuestion[];
-}
-
-// ==================== PBL Generation Types ====================
-
-import type { PBLProjectConfig } from '@/lib/pbl/types';
-
-/**
- * AI-generated PBL content
- */
-export interface GeneratedPBLContent {
-  projectConfig: PBLProjectConfig;
 }
 
 // ==================== Interactive Generation Types ====================
@@ -180,6 +154,18 @@ export interface GeneratedInteractiveContent {
   scientificModel?: ScientificModel;
 }
 
+// ==================== Report Generation Types ====================
+
+/**
+ * AI-generated report content
+ */
+export interface GeneratedReportContent {
+  reportType: 'market' | 'competitive' | 'financial' | 'strategic';
+  sections: ReportSection[];
+  executiveSummary?: string;
+  charts?: ReportChart[];
+}
+
 // ==================== Legacy Types (for compatibility) ====================
 
 export interface SuggestedSlideElement {
@@ -189,14 +175,6 @@ export interface SuggestedSlideElement {
   position?: 'top' | 'center' | 'bottom' | 'left' | 'right';
   chartType?: 'bar' | 'line' | 'pie' | 'radar';
   textOutline?: string[];
-}
-
-export interface SuggestedQuizQuestion {
-  type: 'single' | 'multiple' | 'short_answer';
-  questionOutline: string;
-  suggestedOptions?: string[];
-  targetConceptId?: string;
-  difficulty: 'easy' | 'medium' | 'hard';
 }
 
 export interface SuggestedAction {

@@ -19,7 +19,7 @@ import {
   formatImagePlaceholder,
   buildVisionUserContent,
   uniquifyMediaElementIds,
-  formatTeacherPersonaForPrompt,
+  formatAnalystPersonaForPrompt,
 } from '@/lib/generation/generation-pipeline';
 import type { AgentInfo } from '@/lib/generation/generation-pipeline';
 import { MAX_PDF_CONTENT_CHARS, MAX_VISION_IMAGES } from '@/lib/constants/generation';
@@ -173,8 +173,8 @@ export async function POST(req: NextRequest) {
         '**IMPORTANT: Do NOT include any video mediaGenerations (type: "video") in the outlines. Video generation is disabled. Image generation is allowed.**';
     }
 
-    // Build teacher context from agents (if available)
-    const teacherContext = formatTeacherPersonaForPrompt(agents);
+    // Build analyst context from agents (if available)
+    const analystContext = formatAnalystPersonaForPrompt(agents);
 
     const prompts = buildPrompt(PROMPT_IDS.REQUIREMENTS_TO_OUTLINES, {
       requirement: requirements.requirement,
@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
       availableImages: availableImagesText,
       researchContext: researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
       mediaGenerationPolicy,
-      teacherContext,
+      analystContext,
     });
 
     if (!prompts) {

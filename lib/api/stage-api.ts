@@ -51,9 +51,8 @@ export {
   getScene,
   createDefaultContent,
   createDefaultSlideContent,
-  createDefaultQuizContent,
   createDefaultInteractiveContent,
-  createDefaultPBLContent,
+  createDefaultReportContent,
 } from './stage-api-defaults';
 
 // Import sub-API factories

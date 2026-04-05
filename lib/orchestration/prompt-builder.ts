@@ -652,15 +652,15 @@ function buildStateContext(storeState: StatelessChatRequest['storeState']): stri
         lines.push(`Current slide elements (${elements.length}):\n${summarizeElements(elements)}`);
       }
 
-      // Quiz scene: include question summary
-      if (currentScene.content.type === 'quiz') {
-        const questions = currentScene.content.questions;
-        const qSummary = questions
+      // Report scene: include sections summary
+      if (currentScene.content.type === 'report') {
+        const sections = currentScene.content.sections;
+        const sSummary = sections
           .slice(0, 5)
-          .map((q, i) => `  ${i + 1}. [${q.type}] ${q.question.slice(0, 80)}`)
+          .map((s, i) => `  ${i + 1}. ${s.title}`)
           .join('\n');
         lines.push(
-          `Quiz questions (${questions.length}):\n${qSummary}${questions.length > 5 ? `\n  ... and ${questions.length - 5} more` : ''}`,
+          `Report sections (${sections.length}):\n${sSummary}${sections.length > 5 ? `\n  ... and ${sections.length - 5} more` : ''}`,
         );
       }
     }

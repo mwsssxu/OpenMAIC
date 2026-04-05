@@ -18,9 +18,8 @@ import {
 import type { SceneOutline } from '@/lib/types/generation';
 import type {
   GeneratedSlideContent,
-  GeneratedQuizContent,
   GeneratedInteractiveContent,
-  GeneratedPBLContent,
+  GeneratedReportContent,
 } from '@/lib/types/generation';
 import type { SpeechAction } from '@/lib/types/action';
 import { createLogger } from '@/lib/logger';
@@ -49,9 +48,8 @@ export async function POST(req: NextRequest) {
       allOutlines: SceneOutline[];
       content:
         | GeneratedSlideContent
-        | GeneratedQuizContent
         | GeneratedInteractiveContent
-        | GeneratedPBLContent;
+        | GeneratedReportContent;
       stageId: string;
       agents?: AgentInfo[];
       previousSpeeches?: string[];

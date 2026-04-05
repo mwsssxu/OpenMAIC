@@ -3,11 +3,11 @@
  *
  * 核心职责：
  * - 将场景大纲（SceneOutline）转换为完整的场景（Scene）
- * - 支持四种场景类型：幻灯片(slide)、测验(quiz)、交互式(interactive)、项目制学习(pbl)
+ * - 支持三种场景类型：幻灯片(slide)、交互式(interactive)、商业报告(report)
  * - 为每个场景生成对应的动作列表（Action[]）
  *
  * 生成流程（两步走）：
- *   Step 3.1: 大纲 → 页面内容（slide/quiz/interactive/pbl 的具体数据）
+ *   Step 3.1: 大纲 → 页面内容（slide/interactive/report 的具体数据）
  *   Step 3.2: 内容 + 讲稿 → 动作列表（speech、spotlight、whiteboard 等）
  *
  * 所有场景采用并行生成策略，通过 Promise.all 实现
@@ -19,17 +19,15 @@ import { MAX_VISION_IMAGES } from '@/lib/constants/generation';
 import type {
   SceneOutline,
   GeneratedSlideContent,
-  GeneratedQuizContent,
   GeneratedInteractiveContent,
-  GeneratedPBLContent,
-  ScientificModel,
+  GeneratedReportContent,
   PdfImage,
   ImageMapping,
+  ScientificModel,
 } from '@/lib/types/generation';
 import type { LanguageModel } from 'ai';
 import type { StageStore } from '@/lib/api/stage-api';
 import { createStageAPI } from '@/lib/api/stage-api';
-import { generatePBLContent } from '@/lib/pbl/generate-pbl';
 import { buildPrompt, PROMPT_IDS } from './prompts';
 import { postProcessInteractiveHtml } from './interactive-post-processor';
 import { parseActionsFromStructuredOutput } from './action-parser';
@@ -37,12 +35,11 @@ import { parseJsonResponse } from './json-repair';
 import {
   buildCourseContext,
   formatAgentsForPrompt,
-  formatTeacherPersonaForPrompt,
+  formatAnalystPersonaForPrompt,
   formatImageDescription,
   formatImagePlaceholder,
 } from './prompt-formatters';
 import type { PPTElement, Slide, SlideBackground, SlideTheme } from '@/lib/types/slides';
-import type { QuizQuestion } from '@/lib/types/stage';
 import type { Action } from '@/lib/types/action';
 import type {
   AgentInfo,
@@ -194,9 +191,8 @@ export async function generateSceneContent(
   agents?: AgentInfo[],
 ): Promise<
   | GeneratedSlideContent
-  | GeneratedQuizContent
   | GeneratedInteractiveContent
-  | GeneratedPBLContent
+  | GeneratedReportContent
   | null
 > {
   // 如果交互式场景缺少配置，回退到幻灯片
@@ -227,12 +223,10 @@ export async function generateSceneContent(
         generatedMediaMapping,
         agents,
       );
-    case 'quiz':
-      return generateQuizContent(outline, aiCall);
     case 'interactive':
       return generateInteractiveContent(outline, aiCall, outline.language);
-    case 'pbl':
-      return generatePBLSceneContent(outline, languageModel);
+    case 'report':
+      return generateReportContent(outline, aiCall);
     default:
       return null;
   }
@@ -611,7 +605,7 @@ async function generateSlideContent(
   const canvasWidth = 1000;
   const canvasHeight = 562.5;
 
-  const teacherContext = formatTeacherPersonaForPrompt(agents);
+  const analystContext = formatAnalystPersonaForPrompt(agents);
 
   const prompts = buildPrompt(PROMPT_IDS.SLIDE_CONTENT, {
     title: outline.title,
@@ -621,7 +615,7 @@ async function generateSlideContent(
     assignedImages: assignedImagesText,
     canvas_width: canvasWidth,
     canvas_height: canvasHeight,
-    teacherContext,
+    analystContext,
   });
 
   if (!prompts) {
@@ -705,112 +699,48 @@ async function generateSlideContent(
 }
 
 /**
- * 生成测验内容
+ * 生成商业报告内容
  *
  * @param outline - 场景大纲
  * @param aiCall - AI 调用函数
- * @returns 生成的测验题目数组，失败返回 null
+ * @returns 生成的报告内容，失败返回 null
  */
-async function generateQuizContent(
+async function generateReportContent(
   outline: SceneOutline,
   aiCall: AICallFn,
-): Promise<GeneratedQuizContent | null> {
-  const quizConfig = outline.quizConfig || {
-    questionCount: 3,
-    difficulty: 'medium',
-    questionTypes: ['single'],
+): Promise<GeneratedReportContent | null> {
+  const reportConfig = outline.reportConfig || {
+    reportType: 'market',
+    targetAudience: 'Business stakeholders',
+    includeExecutiveSummary: true,
   };
 
-  const prompts = buildPrompt(PROMPT_IDS.QUIZ_CONTENT, {
-    title: outline.title,
-    description: outline.description,
-    keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
-    questionCount: quizConfig.questionCount,
-    difficulty: quizConfig.difficulty,
-    questionTypes: quizConfig.questionTypes.join(', '),
+  const prompts = buildPrompt(PROMPT_IDS.REPORT_CONTENT, {
+    sceneOutline: JSON.stringify({
+      title: outline.title,
+      description: outline.description,
+      keyPoints: outline.keyPoints,
+    }, null, 2),
+    reportConfig: JSON.stringify(reportConfig, null, 2),
+    language: outline.language || 'zh-CN',
   });
 
   if (!prompts) {
     return null;
   }
 
-  log.debug(`Generating quiz content for: ${outline.title}`);
+  log.debug(`Generating report content for: ${outline.title}`);
   const response = await aiCall(prompts.system, prompts.user);
-  const generatedQuestions = parseJsonResponse<QuizQuestion[]>(response);
+  const generatedReport = parseJsonResponse<GeneratedReportContent>(response);
 
-  if (!generatedQuestions || !Array.isArray(generatedQuestions)) {
+  if (!generatedReport || !generatedReport.sections) {
     log.error(`Failed to parse AI response for: ${outline.title}`);
     return null;
   }
 
-  log.debug(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
+  log.debug(`Got ${generatedReport.sections.length} sections for: ${outline.title}`);
 
-  // Ensure each question has an ID and normalize options format
-  const questions: QuizQuestion[] = generatedQuestions.map((q) => {
-    const isText = q.type === 'short_answer';
-    return {
-      ...q,
-      id: q.id || `q_${nanoid(8)}`,
-      options: isText ? undefined : normalizeQuizOptions(q.options),
-      answer: isText ? undefined : normalizeQuizAnswer(q as unknown as Record<string, unknown>),
-      hasAnswer: isText ? false : true,
-    };
-  });
-
-  return { questions };
-}
-
-/**
- * 规范化测验选项格式
- *
- * AI 生成的选项可能是纯字符串 ["选项A", "选项B"] 或 QuizOption 对象。
- * 此函数统一转换为 QuizOption[] 格式：{ value: "A", label: "选项A" }
- *
- * @param options - 原始选项数组
- * @returns 规范化后的选项数组
- */
-function normalizeQuizOptions(
-  options: unknown[] | undefined,
-): { value: string; label: string }[] | undefined {
-  if (!options || !Array.isArray(options)) return undefined;
-
-  return options.map((opt, index) => {
-    const letter = String.fromCharCode(65 + index); // A, B, C, D...
-
-    if (typeof opt === 'string') {
-      return { value: letter, label: opt };
-    }
-
-    if (typeof opt === 'object' && opt !== null) {
-      const obj = opt as Record<string, unknown>;
-      return {
-        value: typeof obj.value === 'string' ? obj.value : letter,
-        label: typeof obj.label === 'string' ? obj.label : String(obj.value || obj.text || letter),
-      };
-    }
-
-    return { value: letter, label: String(opt) };
-  });
-}
-
-/**
- * 规范化测验答案格式
- *
- * AI 生成的正确答案可能是字符串或数组，字段名也可能是 correctAnswer、answer 或 correct_answer。
- * 此函数统一转换为 string[] 格式，与选项值匹配。
- */
-function normalizeQuizAnswer(question: Record<string, unknown>): string[] | undefined {
-  // AI 可能使用 "correctAnswer"、"answer" 或 "correct_answer" 字段名
-  const raw =
-    question.answer ??
-    question.correctAnswer ??
-    (question as Record<string, unknown>).correct_answer;
-  if (!raw) return undefined;
-
-  if (Array.isArray(raw)) {
-    return raw.map(String);
-  }
-  return [String(raw)];
+  return generatedReport;
 }
 
 /**
@@ -913,57 +843,6 @@ async function generateInteractiveContent(
 }
 
 /**
- * 生成 PBL（项目制学习）内容
- *
- * 使用 lib/pbl/generate-pbl.ts 中的智能体循环生成项目配置。
- *
- * @param outline - 场景大纲
- * @param languageModel - 语言模型实例
- * @returns 生成的 PBL 项目配置，失败返回 null
- */
-async function generatePBLSceneContent(
-  outline: SceneOutline,
-  languageModel?: LanguageModel,
-): Promise<GeneratedPBLContent | null> {
-  if (!languageModel) {
-    log.error('LanguageModel required for PBL generation');
-    return null;
-  }
-
-  const pblConfig = outline.pblConfig;
-  if (!pblConfig) {
-    log.error(`PBL outline "${outline.title}" missing pblConfig`);
-    return null;
-  }
-
-  log.info(`Generating PBL content for: ${outline.title}`);
-
-  try {
-    const projectConfig = await generatePBLContent(
-      {
-        projectTopic: pblConfig.projectTopic,
-        projectDescription: pblConfig.projectDescription,
-        targetSkills: pblConfig.targetSkills,
-        issueCount: pblConfig.issueCount,
-        language: pblConfig.language,
-      },
-      languageModel,
-      {
-        onProgress: (msg) => log.info(`${msg}`),
-      },
-    );
-    log.info(
-      `PBL generated: ${projectConfig.agents.length} agents, ${projectConfig.issueboard.issues.length} issues`,
-    );
-
-    return { projectConfig };
-  } catch (error) {
-    log.error(`Failed:`, error);
-    return null;
-  }
-}
-
-/**
  * 从 AI 响应中提取 HTML 文档
  *
  * 三种提取策略：
@@ -1012,9 +891,8 @@ function extractHtml(response: string): string | null {
  *
  * 为不同类型的场景生成对应的动作：
  * - slide：聚光灯、激光笔、语音讲解、白板绘图等
- * - quiz：语音引导
  * - interactive：交互引导语音
- * - pbl：项目介绍语音
+ * - report：报告介绍语音
  *
  * @param outline - 场景大纲
  * @param content - 场景内容
@@ -1028,9 +906,8 @@ export async function generateSceneActions(
   outline: SceneOutline,
   content:
     | GeneratedSlideContent
-    | GeneratedQuizContent
     | GeneratedInteractiveContent
-    | GeneratedPBLContent,
+    | GeneratedReportContent,
   aiCall: AICallFn,
   ctx?: SceneGenerationContext,
   agents?: AgentInfo[],
@@ -1067,33 +944,6 @@ export async function generateSceneActions(
     return generateDefaultSlideActions(outline, content.elements);
   }
 
-  if (outline.type === 'quiz' && 'questions' in content) {
-    // Format question list for AI reference
-    const questionsText = formatQuestionsForPrompt(content.questions);
-
-    const prompts = buildPrompt(PROMPT_IDS.QUIZ_ACTIONS, {
-      title: outline.title,
-      keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
-      description: outline.description,
-      questions: questionsText,
-      courseContext: buildCourseContext(ctx),
-      agents: agentsText,
-    });
-
-    if (!prompts) {
-      return generateDefaultQuizActions(outline);
-    }
-
-    const response = await aiCall(prompts.system, prompts.user);
-    const actions = parseActionsFromStructuredOutput(response, outline.type);
-
-    if (actions.length > 0) {
-      return processActions(actions, [], agents);
-    }
-
-    return generateDefaultQuizActions(outline);
-  }
-
   if (outline.type === 'interactive' && 'html' in content) {
     const config = outline.interactiveConfig;
     const agentsText = formatAgentsForPrompt(agents);
@@ -1121,46 +971,23 @@ export async function generateSceneActions(
     return generateDefaultInteractiveActions(outline);
   }
 
-  if (outline.type === 'pbl' && 'projectConfig' in content) {
-    const pblConfig = outline.pblConfig;
-    const agentsText = formatAgentsForPrompt(agents);
-    const prompts = buildPrompt(PROMPT_IDS.PBL_ACTIONS, {
-      title: outline.title,
-      keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
-      description: outline.description,
-      projectTopic: pblConfig?.projectTopic || outline.title,
-      projectDescription: pblConfig?.projectDescription || outline.description,
-      courseContext: buildCourseContext(ctx),
-      agents: agentsText,
-    });
-
-    if (!prompts) {
-      return generateDefaultPBLActions(outline);
-    }
-
-    const response = await aiCall(prompts.system, prompts.user);
-    const actions = parseActionsFromStructuredOutput(response, outline.type);
-
-    if (actions.length > 0) {
-      return processActions(actions, [], agents);
-    }
-
-    return generateDefaultPBLActions(outline);
+  if (outline.type === 'report' && 'sections' in content) {
+    return generateDefaultReportActions(outline);
   }
 
   return [];
 }
 
 /**
- * Generate default PBL Actions (fallback)
+ * Generate default Report Actions (fallback)
  */
-function generateDefaultPBLActions(_outline: SceneOutline): Action[] {
+function generateDefaultReportActions(outline: SceneOutline): Action[] {
   return [
     {
       id: `action_${nanoid(8)}`,
       type: 'speech',
-      title: 'PBL 项目介绍',
-      text: '现在让我们开始一个项目式学习活动。请选择你的角色，查看任务看板，开始协作完成项目。',
+      title: '报告介绍',
+      text: outline.description || `现在让我们来看一下${outline.title}的分析报告。`,
     },
   ];
 }
@@ -1193,18 +1020,6 @@ function formatElementsForPrompt(elements: PPTElement[]): string {
 }
 
 /**
- * Format question list for AI reference
- */
-function formatQuestionsForPrompt(questions: QuizQuestion[]): string {
-  return questions
-    .map((q, i) => {
-      const optionsText = q.options ? `Options: ${q.options.join(', ')}` : '';
-      return `Q${i + 1} (${q.type}): ${q.question}\n${optionsText}`;
-    })
-    .join('\n\n');
-}
-
-/**
  * 处理并验证动作
  *
  * - 为每个动作分配唯一 ID
@@ -1219,8 +1034,8 @@ function formatQuestionsForPrompt(questions: QuizQuestion[]): string {
 function processActions(actions: Action[], elements: PPTElement[], agents?: AgentInfo[]): Action[] {
   const elementIds = new Set(elements.map((el) => el.id));
   const agentIds = new Set(agents?.map((a) => a.id) || []);
-  const studentAgents = agents?.filter((a) => a.role === 'student') || [];
-  const nonTeacherAgents = agents?.filter((a) => a.role !== 'teacher') || [];
+  const consultantAgents = agents?.filter((a) => a.role === 'consultant') || [];
+  const nonAnalystAgents = agents?.filter((a) => a.role !== 'analyst') || [];
 
   return actions.map((action) => {
     // 确保每个动作都有 ID
@@ -1248,8 +1063,8 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
       if (processedAction.agentId && agentIds.has(processedAction.agentId)) {
         // agentId 有效，保持不变
       } else {
-        // agentId 缺失或无效 — 随机选择一个学生或非教师智能体
-        const pool = studentAgents.length > 0 ? studentAgents : nonTeacherAgents;
+        // agentId 缺失或无效 — 随机选择一个顾问或非分析师智能体
+        const pool = consultantAgents.length > 0 ? consultantAgents : nonAnalystAgents;
         if (pool.length > 0) {
           const picked = pool[Math.floor(Math.random() * pool.length)];
           log.warn(
@@ -1303,20 +1118,6 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
 }
 
 /**
- * 生成默认的测验动作（回退方案）
- */
-function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
-  return [
-    {
-      id: `action_${nanoid(8)}`,
-      type: 'speech',
-      title: '测验引导',
-      text: '现在让我们来做一个小测验，检验一下学习成果。',
-    },
-  ];
-}
-
-/**
  * 生成默认的交互式动作（回退方案）
  */
 function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
@@ -1325,7 +1126,7 @@ function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
       id: `action_${nanoid(8)}`,
       type: 'speech',
       title: '交互引导',
-      text: '现在让我们通过交互式可视化来探索这个概念。请尝试操作页面中的元素，观察变化。',
+      text: '现在让我们通过交互式可视化来探索这些数据。请尝试操作页面中的元素，观察变化。',
     },
   ];
 }
@@ -1335,9 +1136,8 @@ function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
  *
  * 根据场景类型创建对应的场景对象：
  * - slide：创建包含 Slide 对象的场景
- * - quiz：创建包含测验题目的场景
  * - interactive：创建包含 HTML 的场景
- * - pbl：创建包含项目配置的场景
+ * - report：创建包含报告内容的场景
  *
  * @param outline - 场景大纲
  * @param content - 场景内容
@@ -1349,9 +1149,8 @@ export function createSceneWithActions(
   outline: SceneOutline,
   content:
     | GeneratedSlideContent
-    | GeneratedQuizContent
     | GeneratedInteractiveContent
-    | GeneratedPBLContent,
+    | GeneratedReportContent,
   actions: Action[],
   api: ReturnType<typeof createStageAPI>,
 ): string | null {
@@ -1389,21 +1188,6 @@ export function createSceneWithActions(
     return sceneResult.success ? (sceneResult.data ?? null) : null;
   }
 
-  if (outline.type === 'quiz' && 'questions' in content) {
-    const sceneResult = api.scene.create({
-      type: 'quiz',
-      title: outline.title,
-      order: outline.order,
-      content: {
-        type: 'quiz',
-        questions: content.questions,
-      },
-      actions,
-    });
-
-    return sceneResult.success ? (sceneResult.data ?? null) : null;
-  }
-
   if (outline.type === 'interactive' && 'html' in content) {
     const sceneResult = api.scene.create({
       type: 'interactive',
@@ -1420,14 +1204,15 @@ export function createSceneWithActions(
     return sceneResult.success ? (sceneResult.data ?? null) : null;
   }
 
-  if (outline.type === 'pbl' && 'projectConfig' in content) {
+  if (outline.type === 'report' && 'sections' in content) {
     const sceneResult = api.scene.create({
-      type: 'pbl',
+      type: 'report',
       title: outline.title,
       order: outline.order,
       content: {
-        type: 'pbl',
-        projectConfig: content.projectConfig,
+        type: 'report',
+        reportType: content.reportType || 'market',
+        sections: content.sections,
       },
       actions,
     });

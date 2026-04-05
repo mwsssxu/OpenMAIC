@@ -13,7 +13,7 @@ import {
 } from '@/lib/generation/scene-generator';
 import type { AICallFn } from '@/lib/generation/pipeline-types';
 import type { AgentInfo } from '@/lib/generation/pipeline-types';
-import { formatTeacherPersonaForPrompt } from '@/lib/generation/prompt-formatters';
+import { formatAnalystPersonaForPrompt } from '@/lib/generation/prompt-formatters';
 import { getDefaultAgents } from '@/lib/orchestration/registry/store';
 import { createLogger } from '@/lib/logger';
 import { parseModelString } from '@/lib/ai/providers';
@@ -116,15 +116,15 @@ async function generateAgentProfiles(
   aiCall: AICallFn,
 ): Promise<AgentInfo[]> {
   const systemPrompt =
-    'You are an expert instructional designer. Generate agent profiles for a multi-agent classroom simulation. Return ONLY valid JSON, no markdown or explanation.';
+    'You are an expert business analyst. Generate agent profiles for a multi-agent business analysis simulation. Return ONLY valid JSON, no markdown or explanation.';
 
-  const userPrompt = `Generate agent profiles for a course with this requirement:
+  const userPrompt = `Generate agent profiles for a business analysis report with this requirement:
 ${requirement}
 
 Requirements:
-- Decide the appropriate number of agents based on the course content (typically 3-5)
-- Exactly 1 agent must have role "teacher", the rest can be "assistant" or "student"
-- Each agent needs: name, role, persona (2-3 sentences describing personality and teaching/learning style)
+- Decide the appropriate number of agents based on the analysis scope (typically 2-4)
+- Exactly 1 agent must have role "analyst" (the lead analyst), the rest can be "specialist" or "consultant"
+- Each agent needs: name, role, persona (2-3 sentences describing expertise and analysis style)
 - Names and personas must be in language: ${language}
 
 Return a JSON object with this exact structure:
@@ -132,7 +132,7 @@ Return a JSON object with this exact structure:
   "agents": [
     {
       "name": "string",
-      "role": "teacher" | "assistant" | "student",
+      "role": "analyst" | "specialist" | "consultant",
       "persona": "string (2-3 sentences)"
     }
   ]
@@ -144,13 +144,13 @@ Return a JSON object with this exact structure:
     agents: Array<{ name: string; role: string; persona: string }>;
   };
 
-  if (!parsed.agents || !Array.isArray(parsed.agents) || parsed.agents.length < 2) {
-    throw new Error(`Expected at least 2 agents, got ${parsed.agents?.length ?? 0}`);
+  if (!parsed.agents || !Array.isArray(parsed.agents) || parsed.agents.length < 1) {
+    throw new Error(`Expected at least 1 agent, got ${parsed.agents?.length ?? 0}`);
   }
 
-  const teacherCount = parsed.agents.filter((a) => a.role === 'teacher').length;
-  if (teacherCount !== 1) {
-    throw new Error(`Expected exactly 1 teacher, got ${teacherCount}`);
+  const analystCount = parsed.agents.filter((a) => a.role === 'analyst').length;
+  if (analystCount !== 1) {
+    throw new Error(`Expected exactly 1 analyst, got ${analystCount}`);
   }
 
   return parsed.agents.map((a, i) => ({
@@ -242,7 +242,7 @@ export async function generateClassroom(
   } else {
     agents = getDefaultAgents();
   }
-  const teacherContext = formatTeacherPersonaForPrompt(agents);
+  const analystContext = formatAnalystPersonaForPrompt(agents);
 
   await options.onProgress?.({
     step: 'researching',
@@ -299,7 +299,7 @@ export async function generateClassroom(
       imageGenerationEnabled: input.enableImageGeneration,
       videoGenerationEnabled: input.enableVideoGeneration,
       researchContext,
-      teacherContext,
+      analystContext,
     },
   );
 
@@ -337,7 +337,7 @@ export async function generateClassroom(
       persona: a.persona || '',
       avatar: AGENT_DEFAULT_AVATARS[i % AGENT_DEFAULT_AVATARS.length],
       color: AGENT_COLOR_PALETTE[i % AGENT_COLOR_PALETTE.length],
-      priority: a.role === 'teacher' ? 10 : a.role === 'assistant' ? 7 : 5,
+      priority: a.role === 'analyst' ? 10 : a.role === 'specialist' ? 7 : 5,
     })),
   };
 

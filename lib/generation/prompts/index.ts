@@ -24,11 +24,9 @@ export const PROMPT_IDS = {
   REQUIREMENTS_TO_OUTLINES: 'requirements-to-outlines',
   WEB_SEARCH_QUERY_REWRITE: 'web-search-query-rewrite',
   SLIDE_CONTENT: 'slide-content',
-  QUIZ_CONTENT: 'quiz-content',
+  REPORT_CONTENT: 'report-content',
   SLIDE_ACTIONS: 'slide-actions',
-  QUIZ_ACTIONS: 'quiz-actions',
   INTERACTIVE_SCIENTIFIC_MODEL: 'interactive-scientific-model',
   INTERACTIVE_HTML: 'interactive-html',
   INTERACTIVE_ACTIONS: 'interactive-actions',
-  PBL_ACTIONS: 'pbl-actions',
 } as const;

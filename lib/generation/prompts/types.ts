@@ -9,13 +9,11 @@ export type PromptId =
   | 'requirements-to-outlines'
   | 'web-search-query-rewrite'
   | 'slide-content'
-  | 'quiz-content'
+  | 'report-content'
   | 'slide-actions'
-  | 'quiz-actions'
   | 'interactive-scientific-model'
   | 'interactive-html'
-  | 'interactive-actions'
-  | 'pbl-actions';
+  | 'interactive-actions';
 
 /**
  * Snippet identifier

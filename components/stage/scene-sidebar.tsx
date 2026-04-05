@@ -91,9 +91,8 @@ export function SceneSidebar({
   const getSceneTypeIcon = (type: SceneType) => {
     const icons = {
       slide: BookOpen,
-      quiz: PieChart,
       interactive: MousePointer2,
-      pbl: Cpu,
+      report: PieChart,
     };
     return icons[type] || BookOpen;
   };
@@ -202,41 +201,6 @@ export function SceneSidebar({
                         viewportRatio={viewportRatio}
                         size={Math.max(100, sidebarWidth - 28)}
                       />
-                    ) : scene.type === 'quiz' ? (
-                      /* Quiz: question bar + 2x2 option grid */
-                      <div className="w-full h-full bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 p-2 flex flex-col">
-                        <div className="h-1.5 w-4/5 bg-orange-200/70 dark:bg-orange-700/30 rounded-full mb-1.5" />
-                        <div className="flex-1 grid grid-cols-2 gap-1">
-                          {[0, 1, 2, 3].map((i) => (
-                            <div
-                              key={i}
-                              className={cn(
-                                'rounded flex items-center gap-1 px-1',
-                                i === 1
-                                  ? 'bg-orange-400/20 dark:bg-orange-500/20 border border-orange-300/50 dark:border-orange-600/30'
-                                  : 'bg-white/60 dark:bg-white/5 border border-orange-100/60 dark:border-orange-800/20',
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  'w-1.5 h-1.5 rounded-full shrink-0',
-                                  i === 1
-                                    ? 'bg-orange-400 dark:bg-orange-500'
-                                    : 'bg-orange-200 dark:bg-orange-700/50',
-                                )}
-                              />
-                              <div
-                                className={cn(
-                                  'h-1 rounded-full flex-1',
-                                  i === 1
-                                    ? 'bg-orange-300/60 dark:bg-orange-600/40'
-                                    : 'bg-orange-100/80 dark:bg-orange-800/30',
-                                )}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
                     ) : scene.type === 'interactive' ? (
                       /* Interactive: browser window with chrome + content */
                       <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 p-1.5 flex flex-col">
@@ -262,37 +226,18 @@ export function SceneSidebar({
                           </div>
                         </div>
                       </div>
-                    ) : scene.type === 'pbl' ? (
-                      /* PBL: kanban board with 3 columns */
-                      <div className="w-full h-full bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 p-1.5 flex flex-col">
-                        <div className="flex items-center gap-1 mb-1.5">
-                          <div className="w-1.5 h-1.5 rounded bg-blue-300 dark:bg-blue-600" />
-                          <div className="h-1 w-8 bg-blue-200/60 dark:bg-blue-700/30 rounded-full" />
-                        </div>
-                        <div className="flex-1 flex gap-1 overflow-hidden">
-                          {[0, 1, 2].map((col) => (
+                    ) : scene.type === 'report' ? (
+                      /* Report: document with sections */
+                      <div className="w-full h-full bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/20 p-1.5 flex flex-col">
+                        <div className="h-1.5 w-4/5 bg-purple-200/70 dark:bg-purple-700/30 rounded-full mb-1.5" />
+                        <div className="flex-1 flex flex-col gap-1">
+                          {[1, 2, 3].map((i) => (
                             <div
-                              key={col}
-                              className="flex-1 bg-white/50 dark:bg-white/5 rounded p-0.5 flex flex-col gap-0.5"
+                              key={i}
+                              className="flex-1 bg-white/50 dark:bg-white/5 rounded p-1 flex flex-col gap-0.5"
                             >
-                              <div
-                                className={cn(
-                                  'h-0.5 w-3 rounded-full mb-0.5',
-                                  col === 0
-                                    ? 'bg-blue-300/70'
-                                    : col === 1
-                                      ? 'bg-amber-300/70'
-                                      : 'bg-green-300/70',
-                                )}
-                              />
-                              {Array.from({
-                                length: col === 0 ? 3 : col === 1 ? 2 : 1,
-                              }).map((_, i) => (
-                                <div
-                                  key={i}
-                                  className="h-2 w-full bg-blue-100/60 dark:bg-blue-800/20 rounded border border-blue-200/30 dark:border-blue-700/20"
-                                />
-                              ))}
+                              <div className="h-0.5 w-3 bg-purple-300/70 dark:bg-purple-600/50 rounded-full" />
+                              <div className="h-0.5 w-full bg-purple-100/60 dark:bg-purple-800/20 rounded-full" />
                             </div>
                           ))}
                         </div>

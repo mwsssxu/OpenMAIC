@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       aiCall,
       assignedImages,
       imageMapping,
-      effectiveOutline.type === 'pbl' ? languageModel : undefined,
+      effectiveOutline.type === 'report' ? languageModel : undefined,
       hasVision,
       generatedMediaMapping,
       agents,

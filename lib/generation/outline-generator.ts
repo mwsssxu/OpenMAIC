@@ -65,7 +65,7 @@ export async function generateSceneOutlinesFromRequirements(
     imageGenerationEnabled?: boolean;
     videoGenerationEnabled?: boolean;
     researchContext?: string;
-    teacherContext?: string;
+    analystContext?: string;
   },
 ): Promise<GenerationResult<SceneOutline[]>> {
   // 构建可用图片的描述，用于 AI 提示
@@ -139,8 +139,8 @@ export async function generateSceneOutlinesFromRequirements(
     mediaGenerationPolicy,
     researchContext:
       options?.researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
-    // 服务端生成通过 options 填充；客户端通过 formatTeacherPersonaForPrompt 填充
-    teacherContext: options?.teacherContext || '',
+    // 服务端生成通过 options 填充；客户端通过 formatAnalystPersonaForPrompt 填充
+    analystContext: options?.analystContext || '',
   });
 
   if (!prompts) {
@@ -207,22 +207,16 @@ export async function generateSceneOutlinesFromRequirements(
  * 而不是完全失败。
  *
  * @param outline - 原始场景大纲
- * @param hasLanguageModel - 是否有可用的语言模型（PBL 需要）
+ * @param hasLanguageModel - 是否有可用的语言模型（暂时保留参数以兼容现有调用）
  * @returns 可能回退后的场景大纲
  */
 export function applyOutlineFallbacks(
   outline: SceneOutline,
-  hasLanguageModel: boolean,
+  _hasLanguageModel: boolean,
 ): SceneOutline {
   if (outline.type === 'interactive' && !outline.interactiveConfig) {
     log.warn(
       `Interactive outline "${outline.title}" missing interactiveConfig, falling back to slide`,
-    );
-    return { ...outline, type: 'slide' };
-  }
-  if (outline.type === 'pbl' && (!outline.pblConfig || !hasLanguageModel)) {
-    log.warn(
-      `PBL outline "${outline.title}" missing pblConfig or languageModel, falling back to slide`,
     );
     return { ...outline, type: 'slide' };
   }

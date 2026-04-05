@@ -7,9 +7,8 @@ import { nanoid } from 'nanoid';
 import type {
   SceneOutline,
   GeneratedSlideContent,
-  GeneratedQuizContent,
   GeneratedInteractiveContent,
-  GeneratedPBLContent,
+  GeneratedReportContent,
   PdfImage,
   ImageMapping,
 } from '@/lib/types/generation';
@@ -123,9 +122,8 @@ export function buildCompleteScene(
   outline: SceneOutline,
   content:
     | GeneratedSlideContent
-    | GeneratedQuizContent
     | GeneratedInteractiveContent
-    | GeneratedPBLContent,
+    | GeneratedReportContent,
   actions: Action[],
   stageId: string,
 ): Scene | null {
@@ -167,23 +165,6 @@ export function buildCompleteScene(
     };
   }
 
-  if (outline.type === 'quiz' && 'questions' in content) {
-    return {
-      id: sceneId,
-      stageId,
-      type: 'quiz',
-      title: outline.title,
-      order: outline.order,
-      content: {
-        type: 'quiz',
-        questions: content.questions,
-      },
-      actions,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-  }
-
   if (outline.type === 'interactive' && 'html' in content) {
     return {
       id: sceneId,
@@ -202,16 +183,17 @@ export function buildCompleteScene(
     };
   }
 
-  if (outline.type === 'pbl' && 'projectConfig' in content) {
+  if (outline.type === 'report' && 'sections' in content) {
     return {
       id: sceneId,
       stageId,
-      type: 'pbl',
+      type: 'report',
       title: outline.title,
       order: outline.order,
       content: {
-        type: 'pbl',
-        projectConfig: content.projectConfig,
+        type: 'report',
+        reportType: content.reportType || 'market',
+        sections: content.sections,
       },
       actions,
       createdAt: Date.now(),
