@@ -1,11 +1,25 @@
 /**
- * Prompt Loader - Loads prompts from markdown files
+ * 提示词加载器 - 从 Markdown 文件加载 AI 提示模板
  *
- * Supports:
- * - Loading prompts from templates/{promptId}/ directory
- * - Snippet inclusion via {{snippet:name}} syntax
- * - Variable interpolation via {{variable}} syntax
- * - Caching for performance
+ * 核心职责：
+ * - 从 templates/{promptId}/ 目录加载提示模板
+ * - 支持 {{snippet:name}} 语法引用代码片段
+ * - 支持 {{variable}} 语法进行变量插值
+ * - 内置缓存机制提升性能
+ *
+ * 目录结构：
+ *   lib/generation/prompts/
+ *   ├── templates/
+ *   │   └── {promptId}/
+ *   │       ├── system.md    # 系统提示（必需）
+ *   │       └── user.md      # 用户提示模板（可选）
+ *   └── snippets/
+ *       └── {snippetId}.md   # 可复用的代码片段
+ *
+ * 使用示例：
+ *   const prompts = buildPrompt('requirements-to-outlines', { language: 'zh-CN' });
+ *   // prompts.system: 系统提示（变量已插值）
+ *   // prompts.user: 用户提示（变量已插值）
  */
 
 import fs from 'fs';
@@ -14,20 +28,30 @@ import type { PromptId, LoadedPrompt, SnippetId } from './types';
 import { createLogger } from '@/lib/logger';
 const log = createLogger('PromptLoader');
 
-// Cache for loaded prompts and snippets
+// 提示模板和代码片段的缓存
 const promptCache = new Map<string, LoadedPrompt>();
 const snippetCache = new Map<string, string>();
 
 /**
- * Get the prompts directory path
+ * 获取 prompts 目录的路径
+ *
+ * 在 Next.js 环境中，使用 process.cwd() 获取项目根目录
+ *
+ * @returns prompts 目录的绝对路径
  */
 function getPromptsDir(): string {
-  // In Next.js, use process.cwd() for the project root
+  // 在 Next.js 中，使用 process.cwd() 获取项目根目录
   return path.join(process.cwd(), 'lib', 'generation', 'prompts');
 }
 
 /**
- * Load a snippet by ID
+ * 根据 ID 加载代码片段
+ *
+ * 从 snippets/{snippetId}.md 文件加载可复用的提示片段。
+ * 结果会被缓存，后续调用直接返回缓存内容。
+ *
+ * @param snippetId - 代码片段 ID（对应 snippets/{snippetId}.md 文件）
+ * @returns 片段内容；如果文件不存在，返回原始占位符 {{snippet:snippetId}}
  */
 export function loadSnippet(snippetId: SnippetId): string {
   const cached = snippetCache.get(snippetId);
@@ -46,8 +70,13 @@ export function loadSnippet(snippetId: SnippetId): string {
 }
 
 /**
- * Process snippet includes in a template
- * Replaces {{snippet:name}} with actual snippet content
+ * 处理模板中的代码片段引用
+ *
+ * 将模板中的 {{snippet:name}} 替换为实际的片段内容。
+ * 支持嵌套引用（片段中可以引用其他片段）。
+ *
+ * @param template - 原始模板字符串
+ * @returns 替换片段引用后的模板字符串
  */
 function processSnippets(template: string): string {
   return template.replace(/\{\{snippet:(\w[\w-]*)\}\}/g, (_, snippetId) => {
@@ -56,7 +85,16 @@ function processSnippets(template: string): string {
 }
 
 /**
- * Load a prompt by ID
+ * 根据 ID 加载提示模板
+ *
+ * 从 templates/{promptId}/ 目录加载完整的提示模板：
+ * - system.md：系统提示（必需），定义 AI 的角色和行为规范
+ * - user.md：用户提示模板（可选），包含具体的任务描述
+ *
+ * 加载后会处理所有代码片段引用，并将结果缓存。
+ *
+ * @param promptId - 提示模板 ID
+ * @returns 加载的提示模板对象；加载失败返回 null
  */
 export function loadPrompt(promptId: PromptId): LoadedPrompt | null {
   const cached = promptCache.get(promptId);
@@ -65,19 +103,19 @@ export function loadPrompt(promptId: PromptId): LoadedPrompt | null {
   const promptDir = path.join(getPromptsDir(), 'templates', promptId);
 
   try {
-    // Load system.md
+    // 加载 system.md（系统提示）
     const systemPath = path.join(promptDir, 'system.md');
     let systemPrompt = fs.readFileSync(systemPath, 'utf-8').trim();
     systemPrompt = processSnippets(systemPrompt);
 
-    // Load user.md (optional, may not exist)
+    // 加载 user.md（用户提示模板，可选）
     const userPath = path.join(promptDir, 'user.md');
     let userPromptTemplate = '';
     try {
       userPromptTemplate = fs.readFileSync(userPath, 'utf-8').trim();
       userPromptTemplate = processSnippets(userPromptTemplate);
     } catch {
-      // user.md is optional
+      // user.md 是可选的，不存在时使用空字符串
     }
 
     const loaded: LoadedPrompt = {
@@ -95,8 +133,16 @@ export function loadPrompt(promptId: PromptId): LoadedPrompt | null {
 }
 
 /**
- * Interpolate variables in a template
- * Replaces {{variable}} with values from the variables object
+ * 在模板中进行变量插值
+ *
+ * 将模板中的 {{variable}} 替换为变量对象中对应的值：
+ * - 字符串/数字：直接替换
+ * - 对象：转换为格式化的 JSON 字符串
+ * - undefined：保留原始占位符
+ *
+ * @param template - 原始模板字符串
+ * @param variables - 变量键值对
+ * @returns 插值后的模板字符串
  */
 export function interpolateVariables(template: string, variables: Record<string, unknown>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
@@ -108,7 +154,23 @@ export function interpolateVariables(template: string, variables: Record<string,
 }
 
 /**
- * Build a complete prompt with variables
+ * 构建完整的提示（带变量插值）
+ *
+ * 这是主要的对外接口，完成以下工作：
+ * 1. 根据 promptId 加载提示模板
+ * 2. 使用提供的变量进行插值
+ * 3. 返回可用于 AI 调用的 system 和 user 提示
+ *
+ * @param promptId - 提示模板 ID
+ * @param variables - 模板变量键值对
+ * @returns 包含 system 和 user 提示的对象；模板不存在时返回 null
+ *
+ * @example
+ * const prompts = buildPrompt('requirements-to-outlines', {
+ *   requirement: '学习 Python 基础',
+ *   language: 'zh-CN',
+ *   pdfContent: '...',
+ * });
  */
 export function buildPrompt(
   promptId: PromptId,
@@ -124,7 +186,10 @@ export function buildPrompt(
 }
 
 /**
- * Clear all caches (useful for development/testing)
+ * 清除所有缓存
+ *
+ * 用于开发/测试场景，强制重新加载模板文件。
+ * 生产环境通常不需要调用此函数。
  */
 export function clearPromptCache(): void {
   promptCache.clear();
