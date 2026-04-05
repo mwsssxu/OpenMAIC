@@ -146,7 +146,8 @@ export function OutlinesEditor({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="slide">幻灯片</SelectItem>
-                    <SelectItem value="quiz">测验</SelectItem>
+                    <SelectItem value="interactive">交互式</SelectItem>
+                    <SelectItem value="report">报告</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
