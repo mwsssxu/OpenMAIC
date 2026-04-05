@@ -1,8 +1,16 @@
 /**
- * Stage 2: Scene content and action generation.
+ * 场景生成器 - 第二阶段：场景内容与动作生成
  *
- * Generates full scenes (slide/quiz/interactive/pbl with actions)
- * from scene outlines.
+ * 核心职责：
+ * - 将场景大纲（SceneOutline）转换为完整的场景（Scene）
+ * - 支持四种场景类型：幻灯片(slide)、测验(quiz)、交互式(interactive)、项目制学习(pbl)
+ * - 为每个场景生成对应的动作列表（Action[]）
+ *
+ * 生成流程（两步走）：
+ *   Step 3.1: 大纲 → 页面内容（slide/quiz/interactive/pbl 的具体数据）
+ *   Step 3.2: 内容 + 讲稿 → 动作列表（speech、spotlight、whiteboard 等）
+ *
+ * 所有场景采用并行生成策略，通过 Promise.all 实现
  */
 
 import { nanoid } from 'nanoid';
@@ -47,16 +55,22 @@ import type {
 import { createLogger } from '@/lib/logger';
 const log = createLogger('Generation');
 
-// ==================== Stage 2: Full Scenes (Two-Step) ====================
+// ==================== 第二阶段：完整场景生成（两步流程）====================
 
 /**
- * Stage 3: Generate full scenes (parallel version)
+ * 第三阶段：并行生成完整场景
  *
- * Two steps:
- * - Step 3.1: Outline -> Page content (slide/quiz)
- * - Step 3.2: Content + script -> Action list
+ * @param sceneOutlines - 场景大纲数组，由 outline-generator 生成
+ * @param store - Zustand 状态存储，用于创建场景 API
+ * @param aiCall - AI 调用函数，用于生成内容
+ * @param callbacks - 生成进度回调（onProgress、onError）
  *
- * All scenes generated in parallel using Promise.all
+ * @returns 成功生成的场景 ID 数组（保持原始顺序）
+ *
+ * 并行策略：
+ * - 使用 Promise.all 同时生成所有场景
+ * - 每个场景独立生成，互不依赖
+ * - 失败的场景会被跳过，不影响其他场景
  */
 export async function generateFullScenes(
   sceneOutlines: SceneOutline[],
@@ -68,6 +82,7 @@ export async function generateFullScenes(
   const totalScenes = sceneOutlines.length;
   let completedCount = 0;
 
+  // 发送初始进度回调
   callbacks?.onProgress?.({
     currentStage: 3,
     overallProgress: 66,
@@ -77,13 +92,14 @@ export async function generateFullScenes(
     totalScenes,
   });
 
-  // Generate all scenes in parallel
+  // 并行生成所有场景
+  // 每个场景独立处理，失败的场景返回 null，不影响其他场景
   const results = await Promise.all(
     sceneOutlines.map(async (outline, index) => {
       try {
         const sceneId = await generateSingleScene(outline, api, aiCall);
 
-        // Update progress (not atomic, but sufficient for UI display)
+        // 更新进度（非原子操作，但足够用于 UI 展示）
         completedCount++;
         callbacks?.onProgress?.({
           currentStage: 3,
@@ -103,7 +119,7 @@ export async function generateFullScenes(
     }),
   );
 
-  // Collect successful sceneIds in original order
+  // 收集成功生成的场景 ID，保持原始顺序
   const sceneIds = results
     .filter(
       (r): r is { success: true; sceneId: string; index: number } =>
@@ -116,10 +132,16 @@ export async function generateFullScenes(
 }
 
 /**
- * Generate a single scene (two-step process)
+ * 生成单个场景（两步流程）
  *
- * Step 3.1: Generate content
- * Step 3.2: Generate Actions
+ * 流程：
+ *   Step 3.1: 根据大纲生成内容（幻灯片元素、测验题目、交互 HTML、PBL 配置）
+ *   Step 3.2: 根据内容和讲稿生成动作列表
+ *
+ * @param outline - 场景大纲
+ * @param api - Stage API 实例
+ * @param aiCall - AI 调用函数
+ * @returns 生成的场景 ID，失败返回 null
  */
 async function generateSingleScene(
   outline: SceneOutline,
@@ -144,7 +166,22 @@ async function generateSingleScene(
 }
 
 /**
- * Step 3.1: Generate content based on outline
+ * Step 3.1：根据场景大纲生成内容
+ *
+ * 根据场景类型分发到对应的生成函数：
+ * - slide → generateSlideContent（幻灯片元素：文本、图片、图表等）
+ * - quiz → generateQuizContent（测验题目：单选、多选、简答）
+ * - interactive → generateInteractiveContent（交互式 HTML 页面）
+ * - pbl → generatePBLSceneContent（项目制学习配置）
+ *
+ * @param outline - 场景大纲
+ * @param aiCall - AI 调用函数
+ * @param assignedImages - 从 PDF 提取的图片（用于幻灯片）
+ * @param imageMapping - 图片 ID 到 base64 URL 的映射
+ * @param languageModel - 语言模型实例（PBL 专用）
+ * @param visionEnabled - 是否启用视觉模型（多模态）
+ * @param generatedMediaMapping - AI 生成的媒体资源映射
+ * @param agents - 智能体信息列表
  */
 export async function generateSceneContent(
   outline: SceneOutline,
@@ -162,7 +199,7 @@ export async function generateSceneContent(
   | GeneratedPBLContent
   | null
 > {
-  // If outline is interactive but missing interactiveConfig, fall back to slide
+  // 如果交互式场景缺少配置，回退到幻灯片
   if (outline.type === 'interactive' && !outline.interactiveConfig) {
     log.warn(
       `Interactive outline "${outline.title}" missing interactiveConfig, falling back to slide`,
@@ -202,14 +239,16 @@ export async function generateSceneContent(
 }
 
 /**
- * Check if a string looks like an image ID (e.g., "img_1", "img_2")
- * rather than a base64 data URL or actual URL
+ * 判断字符串是否为图片 ID 引用（如 "img_1"、"img_2"）
  *
- * This function distinguishes between:
- * - Image IDs: "img_1", "img_2", etc. → returns true
- * - Base64 data URLs: "data:image/..." → returns false
- * - HTTP URLs: "http://...", "https://..." → returns false
- * - Relative paths: "/images/..." → returns false
+ * 用于区分以下几种情况：
+ * - 图片 ID："img_1"、"img_2" 等 → 返回 true
+ * - Base64 数据 URL："data:image/..." → 返回 false
+ * - HTTP URL："http://..."、"https://..." → 返回 false
+ * - 相对路径："/images/..." → 返回 false
+ *
+ * @param value - 待检查的字符串
+ * @returns 是否为图片 ID 格式
  */
 function isImageIdReference(value: string): boolean {
   if (!value) return false;
@@ -222,8 +261,13 @@ function isImageIdReference(value: string): boolean {
 }
 
 /**
- * Check if a string looks like a generated image/video ID (e.g., "gen_img_1", "gen_img_xK8f2mQ")
- * These are placeholders for AI-generated media, not PDF-extracted images.
+ * 判断字符串是否为 AI 生成的媒体 ID（如 "gen_img_1"、"gen_vid_xK8f2mQ"）
+ *
+ * 这些是 AI 生成媒体的占位符，而非 PDF 提取的图片。
+ * 格式：gen_img_xxx（图片）或 gen_vid_xxx（视频）
+ *
+ * @param value - 待检查的字符串
+ * @returns 是否为生成的媒体 ID 格式
  */
 function isGeneratedImageId(value: string): boolean {
   if (!value) return false;
@@ -231,16 +275,22 @@ function isGeneratedImageId(value: string): boolean {
 }
 
 /**
- * Resolve image ID references in src field to actual base64 URLs
+ * 解析元素中的图片 ID 引用为实际的 base64 URL
  *
- * AI generates: { type: "image", src: "img_1", ... }
- * This function replaces: { type: "image", src: "data:image/png;base64,...", ... }
+ * 转换过程：
+ *   AI 生成：{ type: "image", src: "img_1", ... }
+ *   解析后：{ type: "image", src: "data:image/png;base64,...", ... }
  *
- * Design rationale (Plan B):
- * - Simpler: AI only needs to know one field (src)
- * - Consistent: Generated JSON structure matches final PPTImageElement
- * - Intuitive: src is the image source, first as ID then as actual URL
- * - Less prompt complexity: No need to explain imageId vs src distinction
+ * 设计理念（Plan B）：
+ * - 简单性：AI 只需知道一个字段（src）
+ * - 一致性：生成的 JSON 结构与最终 PPTImageElement 匹配
+ * - 直观性：src 是图片来源，先是 ID，后是实际 URL
+ * - 降低提示复杂度：无需解释 imageId 与 src 的区别
+ *
+ * @param elements - 待处理的元素数组
+ * @param imageMapping - PDF 提取图片的 ID → URL 映射
+ * @param generatedMediaMapping - AI 生成媒体的 ID → URL 映射
+ * @returns 处理后的元素数组（无效图片元素已移除）
  */
 function resolveImageIds(
   elements: GeneratedSlideData['elements'],
@@ -301,25 +351,34 @@ function resolveImageIds(
 }
 
 /**
- * Fix elements with missing required fields
- * Adds default values for fields that AI might not have generated correctly
+ * 修复元素缺失的必填字段
+ *
+ * AI 生成的元素可能缺少某些必填字段，此函数为它们添加默认值：
+ * - 线条元素：points（端点样式）、start/end（起点终点）、style（样式）、color（颜色）
+ * - 文本元素：defaultFontName（字体）、defaultColor（颜色）、content（内容）
+ * - 图片元素：fixedRatio（固定宽高比），并修正宽高比
+ * - 形状元素：viewBox、path、fill、fixedRatio
+ *
+ * @param elements - 待处理的元素数组
+ * @param assignedImages - 已分配的图片列表（用于修正宽高比）
+ * @returns 修复后的元素数组
  */
 function fixElementDefaults(
   elements: GeneratedSlideData['elements'],
   assignedImages?: PdfImage[],
 ): GeneratedSlideData['elements'] {
   return elements.map((el) => {
-    // Fix line elements
+    // 修复线条元素
     if (el.type === 'line') {
       const lineEl = el as Record<string, unknown>;
 
-      // Ensure points field exists with default values
+      // 确保 points 字段存在，默认无端点标记
       if (!lineEl.points || !Array.isArray(lineEl.points) || lineEl.points.length !== 2) {
         log.warn(`Line element missing points, adding defaults`);
-        lineEl.points = ['', ''] as [string, string]; // Default: no markers on either end
+        lineEl.points = ['', ''] as [string, string]; // 默认：两端无标记
       }
 
-      // Ensure start/end exist
+      // 确保 start/end 存在
       if (!lineEl.start || !Array.isArray(lineEl.start)) {
         lineEl.start = [el.left ?? 0, el.top ?? 0];
       }
@@ -327,12 +386,12 @@ function fixElementDefaults(
         lineEl.end = [(el.left ?? 0) + (el.width ?? 100), (el.top ?? 0) + (el.height ?? 0)];
       }
 
-      // Ensure style exists
+      // 确保 style 存在
       if (!lineEl.style) {
         lineEl.style = 'solid';
       }
 
-      // Ensure color exists
+      // 确保 color 存在
       if (!lineEl.color) {
         lineEl.color = '#333333';
       }
@@ -340,7 +399,7 @@ function fixElementDefaults(
       return lineEl as typeof el;
     }
 
-    // Fix text elements
+    // 修复文本元素
     if (el.type === 'text') {
       const textEl = el as Record<string, unknown>;
 
@@ -357,7 +416,7 @@ function fixElementDefaults(
       return textEl as typeof el;
     }
 
-    // Fix image elements
+    // 修复图片元素
     if (el.type === 'image') {
       const imageEl = el as Record<string, unknown>;
 
@@ -365,7 +424,7 @@ function fixElementDefaults(
         imageEl.fixedRatio = true;
       }
 
-      // Correct dimensions using known aspect ratio (src is still img_id at this point)
+      // 使用已知的宽高比修正尺寸（此时 src 仍为 img_id）
       if (assignedImages && typeof imageEl.src === 'string') {
         const imgMeta = assignedImages.find((img) => img.id === imageEl.src);
         if (imgMeta?.width && imgMeta?.height) {
@@ -373,10 +432,10 @@ function fixElementDefaults(
           const curW = (el.width || 400) as number;
           const curH = (el.height || 300) as number;
           if (Math.abs(curW / curH - knownRatio) / knownRatio > 0.1) {
-            // Keep width, correct height
+            // 保持宽度，修正高度
             const newH = Math.round(curW / knownRatio);
             if (newH > 462) {
-              // canvas 562.5 - margins 50×2
+              // 画布高度 562.5 - 边距 50×2
               const newW = Math.round(462 * knownRatio);
               imageEl.width = newW;
               imageEl.height = 462;
@@ -390,7 +449,7 @@ function fixElementDefaults(
       return imageEl as typeof el;
     }
 
-    // Fix shape elements
+    // 修复形状元素
     if (el.type === 'shape') {
       const shapeEl = el as Record<string, unknown>;
 
@@ -398,7 +457,7 @@ function fixElementDefaults(
         shapeEl.viewBox = `0 0 ${el.width ?? 100} ${el.height ?? 100}`;
       }
       if (!shapeEl.path) {
-        // Default to rectangle
+        // 默认为矩形
         const w = el.width ?? 100;
         const h = el.height ?? 100;
         shapeEl.path = `M0 0 L${w} 0 L${w} ${h} L0 ${h} Z`;
@@ -418,9 +477,13 @@ function fixElementDefaults(
 }
 
 /**
- * Process LaTeX elements: render latex string to HTML using KaTeX.
- * Fills in html and fixedRatio fields.
- * Elements that fail conversion are removed.
+ * 处理 LaTeX 元素：将 latex 字符串渲染为 HTML（使用 KaTeX）
+ *
+ * 填充 html 和 fixedRatio 字段。
+ * 转换失败的元素会被移除。
+ *
+ * @param elements - 待处理的元素数组
+ * @returns 处理后的元素数组（转换失败的元素已移除）
  */
 function processLatexElements(
   elements: GeneratedSlideData['elements'],
@@ -456,7 +519,22 @@ function processLatexElements(
 }
 
 /**
- * Generate slide content
+ * 生成幻灯片内容
+ *
+ * 调用 AI 生成幻灯片元素（文本、图片、图表、形状、公式等）。
+ * 支持：
+ * - PDF 提取的图片（通过 assignedImages 和 imageMapping）
+ * - AI 生成的图片/视频（通过 generatedMediaMapping）
+ * - 多模态视觉模型（visionEnabled 时传入图片给 AI）
+ *
+ * @param outline - 场景大纲
+ * @param aiCall - AI 调用函数
+ * @param assignedImages - 已分配的图片列表
+ * @param imageMapping - 图片 ID → URL 映射
+ * @param visionEnabled - 是否启用视觉模型
+ * @param generatedMediaMapping - AI 生成媒体映射
+ * @param agents - 智能体信息（用于教师人设）
+ * @returns 生成的幻灯片内容，失败返回 null
  */
 async function generateSlideContent(
   outline: SceneOutline,
@@ -469,13 +547,13 @@ async function generateSlideContent(
 ): Promise<GeneratedSlideContent | null> {
   const lang = outline.language || 'zh-CN';
 
-  // Build assigned images description for the prompt
+  // 构建已分配图片的描述，用于 AI 提示
   let assignedImagesText = '无可用图片，禁止插入任何 image 元素';
   let visionImages: Array<{ id: string; src: string }> | undefined;
 
   if (assignedImages && assignedImages.length > 0) {
     if (visionEnabled && imageMapping) {
-      // Vision mode: split into vision images and text-only
+      // 视觉模式：分为视觉图片和纯文本描述
       const withSrc = assignedImages.filter((img) => imageMapping[img.id]);
       const visionSlice = withSrc.slice(0, MAX_VISION_IMAGES);
       const textOnlySlice = withSrc.slice(MAX_VISION_IMAGES);
@@ -500,7 +578,7 @@ async function generateSlideContent(
     }
   }
 
-  // Add generated media placeholders info (images + videos)
+  // 添加 AI 生成媒体的占位符信息（图片 + 视频）
   if (outline.mediaGenerations && outline.mediaGenerations.length > 0) {
     const genImgDescs = outline.mediaGenerations
       .filter((mg) => mg.type === 'image')
@@ -529,7 +607,7 @@ async function generateSlideContent(
     }
   }
 
-  // Canvas dimensions (matching viewportSize and viewportRatio)
+  // Canvas 尺寸（与 viewportSize 和 viewportRatio 匹配）
   const canvasWidth = 1000;
   const canvasHeight = 562.5;
 
@@ -550,29 +628,29 @@ async function generateSlideContent(
     return null;
   }
 
-  log.debug(`Generating slide content for: ${outline.title}`);
+  log.debug(`正在生成幻灯片内容: ${outline.title}`);
   if (assignedImages && assignedImages.length > 0) {
-    log.debug(`Assigned images: ${assignedImages.map((img) => img.id).join(', ')}`);
+    log.debug(`已分配图片: ${assignedImages.map((img) => img.id).join(', ')}`);
   }
   if (visionImages && visionImages.length > 0) {
-    log.debug(`Vision images: ${visionImages.map((img) => img.id).join(', ')}`);
+    log.debug(`视觉图片: ${visionImages.map((img) => img.id).join(', ')}`);
   }
 
   const response = await aiCall(prompts.system, prompts.user, visionImages);
   const generatedData = parseJsonResponse<GeneratedSlideData>(response);
 
   if (!generatedData || !generatedData.elements || !Array.isArray(generatedData.elements)) {
-    log.error(`Failed to parse AI response for: ${outline.title}`);
+    log.error(`解析 AI 响应失败: ${outline.title}`);
     return null;
   }
 
-  log.debug(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
+  log.debug(`获得 ${generatedData.elements.length} 个元素: ${outline.title}`);
 
-  // Debug: Log image elements before resolution
+  // 调试：记录解析前的图片元素
   const imageElements = generatedData.elements.filter((el) => el.type === 'image');
   if (imageElements.length > 0) {
     log.debug(
-      `Image elements before resolution:`,
+      `解析前的图片元素:`,
       imageElements.map((el) => ({
         type: el.type,
         src:
@@ -580,33 +658,33 @@ async function generateSlideContent(
           String((el as Record<string, unknown>).src).substring(0, 50),
       })),
     );
-    log.debug(`imageMapping keys:`, imageMapping ? Object.keys(imageMapping).length : '0 keys');
+    log.debug(`imageMapping 键数量:`, imageMapping ? Object.keys(imageMapping).length : '0 keys');
   }
 
-  // Fix elements with missing required fields + aspect ratio correction (while src is still img_id)
+  // 修复元素缺失的必填字段 + 宽高比修正（此时 src 仍为 img_id）
   const fixedElements = fixElementDefaults(generatedData.elements, assignedImages);
-  log.debug(`After element fixing: ${fixedElements.length} elements`);
+  log.debug(`元素修复后: ${fixedElements.length} 个元素`);
 
-  // Process LaTeX elements: render latex string → HTML via KaTeX
+  // 处理 LaTeX 元素：latex 字符串 → HTML（KaTeX 渲染）
   const latexProcessedElements = processLatexElements(fixedElements);
-  log.debug(`After LaTeX processing: ${latexProcessedElements.length} elements`);
+  log.debug(`LaTeX 处理后: ${latexProcessedElements.length} 个元素`);
 
-  // Resolve image_id references to actual URLs
+  // 解析图片 ID 引用为实际 URL
   const resolvedElements = resolveImageIds(
     latexProcessedElements,
     imageMapping,
     generatedMediaMapping,
   );
-  log.debug(`After image resolution: ${resolvedElements.length} elements`);
+  log.debug(`图片解析后: ${resolvedElements.length} 个元素`);
 
-  // Process elements, assign unique IDs
+  // 处理元素，分配唯一 ID
   const processedElements: PPTElement[] = resolvedElements.map((el) => ({
     ...el,
     id: `${el.type}_${nanoid(8)}`,
     rotate: 0,
   })) as PPTElement[];
 
-  // Process background
+  // 处理背景
   let background: SlideBackground | undefined;
   if (generatedData.background) {
     if (generatedData.background.type === 'solid' && generatedData.background.color) {
@@ -627,7 +705,11 @@ async function generateSlideContent(
 }
 
 /**
- * Generate quiz content
+ * 生成测验内容
+ *
+ * @param outline - 场景大纲
+ * @param aiCall - AI 调用函数
+ * @returns 生成的测验题目数组，失败返回 null
  */
 async function generateQuizContent(
   outline: SceneOutline,
@@ -679,9 +761,13 @@ async function generateQuizContent(
 }
 
 /**
- * Normalize quiz options from AI response.
- * AI may generate plain strings ["OptionA", "OptionB"] or QuizOption objects.
- * This normalizes to QuizOption[] format: { value: "A", label: "OptionA" }
+ * 规范化测验选项格式
+ *
+ * AI 生成的选项可能是纯字符串 ["选项A", "选项B"] 或 QuizOption 对象。
+ * 此函数统一转换为 QuizOption[] 格式：{ value: "A", label: "选项A" }
+ *
+ * @param options - 原始选项数组
+ * @returns 规范化后的选项数组
  */
 function normalizeQuizOptions(
   options: unknown[] | undefined,
@@ -708,12 +794,13 @@ function normalizeQuizOptions(
 }
 
 /**
- * Normalize quiz answer from AI response.
- * AI may generate correctAnswer as string or string[], under various field names.
- * This normalizes to string[] format matching option values.
+ * 规范化测验答案格式
+ *
+ * AI 生成的正确答案可能是字符串或数组，字段名也可能是 correctAnswer、answer 或 correct_answer。
+ * 此函数统一转换为 string[] 格式，与选项值匹配。
  */
 function normalizeQuizAnswer(question: Record<string, unknown>): string[] | undefined {
-  // AI might use "correctAnswer", "answer", or "correct_answer"
+  // AI 可能使用 "correctAnswer"、"answer" 或 "correct_answer" 字段名
   const raw =
     question.answer ??
     question.correctAnswer ??
@@ -727,10 +814,16 @@ function normalizeQuizAnswer(question: Record<string, unknown>): string[] | unde
 }
 
 /**
- * Generate interactive page content
- * Two AI calls + post-processing:
- * 1. Scientific modeling -> ScientificModel (with fallback)
- * 2. HTML generation with constraints -> post-processed HTML
+ * 生成交互式页面内容
+ *
+ * 两次 AI 调用 + 后处理：
+ * 1. 科学建模 → ScientificModel（失败时回退）
+ * 2. HTML 生成（带约束）→ 后处理的 HTML
+ *
+ * @param outline - 场景大纲
+ * @param aiCall - AI 调用函数
+ * @param language - 语言（zh-CN 或 en-US）
+ * @returns 生成的交互式内容，包含 HTML 和科学模型
  */
 async function generateInteractiveContent(
   outline: SceneOutline,
@@ -809,7 +902,7 @@ async function generateInteractiveContent(
     return null;
   }
 
-  // Step 3: Post-process HTML (LaTeX delimiter conversion + KaTeX injection)
+  // 第三步：后处理 HTML（LaTeX 分隔符转换 + KaTeX 注入）
   const processedHtml = postProcessInteractiveHtml(rawHtml);
   log.info(`Post-processed HTML (${processedHtml.length} chars) for: ${outline.title}`);
 
@@ -820,8 +913,13 @@ async function generateInteractiveContent(
 }
 
 /**
- * Generate PBL project content
- * Uses the agentic loop from lib/pbl/generate-pbl.ts
+ * 生成 PBL（项目制学习）内容
+ *
+ * 使用 lib/pbl/generate-pbl.ts 中的智能体循环生成项目配置。
+ *
+ * @param outline - 场景大纲
+ * @param languageModel - 语言模型实例
+ * @returns 生成的 PBL 项目配置，失败返回 null
  */
 async function generatePBLSceneContent(
   outline: SceneOutline,
@@ -866,11 +964,18 @@ async function generatePBLSceneContent(
 }
 
 /**
- * Extract HTML document from AI response.
- * Tries to find <!DOCTYPE html>...</html> first, then falls back to code block extraction.
+ * 从 AI 响应中提取 HTML 文档
+ *
+ * 三种提取策略：
+ * 1. 查找完整的 HTML 文档（<!DOCTYPE html>...</html>）
+ * 2. 从代码块中提取
+ * 3. 如果响应本身就是 HTML
+ *
+ * @param response - AI 响应字符串
+ * @returns 提取的 HTML 字符串，失败返回 null
  */
 function extractHtml(response: string): string | null {
-  // Strategy 1: Find complete HTML document
+  // 策略 1：查找完整的 HTML 文档
   const doctypeStart = response.indexOf('<!DOCTYPE html>');
   const htmlTagStart = response.indexOf('<html');
   const start = doctypeStart !== -1 ? doctypeStart : htmlTagStart;
@@ -882,7 +987,7 @@ function extractHtml(response: string): string | null {
     }
   }
 
-  // Strategy 2: Extract from code block
+  // 策略 2：从代码块中提取
   const codeBlockMatch = response.match(/```(?:html)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     const content = codeBlockMatch[1].trim();
@@ -891,19 +996,33 @@ function extractHtml(response: string): string | null {
     }
   }
 
-  // Strategy 3: If response itself looks like HTML
+  // 策略 3：如果响应本身就是 HTML
   const trimmed = response.trim();
   if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
     return trimmed;
   }
 
-  log.error('Could not extract HTML from response');
-  log.error('Response preview:', response.substring(0, 200));
+  log.error('无法从响应中提取 HTML');
+  log.error('响应预览:', response.substring(0, 200));
   return null;
 }
 
 /**
- * Step 3.2: Generate Actions based on content and script
+ * Step 3.2：根据内容和讲稿生成动作列表
+ *
+ * 为不同类型的场景生成对应的动作：
+ * - slide：聚光灯、激光笔、语音讲解、白板绘图等
+ * - quiz：语音引导
+ * - interactive：交互引导语音
+ * - pbl：项目介绍语音
+ *
+ * @param outline - 场景大纲
+ * @param content - 场景内容
+ * @param aiCall - AI 调用函数
+ * @param ctx - 场景生成上下文
+ * @param agents - 智能体信息列表
+ * @param userProfile - 用户简介
+ * @returns 动作列表
  */
 export async function generateSceneActions(
   outline: SceneOutline,
@@ -920,7 +1039,7 @@ export async function generateSceneActions(
   const agentsText = formatAgentsForPrompt(agents);
 
   if (outline.type === 'slide' && 'elements' in content) {
-    // Format element list for AI to select from
+    // 格式化元素列表，供 AI 选择元素 ID
     const elementsText = formatElementsForPrompt(content.elements);
 
     const prompts = buildPrompt(PROMPT_IDS.SLIDE_ACTIONS, {
@@ -1086,7 +1205,16 @@ function formatQuestionsForPrompt(questions: QuizQuestion[]): string {
 }
 
 /**
- * Process and validate Actions
+ * 处理并验证动作
+ *
+ * - 为每个动作分配唯一 ID
+ * - 验证 spotlight 动作的 elementId 是否有效
+ * - 验证/填充 discussion 动作的 agentId
+ *
+ * @param actions - 待处理的动作数组
+ * @param elements - PPT 元素数组（用于验证 elementId）
+ * @param agents - 智能体信息数组（用于验证 agentId）
+ * @returns 处理后的动作数组
  */
 function processActions(actions: Action[], elements: PPTElement[], agents?: AgentInfo[]): Action[] {
   const elementIds = new Set(elements.map((el) => el.id));
@@ -1095,17 +1223,17 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
   const nonTeacherAgents = agents?.filter((a) => a.role !== 'teacher') || [];
 
   return actions.map((action) => {
-    // Ensure each action has an ID
+    // 确保每个动作都有 ID
     const processedAction: Action = {
       ...action,
       id: action.id || `action_${nanoid(8)}`,
     };
 
-    // Validate spotlight elementId
+    // 验证 spotlight 动作的 elementId
     if (processedAction.type === 'spotlight') {
       const spotlightAction = processedAction;
       if (!spotlightAction.elementId || !elementIds.has(spotlightAction.elementId)) {
-        // If elementId is invalid, try selecting the first element
+        // 如果 elementId 无效，尝试选择第一个元素
         if (elements.length > 0) {
           spotlightAction.elementId = elements[0].id;
           log.warn(
@@ -1115,12 +1243,12 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
       }
     }
 
-    // Validate/fill discussion agentId
+    // 验证/填充 discussion 动作的 agentId
     if (processedAction.type === 'discussion' && agents && agents.length > 0) {
       if (processedAction.agentId && agentIds.has(processedAction.agentId)) {
-        // agentId valid — keep it
+        // agentId 有效，保持不变
       } else {
-        // agentId missing or invalid — pick a random student, or non-teacher, or skip
+        // agentId 缺失或无效 — 随机选择一个学生或非教师智能体
         const pool = studentAgents.length > 0 ? studentAgents : nonTeacherAgents;
         if (pool.length > 0) {
           const picked = pool[Math.floor(Math.random() * pool.length)];
@@ -1137,12 +1265,19 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
 }
 
 /**
- * Generate default slide Actions (fallback)
+ * 生成默认的幻灯片动作（回退方案）
+ *
+ * - 为文本元素添加聚光灯动作
+ * - 根据要点添加语音讲解动作
+ *
+ * @param outline - 场景大纲
+ * @param elements - PPT 元素数组
+ * @returns 默认动作数组
  */
 function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement[]): Action[] {
   const actions: Action[] = [];
 
-  // Add spotlight for text elements
+  // 为文本元素添加聚光灯动作
   const textElements = elements.filter((el) => el.type === 'text');
   if (textElements.length > 0) {
     actions.push({
@@ -1153,7 +1288,7 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
     });
   }
 
-  // Add opening speech based on key points
+  // 根据要点添加开场语音
   const speechText = outline.keyPoints?.length
     ? outline.keyPoints.join('。') + '。'
     : outline.description || outline.title;
@@ -1168,7 +1303,7 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
 }
 
 /**
- * Generate default quiz Actions (fallback)
+ * 生成默认的测验动作（回退方案）
  */
 function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
   return [
@@ -1182,7 +1317,7 @@ function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
 }
 
 /**
- * Generate default interactive Actions (fallback)
+ * 生成默认的交互式动作（回退方案）
  */
 function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
   return [
@@ -1196,7 +1331,19 @@ function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
 }
 
 /**
- * Create a complete scene with Actions
+ * 创建带有动作的完整场景
+ *
+ * 根据场景类型创建对应的场景对象：
+ * - slide：创建包含 Slide 对象的场景
+ * - quiz：创建包含测验题目的场景
+ * - interactive：创建包含 HTML 的场景
+ * - pbl：创建包含项目配置的场景
+ *
+ * @param outline - 场景大纲
+ * @param content - 场景内容
+ * @param actions - 动作列表
+ * @param api - Stage API 实例
+ * @returns 创建的场景 ID，失败返回 null
  */
 export function createSceneWithActions(
   outline: SceneOutline,
@@ -1209,7 +1356,7 @@ export function createSceneWithActions(
   api: ReturnType<typeof createStageAPI>,
 ): string | null {
   if (outline.type === 'slide' && 'elements' in content) {
-    // Build complete Slide object
+    // 构建完整的 Slide 对象
     const defaultTheme: SlideTheme = {
       backgroundColor: '#ffffff',
       themeColors: ['#5b9bd5', '#ed7d31', '#a5a5a5', '#ffc000', '#4472c4'],
