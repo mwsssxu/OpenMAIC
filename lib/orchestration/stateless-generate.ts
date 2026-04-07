@@ -419,7 +419,15 @@ export async function* statelessGenerate(
       `[StatelessGenerate] Completed. Agents: ${totalAgents}, Actions: ${totalActions}, hadContent: ${agentHadContent}, turnCount: ${directorState.turnCount}`,
     );
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    // Check for abort/interruption errors (user cancelled, connection closed, etc.)
+    const isAbortError =
+      error instanceof Error &&
+      (error.name === 'AbortError' ||
+        error.message?.toLowerCase().includes('aborted') ||
+        error.constructor?.name === 'ResponseAborted');
+
+    if (isAbortError) {
+      log.info('[StatelessGenerate] Request was interrupted (aborted by user or connection closed)');
       yield { type: 'error', data: { message: 'Request interrupted' } };
     } else {
       log.error('[StatelessGenerate] Error:', error);
