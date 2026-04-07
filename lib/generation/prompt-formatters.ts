@@ -2,8 +2,129 @@
  * Prompt and context building utilities for the generation pipeline.
  */
 
-import type { PdfImage } from '@/lib/types/generation';
+import type { PdfImage, StrategicContext } from '@/lib/types/generation';
 import type { AgentInfo, SceneGenerationContext } from './pipeline-types';
+
+/**
+ * Format strategic context for injection into outline/content prompts.
+ * Converts structured user situation into readable context for informed analysis.
+ */
+export function formatStrategicContext(ctx: StrategicContext | undefined, language: string): string {
+  if (!ctx) return '';
+  
+  const lines: string[] = [];
+  const isZh = language === 'zh-CN';
+  
+  // Decision Context
+  if (ctx.decisionQuestion || ctx.timeline || ctx.urgency) {
+    lines.push(isZh ? '## 决策背景' : '## Decision Context');
+    if (ctx.decisionQuestion) {
+      lines.push(isZh ? `**核心决策问题**: ${ctx.decisionQuestion}` : `**Decision Question**: ${ctx.decisionQuestion}`);
+    }
+    if (ctx.timeline) {
+      lines.push(isZh ? `**决策时限**: ${ctx.timeline}` : `**Timeline**: ${ctx.timeline}`);
+    }
+    if (ctx.urgency) {
+      const urgencyLabels = isZh 
+        ? { low: '低', medium: '中', high: '高', critical: '紧急' }
+        : { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' };
+      lines.push(isZh ? `**紧迫程度**: ${urgencyLabels[ctx.urgency]}` : `**Urgency**: ${urgencyLabels[ctx.urgency]}`);
+    }
+    lines.push('');
+  }
+  
+  // Organization Profile
+  if (ctx.organizationName || ctx.industry || ctx.companySize || ctx.revenueRange || ctx.markets?.length) {
+    lines.push(isZh ? '## 组织概况' : '## Organization Profile');
+    if (ctx.organizationName) {
+      lines.push(isZh ? `**组织名称**: ${ctx.organizationName}` : `**Organization**: ${ctx.organizationName}`);
+    }
+    if (ctx.industry) {
+      lines.push(isZh ? `**所属行业**: ${ctx.industry}` : `**Industry**: ${ctx.industry}`);
+    }
+    if (ctx.companySize) {
+      const sizeLabels = isZh
+        ? { startup: '初创企业', sme: '中小企业', enterprise: '大型企业' }
+        : { startup: 'Startup', sme: 'SME', enterprise: 'Enterprise' };
+      lines.push(isZh ? `**企业规模**: ${sizeLabels[ctx.companySize]}` : `**Company Size**: ${sizeLabels[ctx.companySize]}`);
+    }
+    if (ctx.revenueRange) {
+      lines.push(isZh ? `**营收规模**: ${ctx.revenueRange}` : `**Revenue Range**: ${ctx.revenueRange}`);
+    }
+    if (ctx.markets?.length) {
+      lines.push(isZh ? `**目标市场**: ${ctx.markets.join(', ')}` : `**Target Markets**: ${ctx.markets.join(', ')}`);
+    }
+    lines.push('');
+  }
+  
+  // Stakeholders
+  if (ctx.targetAudience?.length || ctx.decisionMakers?.length) {
+    lines.push(isZh ? '## 利益相关者' : '## Stakeholders');
+    if (ctx.targetAudience?.length) {
+      lines.push(isZh ? `**报告受众**: ${ctx.targetAudience.join(', ')}` : `**Target Audience**: ${ctx.targetAudience.join(', ')}`);
+    }
+    if (ctx.decisionMakers?.length) {
+      lines.push(isZh ? `**决策者**: ${ctx.decisionMakers.join(', ')}` : `**Decision Makers**: ${ctx.decisionMakers.join(', ')}`);
+    }
+    lines.push('');
+  }
+  
+  // Constraints & Priorities
+  if (ctx.budgetConstraints || ctx.resourceConstraints?.length || ctx.riskTolerance || ctx.priorities?.length) {
+    lines.push(isZh ? '## 约束与优先级' : '## Constraints & Priorities');
+    if (ctx.budgetConstraints) {
+      lines.push(isZh ? `**预算约束**: ${ctx.budgetConstraints}` : `**Budget Constraints**: ${ctx.budgetConstraints}`);
+    }
+    if (ctx.resourceConstraints?.length) {
+      lines.push(isZh ? `**资源约束**: ${ctx.resourceConstraints.join(', ')}` : `**Resource Constraints**: ${ctx.resourceConstraints.join(', ')}`);
+    }
+    if (ctx.riskTolerance) {
+      const riskLabels = isZh
+        ? { conservative: '保守型', moderate: '平衡型', aggressive: '进取型' }
+        : { conservative: 'Conservative', moderate: 'Moderate', aggressive: 'Aggressive' };
+      lines.push(isZh ? `**风险偏好**: ${riskLabels[ctx.riskTolerance]}` : `**Risk Tolerance**: ${riskLabels[ctx.riskTolerance]}`);
+    }
+    if (ctx.priorities?.length) {
+      lines.push(isZh ? `**核心优先级**:` : `**Top Priorities**:`);
+      ctx.priorities.forEach((p, i) => {
+        lines.push(`  ${i + 1}. ${p}`);
+      });
+    }
+    lines.push('');
+  }
+  
+  // Available Data
+  if (ctx.availableData?.length || ctx.dataGaps?.length || ctx.competitorInfo?.length) {
+    lines.push(isZh ? '## 数据与信息' : '## Data & Information');
+    if (ctx.availableData?.length) {
+      lines.push(isZh ? `**已有数据**: ${ctx.availableData.join(', ')}` : `**Available Data**: ${ctx.availableData.join(', ')}`);
+    }
+    if (ctx.dataGaps?.length) {
+      lines.push(isZh ? `**数据缺口**: ${ctx.dataGaps.join(', ')}` : `**Data Gaps**: ${ctx.dataGaps.join(', ')}`);
+    }
+    if (ctx.competitorInfo?.length) {
+      lines.push(isZh ? `**竞争对手信息**: ${ctx.competitorInfo.join(', ')}` : `**Competitor Info**: ${ctx.competitorInfo.join(', ')}`);
+    }
+    lines.push('');
+  }
+  
+  // Background & History
+  if (ctx.previousDecisions || ctx.challenges?.length || ctx.successCriteria?.length) {
+    lines.push(isZh ? '## 背景与历史' : '## Background & History');
+    if (ctx.previousDecisions) {
+      lines.push(isZh ? `**过往决策**: ${ctx.previousDecisions}` : `**Previous Decisions**: ${ctx.previousDecisions}`);
+    }
+    if (ctx.challenges?.length) {
+      lines.push(isZh ? `**当前挑战**: ${ctx.challenges.join(', ')}` : `**Current Challenges**: ${ctx.challenges.join(', ')}`);
+    }
+    if (ctx.successCriteria?.length) {
+      lines.push(isZh ? `**成功标准**: ${ctx.successCriteria.join(', ')}` : `**Success Criteria**: ${ctx.successCriteria.join(', ')}`);
+    }
+    lines.push('');
+  }
+  
+  return lines.join('\n');
+}
 
 /** Build a course context string for injection into action prompts */
 export function buildCourseContext(ctx?: SceneGenerationContext): string {

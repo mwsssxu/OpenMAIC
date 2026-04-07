@@ -59,15 +59,76 @@ export interface UploadedDocument {
 }
 
 /**
- * Simplified user requirements for course generation
- * All details (topic, duration, style, etc.) should be included in the requirement text
+ * Strategic context for business analysis
+ * Collects comprehensive user situation for informed decision-making
+ */
+export interface StrategicContext {
+  // ── Decision Context ──
+  /** What decision needs to be made? */
+  decisionQuestion?: string;
+  /** Decision timeline (e.g., "Q2 2024", "Within 2 weeks") */
+  timeline?: string;
+  /** Decision urgency: low/medium/high/critical */
+  urgency?: 'low' | 'medium' | 'high' | 'critical';
+  
+  // ── Organization Profile ──
+  /** Company/organization name */
+  organizationName?: string;
+  /** Industry sector */
+  industry?: string;
+  /** Company size: startup/sme/enterprise */
+  companySize?: 'startup' | 'sme' | 'enterprise';
+  /** Annual revenue range (for context) */
+  revenueRange?: string;
+  /** Geographic market focus */
+  markets?: string[];
+  
+  // ── Stakeholders ──
+  /** Who will use this analysis? */
+  targetAudience?: string[];
+  /** Key decision makers */
+  decisionMakers?: string[];
+  
+  // ── Constraints & Priorities ──
+  /** Budget constraints */
+  budgetConstraints?: string;
+  /** Resource constraints (team, technology, time) */
+  resourceConstraints?: string[];
+  /** Risk tolerance: conservative/moderate/aggressive */
+  riskTolerance?: 'conservative' | 'moderate' | 'aggressive';
+  /** Top 3 priorities ranked */
+  priorities?: string[];
+  
+  // ── Available Data ──
+  /** What data/sources are already available? */
+  availableData?: string[];
+  /** What data gaps exist? */
+  dataGaps?: string[];
+  /** Competitor information available */
+  competitorInfo?: string[];
+  
+  // ── Background & History ──
+  /** Previous decisions or context */
+  previousDecisions?: string;
+  /** Current challenges */
+  challenges?: string[];
+  /** Success criteria */
+  successCriteria?: string[];
+}
+
+/**
+ * Simplified user requirements for strategic analysis generation
+ * Supports both free-form input and structured strategic context
  */
 export interface UserRequirements {
   requirement: string; // Single free-form text for all user input
-  language: 'zh-CN' | 'en-US'; // Course language - critical for generation
-  userNickname?: string; // Student nickname for personalization
-  userBio?: string; // Student background for personalization
+  language: 'zh-CN' | 'en-US'; // Report language - critical for generation
+  userNickname?: string; // User nickname for personalization
+  userBio?: string; // User background for personalization
   webSearch?: boolean; // Enable web search for richer context
+  
+  // Strategic context for informed analysis
+  strategicContext?: StrategicContext;
 }
 
 /**

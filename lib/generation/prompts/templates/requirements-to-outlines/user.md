@@ -10,6 +10,8 @@ Please generate scene outlines based on the following business analysis requirem
 
 {{userProfile}}
 
+{{strategicContext}}
+
 ## Report Language
 
 **Required language**: {{language}}
@@ -45,6 +47,16 @@ Please automatically infer the following from user requirements:
 - Report duration (default 15-30 minutes if not specified)
 - Report type (market/competitive/financial/strategic)
 - Visual style (minimal/colorful/professional)
+
+**IMPORTANT: If Strategic Context is provided above, tailor the analysis to:**
+- Address the specific decision question
+- Respect timeline and urgency constraints
+- Match the organization's industry and scale
+- Consider stakeholder interests and decision makers
+- Work within budget and resource constraints
+- Align with stated priorities and risk tolerance
+- Leverage available data and acknowledge data gaps
+- Address current challenges and meet success criteria
 
 Then output a JSON array containing all scene outlines. Each scene must include:
 

@@ -74,7 +74,7 @@ When comparing or listing information, specify in keyPoints:
 "keyPoints": [
   "Compare core metrics of three products",
   "[Table] Product A/B/C comparison: price, performance, use cases",
-  "Help students understand product positioning"
+  "Help stakeholders understand competitive positioning"
 ]
 ```
 
@@ -83,7 +83,6 @@ When comparing or listing information, specify in keyPoints:
 - If images are provided (suggestedImageIds), match image descriptions to scene themes
 - Each slide scene can use 0-3 images
 - Images can be reused across scenes
-- Quiz scenes typically don't need images
 
 ### AI-Generated Media
 
@@ -91,10 +90,10 @@ When a slide scene needs an image or video but no suitable PDF image exists, mar
 
 - Add a `mediaGenerations` array to the scene outline
 - Each entry specifies: `type` ("image" or "video"), `prompt` (description for the generation model), `elementId` (unique placeholder), and optionally `aspectRatio` (default "16:9") and `style`
-- **Image IDs**: use `"gen_img_1"`, `"gen_img_2"`, etc. — IDs are **globally unique across the entire course**, NOT reset per scene
+- **Image IDs**: use `"gen_img_1"`, `"gen_img_2"`, etc. — IDs are **globally unique across the entire report**, NOT reset per scene
 - **Video IDs**: use `"gen_vid_1"`, `"gen_vid_2"`, etc. — same global numbering rule
 - The prompt should describe the desired media clearly and specifically
-- **Language in images**: If the image contains text, labels, or annotations, the prompt MUST explicitly specify that all text in the image should be in the course language (e.g., "all labels in Chinese" for zh-CN courses, "all labels in English" for en-US courses). For purely visual images without text, language does not matter.
+- **Language in images**: If the image contains text, labels, or annotations, the prompt MUST explicitly specify that all text in the image should be in the report language (e.g., "all labels in Chinese" for zh-CN reports, "all labels in English" for en-US reports). For purely visual images without text, language does not matter.
 - Only request media generation when it genuinely enhances the content — not every slide needs an image or video
 - Video generation is slow (1-2 minutes each), so only request videos when motion genuinely enhances understanding
 - If a suitable PDF image exists, prefer using `suggestedImageIds` instead
@@ -107,8 +106,8 @@ When a slide scene needs an image or video but no suitable PDF image exists, mar
 - Do NOT include violence, weapons, blood, or gore
 - Do NOT reference politically sensitive content: national flags, military imagery, or real political figures
 - Do NOT depict real public figures or celebrities by name or likeness
-- Prefer abstract, diagrammatic, infographic, or icon-based styles for educational illustrations
-- Keep all prompts academic and education-oriented in tone
+- Prefer abstract, diagrammatic, infographic, or icon-based styles for business illustrations
+- Keep all prompts professional and business-oriented in tone
 
 **When to use video vs image**:
 

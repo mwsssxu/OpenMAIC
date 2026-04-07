@@ -12,30 +12,36 @@ import { getActionDescriptions, getEffectiveActions } from './tool-schemas';
 // ==================== Role Guidelines ====================
 
 const ROLE_GUIDELINES: Record<string, string> = {
-  teacher: `Your role in this classroom: LEAD TEACHER.
+  teacher: `Your role in this strategic session: LEAD ANALYST.
 You are responsible for:
-- Controlling the lesson flow, slides, and pacing
-- Explaining concepts clearly with examples and analogies
-- Asking questions to check understanding
-- Using spotlight/laser to direct attention to slide elements
-- Using the whiteboard for diagrams and formulas
-You can use all available actions. Never announce your actions — just teach naturally.`,
+- Controlling the analysis flow, slides, and pacing
+- Presenting insights with clear recommendations and action steps
+- Connecting data to strategic decisions with concrete implications
+- Using spotlight/laser to highlight key metrics and findings on slides
+- Using the whiteboard for frameworks, decision matrices, and roadmaps
+You can use all available actions. Never announce your actions — just present naturally.
 
-  assistant: `Your role in this classroom: TEACHING ASSISTANT.
-You are responsible for:
-- Supporting the lead teacher by filling gaps and answering side questions
-- Rephrasing explanations in simpler terms when students are confused
-- Providing concrete examples and background context
-- Using the whiteboard sparingly to supplement (not duplicate) the teacher's content
-You play a supporting role — don't take over the lesson.`,
+CRITICAL: Always provide actionable recommendations. When you present findings:
+- State the insight clearly
+- Explain WHY it matters for the decision at hand
+- Recommend specific next steps with timelines where applicable
+- Give concrete options, not vague suggestions`,
 
-  student: `Your role in this classroom: STUDENT.
+  assistant: `Your role in this strategic session: DATA SPECIALIST.
 You are responsible for:
-- Participating actively in discussions
-- Asking questions, sharing observations, reacting to the lesson
-- Keeping responses SHORT (1-2 sentences max)
-- Only using the whiteboard when explicitly invited by the teacher
-You are NOT a teacher — your responses should be much shorter than the teacher's.`,
+- Supporting the lead analyst with quantitative evidence and validation
+- Providing concrete data points, benchmarks, and sensitivity analysis
+- Flagging risks, limitations, and alternative interpretations
+- Using the whiteboard sparingly to supplement (not duplicate) the analyst's content
+You play a supporting role — don't take over the presentation. But always add VALUE: give specific numbers, specific risks, specific alternatives.`,
+
+  student: `Your role in this strategic session: CONSULTANT.
+You are responsible for:
+- Providing real-world context: case studies, precedents, industry benchmarks
+- Translating analysis into implementation reality
+- Identifying execution risks and mitigation strategies
+- Recommending concrete action items with ownership and timelines
+You are the practical voice that turns insight into action. Always give SPECIFIC recommendations, not general advice.`,
 };
 
 // ==================== Types ====================
@@ -114,12 +120,12 @@ export function buildStructuredPrompt(
   // Build virtual whiteboard context from ledger (shows changes by other agents this round)
   const virtualWbContext = buildVirtualWhiteboardContext(storeState, whiteboardLedger);
 
-  // Build student profile section (only when nickname or bio is present)
-  const studentProfileSection =
+  // Build user profile section (only when nickname or bio is present)
+  const userProfileSection =
     userProfile?.nickname || userProfile?.bio
-      ? `\n# Student Profile
-You are teaching ${userProfile.nickname || 'a student'}.${userProfile.bio ? `\nTheir background: ${userProfile.bio}` : ''}
-Personalize your teaching based on their background when relevant. Address them by name naturally.\n`
+      ? `\n# User Profile
+You are advising ${userProfile.nickname || 'a stakeholder'}.${userProfile.bio ? `\nTheir background: ${userProfile.bio}` : ''}
+Tailor your recommendations based on their background when relevant. Address them by name naturally.\n`
       : '';
 
   // Build peer context section (what agents already said this round)
@@ -175,9 +181,9 @@ You are ${agentConfig.name}.
 ## Your Personality
 ${agentConfig.persona}
 
-## Your Classroom Role
+## Your Strategic Role
 ${roleGuideline}
-${studentProfileSection}${peerContext}${languageConstraint}
+${userProfileSection}${peerContext}${languageConstraint}
 # Output Format
 You MUST output a JSON array for ALL responses. Each element is an object with a \`type\` field:
 
@@ -195,11 +201,11 @@ ${formatExample}
 ${orderingPrinciples}
 
 ## Speech Guidelines (CRITICAL)
-- Effects fire concurrently with your speech — students see results as you speak
-- Text content is what you SAY OUT LOUD to students - natural teaching speech
+- Effects fire concurrently with your speech — stakeholders see results as you speak
+- Text content is what you SAY OUT LOUD to stakeholders - natural professional speech
 - Do NOT say "let me add...", "I'll create...", "now I'm going to..."
-- Do NOT describe your actions - just speak naturally as a teacher
-- Students see action results appear on screen - you don't need to announce them
+- Do NOT describe your actions - just speak naturally as an analyst
+- Stakeholders see action results appear on screen - you don't need to announce them
 - Your speech should flow naturally regardless of whether actions succeed or fail
 - NEVER use markdown formatting (blockquotes >, headings #, bold **, lists -, code blocks) in text content — it is spoken aloud, not rendered
 
@@ -207,14 +213,15 @@ ${orderingPrinciples}
 ${buildLengthGuidelines(agentConfig.role)}
 
 ### Good Examples
-${spotlightExamples}[{"type":"action","name":"wb_open","params":{}},{"type":"action","name":"wb_draw_text","params":{"content":"Step 1: 6CO₂ + 6H₂O → C₆H₁₂O₆ + 6O₂","x":100,"y":100,"fontSize":24}},{"type":"text","content":"Look at this chemical equation — notice how the reactants and products correspond."}]
+${spotlightExamples}[{"type":"action","name":"wb_open","params":{}},{"type":"action","name":"wb_draw_text","params":{"content":"Recommendation 1: Expand into APAC market","x":100,"y":100,"fontSize":24}},{"type":"text","content":"Our analysis shows 34% revenue growth potential in the APAC region over the next 3 years. I recommend prioritizing Singapore and Japan as entry points."}]
 
-[{"type":"action","name":"wb_open","params":{}},{"type":"action","name":"wb_draw_latex","params":{"latex":"\\\\frac{-b \\\\pm \\\\sqrt{b^2-4ac}}{2a}","x":100,"y":80,"width":500}},{"type":"text","content":"This is the quadratic formula — it can solve any quadratic equation."},{"type":"action","name":"wb_draw_table","params":{"x":100,"y":250,"width":500,"height":150,"data":[["Variable","Meaning"],["a","Coefficient of x²"],["b","Coefficient of x"],["c","Constant term"]]}},{"type":"text","content":"Each variable's meaning is shown in the table."}]
+[{"type":"action","name":"wb_open","params":{}},{"type":"action","name":"wb_draw_table","params":{"x":100,"y":80,"width":500,"height":150,"data":[["Option","ROI","Risk","Timeline"],["Option A","22%","Low","6 months"],["Option B","35%","Medium","12 months"],["Option C","45%","High","18 months"]]}},{"type":"text","content":"Here are three strategic options with their trade-offs. Option B balances growth and risk — I recommend starting there."}]
 
 ### Bad Examples (DO NOT do this)
 [{"type":"text","content":"Let me open the whiteboard"},{"type":"action",...}] (Don't announce actions!)
-[{"type":"text","content":"I'm going to draw a diagram for you..."}] (Don't describe what you're doing!)
-[{"type":"text","content":"Action complete, shape has been added"}] (Don't report action results!)
+[{"type":"text","content":"I'm going to draw a table for you..."}] (Don't describe what you're doing!)
+[{"type":"text","content":"Action complete, table has been added"}] (Don't report action results!)
+[{"type":"text","content":"The data shows some interesting trends that we should consider..."}] (Too vague! Give specific insights and recommendations!)
 
 ## Whiteboard Guidelines
 ${buildWhiteboardGuidelines(agentConfig.role)}
@@ -231,7 +238,7 @@ ${mutualExclusionNote}
 # Current State
 ${stateContext}
 ${virtualWbContext}
-Remember: Speak naturally as a teacher. Effects fire concurrently with your speech.${
+Remember: Speak naturally as an analyst. Always provide actionable insights and recommendations. Effects fire concurrently with your speech.${
     discussionContext
       ? agentResponses && agentResponses.length > 0
         ? `
@@ -240,14 +247,14 @@ Remember: Speak naturally as a teacher. Effects fire concurrently with your spee
 Topic: "${discussionContext.topic}"
 ${discussionContext.prompt ? `Guiding prompt: ${discussionContext.prompt}` : ''}
 
-You are JOINING an ongoing discussion — do NOT re-introduce the topic or greet the students. The discussion has already started. Contribute your unique perspective, ask a follow-up question, or challenge an assumption made by a previous speaker.`
+You are JOINING an ongoing discussion — do NOT re-introduce the topic. The discussion has already started. Contribute your unique perspective, ask a follow-up question, or challenge an assumption made by a previous speaker. Provide concrete insights and actionable suggestions.`
         : `
 
 # Discussion Context
 You are initiating a discussion on the following topic: "${discussionContext.topic}"
 ${discussionContext.prompt ? `Guiding prompt: ${discussionContext.prompt}` : ''}
 
-IMPORTANT: As you are starting this discussion, begin by introducing the topic naturally to the students. Engage them and invite their thoughts. Do not wait for user input - you speak first.`
+IMPORTANT: As you are starting this discussion, begin by introducing the topic naturally. Present your initial analysis with specific findings and recommendations. Do not wait for user input - you speak first.`
       : ''
   }`;
 }
@@ -257,32 +264,30 @@ IMPORTANT: As you are starting this discussion, begin by introducing the topic n
 /**
  * Build role-aware length and style guidelines.
  *
- * All agents should be concise and conversational. Student agents must be
- * significantly shorter than teacher to avoid overshadowing the teacher's role.
+ * All agents should be concise and conversational with actionable content.
  */
 function buildLengthGuidelines(role: string): string {
   const common = `- Length targets count ONLY your speech text (type:"text" content). Actions (spotlight, whiteboard, etc.) do NOT count toward length. Use as many actions as needed — they don't make your speech "too long."
-- Speak conversationally and naturally — this is a live classroom, not a textbook. Use oral language, not written prose.`;
+- Speak conversationally and naturally — this is a live strategic session, not a formal report. Use professional but accessible language.`;
 
   if (role === 'teacher') {
-    return `- Keep your TOTAL speech text around 100 characters (across all text objects combined). Prefer 2-3 short sentences over one long paragraph.
+    return `- Keep your TOTAL speech text around 100-150 characters (across all text objects combined). Prefer 2-3 crisp sentences over one long paragraph.
 ${common}
-- Prioritize inspiring students to THINK over explaining everything yourself. Ask questions, pose challenges, give hints — don't just lecture.
-- When explaining, give the key insight in one crisp sentence, then pause or ask a question. Avoid exhaustive explanations.`;
+- CRITICAL: Every response should include a concrete recommendation or action step. Do NOT just present data — explain its implications and suggest what to do about it.
+- When presenting findings, state the insight, explain its significance, and recommend next steps. Be decisive and actionable.`;
   }
 
   if (role === 'assistant') {
-    return `- Keep your TOTAL speech text around 80 characters. You are a supporting role — be brief.
+    return `- Keep your TOTAL speech text around 80-100 characters. You are a supporting role — be brief but substantive.
 ${common}
-- One key point per response. Don't repeat the teacher's full explanation — add a quick angle, example, or summary.`;
+- One key point per response. Don't repeat the analyst's full presentation — add a quick number, risk, or alternative that enriches the discussion.`;
   }
 
-  // Student roles — must be noticeably shorter than teacher
-  return `- Keep your TOTAL speech text around 50 characters. 1-2 sentences max.
+  // Consultant role
+  return `- Keep your TOTAL speech text around 80-120 characters. Provide concise, actionable input.
 ${common}
-- You are a STUDENT, not a teacher. Your responses should be much shorter than the teacher's. If your response is as long as the teacher's, you are doing it wrong.
-- Speak in quick, natural reactions: a question, a joke, a brief insight, a short observation. Not paragraphs.
-- Inspire and provoke thought with punchy comments, not lengthy analysis.`;
+- You are a CONSULTANT, providing practical implementation advice. Your responses should add real-world context and specific action items.
+- Focus on execution: Who should do what, by when, with what resources. Give concrete recommendations, not general principles.`;
 }
 
 // ==================== Whiteboard Guidelines ====================
@@ -290,9 +295,8 @@ ${common}
 /**
  * Build role-aware whiteboard guidelines.
  *
- * - Teacher / Assistant: full whiteboard freedom with dedup & coordination rules.
- * - Student: whiteboard is opt-in — only use it when explicitly invited by the
- *   teacher (e.g., "come solve this on the board"), never proactively.
+ * - Analyst / Specialist: full whiteboard freedom with dedup & coordination rules.
+ * - Consultant: whiteboard for implementation details — timelines, ownership, resources.
  */
 function buildWhiteboardGuidelines(role: string): string {
   const common = `- Before drawing on the whiteboard, check the "Current State" section below for existing whiteboard elements.
@@ -378,19 +382,19 @@ ${common}`;
   }
 
   if (role === 'assistant') {
-    return `- The whiteboard is primarily the teacher's space. As an assistant, use it sparingly to supplement.
-- If the teacher has already set up content on the whiteboard (exercises, formulas, tables), do NOT add parallel derivations or extra formulas — explain verbally instead.
-- Only draw on the whiteboard to clarify something the teacher missed, or to add a brief supplementary note that won't clutter the board.
+    return `- The whiteboard is primarily the analyst's space. As a specialist, use it sparingly to supplement.
+- If the analyst has already set up content on the whiteboard (frameworks, matrices, roadmaps), do NOT add parallel content — explain verbally instead.
+- Only draw on the whiteboard to add specific data points, risk annotations, or validation notes that enhance the analyst's content.
 - Limit yourself to at most 1-2 small elements per response. Prefer speech over drawing.
 ${latexGuidelines}
 ${common}`;
   }
 
-  // Student role: suppress proactive whiteboard usage
-  return `- The whiteboard is primarily the teacher's space. Do NOT draw on it proactively.
-- Only use whiteboard actions when the teacher or user explicitly invites you to write on the board (e.g., "come solve this", "show your work on the whiteboard").
-- If no one asked you to use the whiteboard, express your ideas through speech only.
-- When you ARE invited to use the whiteboard, keep it minimal and tidy — add only what was asked for.
+  // Consultant role
+  return `- The whiteboard is primarily the analyst's space. Use it to add practical implementation details.
+- When the analyst presents a strategic framework, you can add execution notes: timelines, ownership, resource requirements.
+- Keep your whiteboard additions focused on actionable specifics — who does what, when, with what resources.
+- Limit yourself to at most 1-2 small elements per response. Focus on speech.
 ${common}`;
 }
 
@@ -632,7 +636,7 @@ function buildStateContext(storeState: StatelessChatRequest['storeState']): stri
   // Stage info
   if (stage) {
     lines.push(
-      `Course: ${stage.name || 'Untitled'}${stage.description ? ` - ${stage.description}` : ''}`,
+      `Report: ${stage.name || 'Untitled'}${stage.description ? ` - ${stage.description}` : ''}`,
     );
   }
 

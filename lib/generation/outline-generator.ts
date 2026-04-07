@@ -25,7 +25,7 @@ import type {
   ImageMapping,
 } from '@/lib/types/generation';
 import { buildPrompt, PROMPT_IDS } from './prompts';
-import { formatImageDescription, formatImagePlaceholder } from './prompt-formatters';
+import { formatImageDescription, formatImagePlaceholder, formatStrategicContext } from './prompt-formatters';
 import { parseJsonResponse } from './json-repair';
 import { uniquifyMediaElementIds } from './scene-builder';
 import type { AICallFn, GenerationResult, GenerationCallbacks } from './pipeline-types';
@@ -106,8 +106,14 @@ export async function generateSceneOutlinesFromRequirements(
   // 构建用户简介字符串，用于提示注入
   const userProfileText =
     requirements.userNickname || requirements.userBio
-      ? `## Student Profile\n\nStudent: ${requirements.userNickname || 'Unknown'}${requirements.userBio ? ` — ${requirements.userBio}` : ''}\n\nConsider this student's background when designing the course. Adapt difficulty, examples, and teaching approach accordingly.\n\n---`
+      ? `## User Profile\n\nUser: ${requirements.userNickname || 'Unknown'}${requirements.userBio ? ` — ${requirements.userBio}` : ''}\n\nConsider this user's background when designing the analysis approach.\n\n---`
       : '';
+
+  // 格式化战略上下文
+  const strategicContextText = formatStrategicContext(
+    requirements.strategicContext,
+    requirements.language,
+  );
 
   // 根据启用状态构建媒体生成策略
   const imageEnabled = options?.imageGenerationEnabled ?? false;
@@ -136,6 +142,7 @@ export async function generateSceneOutlinesFromRequirements(
         : 'None',
     availableImages: availableImagesText,
     userProfile: userProfileText,
+    strategicContext: strategicContextText,
     mediaGenerationPolicy,
     researchContext:
       options?.researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),

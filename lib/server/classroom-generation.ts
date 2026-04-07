@@ -116,15 +116,16 @@ async function generateAgentProfiles(
   aiCall: AICallFn,
 ): Promise<AgentInfo[]> {
   const systemPrompt =
-    'You are an expert business analyst. Generate agent profiles for a multi-agent business analysis simulation. Return ONLY valid JSON, no markdown or explanation.';
+    'You are an expert strategic planning consultant. Generate agent profiles for a multi-agent strategic analysis team. Return ONLY valid JSON, no markdown or explanation.';
 
-  const userPrompt = `Generate agent profiles for a business analysis report with this requirement:
+  const userPrompt = `Generate agent profiles for a strategic analysis report with this requirement:
 ${requirement}
 
 Requirements:
 - Decide the appropriate number of agents based on the analysis scope (typically 2-4)
-- Exactly 1 agent must have role "analyst" (the lead analyst), the rest can be "specialist" or "consultant"
-- Each agent needs: name, role, persona (2-3 sentences describing expertise and analysis style)
+- Exactly 1 agent must have role "analyst" (the lead presenter), the rest can be "specialist" or "consultant"
+- Each agent needs: name, role, persona (2-3 sentences describing expertise and strategic focus)
+- Personas should emphasize: executive communication, data-driven insights, actionable recommendations
 - Names and personas must be in language: ${language}
 
 Return a JSON object with this exact structure:

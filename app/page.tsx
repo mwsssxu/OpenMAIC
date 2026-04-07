@@ -18,6 +18,7 @@ import {
   Monitor,
   BotOff,
   ChevronUp,
+  ClipboardList,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { createLogger } from '@/lib/logger';
@@ -47,6 +48,8 @@ import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDraftCache } from '@/lib/hooks/use-draft-cache';
 import { SpeechButton } from '@/components/audio/speech-button';
+import { StrategicContextForm } from '@/components/generation/strategic-context-form';
+import type { StrategicContext } from '@/lib/types/generation';
 
 const log = createLogger('Home');
 
@@ -59,6 +62,7 @@ interface FormState {
   requirement: string;
   language: 'zh-CN' | 'en-US';
   webSearch: boolean;
+  strategicContext: StrategicContext;
 }
 
 const initialFormState: FormState = {
@@ -66,6 +70,7 @@ const initialFormState: FormState = {
   requirement: '',
   language: 'zh-CN',
   webSearch: false,
+  strategicContext: {},
 };
 
 function HomePage() {
@@ -127,6 +132,7 @@ function HomePage() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showStrategicContext, setShowStrategicContext] = useState(false);
   const [classrooms, setClassrooms] = useState<StageListItem[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, Slide>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -265,6 +271,7 @@ function HomePage() {
         userNickname: userProfile.nickname || undefined,
         userBio: userProfile.bio || undefined,
         webSearch: form.webSearch || undefined,
+        strategicContext: form.strategicContext,
       };
 
       let pdfStorageKey: string | undefined;
@@ -538,6 +545,28 @@ function HomePage() {
               rows={4}
             />
 
+            {/* Strategic Context Panel */}
+            <AnimatePresence>
+              {showStrategicContext && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-3 pb-2 border-t border-border/40">
+                    <div className="pt-2">
+                      <StrategicContextForm
+                        value={form.strategicContext}
+                        onChange={(ctx) => updateForm('strategicContext', ctx)}
+                        language={form.language}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Toolbar row */}
             <div className="px-3 pb-3 flex items-end gap-2">
               <div className="flex-1 min-w-0">
@@ -567,6 +596,26 @@ function HomePage() {
                   });
                 }}
               />
+
+              {/* Strategic Context toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowStrategicContext(!showStrategicContext)}
+                    className={cn(
+                      'shrink-0 h-8 w-8 rounded-lg flex items-center justify-center transition-all',
+                      showStrategicContext
+                        ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    <ClipboardList className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {showStrategicContext ? t('home.hideContext') : t('home.showContext')}
+                </TooltipContent>
+              </Tooltip>
 
               {/* Send button */}
               <button
