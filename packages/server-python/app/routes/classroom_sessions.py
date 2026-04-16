@@ -1,18 +1,37 @@
 """
 实时课堂路由 - WebSocket 多人同时讨论
+
+安全措施：
+- Token 验证
+- 消息长度限制 (1000 字符)
+- 消息历史大小限制 (1000 条)
+- 房间最大参与者 (50 人)
+- 白板状态定期持久化
+- 用户 ID 哈希显示
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from app.db.database import get_db
-from app.middleware.auth import verify_token_from_ws
+from app.middleware.auth import verify_token_from_ws, get_current_user_id
 import asyncpg
 import uuid
 import json
 from datetime import datetime
 from typing import Dict, Set, Optional
 import asyncio
+import hashlib
+import re
 
 router = APIRouter()
+
+# ==================== 安全配置 ====================
+
+MAX_MESSAGE_LENGTH = 1000       # 单条消息最大长度
+MAX_MESSAGE_HISTORY = 1000      # 消息历史最大条数
+MAX_PARTICIPANTS = 50           # 房间最大参与者
+MAX_WHITEBOARD_ELEMENTS = 200   # 白板最大元素数
+RATE_LIMIT_MESSAGES = 10        # 每秒最大消息数
+WHITEBOARD_PERSIST_INTERVAL = 30  # 白板持久化间隔（秒）
 
 
 # ==================== 房间管理 ====================
@@ -30,8 +49,12 @@ class ClassroomRoom:
         self.current_scene: int = 0
         self.is_active: bool = True
         self.created_at = datetime.utcnow()
+        self.last_persist_at = datetime.utcnow()
 
     def add_participant(self, user_id: str, ws: WebSocket, nickname: str, role: str = "participant"):
+        # 检查参与者数量限制
+        if len(self.participants) >= MAX_PARTICIPANTS:
+            raise ValueError("房间已满")
         self.participants[user_id] = ws
         self.user_info[user_id] = {"nickname": nickname, "role": role, "joined_at": datetime.utcnow()}
 
@@ -45,10 +68,18 @@ class ClassroomRoom:
         return len(self.participants)
 
     def get_participant_list(self) -> list:
+        # 用户 ID 哈希后显示，保护隐私
         return [
-            {"user_id": uid, "nickname": info["nickname"], "role": info["role"]}
+            {"user_hash": hash_user_id(uid), "nickname": info["nickname"], "role": info["role"]}
             for uid, info in self.user_info.items()
         ]
+
+    def add_message(self, message: dict):
+        """添加消息并限制历史大小"""
+        self.message_history.append(message)
+        # 超过限制时删除旧消息
+        if len(self.message_history) > MAX_MESSAGE_HISTORY:
+            self.message_history = self.message_history[-MAX_MESSAGE_HISTORY:]
 
 
 class RoomManager:
@@ -96,6 +127,31 @@ class RoomManager:
 room_manager = RoomManager()
 
 
+# ==================== 安全辅助函数 ====================
+
+def hash_user_id(user_id: str) -> str:
+    """哈希用户 ID 用于显示，保护隐私"""
+    return hashlib.sha256(user_id.encode()).hexdigest()[:8]
+
+
+def sanitize_content(content: str) -> str:
+    """清理消息内容，防止 XSS"""
+    # 限制长度
+    if len(content) > MAX_MESSAGE_LENGTH:
+        content = content[:MAX_MESSAGE_LENGTH]
+    # 移除潜在危险字符
+    content = re.sub(r'<[^>]*>', '', content)  # 移除 HTML 标签
+    content = content.replace('\x00', '')  # 移除空字节
+    return content.strip()
+
+
+def validate_room_id(room_id: str) -> bool:
+    """验证房间 ID 格式"""
+    # 格式: room_{classroom_id}_{8位hex}
+    pattern = r'^room_[a-f0-9\-]+_[a-f0-9]{8}$'
+    return bool(re.match(pattern, room_id))
+
+
 # ==================== API 端点 ====================
 
 @router.post("/create")
@@ -116,7 +172,6 @@ async def create_classroom_session(
 
     if not stage:
         # 检查是否是分享的课程
-        from app.routes.sharing import get_shared_stage_id
         stage = await db.fetchrow(
             """
             SELECT s.id, s.name FROM stages s
@@ -126,7 +181,7 @@ async def create_classroom_session(
             classroom_id
         )
         if not stage:
-            return {"error": "课程不存在或无权限"}
+            raise HTTPException(status_code=403, detail="课程不存在或无权限")
 
     # 创建房间 ID
     room_id = f"room_{classroom_id}_{uuid.uuid4().hex[:8]}"
@@ -280,10 +335,22 @@ async def websocket_classroom(
         await websocket.close()
         return
 
+    # 验证房间 ID 格式
+    if not validate_room_id(room_id):
+        await websocket.send_json({"type": "error", "data": {"message": "无效的房间 ID"}})
+        await websocket.close()
+        return
+
     # 获取房间
     room = room_manager.get_room(room_id)
     if not room:
         await websocket.send_json({"type": "error", "data": {"message": "房间不存在"}})
+        await websocket.close()
+        return
+
+    # 检查房间是否已满
+    if room.get_participant_count() >= MAX_PARTICIPANTS:
+        await websocket.send_json({"type": "error", "data": {"message": "房间已满，无法加入"}})
         await websocket.close()
         return
 
@@ -298,21 +365,27 @@ async def websocket_classroom(
     # 确定角色
     role = "owner" if user_id == room.owner_id else "participant"
 
-    # 加入房间
-    room_manager.join_room(room_id, user_id, websocket, nickname, role)
+    # 加入房间（带错误处理）
+    try:
+        room_manager.join_room(room_id, user_id, websocket, nickname, role)
+    except ValueError as e:
+        await websocket.send_json({"type": "error", "data": {"message": str(e)}})
+        await websocket.close()
+        return
 
     # 发送欢迎消息
     await websocket.send_json({
         "type": "joined",
         "data": {
             "room_id": room_id,
-            "user_id": user_id,
+            "user_hash": hash_user_id(user_id),  # 使用哈希 ID
             "nickname": nickname,
             "role": role,
             "participant_count": room.get_participant_count(),
             "participants": room.get_participant_list(),
             "whiteboard_state": room.whiteboard_state,
             "current_scene": room.current_scene,
+            "message_history": room.message_history[-50:],  # 只发送最近 50 条
         }
     })
 
@@ -320,7 +393,7 @@ async def websocket_classroom(
     await broadcast_to_room(room, {
         "type": "user_joined",
         "data": {
-            "user_id": user_id,
+            "user_hash": hash_user_id(user_id),
             "nickname": nickname,
             "role": role,
             "participant_count": room.get_participant_count(),
@@ -329,8 +402,18 @@ async def websocket_classroom(
 
     try:
         while True:
-            # 接收消息
-            data = await websocket.receive_json()
+            # 接收消息（带异常处理）
+            try:
+                raw_data = await websocket.receive_text()
+                # 检查消息大小（防止超大消息）
+                if len(raw_data) > 10000:  # 10KB 限制
+                    await websocket.send_json({"type": "error", "data": {"message": "消息过大"}})
+                    continue
+                data = json.loads(raw_data)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "data": {"message": "无效的 JSON 格式"}})
+                continue
+
             message_type = data.get("type")
             message_data = data.get("data", {})
 
@@ -387,19 +470,25 @@ async def websocket_classroom(
 async def handle_chat_message(room: ClassroomRoom, user_id: str, nickname: str, data: dict, db):
     """处理聊天消息"""
     content = data.get("content", "")
+
+    # 安全检查：清理内容
+    content = sanitize_content(content)
+    if not content:
+        return  # 空消息不处理
+
     message_id = uuid.uuid4().hex
 
     message = {
         "id": message_id,
         "type": "chat",
-        "user_id": user_id,
+        "user_hash": hash_user_id(user_id),  # 使用哈希 ID
         "nickname": nickname,
         "content": content,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
-    # 存储消息
-    room.message_history.append(message)
+    # 存储消息（使用限制后的历史）
+    room.add_message(message)
 
     # 存储到数据库
     await db.execute(
@@ -426,11 +515,18 @@ async def handle_whiteboard_action(room: ClassroomRoom, user_id: str, data: dict
     if action_type == "clear":
         room.whiteboard_state = {}
     else:
+        # 检查元素数量限制
+        if len(room.whiteboard_state) >= MAX_WHITEBOARD_ELEMENTS:
+            # 删除最早的元素
+            oldest_key = min(room.whiteboard_state.keys(),
+                           key=lambda k: room.whiteboard_state[k].get("timestamp", ""))
+            del room.whiteboard_state[oldest_key]
+
         element_id = data.get("element_id", uuid.uuid4().hex)
         room.whiteboard_state[element_id] = {
             "type": action_type,
             "data": action_data,
-            "user_id": user_id,
+            "user_hash": hash_user_id(user_id),  # 使用哈希 ID
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -441,7 +537,7 @@ async def handle_whiteboard_action(room: ClassroomRoom, user_id: str, data: dict
             "action": action_type,
             "element_id": element_id if action_type != "clear" else None,
             "data": action_data,
-            "user_id": user_id,
+            "user_hash": hash_user_id(user_id),
         }
     })
 

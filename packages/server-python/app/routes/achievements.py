@@ -5,7 +5,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id
-from app.models.achievement import Achievement, UserAchievement, AchievementProgress
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
