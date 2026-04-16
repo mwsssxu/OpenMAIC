@@ -18,7 +18,7 @@ async def get_current_user(
 ) -> UserResponse:
     """从 JWT 获取当前用户"""
     token = credentials.credentials
-    user_id = verify_token(token)
+    user_id = verify_token(token, expected_type="access")
 
     if user_id is None:
         raise HTTPException(
@@ -57,3 +57,9 @@ async def get_current_user_id(
 ) -> str:
     """仅获取用户 ID（简化依赖）"""
     return current_user.id
+
+
+async def verify_token_from_ws(token: str) -> str | None:
+    """WebSocket token 验证（无数据库依赖）"""
+    user_id = verify_token(token, expected_type="access")
+    return user_id

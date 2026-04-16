@@ -30,7 +30,7 @@ def test_jwt_creation():
     assert isinstance(token, str)
 
     # 验证 Token 应返回正确的 user_id
-    extracted_user_id = verify_token(token)
+    extracted_user_id = verify_token(token, expected_type="access")
     assert extracted_user_id == user_id
 
 
@@ -39,7 +39,7 @@ def test_jwt_invalid_token():
     invalid_token = "invalid.token.here"
 
     # 无效 Token 应返回 None
-    result = verify_token(invalid_token)
+    result = verify_token(invalid_token, expected_type="access")
     assert result is None
 
 
@@ -53,13 +53,13 @@ def test_jwt_expired_token():
     short_token = create_access_token("test_user", timedelta(seconds=1))
 
     # 立即验证应成功
-    assert verify_token(short_token) == "test_user"
+    assert verify_token(short_token, expected_type="access") == "test_user"
 
     # 等待过期
     time.sleep(2)
 
     # 过期后应返回 None
-    assert verify_token(short_token) is None
+    assert verify_token(short_token, expected_type="access") is None
 
 
 if __name__ == "__main__":

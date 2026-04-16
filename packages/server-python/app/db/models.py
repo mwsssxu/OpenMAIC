@@ -2,7 +2,7 @@
 SQLAlchemy ORM 模型定义
 """
 
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
@@ -45,7 +45,7 @@ class OAuthAccount(Base):
 
     # 唯一约束
     __table_args__ = (
-        {"unique_constraint": ("provider", "provider_user_id")},
+        UniqueConstraint("provider", "provider_user_id"),
     )
 
 

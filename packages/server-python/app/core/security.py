@@ -46,12 +46,13 @@ def create_refresh_token(user_id: str) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def verify_token(token: str) -> str | None:
+def verify_token(token: str, expected_type: str = "access") -> str | None:
     """验证 JWT token，返回 user_id"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
-        if user_id is None:
+        token_type: str = payload.get("type")
+        if user_id is None or token_type != expected_type:
             return None
         return user_id
     except JWTError:

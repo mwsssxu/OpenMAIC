@@ -3,6 +3,31 @@ import * as SecureStore from 'expo-secure-store';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Types
+export interface UserStats {
+  total_classrooms: number;
+  total_scenes: number;
+  total_media_files: number;
+  total_chat_sessions: number;
+}
+
+export interface ExportedData {
+  exported_at: string;
+  user: {
+    id: string;
+    email: string;
+    nickname: string | null;
+    avatar_url: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  classrooms: any[];
+  scenes: any[];
+  media_files: any[];
+  oauth_accounts: any[];
+  generation_jobs: any[];
+}
+
 class ApiClient {
   private client = axios.create({
     baseURL: API_BASE_URL,
@@ -10,6 +35,10 @@ class ApiClient {
   });
 
   private token: string | null = null;
+
+  getBaseUrl(): string {
+    return API_BASE_URL;
+  }
 
   constructor() {
     // 自动添加 Authorization header
@@ -68,6 +97,38 @@ class ApiClient {
 
   async getCurrentUser() {
     const { data } = await this.client.get('/auth/me');
+    return data;
+  }
+
+  async updateUser(nickname?: string, avatar_url?: string) {
+    const { data } = await this.client.put('/auth/me', { nickname, avatar_url });
+    return data;
+  }
+
+  async changePassword(oldPassword: string, newPassword: string) {
+    const { data } = await this.client.post('/auth/password', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    });
+    return data;
+  }
+
+  async deleteAccount() {
+    const { data } = await this.client.delete('/auth/me');
+    // 清除本地 token
+    this.setToken(null);
+    await SecureStore.deleteItemAsync('auth_token');
+    await SecureStore.deleteItemAsync('refresh_token');
+    return data;
+  }
+
+  async exportData(): Promise<ExportedData> {
+    const { data } = await this.client.get('/auth/me/export');
+    return data;
+  }
+
+  async getStats(): Promise<UserStats> {
+    const { data } = await this.client.get('/auth/me/stats');
     return data;
   }
 

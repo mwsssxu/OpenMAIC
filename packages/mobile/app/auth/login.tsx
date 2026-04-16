@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
+import { PolicyAgreement } from '@/components/common/PolicyAgreement';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -9,10 +10,16 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [policyAgreed, setPolicyAgreed] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('提示', '请输入邮箱和密码');
+      return;
+    }
+
+    if (!policyAgreed) {
+      Alert.alert('提示', '请先阅读并同意用户协议和隐私政策');
       return;
     }
 
@@ -50,6 +57,8 @@ export default function LoginScreen() {
           onChangeText={setPassword}
           secureTextEntry
         />
+
+        <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
 
         <TouchableOpacity
           style={[styles.button, isLoading && styles.buttonDisabled]}
