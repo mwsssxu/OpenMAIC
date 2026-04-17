@@ -27,7 +27,7 @@ export default function LoginPage() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/auth/login`, {
+      const response = await fetch(`${apiUrl}/admin/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -39,13 +39,19 @@ export default function LoginPage() {
         throw new Error(data.detail || '登录失败');
       }
 
-      // 检查是否是管理员
-      // TODO: 实现管理员角色检查
-
+      // Store JWT token and admin info
       localStorage.setItem('admin_token', data.access_token);
+      localStorage.setItem('admin_info', JSON.stringify({
+        id: data.admin_id,
+        nickname: data.nickname,
+        roles: data.roles,
+        expires_at: data.expires_at
+      }));
+
       router.push('/');
-    } catch (err: any) {
-      setError(err.message || '登录失败，请稍后重试');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '登录失败，请稍后重试';
+      setError(message);
     } finally {
       setIsLoading(false);
     }

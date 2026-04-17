@@ -17,6 +17,7 @@ import { useState } from 'react';
 
 const navItems = [
   { name: '仪表盘', path: '/', icon: LayoutDashboard },
+  { name: '管理员管理', path: '/admins', icon: Users },
   { name: '用户管理', path: '/users', icon: Users },
   { name: '内容审核', path: '/content', icon: FileText, children: [
     { name: '问题审核', path: '/content/questions' },
