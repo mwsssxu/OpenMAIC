@@ -126,6 +126,9 @@ async def mark_course_completed(
             uuid.uuid4(), user_uuid, reward_points, new_balance, course_uuid, now
         )
 
+    # 触发笔记提醒
+    note_reminder_triggered = await trigger_note_reminder_if_needed(db, user_uuid, course_uuid)
+
     # 触发推荐生成
     recommendations = await generate_recommendations(db, user_uuid, course_uuid)
 
@@ -136,7 +139,69 @@ async def mark_course_completed(
         "status": completion_status,
         "reward_points": reward_points,
         "recommendations": recommendations,
-        "message": "课程已完成，获得 {} 积分奖励".format(reward_points),
+        "note_reminder": note_reminder_triggered,
+        "message": "课程已完成，获得 {} 积分奖励{}".format(
+            reward_points,
+            "，建议记录学习笔记" if note_reminder_triggered else ""
+        ),
+    }
+
+
+async def trigger_note_reminder_if_needed(
+    db: asyncpg.Connection,
+    user_uuid: uuid.UUID,
+    course_uuid: uuid.UUID
+) -> Optional[dict]:
+    """Check if note reminder should be triggered."""
+    # Check if already has note
+    existing_note = await db.fetchrow(
+        "SELECT id FROM notes WHERE user_id = $1 AND classroom_id = $2",
+        user_uuid, course_uuid
+    )
+
+    if existing_note:
+        return None
+
+    # Check if reminder already exists
+    existing_reminder = await db.fetchrow(
+        """
+        SELECT id FROM note_reminders
+        WHERE user_id = $1 AND course_id = $2 AND status = 'pending'
+        """,
+        user_uuid, course_uuid
+    )
+
+    if existing_reminder:
+        return {"reminder_id": str(existing_reminder["id"]), "status": "already_exists"}
+
+    # Create reminder
+    from datetime import timedelta
+    import json
+
+    template_sections = [
+        {"title": "核心知识点", "hint": "列出这门课程最重要的3-5个概念"},
+        {"title": "我的理解", "hint": "用自己的话解释这些概念"},
+        {"title": "实际应用", "hint": "这些知识可以应用在哪些场景"},
+    ]
+
+    deadline = datetime.utcnow() + timedelta(days=7)
+    reminder_id = uuid.uuid4()
+
+    await db.execute(
+        """
+        INSERT INTO note_reminders
+        (id, user_id, course_id, template_type, template_sections, reward_points, deadline, status, created_at)
+        VALUES ($1, $2, $3, 'general', $4, 25, $5, 'pending', $6)
+        """,
+        reminder_id, user_uuid, course_uuid,
+        json.dumps(template_sections), deadline, datetime.utcnow()
+    )
+
+    return {
+        "reminder_id": str(reminder_id),
+        "status": "created",
+        "reward_points": 25,
+        "deadline": deadline.isoformat()
     }
 
 

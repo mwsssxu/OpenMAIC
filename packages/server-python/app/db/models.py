@@ -939,3 +939,22 @@ class CodeSubmission(Base):
     memory_used = Column(Float)
     errors = Column(Text)
     submitted_at = Column(DateTime, default=datetime.utcnow)
+
+
+class NoteReminder(Base):
+    """笔记提醒表"""
+    __tablename__ = "note_reminders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_type = Column(String(50), nullable=False)
+    template_sections = Column(Text, nullable=False)
+    reward_points = Column(Integer, nullable=False)
+    deadline = Column(DateTime, nullable=False)
+    status = Column(String(20), default="pending", index=True)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("notes.id", ondelete="SET NULL"))
+    completed_at = Column(DateTime)
+    skipped_at = Column(DateTime)
+    skip_reason = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
