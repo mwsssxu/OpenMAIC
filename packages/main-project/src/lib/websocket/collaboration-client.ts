@@ -1,8 +1,10 @@
+import React, { useState, useEffect } from 'react';
+
 /**
  * WebSocket客户端 - 连接多人课堂协作服务
  */
 
-type MessageType = 'join' | 'leave' | 'chat' | 'whiteboard_action' | 'scene_change' | 'user_joined' | 'user_left' | 'reaction' | 'agent_response' | 'request_agent' | 'session_end' | 'ping';
+type MessageType = 'join' | 'leave' | 'chat' | 'whiteboard_action' | 'scene_change' | 'user_joined' | 'user_left' | 'reaction' | 'agent_response' | 'request_agent' | 'auth' | 'auth_success' | 'auth_failed' | 'session_end' | 'ping';
 
 interface WebSocketMessage {
   type: MessageType;
@@ -25,6 +27,7 @@ export class CollaborationClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private isConnected = false;
+  private isAuthenticated = false;
   private messageHandlers: Map<MessageType, ((data: any) => void)[]> = new Map();
 
   constructor(private options: CollaborationOptions) {
@@ -34,7 +37,8 @@ export class CollaborationClient {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wsUrl = `${process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:8000'}/sessions/${this.roomId}/ws?token=${this.token}`;
+      // Token不再通过URL传递，改为连接后发送认证消息
+      const wsUrl = `${process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:8000'}/sessions/${this.roomId}/ws`;
       const wsProtocol = wsUrl.replace('http', 'ws');
 
       this.ws = new WebSocket(wsProtocol);
@@ -43,14 +47,31 @@ export class CollaborationClient {
         this.isConnected = true;
         this.reconnectAttempts = 0;
         console.log('WebSocket connected to room:', this.roomId);
-        resolve();
+
+        // 连接成功后发送认证消息
+        this.send({
+          type: 'auth',
+          data: { token: this.token },
+        });
       };
 
       this.ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          this.handleMessage(message);
-          this.options.onMessage?.(message);
+
+          // 处理认证响应
+          if (message.type === 'auth_success') {
+            this.isAuthenticated = true;
+            console.log('WebSocket authenticated');
+            resolve();
+          } else if (message.type === 'auth_failed') {
+            this.isAuthenticated = false;
+            this.ws?.close();
+            reject(new Error('Authentication failed'));
+          } else {
+            this.handleMessage(message);
+            this.options.onMessage?.(message);
+          }
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
         }
@@ -64,6 +85,7 @@ export class CollaborationClient {
 
       this.ws.onclose = () => {
         this.isConnected = false;
+        this.isAuthenticated = false;
         console.log('WebSocket closed');
         this.options.onClose?.();
 
@@ -84,6 +106,9 @@ export class CollaborationClient {
       this.ws.close();
       this.ws = null;
       this.isConnected = false;
+      this.isAuthenticated = false;
+      // 清理所有handler
+      this.messageHandlers.clear();
     }
   }
 
@@ -151,17 +176,17 @@ export class CollaborationClient {
   }
 
   private send(message: WebSocketMessage): void {
-    if (this.ws && this.isConnected) {
+    if (this.ws && this.isConnected && this.isAuthenticated) {
       this.ws.send(JSON.stringify(message));
     } else {
-      console.warn('WebSocket not connected, cannot send message');
+      console.warn('WebSocket not authenticated, cannot send message');
     }
   }
 
   // 心跳检测
   startHeartbeat(interval: number = 30000): void {
     const heartbeat = setInterval(() => {
-      if (this.isConnected) {
+      if (this.isConnected && this.isAuthenticated) {
         this.send({ type: 'ping', data: {} });
       } else {
         clearInterval(heartbeat);
@@ -172,10 +197,10 @@ export class CollaborationClient {
 
 // 创建协作客户端的hook
 export function useCollaboration(roomId: string, token: string) {
-  const [client, setClient] = React.useState<CollaborationClient | null>(null);
-  const [isConnected, setIsConnected] = React.useState(false);
+  const [client, setClient] = useState<CollaborationClient | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (roomId && token) {
       const collaborationClient = new CollaborationClient({
         roomId,
@@ -196,5 +221,3 @@ export function useCollaboration(roomId: string, token: string) {
 
   return { client, isConnected };
 }
-
-import React from 'react';

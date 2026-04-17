@@ -124,7 +124,7 @@ async def earn_points(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """赚取积分（内部API）"""
+    """赚取积分（内部API）- 使用事务隔离"""
     user_uuid = uuid.UUID(current_user_id)
     source = body.get("source", "")
     amount = body.get("amount", 0)
@@ -138,36 +138,40 @@ async def earn_points(
     if amount < source_config["min"] or amount > source_config["max"]:
         raise HTTPException(status_code=400, detail=f"积分数量应在{source_config['min']}-{source_config['max']}范围内")
 
-    # 获取账户
-    point_account = await db.fetchrow(
-        "SELECT balance FROM point_accounts WHERE user_id = $1",
-        user_uuid
-    )
-    if point_account is None:
-        await db.execute(
-            "INSERT INTO point_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
-            uuid.uuid4(), user_uuid
+    new_balance = 0
+
+    # 使用事务确保原子性
+    async with db.transaction():
+        # 获取账户并锁定
+        point_account = await db.fetchrow(
+            "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
+            user_uuid
         )
-        current_balance = 0
-    else:
-        current_balance = point_account["balance"]
+        if point_account is None:
+            await db.execute(
+                "INSERT INTO point_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
+                uuid.uuid4(), user_uuid
+            )
+            current_balance = 0
+        else:
+            current_balance = point_account["balance"]
 
-    # 更新账户
-    new_balance = current_balance + amount
-    await db.execute(
-        "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_balance, datetime.utcnow(), user_uuid
-    )
+        # 更新账户
+        new_balance = current_balance + amount
+        await db.execute(
+            "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_balance, datetime.utcnow(), user_uuid
+        )
 
-    # 记录流水
-    await db.execute(
-        """
-        INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        """,
-        uuid.uuid4(), user_uuid, source, amount, new_balance,
-        uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
-    )
+        # 记录流水
+        await db.execute(
+            """
+            INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            uuid.uuid4(), user_uuid, source, amount, new_balance,
+            uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
+        )
 
     return {
         "source": source,
@@ -183,7 +187,7 @@ async def spend_points(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """消费积分（问答悬赏等）"""
+    """消费积分（问答悬赏等）- 使用事务隔离"""
     user_uuid = uuid.UUID(current_user_id)
     amount = body.get("amount", 0)
     description = body.get("description", "")
@@ -192,30 +196,34 @@ async def spend_points(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="消费数量必须大于0")
 
-    # 检查余额
-    point_account = await db.fetchrow(
-        "SELECT balance FROM point_accounts WHERE user_id = $1",
-        user_uuid
-    )
-    if point_account is None or point_account["balance"] < amount:
-        raise HTTPException(status_code=400, detail="积分余额不足")
+    new_balance = 0
 
-    # 更新账户
-    new_balance = point_account["balance"] - amount
-    await db.execute(
-        "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_balance, datetime.utcnow(), user_uuid
-    )
+    # 使用事务确保原子性
+    async with db.transaction():
+        # 检查余额并锁定
+        point_account = await db.fetchrow(
+            "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
+            user_uuid
+        )
+        if point_account is None or point_account["balance"] < amount:
+            raise HTTPException(status_code=400, detail="积分余额不足")
 
-    # 记录流水（消费用exchange来源）
-    await db.execute(
-        """
-        INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
-        VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
-        """,
-        uuid.uuid4(), user_uuid, -amount, new_balance,
-        uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
-    )
+        # 更新账户
+        new_balance = point_account["balance"] - amount
+        await db.execute(
+            "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_balance, datetime.utcnow(), user_uuid
+        )
+
+        # 记录流水（消费用exchange来源）
+        await db.execute(
+            """
+            INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
+            VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
+            """,
+            uuid.uuid4(), user_uuid, -amount, new_balance,
+            uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
+        )
 
     return {
         "amount_spent": amount,
@@ -244,7 +252,7 @@ async def grant_new_user_package(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """发放新用户礼包"""
+    """发放新用户礼包 - 使用事务确保原子性"""
     user_uuid = uuid.UUID(current_user_id)
 
     # 检查是否已领取
@@ -257,12 +265,14 @@ async def grant_new_user_package(
     if existing:
         raise HTTPException(status_code=400, detail="已领取新用户礼包")
 
-    # 发放积分
-    await earn_points_internal(db, user_uuid, "new_user", 500)
+    # 使用事务发放积分和Token
+    async with db.transaction():
+        # 发放积分
+        await earn_points_internal(db, user_uuid, "new_user", 500)
 
-    # 发放Token
-    from app.routes.tokens import reward_tokens_internal
-    await reward_tokens_internal(db, user_uuid, 200, "新用户礼包")
+        # 发放Token
+        from app.routes.tokens import reward_tokens_internal
+        await reward_tokens_internal(db, user_uuid, 200, "新用户礼包")
 
     return {
         "points": 500,
@@ -272,10 +282,10 @@ async def grant_new_user_package(
 
 
 async def earn_points_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, source: str, amount: int):
-    """内部函数：赚取积分"""
-    # 获取账户
+    """内部函数：赚取积分（使用事务隔离，调用者需要在事务内）"""
+    # 获取账户并锁定
     point_account = await db.fetchrow(
-        "SELECT balance FROM point_accounts WHERE user_id = $1",
+        "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
         user_uuid
     )
     if point_account is None:

@@ -21,7 +21,8 @@ export function ParticipantsList({ client }: ParticipantsListProps) {
   useEffect(() => {
     if (!client) return;
 
-    client.on('user_joined', (data) => {
+    // 定义handler函数以便后续清理
+    const handleUserJoined = (data: any) => {
       setParticipants((prev) => [
         ...prev.filter((p) => p.userId !== data.user_id),
         {
@@ -32,15 +33,25 @@ export function ParticipantsList({ client }: ParticipantsListProps) {
           isOnline: true,
         },
       ]);
-    });
+    };
 
-    client.on('user_left', (data) => {
+    const handleUserLeft = (data: any) => {
       setParticipants((prev) =>
         prev.map((p) =>
           p.userId === data.user_id ? { ...p, isOnline: false } : p
         )
       );
-    });
+    };
+
+    // 注册handler
+    client.on('user_joined', handleUserJoined);
+    client.on('user_left', handleUserLeft);
+
+    // 清理函数 - 组件卸载或client变化时移除handler
+    return () => {
+      client.off('user_joined', handleUserJoined);
+      client.off('user_left', handleUserLeft);
+    };
   }, [client]);
 
   const onlineCount = participants.filter((p) => p.isOnline).length;

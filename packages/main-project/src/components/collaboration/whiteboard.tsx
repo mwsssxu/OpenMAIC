@@ -20,11 +20,15 @@ export function Whiteboard({ sync, userId }: WhiteboardProps) {
   useEffect(() => {
     if (!sync) return;
 
-    sync.observe((newElements) => {
+    // observe现在返回清理函数
+    const cleanup = sync.observe((newElements) => {
       setElements(newElements);
     });
 
     setElements(sync.getElements());
+
+    // 清理函数
+    return cleanup;
   }, [sync]);
 
   useEffect(() => {

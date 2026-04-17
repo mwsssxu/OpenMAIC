@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { CollaborationClient } from '@/lib/websocket/collaboration-client';
 
 interface ChatMessage {
@@ -25,11 +26,12 @@ export function ChatPanel({ client, agentId }: ChatPanelProps) {
   useEffect(() => {
     if (!client) return;
 
-    client.on('chat', (data) => {
+    // 定义handler函数以便后续清理
+    const handleChat = (data: any) => {
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now().toString(),
+          id: uuidv4(),
           userId: data.user_id,
           userName: data.user_name,
           content: data.content,
@@ -37,13 +39,13 @@ export function ChatPanel({ client, agentId }: ChatPanelProps) {
           type: 'user',
         },
       ]);
-    });
+    };
 
-    client.on('agent_response', (data) => {
+    const handleAgentResponse = (data: any) => {
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now().toString(),
+          id: uuidv4(),
           userId: data.agent_id,
           userName: data.agent_name,
           content: data.content,
@@ -51,7 +53,17 @@ export function ChatPanel({ client, agentId }: ChatPanelProps) {
           type: 'agent',
         },
       ]);
-    });
+    };
+
+    // 注册handler
+    client.on('chat', handleChat);
+    client.on('agent_response', handleAgentResponse);
+
+    // 清理函数 - 组件卸载或client变化时移除handler
+    return () => {
+      client.off('chat', handleChat);
+      client.off('agent_response', handleAgentResponse);
+    };
   }, [client]);
 
   useEffect(() => {

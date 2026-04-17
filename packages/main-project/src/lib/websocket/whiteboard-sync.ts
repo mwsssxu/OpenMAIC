@@ -20,26 +20,50 @@ export class WhiteboardSync {
   private doc: Y.Doc;
   private provider: WebsocketProvider | null = null;
   private elements: Y.Array<WhiteboardElement>;
+  private token: string;
+  private observers: Array<() => void> = [];
 
   constructor(roomId: string, token: string) {
     this.doc = new Y.Doc();
     this.elements = this.doc.getArray<WhiteboardElement>('whiteboard');
+    this.token = token;
 
+    // Token不再通过URL params传递
     const wsUrl = `${process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:8000'}/sessions/${roomId}/yjs`;
     const wsProtocol = wsUrl.replace('http', 'ws');
 
     this.provider = new WebsocketProvider(
       wsProtocol,
       roomId,
-      this.doc,
-      { params: { token } }
+      this.doc
     );
+
+    // 连接成功后发送认证
+    if (this.provider.ws) {
+      this.provider.ws.onopen = () => {
+        this.provider?.ws?.send(JSON.stringify({ type: 'auth', token: this.token }));
+      };
+    }
   }
 
-  observe(callback: (elements: WhiteboardElement[]) => void): void {
-    this.elements.observe(() => {
+  /**
+   * 观察元素变化，返回清理函数
+   */
+  observe(callback: (elements: WhiteboardElement[]) => void): () => void {
+    const observer = () => {
       callback(this.elements.toArray());
-    });
+    };
+    this.elements.observe(observer);
+    this.observers.push(observer);
+
+    // 返回清理函数
+    return () => {
+      this.elements.unobserve(observer);
+      const index = this.observers.indexOf(observer);
+      if (index > -1) {
+        this.observers.splice(index, 1);
+      }
+    };
   }
 
   addElement(element: WhiteboardElement): void {
@@ -75,6 +99,12 @@ export class WhiteboardSync {
   }
 
   disconnect(): void {
+    // 清理所有observer
+    this.observers.forEach(observer => {
+      this.elements.unobserve(observer);
+    });
+    this.observers = [];
+
     this.provider?.disconnect();
     this.provider?.destroy();
     this.doc.destroy();

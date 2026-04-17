@@ -122,7 +122,7 @@ async def exchange_points_to_tokens(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """积分兑换Token（100积分 = 10 Token）"""
+    """积分兑换Token（100积分 = 10 Token）- 使用事务隔离防止并发问题"""
     user_uuid = uuid.UUID(current_user_id)
     points = body.get("points", 0)
 
@@ -130,62 +130,64 @@ async def exchange_points_to_tokens(
     if points < 100:
         raise HTTPException(status_code=400, detail="最小兑换100积分")
 
-    # 检查积分余额
-    point_account = await db.fetchrow(
-        "SELECT balance FROM point_accounts WHERE user_id = $1",
-        user_uuid
-    )
-    if point_account is None or point_account["balance"] < points:
-        raise HTTPException(status_code=400, detail="积分余额不足")
-
     # 计算Token数量
     tokens = points // 10
 
-    # 获取Token账户
-    token_account = await db.fetchrow(
-        "SELECT balance FROM token_accounts WHERE user_id = $1",
-        user_uuid
-    )
-    if token_account is None:
-        await db.execute(
-            "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
-            uuid.uuid4(), user_uuid
+    # 使用事务确保原子性
+    async with db.transaction():
+        # 使用 FOR UPDATE 锁定行防止并发
+        point_account = await db.fetchrow(
+            "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
+            user_uuid
         )
-        token_balance = 0
-    else:
-        token_balance = token_account["balance"]
+        if point_account is None or point_account["balance"] < points:
+            raise HTTPException(status_code=400, detail="积分余额不足")
 
-    # 更新积分账户
-    new_point_balance = point_account["balance"] - points
-    await db.execute(
-        "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_point_balance, datetime.utcnow(), user_uuid
-    )
+        # 获取Token账户并锁定
+        token_account = await db.fetchrow(
+            "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
+            user_uuid
+        )
+        if token_account is None:
+            await db.execute(
+                "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
+                uuid.uuid4(), user_uuid
+            )
+            token_balance = 0
+        else:
+            token_balance = token_account["balance"]
 
-    # 更新Token账户
-    new_token_balance = token_balance + tokens
-    await db.execute(
-        "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_token_balance, datetime.utcnow(), user_uuid
-    )
+        # 更新积分账户
+        new_point_balance = point_account["balance"] - points
+        await db.execute(
+            "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_point_balance, datetime.utcnow(), user_uuid
+        )
 
-    # 记录积分流水
-    await db.execute(
-        """
-        INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
-        VALUES ($1, $2, 'exchange', $3, $4, $5)
-        """,
-        uuid.uuid4(), user_uuid, -points, new_point_balance, datetime.utcnow()
-    )
+        # 更新Token账户
+        new_token_balance = token_balance + tokens
+        await db.execute(
+            "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_token_balance, datetime.utcnow(), user_uuid
+        )
 
-    # 记录Token流水
-    await db.execute(
-        """
-        INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
-        VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
-        """,
-        uuid.uuid4(), user_uuid, tokens, new_token_balance, f"积分兑换：{points}积分", datetime.utcnow()
-    )
+        # 记录积分流水
+        await db.execute(
+            """
+            INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
+            VALUES ($1, $2, 'exchange', $3, $4, $5)
+            """,
+            uuid.uuid4(), user_uuid, -points, new_point_balance, datetime.utcnow()
+        )
+
+        # 记录Token流水
+        await db.execute(
+            """
+            INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
+            VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
+            """,
+            uuid.uuid4(), user_uuid, tokens, new_token_balance, f"积分兑换：{points}积分", datetime.utcnow()
+        )
 
     return {
         "points_used": points,
@@ -201,7 +203,7 @@ async def spend_tokens(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """消费Token（内部API，用于课程生成等）"""
+    """消费Token（内部API，用于课程生成等）- 使用事务隔离"""
     user_uuid = uuid.UUID(current_user_id)
     amount = body.get("amount", 0)
     description = body.get("description", "")
@@ -210,30 +212,34 @@ async def spend_tokens(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="消费数量必须大于0")
 
-    # 检查余额
-    token_account = await db.fetchrow(
-        "SELECT balance FROM token_accounts WHERE user_id = $1",
-        user_uuid
-    )
-    if token_account is None or token_account["balance"] < amount:
-        raise HTTPException(status_code=400, detail="Token余额不足")
+    new_balance = 0
 
-    # 更新账户
-    new_balance = token_account["balance"] - amount
-    await db.execute(
-        "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_balance, datetime.utcnow(), user_uuid
-    )
+    # 使用事务确保原子性
+    async with db.transaction():
+        # 使用 FOR UPDATE 锁定行
+        token_account = await db.fetchrow(
+            "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
+            user_uuid
+        )
+        if token_account is None or token_account["balance"] < amount:
+            raise HTTPException(status_code=400, detail="Token余额不足")
 
-    # 记录流水
-    await db.execute(
-        """
-        INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, reference_id, created_at)
-        VALUES ($1, $2, 'spend', $3, $4, $5, $6, $7)
-        """,
-        uuid.uuid4(), user_uuid, -amount, new_balance, description,
-        uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
-    )
+        # 更新账户
+        new_balance = token_account["balance"] - amount
+        await db.execute(
+            "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_balance, datetime.utcnow(), user_uuid
+        )
+
+        # 记录流水
+        await db.execute(
+            """
+            INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, reference_id, created_at)
+            VALUES ($1, $2, 'spend', $3, $4, $5, $6, $7)
+            """,
+            uuid.uuid4(), user_uuid, -amount, new_balance, description,
+            uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
+        )
 
     return {
         "amount_spent": amount,
@@ -247,7 +253,7 @@ async def reward_tokens(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """奖励Token（新用户礼包、邀请奖励等）"""
+    """奖励Token（新用户礼包、邀请奖励等）- 使用事务隔离"""
     user_uuid = uuid.UUID(current_user_id)
     amount = body.get("amount", 0)
     description = body.get("description", "")
@@ -255,35 +261,39 @@ async def reward_tokens(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="奖励数量必须大于0")
 
-    # 获取账户
-    token_account = await db.fetchrow(
-        "SELECT balance FROM token_accounts WHERE user_id = $1",
-        user_uuid
-    )
-    if token_account is None:
-        await db.execute(
-            "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
-            uuid.uuid4(), user_uuid
+    new_balance = 0
+
+    # 使用事务确保原子性
+    async with db.transaction():
+        # 获取账户并锁定
+        token_account = await db.fetchrow(
+            "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
+            user_uuid
         )
-        current_balance = 0
-    else:
-        current_balance = token_account["balance"]
+        if token_account is None:
+            await db.execute(
+                "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
+                uuid.uuid4(), user_uuid
+            )
+            current_balance = 0
+        else:
+            current_balance = token_account["balance"]
 
-    # 更新账户
-    new_balance = current_balance + amount
-    await db.execute(
-        "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_balance, datetime.utcnow(), user_uuid
-    )
+        # 更新账户
+        new_balance = current_balance + amount
+        await db.execute(
+            "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_balance, datetime.utcnow(), user_uuid
+        )
 
-    # 记录流水
-    await db.execute(
-        """
-        INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
-        VALUES ($1, $2, 'reward', $3, $4, $5, $6)
-        """,
-        uuid.uuid4(), user_uuid, amount, new_balance, description, datetime.utcnow()
-    )
+        # 记录流水
+        await db.execute(
+            """
+            INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
+            VALUES ($1, $2, 'reward', $3, $4, $5, $6)
+            """,
+            uuid.uuid4(), user_uuid, amount, new_balance, description, datetime.utcnow()
+        )
 
     return {
         "amount_rewarded": amount,
@@ -351,10 +361,10 @@ async def create_purchase_order(
 # ==================== 内部函数 ====================
 
 async def reward_tokens_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, amount: int, description: str):
-    """内部函数：奖励Token"""
-    # 获取账户
+    """内部函数：奖励Token（使用事务隔离，调用者需要在事务内）"""
+    # 获取账户并锁定
     token_account = await db.fetchrow(
-        "SELECT balance FROM token_accounts WHERE user_id = $1",
+        "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
         user_uuid
     )
     if token_account is None:
