@@ -550,3 +550,73 @@ class ReviewRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
+
+
+class LearningPassport(Base):
+    """学习护照表"""
+    __tablename__ = "learning_passports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    skill_name = Column(String(100), nullable=False)
+    skill_category = Column(String(50))
+    skill_level = Column(Integer, default=1)
+    courses_completed = Column(Integer, default=0)
+    projects_completed = Column(Integer, default=0)
+    total_time_hours = Column(Float, default=0)
+    quiz_avg_score = Column(Float)
+    review_completion_rate = Column(Float)
+    verified = Column(Boolean, default=False)
+    verification_hash = Column(String(64))
+    badges = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "skill_name"),
+    )
+
+
+class ProjectPortfolio(Base):
+    """项目作品表"""
+    __tablename__ = "project_portfolios"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="SET NULL"))
+    project_name = Column(String(255), nullable=False)
+    project_type = Column(String(50))
+    description = Column(Text)
+    content_url = Column(Text)
+    thumbnail_url = Column(Text)
+    tags = Column(Text)
+    rating = Column(Integer)
+    ai_feedback = Column(Text)
+    is_public = Column(Boolean, default=True)
+    view_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class SkillAssessment(Base):
+    """技能评估表"""
+    __tablename__ = "skill_assessments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    skill_name = Column(String(100), nullable=False)
+    assessment_type = Column(String(20))
+    score = Column(Float, nullable=False)
+    level_before = Column(Integer)
+    level_after = Column(Integer)
+    passed = Column(Boolean, default=False)
+    details = Column(Text)
+    assessed_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
