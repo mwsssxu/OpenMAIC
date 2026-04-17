@@ -81,6 +81,34 @@ services:
     depends_on:
       - python-server
 
+# Admin Dashboard
+  admin:
+    build:
+      context: ./packages/admin
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://python-server:8000
+    depends_on:
+      - python-server
+    profiles:
+      - admin
+
+  # Main Project
+  main:
+    build:
+      context: ./packages/main-project
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://python-server:8000
+    depends_on:
+      - python-server
+    profiles:
+      - main
+
 volumes:
   pgdata:
   redisdata:
