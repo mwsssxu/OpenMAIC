@@ -958,3 +958,28 @@ class NoteReminder(Base):
     skipped_at = Column(DateTime)
     skip_reason = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LearningAssessment(Base):
+    """学习效果测评表"""
+    __tablename__ = "learning_assessments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_type = Column(String(20), nullable=False)  # 'quick', 'standard', 'deep'
+    questions = Column(Text, nullable=False)  # JSON array
+    answers = Column(Text)  # JSON array
+    duration_minutes = Column(Integer, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    status = Column(String(20), default="pending", index=True)  # 'pending', 'completed', 'expired'
+    score = Column(Float)
+    mastery_level = Column(String(20))  # '精通', '熟练', '掌握', '了解', '需复习'
+    passed = Column(Boolean, default=False)
+    correct_count = Column(Integer)
+    time_spent_minutes = Column(Integer)
+    recommendations = Column(Text)  # JSON array
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+    user = relationship("User")
