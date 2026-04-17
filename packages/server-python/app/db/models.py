@@ -456,3 +456,56 @@ class DailyTaskProgress(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "task_id", "task_date"),
     )
+
+
+class CourseRecommendation(Base):
+    """课程推荐关系表"""
+    __tablename__ = "course_recommendations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    recommendation_type = Column(String(20), nullable=False)
+    weight = Column(Float, default=1.0)
+    reason = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CourseCompletion(Base):
+    """课程完成记录表"""
+    __tablename__ = "course_completions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    completed_at = Column(DateTime, nullable=False)
+    completion_status = Column(String(20), default='completed')
+    rating = Column(Integer)
+    notes = Column(Text)
+    scenes_completed = Column(Integer, default=0)
+    total_scenes = Column(Integer, default=0)
+    time_spent_minutes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "course_id"),
+    )
+
+
+class LearningPath(Base):
+    """学习路径表"""
+    __tablename__ = "learning_paths"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    path_name = Column(String(255), nullable=False)
+    description = Column(Text)
+    course_ids = Column(Text)
+    status = Column(String(20), default='active')
+    progress = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
