@@ -29,8 +29,11 @@ export default function CreateClassroomPage() {
 
   if (isLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-gray-500">加载中...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
+        <div className="bg-white/90 backdrop-blur rounded-2xl p-8 shadow-xl">
+          <div className="loading-spinner mx-auto mb-4"></div>
+          <div className="text-gray-600 font-medium">加载中...</div>
+        </div>
       </div>
     );
   }
@@ -68,14 +71,12 @@ export default function CreateClassroomPage() {
     setLoading(true);
 
     try {
-      // 创建课程
       const classroom = await apiClient.createClassroom({
         name: topic,
         description: description,
         language_directive: 'zh-CN',
       });
 
-      // 生成场景
       await apiClient.generateScenes({
         outlines: outlines,
         language: 'zh-CN',
@@ -92,107 +93,164 @@ export default function CreateClassroomPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-primary text-white shadow">
+      <header className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white shadow-lg">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold hover:underline">
-            OpenMAIC Business
+          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-xl">
+              🎯
+            </div>
+            <span className="text-xl font-bold">OpenMAIC</span>
           </Link>
-          <Link href="/classrooms" className="text-sm hover:underline">
-            返回列表
+          <Link href="/classrooms" className="bg-white/20 px-4 py-2 rounded-lg hover:bg-white/30 transition-colors flex items-center gap-1">
+            <span>📚</span> 返回列表
           </Link>
         </div>
       </header>
 
       {/* Main */}
       <main className="container mx-auto px-4 py-8 max-w-2xl">
-        <h1 className="text-2xl font-bold mb-6">创建课程</h1>
+        {/* 页面标题 */}
+        <div className="mb-8 text-center animate-fade-in">
+          <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg">
+            ✍️
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">创建新课程</h1>
+          <p className="text-gray-500 mt-2">AI助您快速生成专业的交互式课程</p>
+        </div>
 
         {error && (
-          <div className="bg-error/10 text-error rounded-md p-3 text-sm mb-4">
-            {error}
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm mb-4 flex items-center gap-2 animate-scale-in">
+            <span>⚠️</span> {error}
           </div>
         )}
 
         {/* Step 1: Topic Input */}
-        <div className="bg-white rounded-card shadow p-6 mb-6">
-          <h2 className="font-semibold mb-4">Step 1: 输入课程主题</h2>
+        <div className="card p-6 mb-6 animate-slide-in">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center text-xl text-white shadow">
+              1
+            </div>
+            <h2 className="font-bold text-lg text-gray-800">输入课程主题</h2>
+          </div>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="topic">课程主题</Label>
+              <Label htmlFor="topic" className="text-gray-700 font-medium flex items-center gap-1">
+                <span>🎯</span> 课程主题
+              </Label>
               <Input
                 id="topic"
                 placeholder="例如：SWOT分析、市场定位策略、Porter五力模型..."
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
+                className="input-field mt-2"
               />
             </div>
             <div>
-              <Label htmlFor="description">课程描述（可选）</Label>
+              <Label htmlFor="description" className="text-gray-700 font-medium flex items-center gap-1">
+                <span>📝</span> 课程描述（可选）
+              </Label>
               <Input
                 id="description"
                 placeholder="详细描述课程目标和学习内容..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                className="input-field mt-2"
               />
             </div>
             <Button
               onClick={handleGenerateOutline}
               disabled={generating || !topic.trim()}
+              className="btn-primary w-full py-3"
             >
-              {generating ? '生成中...' : '生成大纲'}
+              {generating ? (
+                <span className="flex items-center gap-2">
+                  <span className="loading-spinner"></span> AI正在思考...
+                </span>
+              ) : '🚀 生成大纲'}
             </Button>
           </div>
         </div>
 
         {/* Step 2: Outline Preview */}
         {outlines.length > 0 && (
-          <div className="bg-white rounded-card shadow p-6 mb-6 animate-fade-in">
-            <h2 className="font-semibold mb-4">Step 2: 大纲预览</h2>
-            <div className="space-y-2">
+          <div className="card p-6 mb-6 animate-bounce-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center text-xl text-white shadow">
+                2
+              </div>
+              <h2 className="font-bold text-lg text-gray-800">大纲预览</h2>
+            </div>
+
+            {/* 大纲列表 */}
+            <div className="space-y-3">
               {outlines.map((outline, index) => (
                 <div
                   key={outline.id}
-                  className="border rounded-md p-3 flex items-center gap-3"
+                  className="flex items-center gap-4 p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:border-indigo-200 transition-colors group"
                 >
-                  <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center text-sm font-medium">
+                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-400 rounded-xl flex items-center justify-center text-white font-bold shadow group-hover:scale-110 transition-transform">
                     {index + 1}
                   </div>
-                  <div>
-                    <div className="font-medium">{outline.title}</div>
-                    <div className="text-sm text-gray-500">
-                      {outline.type === 'slide' ? '幻灯片' :
-                       outline.type === 'quiz' ? '测验' :
-                       outline.type === 'interactive' ? '互动' : '项目式学习'}
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-800">{outline.title}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="badge badge-primary text-xs">
+                        {outline.type === 'slide' ? '📊 幻灯片' :
+                         outline.type === 'quiz' ? '❓ 测验' :
+                         outline.type === 'interactive' ? '🎮 互动' : '📋 项目式学习'}
+                      </span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex gap-2">
+
+            {/* 操作按钮 */}
+            <div className="mt-6 flex gap-3">
               <Button
                 onClick={handleCreateClassroom}
                 disabled={loading}
+                className="btn-secondary flex-1 py-3"
               >
-                {loading ? '创建中...' : '确认创建'}
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="loading-spinner"></span> 创建中...
+                  </span>
+                ) : '✅ 确认创建'}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setOutlines([])}
+                className="hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200"
               >
-                重新生成
+                🔄 重新生成
               </Button>
             </div>
           </div>
         )}
 
         {/* Tips */}
-        <div className="bg-accent-gold/10 rounded-card p-4">
-          <h3 className="font-semibold text-accent-gold mb-2">💡 提示</h3>
-          <div className="text-sm text-gray-600">
-            <p>• 课程生成会消耗10-50 Token</p>
-            <p>• 大纲生成约需5-10秒</p>
-            <p>• 场景生成约需30-60秒</p>
-            <p>• 支持商业策略主题：市场分析、竞争格局、财务评估等</p>
+        <div className="bg-gradient-to-r from-yellow-50 via-orange-50 to-amber-50 border border-yellow-200 rounded-2xl p-6 animate-slide-in">
+          <h3 className="font-bold text-orange-600 mb-3 flex items-center gap-2">
+            <span className="text-xl">💡</span> 使用技巧
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+            <div className="flex items-start gap-2">
+              <div className="badge badge-warning">Token</div>
+              <p>课程生成消耗10-50 Token</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="badge badge-primary">AI</div>
+              <p>大纲生成约需5-10秒</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="badge badge-success">推荐</div>
+              <p>商业策略主题效果最佳</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="badge badge-primary">支持</div>
+              <p>市场分析、竞争格局等</p>
+            </div>
           </div>
         </div>
       </main>
