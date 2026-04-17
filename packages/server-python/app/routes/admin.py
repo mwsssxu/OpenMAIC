@@ -87,6 +87,9 @@ async def list_users(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List users with search and filter."""
+    # SECURITY: Field names in conditions are hardcoded (not user input)
+    # When adding new filter fields, ensure they are from ALLOWED_FILTER_FIELDS
+    ALLOWED_FILTER_FIELDS = {"email", "nickname", "subscription_tier", "is_active"}
     conditions = []
     params = []
 
