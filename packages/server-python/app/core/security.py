@@ -2,7 +2,7 @@
 安全模块 - JWT 和密码处理
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from app.core.config import settings
@@ -23,9 +23,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(user_id: str, expires_delta: timedelta = None) -> str:
     """创建 JWT access token"""
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     payload = {
         "sub": user_id,
@@ -37,7 +37,7 @@ def create_access_token(user_id: str, expires_delta: timedelta = None) -> str:
 
 def create_refresh_token(user_id: str) -> str:
     """创建 JWT refresh token"""
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "exp": expire,
