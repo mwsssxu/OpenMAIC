@@ -29,19 +29,20 @@ async def get_dashboard_stats(
         today
     ) or 0
 
-    total_courses = await db.fetchval("SELECT COUNT(*) FROM classrooms")
-    generated_today = await db.fetchval("SELECT COUNT(*) FROM classrooms WHERE DATE(created_at) = $1", today) or 0
+    # Fix: table name is 'stages', field name is 'type'
+    total_courses = await db.fetchval("SELECT COUNT(*) FROM stages")
+    generated_today = await db.fetchval("SELECT COUNT(*) FROM stages WHERE DATE(created_at) = $1", today) or 0
 
     revenue_today = await db.fetchval(
-        "SELECT COALESCE(SUM(amount), 0) FROM token_transactions WHERE transaction_type = 'purchase' AND DATE(created_at) = $1",
+        "SELECT COALESCE(SUM(amount), 0) FROM token_transactions WHERE type = 'purchase' AND DATE(created_at) = $1",
         today
     ) or 0
     tokens_purchased = await db.fetchval(
-        "SELECT COALESCE(SUM(tokens), 0) FROM token_transactions WHERE transaction_type = 'purchase' AND DATE(created_at) = $1",
+        "SELECT COALESCE(SUM(tokens), 0) FROM token_transactions WHERE type = 'purchase' AND DATE(created_at) = $1",
         today
     ) or 0
     points_earned = await db.fetchval(
-        "SELECT COALESCE(SUM(points), 0) FROM point_transactions WHERE transaction_type = 'earn' AND DATE(created_at) = $1",
+        "SELECT COALESCE(SUM(points), 0) FROM point_transactions WHERE type = 'earn' AND DATE(created_at) = $1",
         today
     ) or 0
 
@@ -113,10 +114,11 @@ async def get_user_detail(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get detailed user info. Requires users.view permission."""
+    # Note: league_tier field removed as it doesn't exist in users table
     user = await db.fetchrow(
         """
         SELECT u.id, u.email, u.nickname, u.avatar_url, u.token_balance, u.point_balance,
-               u.subscription_tier, u.league_tier, u.created_at, u.is_active,
+               u.subscription_tier, u.created_at, u.is_active,
                (SELECT COUNT(*) FROM stages WHERE user_id = u.id) as courses_count,
                (SELECT COUNT(*) FROM daily_checkins WHERE user_id = u.id) as checkins_count
         FROM users u WHERE u.id = $1
@@ -127,10 +129,10 @@ async def get_user_detail(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Get recent activity
+    # Get recent activity - fix: field name is 'type' not 'transaction_type'
     recent_transactions = await db.fetch(
         """
-        SELECT transaction_type, amount, created_at FROM token_transactions
+        SELECT type, amount, created_at FROM token_transactions
         WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10
         """,
         user_id

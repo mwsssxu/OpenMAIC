@@ -5,19 +5,35 @@ OpenMAIC Python Backend - FastAPI 入口
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 
 from app.core.config import settings
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
 from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    # SECURITY CHECK: Verify SECRET_KEY is configured
+    if not settings.SECRET_KEY:
+        if settings.TESTING_MODE:
+            # Allow empty key in testing mode (use default)
+            settings.SECRET_KEY = "test-secret-key-for-development-only"
+            logger.warning("Using default SECRET_KEY for testing mode - NOT SAFE FOR PRODUCTION!")
+        else:
+            raise RuntimeError(
+                "SECRET_KEY must be set in environment variables for production! "
+                "Set SECRET_KEY in .env file or environment."
+            )
+
     # 启动时初始化数据库和 Redis 连接
     await init_db()
     await init_redis()
+    logger.info(f"OpenMAIC Backend v0.23.0 started - TESTING_MODE: {settings.TESTING_MODE}")
     yield
     # 关闭时清理资源
     await close_redis()

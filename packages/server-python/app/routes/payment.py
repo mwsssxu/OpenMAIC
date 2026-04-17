@@ -228,6 +228,29 @@ async def get_order_detail(
 
 # ==================== 支付回调 ====================
 
+# SECURITY WARNING: Payment callbacks MUST verify signatures in production!
+# Without proper signature verification, malicious actors can forge payment success.
+# Implement real signature verification using WeChat/Alipay SDK before production deployment.
+
+import hashlib
+import hmac
+
+def verify_wechat_signature(body: bytes, signature: str, api_key: str) -> bool:
+    """微信支付签名验证框架 - 生产环境必须实现"""
+    # TODO: 使用微信支付SDK实现真实验证
+    # 示例: HMAC-SHA256 签名验证
+    expected_sig = hmac.new(api_key.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected_sig)
+
+def verify_alipay_signature(params: dict, alipay_public_key: str) -> bool:
+    """支付宝签名验证框架 - 生产环境必须实现"""
+    # TODO: 使用支付宝SDK实现RSA2签名验证
+    # from alipay import AliPay
+    # alipay = AliPay(alipay_public_key=alipay_public_key)
+    # return alipay.verify(params)
+    return False  # 默认返回False，生产环境必须实现
+
+
 @router.post("/callback/wechat")
 async def wechat_pay_callback(
     request: Request,
@@ -241,8 +264,17 @@ async def wechat_pay_callback(
     except json.JSONDecodeError:
         return {"code": "FAIL", "message": "无效的数据格式"}
 
-    # TODO: 实际验证签名
-    # 这里假设验证成功
+    # CRITICAL: 签名验证 - 生产环境必须启用
+    # 从配置获取微信API密钥
+    # wechat_api_key = settings.WECHAT_PAY_API_KEY
+    # if wechat_api_key:
+    #     signature = request.headers.get("Wechatpay-Signature", "")
+    #     if not verify_wechat_signature(body, signature, wechat_api_key):
+    #         logger.warning(f"微信支付签名验证失败: {out_trade_no}")
+    #         return {"code": "FAIL", "message": "签名验证失败"}
+    # else:
+    #     # 开发环境警告
+    #     logger.warning("微信支付签名验证未启用 - 仅限开发环境使用")
 
     # 解析订单号和交易号
     out_trade_no = data.get("out_trade_no", "")
@@ -353,6 +385,7 @@ async def process_payment_success(
 
 
 # ==================== 模拟支付（测试用） ====================
+# SECURITY WARNING: This endpoint MUST be disabled in production!
 
 @router.post("/mock-pay/{order_id}")
 async def mock_pay_success(
@@ -360,7 +393,13 @@ async def mock_pay_success(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """模拟支付成功（仅用于测试）"""
+    """模拟支付成功（仅用于测试环境）"""
+    # SECURITY: Block in production environment
+    if not settings.TESTING_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail="Mock payment not available in production environment"
+        )
     user_uuid = uuid.UUID(current_user_id)
     o_uuid = uuid.UUID(order_id)
 

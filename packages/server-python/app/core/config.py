@@ -19,8 +19,9 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
 
-    # JWT
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    # JWT - SECURITY WARNING: Must set SECRET_KEY in production!
+    # Default empty value forces configuration check on startup
+    SECRET_KEY: str = ""  # Required! Set via environment variable
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

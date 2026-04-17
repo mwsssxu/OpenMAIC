@@ -34,26 +34,26 @@ async def get_dashboard_stats(
         today
     ) or 0
 
-    # Get course stats
-    total_courses = await db.fetchval("SELECT COUNT(*) FROM classrooms")
+    # Get course stats (table name is 'stages' not 'classrooms')
+    total_courses = await db.fetchval("SELECT COUNT(*) FROM stages")
     generated_today = await db.fetchval(
-        "SELECT COUNT(*) FROM classrooms WHERE DATE(created_at) = $1", today
+        "SELECT COUNT(*) FROM stages WHERE DATE(created_at) = $1", today
     ) or 0
 
-    # Get economy stats
+    # Get economy stats (field name is 'type' not 'transaction_type')
     revenue_today = await db.fetchval(
         "SELECT COALESCE(SUM(amount), 0) FROM token_transactions "
-        "WHERE transaction_type = 'purchase' AND DATE(created_at) = $1",
+        "WHERE type = 'purchase' AND DATE(created_at) = $1",
         today
     ) or 0
     tokens_purchased = await db.fetchval(
         "SELECT COALESCE(SUM(tokens), 0) FROM token_transactions "
-        "WHERE transaction_type = 'purchase' AND DATE(created_at) = $1",
+        "WHERE type = 'purchase' AND DATE(created_at) = $1",
         today
     ) or 0
     points_earned = await db.fetchval(
         "SELECT COALESCE(SUM(points), 0) FROM point_transactions "
-        "WHERE transaction_type = 'earn' AND DATE(created_at) = $1",
+        "WHERE type = 'earn' AND DATE(created_at) = $1",
         today
     ) or 0
 
