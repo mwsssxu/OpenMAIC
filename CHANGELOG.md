@@ -4,6 +4,149 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+---
+
+## OpenMAIC Business Releases
+
+### [v0.23.0] - 2026-04-17 — Production Ready ✅
+
+**Final release with all phases complete.**
+
+- **API Endpoints:** 231
+- **Database Tables:** 62
+- **Frontend Pages:** 67
+
+#### Commercial Loop (P1)
+- Learning assessment with mastery levels (精通/熟练/掌握/了解/需复习)
+- Course completion with recommendations
+- Note citations linking to course content
+- Note reminders after completion
+
+#### Enterprise (P4)
+- Enterprise account management
+- Team invitations with roles (owner/admin/member/viewer)
+- Course assignments and learning reports
+- Admin dashboard (16 pages)
+
+#### AI Extensions (P2)
+- Video-to-course (YouTube/Bilibili)
+- AI Personas (孔子/苏格拉底/达芬奇)
+- Programming templates with auto-grading
+- Learning depth levels (skim/understand/master)
+
+#### Performance (Phase 6)
+- Redis caching for hot data
+- Docker multi-stage builds
+- Deployment documentation (K8s)
+
+---
+
+### [v0.22.0] - 2026-04-17
+
+- Enterprise routes (12 endpoints)
+- Enterprise database schema (6 tables)
+
+### [v0.21.0] - 2026-04-17
+
+- Note citations routes (5 endpoints)
+- Citation tracking on scenes
+
+### [v0.20.0] - 2026-04-17
+
+- Course completion tracking
+- Course recommendations
+
+### [v0.19.0] - 2026-04-16
+
+- AI personas sessions
+- Learning passport
+- Interval review (Ebbinghaus)
+
+### [v0.18.0] - 2026-04-16
+
+- Video course generation
+- Programming templates
+- Learning depth config
+
+### [v0.17.0] - 2026-04-16
+
+- Share card generation
+- Note reminder templates
+
+### [v0.16.0] - 2026-04-16
+
+- League system (7 levels)
+- Achievement expansion
+
+### [v0.15.0] - 2026-04-16
+
+- Daily check-in (incremental rewards)
+- Daily tasks (6 types)
+
+### [v0.14.0] - 2026-04-15
+
+- Learning buddy (6 AI types)
+- Shared notes marketplace (70/30 split)
+- Learning matching
+
+### [v0.13.0] - 2026-04-15
+
+- Token purchase packages
+- Point rewards
+- Subscription tiers
+
+### [v0.12.0] - 2026-04-15
+
+- Question bounty
+- Invite rewards
+
+### [v0.11.0] - 2026-04-15
+
+- Point accounts/transactions
+- Token balance
+
+### [v0.10.0] - 2026-04-14
+
+- Admin JWT auth
+- RBAC permissions
+- Content moderation
+
+### [v0.9.0] - 2026-04-14
+
+- Learning assessment routes
+
+### [v0.8.0] - 2026-04-14 — Enhanced Experience
+
+- Whiteboard improvements
+- TTS voice options
+- Slide export formats
+
+### [v0.7.0] - 2026-04-13
+
+- Multi-agent classroom
+- Scene management
+
+### [v0.6.0] - 2026-04-13
+
+- OSS media upload
+- Media routes
+
+### [v0.5.0] - 2026-04-12
+
+- WebSocket classroom
+- Real-time collaboration
+
+### [v0.4.0] - 2026-04-12 — Core Refactor
+
+- Async SQLAlchemy with asyncpg
+- UUID primary keys
+- JWT authentication
+- Alembic migrations
+
+---
+
+## Original OpenMAIC Releases
+
 ## [0.1.0] - 2026-03-26
 
 The first tagged release of OpenMAIC, including all improvements since the initial open-source launch.
