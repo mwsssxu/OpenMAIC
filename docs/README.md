@@ -36,6 +36,11 @@ OpenMAIC Business 是一个开源的商业策略研究平台，将文档或主�
 ### 实现计划 (superpowers/plans/)
 - [P0: 商业模式闭环修复](superpowers/plans/2026-04-17-p0-business-loop-fix.md) - 积分比例+会员订阅实现计划
 
+### 营销推广 (marketing/)
+- [推广计划](marketing/promotion-plan.md) - 产品整体推广策略
+- [社交媒体运营计划](marketing/social-media-plan.md) - 各平台运营策略
+- [营销活动计划](marketing/activity-plan.md) - 各类营销活动设计
+
 ### 开发计划
 - [下阶段开发计划](next-phase-plan.md) - P1/P2/P4任务整合
 
