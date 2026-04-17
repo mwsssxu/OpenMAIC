@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
-from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport
+from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin
 
 
 @asynccontextmanager
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OpenMAIC API",
     description="多用户交互课堂 API - 支持成就系统、打卡激励、课程分享、多人实时讨论、问答悬赏、邀请奖励、支付系统、会员订阅、学习搭子、共享笔记、学习匹配、游戏化增强、课程推荐、间隔复习、学习护照",
-    version="0.11.0",
+    version="0.12.0",
     lifespan=lifespan,
 )
 
@@ -65,9 +65,10 @@ app.include_router(gamification.router, prefix="/gamification", tags=["游戏化
 app.include_router(recommendations.router, prefix="/recommendations", tags=["课程推荐"])
 app.include_router(review.router, prefix="/review", tags=["间隔复习"])
 app.include_router(passport.router, prefix="/passport", tags=["学习护照"])
+app.include_router(admin.router, tags=["管理后台"])
 
 
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    return {"status": "ok", "version": "0.11.0"}
+    return {"status": "ok", "version": "0.12.0"}

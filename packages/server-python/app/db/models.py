@@ -2,7 +2,7 @@
 SQLAlchemy ORM 模型定义
 """
 
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, UniqueConstraint, Float
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
@@ -620,3 +620,79 @@ class SkillAssessment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
+
+
+class AdminLog(Base):
+    """管理员操作日志表"""
+    __tablename__ = "admin_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    action = Column(String(50), nullable=False)
+    target = Column(String(255), nullable=False)
+    details = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LLMConfig(Base):
+    """LLM配置表"""
+    __tablename__ = "llm_configs"
+
+    provider = Column(String(50), primary_key=True)
+    model = Column(String(100), nullable=False)
+    api_key = Column(String(255))
+    temperature = Column(Float, default=0.7)
+    max_tokens = Column(Integer, default=2000)
+    top_p = Column(Float, default=0.9)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PricingConfig(Base):
+    """价格配置表"""
+    __tablename__ = "pricing_configs"
+
+    type = Column(String(20), primary_key=True)  # 'token_pack' or 'subscription'
+    name = Column(String(50), primary_key=True)
+    price = Column(Float, nullable=False)
+    tokens = Column(Integer, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("type", "name"),
+    )
+
+
+class RewardRule(Base):
+    """积分奖励规则表"""
+    __tablename__ = "reward_rules"
+
+    action = Column(String(50), primary_key=True)
+    points = Column(Integer, nullable=False)
+    description = Column(String(100), nullable=False)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ReviewRewardConfig(Base):
+    """复习奖励配置表"""
+    __tablename__ = "review_reward_configs"
+
+    review_type = Column(String(50), primary_key=True)
+    points = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SystemSetting(Base):
+    """系统设置表"""
+    __tablename__ = "system_settings"
+
+    key = Column(String(50), primary_key=True)
+    value = Column(Text, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
