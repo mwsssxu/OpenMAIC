@@ -252,6 +252,296 @@ class ApiClient {
     const { data } = await this.client.post('/points/new_user_package');
     return data;
   }
+
+  // ==================== Questions ====================
+
+  async getQuestions(page?: number, limit?: number, sort?: string) {
+    const { data } = await this.client.get('/questions', {
+      params: { page, limit, sort },
+    });
+    return data;
+  }
+
+  async getQuestion(id: string) {
+    const { data } = await this.client.get(`/questions/${id}`);
+    return data;
+  }
+
+  async createQuestion(title: string, content: string, bounty?: number, tags?: string) {
+    const { data } = await this.client.post('/questions', { title, content, bounty, tags });
+    return data;
+  }
+
+  // ==================== Answers ====================
+
+  async getAnswers(questionId: string) {
+    const { data } = await this.client.get(`/answers/question/${questionId}`);
+    return data;
+  }
+
+  async createAnswer(questionId: string, content: string) {
+    const { data } = await this.client.post('/answers', { question_id: questionId, content });
+    return data;
+  }
+
+  async voteAnswer(answerId: string, vote: number) {
+    const { data } = await this.client.post(`/answers/${answerId}/vote`, { vote });
+    return data;
+  }
+
+  async acceptAnswer(answerId: string) {
+    const { data } = await this.client.post(`/answers/${answerId}/accept`);
+    return data;
+  }
+
+  // ==================== Invitations ====================
+
+  async getMyInviteCode() {
+    const { data } = await this.client.get('/invitations/my-code');
+    return data;
+  }
+
+  async getInvitationStats() {
+    const { data } = await this.client.get('/invitations/stats');
+    return data;
+  }
+
+  async applyInviteCode(code: string) {
+    const { data } = await this.client.post('/invitations/apply', { code });
+    return data;
+  }
+
+  // ==================== Payment ====================
+
+  async getPaymentPackages() {
+    const { data } = await this.client.get('/payment/packages');
+    return data;
+  }
+
+  async createPaymentOrder(packageId: string, paymentMethod: string) {
+    const { data } = await this.client.post('/payment/create-order', {
+      package_id: packageId,
+      payment_method: paymentMethod,
+    });
+    return data;
+  }
+
+  async getPaymentOrders() {
+    const { data } = await this.client.get('/payment/orders');
+    return data;
+  }
+
+  async mockPayment(orderId: string) {
+    const { data } = await this.client.post(`/payment/mock-pay/${orderId}`);
+    return data;
+  }
+
+  // ==================== Buddy ====================
+
+  async getBuddyTypes() {
+    const { data } = await this.client.get('/buddy/types');
+    return data;
+  }
+
+  async getMyBuddyConfig() {
+    const { data } = await this.client.get('/buddy/my-config');
+    return data;
+  }
+
+  async setBuddyConfig(buddyType: string, buddyName?: string, toneStyle?: string) {
+    const { data } = await this.client.post('/buddy/config', {
+      buddy_type: buddyType,
+      buddy_name: buddyName,
+      tone_style: toneStyle,
+    });
+    return data;
+  }
+
+  async getBuddyMessages(page?: number, limit?: number, unreadOnly?: boolean) {
+    const { data } = await this.client.get('/buddy/messages', {
+      params: { page, limit, unread_only: unreadOnly },
+    });
+    return data;
+  }
+
+  async markBuddyMessageRead(messageId: string) {
+    const { data } = await this.client.post(`/buddy/messages/${messageId}/read`);
+    return data;
+  }
+
+  // ==================== Notes ====================
+
+  async getNotes(page?: number, limit?: number, sort?: string) {
+    const { data } = await this.client.get('/notes', {
+      params: { page, limit, sort },
+    });
+    return data;
+  }
+
+  async getNote(id: string) {
+    const { data } = await this.client.get(`/notes/${id}`);
+    return data;
+  }
+
+  async publishNote(title: string, content: string, visibility?: string, price?: number, tags?: string) {
+    const { data } = await this.client.post('/notes', {
+      title,
+      content,
+      visibility,
+      price,
+      tags,
+    });
+    return data;
+  }
+
+  async purchaseNote(noteId: string) {
+    const { data } = await this.client.post(`/notes/${noteId}/purchase`);
+    return data;
+  }
+
+  async rateNote(noteId: string, rating: number) {
+    const { data } = await this.client.post(`/notes/${noteId}/rating`, { rating });
+    return data;
+  }
+
+  async getMyNoteEarnings() {
+    const { data } = await this.client.get('/notes/my/earnings');
+    return data;
+  }
+
+  // ==================== Matching ====================
+
+  async getMatchingPreferences() {
+    const { data } = await this.client.get('/matching/preferences');
+    return data;
+  }
+
+  async setMatchingPreferences(goalTags: string[], courseIds: string[], progressLevel: string, schedulePreference: string) {
+    const { data } = await this.client.post('/matching/preferences', {
+      goal_tags: goalTags,
+      course_ids: courseIds,
+      progress_level: progressLevel,
+      schedule_preference: schedulePreference,
+    });
+    return data;
+  }
+
+  async searchMatches() {
+    const { data } = await this.client.post('/matching/search');
+    return data;
+  }
+
+  async getPendingMatches() {
+    const { data } = await this.client.get('/matching/pending');
+    return data;
+  }
+
+  async acceptMatch(matchId: string) {
+    const { data } = await this.client.post(`/matching/${matchId}/accept`);
+    return data;
+  }
+
+  async rejectMatch(matchId: string) {
+    const { data } = await this.client.post(`/matching/${matchId}/reject`);
+    return data;
+  }
+
+  async getAcceptedMatches() {
+    const { data } = await this.client.get('/matching/accepted');
+    return data;
+  }
+
+  // ==================== Gamification ====================
+
+  async getMyLeague() {
+    const { data } = await this.client.get('/gamification/league');
+    return data;
+  }
+
+  async getLeagueLeaderboard(tier?: string) {
+    const { data } = await this.client.get('/gamification/league/leaderboard', {
+      params: { tier },
+    });
+    return data;
+  }
+
+  async getDailyTasks() {
+    const { data } = await this.client.get('/gamification/tasks');
+    return data;
+  }
+
+  async updateTaskProgress(taskId: string, progress: number) {
+    const { data } = await this.client.post(`/gamification/tasks/${taskId}/progress`, { progress });
+    return data;
+  }
+
+  async completeCheckinTask() {
+    const { data } = await this.client.post('/gamification/tasks/checkin-complete');
+    return data;
+  }
+
+  async getStreakRewards(streak?: number) {
+    const { data } = await this.client.get('/gamification/streak-rewards', {
+      params: { streak },
+    });
+    return data;
+  }
+
+  // ==================== Checkin ====================
+
+  async dailyCheckin() {
+    const { data } = await this.client.post('/checkin/checkin');
+    return data;
+  }
+
+  async getCheckinStatus() {
+    const { data } = await this.client.get('/checkin/me');
+    return data;
+  }
+
+  async getCheckinLeaderboard() {
+    const { data } = await this.client.get('/checkin/leaderboard');
+    return data;
+  }
+
+  // ==================== Achievements ====================
+
+  async getAchievements() {
+    const { data } = await this.client.get('/achievements');
+    return data;
+  }
+
+  async getMyAchievements() {
+    const { data } = await this.client.get('/achievements/me');
+    return data;
+  }
+
+  async getAchievementProgress() {
+    const { data } = await this.client.get('/achievements/me/progress');
+    return data;
+  }
+
+  async checkAchievements() {
+    const { data } = await this.client.post('/achievements/check');
+    return data;
+  }
+
+  // ==================== Subscriptions ====================
+
+  async getSubscriptionStatus() {
+    const { data } = await this.client.get('/subscriptions/status');
+    return data;
+  }
+
+  async getSubscriptionFeatures() {
+    const { data } = await this.client.get('/subscriptions/features');
+    return data;
+  }
+
+  async startTrial() {
+    const { data } = await this.client.post('/subscriptions/trial');
+    return data;
+  }
 }
 
 export const apiClient = new ApiClient();
