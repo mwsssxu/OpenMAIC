@@ -7,7 +7,18 @@
 </p>
 
 <p align="center">
-  Get an immersive, multi-agent learning experience in just one click
+  <strong>OpenMAIC Business</strong> — Commercial Extension for OpenMAIC
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-v0.23.0-blue?style=flat-square" alt="Version"/>
+  <img src="https://img.shields.io/badge/API-231_endpoints-green?style=flat-square" alt="API"/>
+  <img src="https://img.shields.io/badge/Tables-62-orange?style=flat-square" alt="Tables"/>
+  <img src="https://img.shields.io/badge/Status-Production_Ready-brightgreen?style=flat-square" alt="Status"/>
+</p>
+
+<p align="center">
+  <strong>Based on:</strong> Get an immersive, multi-agent learning experience in just one click
 </p>
 
 <p align="center">
@@ -38,6 +49,7 @@
 
 ## 🗞️ News
 
+- **2026-04-17** — **OpenMAIC Business v0.23.0 released!** Commercial extensions: enterprise features, assessment system, payment, gamification. See [changelog](CHANGELOG.md).
 - **2026-03-26** — [v0.1.0 released!](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.1.0) Discussion TTS, immersive mode, keyboard shortcuts, whiteboard enhancements, new providers, and more. See [changelog](CHANGELOG.md).
 
 ## 📖 Overview
@@ -54,6 +66,19 @@ https://github.com/user-attachments/assets/b4ab35ac-f994-46b1-8957-e82fe87ff0e9
 - **Whiteboard & TTS** — Agents draw diagrams, write formulas, and explain out loud
 - **Export anywhere** — Download editable `.pptx` slides or interactive `.html` pages
 - **[OpenClaw integration](#-openclaw-integration)** — Generate classrooms from Feishu, Slack, Telegram, and 20+ messaging apps via your AI assistant
+
+### 🆕 Business Extensions
+
+| Category | Features |
+|----------|----------|
+| **Commercial** | Token purchases, point rewards, subscriptions, bounties, invite rewards |
+| **Enterprise** | Team management, course assignments, learning reports, admin dashboard |
+| **Assessment** | Mastery levels (精通/熟练/掌握/了解/需复习), course recommendations, review scheduling |
+| **Social** | Learning buddy (6 AI types), shared notes (70/30 split), learning matching, share cards |
+| **Gamification** | Daily check-in, tasks, leagues (7 levels), achievements |
+| **AI Enhanced** | Video-to-course, AI personas (孔子/苏格拉底/达芬奇), programming templates |
+
+**Tech Stats:** 231 API endpoints • 62 database tables • 67 frontend pages • 25 migrations
 
 ---
 
