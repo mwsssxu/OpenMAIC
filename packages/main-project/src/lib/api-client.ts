@@ -143,13 +143,97 @@ class ApiClient {
     return data;
   }
 
-  // SSE stream for chat
-  getChatStream(body: { messages: any[]; config?: any; storeState?: any }) {
-    const url = `${API_URL}/chat`;
-    return new EventSource(url, {
-      // Note: EventSource doesn't support POST, so this is for GET-based streaming
-      // For POST streaming, use fetch with SSE parsing
+  // SSE stream for chat - uses fetch for POST streaming
+  async streamChat(
+    body: { messages: any[]; config?: any; storeState?: any },
+    onChunk: (chunk: string) => void,
+    onError?: (error: Error) => void
+  ) {
+    const response = await fetch(`${API_URL}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': this.token ? `Bearer ${this.token}` : '',
+      },
+      body: JSON.stringify(body),
     });
+
+    if (!response.ok) {
+      const error = new Error(`Stream error: ${response.status}`);
+      onError?.(error);
+      throw error;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        // Parse SSE format: "data: {...}\n\n"
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data !== '[DONE]') {
+              onChunk(data);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError?.(error as Error);
+    }
+  }
+
+  // SSE stream for outline generation
+  async streamOutlines(
+    body: { requirement: string; pdf_content?: string; language?: string },
+    onChunk: (chunk: string) => void,
+    onError?: (error: Error) => void
+  ) {
+    const response = await fetch(`${API_URL}/generate/outlines/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': this.token ? `Bearer ${this.token}` : '',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = new Error(`Stream error: ${response.status}`);
+      onError?.(error);
+      throw error;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data !== '[DONE]') {
+              onChunk(data);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError?.(error as Error);
+    }
   }
 
   // Token/Points endpoints (will be implemented in Python backend)

@@ -50,6 +50,24 @@ class ClassroomRoom:
         self.is_active: bool = True
         self.created_at = datetime.utcnow()
         self.last_persist_at = datetime.utcnow()
+        self.user_message_times: Dict[str, list] = {}  # user_id -> [timestamps] for rate limiting
+
+    def check_rate_limit(self, user_id: str) -> bool:
+        """检查用户是否超过消息速率限制"""
+        now = datetime.utcnow()
+        times = self.user_message_times.get(user_id, [])
+
+        # 移除超过 1 秒的旧时间戳
+        times = [t for t in times if (now - t).total_seconds() < 1]
+
+        # 检查是否超过限制
+        if len(times) >= RATE_LIMIT_MESSAGES:
+            return False  # 超过限制
+
+        # 添加当前时间戳
+        times.append(now)
+        self.user_message_times[user_id] = times
+        return True  # 允许发送
 
     def add_participant(self, user_id: str, ws: WebSocket, nickname: str, role: str = "participant"):
         # 检查参与者数量限制
@@ -63,6 +81,8 @@ class ClassroomRoom:
             del self.participants[user_id]
         if user_id in self.user_info:
             del self.user_info[user_id]
+        if user_id in self.user_message_times:
+            del self.user_message_times[user_id]  # 清理速率限制记录
 
     def get_participant_count(self) -> int:
         return len(self.participants)
@@ -417,6 +437,15 @@ async def websocket_classroom(
             message_type = data.get("type")
             message_data = data.get("data", {})
 
+            # 速率限制检查（对所有消息类型）
+            # 排除 ping 心跳消息
+            if message_type not in ("ping", "scene_change") and not room.check_rate_limit(user_id):
+                await websocket.send_json({
+                    "type": "error",
+                    "data": {"message": "发送过快，请稍后再试", "code": "rate_limit"}
+                })
+                continue
+
             # 处理不同类型消息
             if message_type == "chat":
                 # 用户聊天消息
@@ -469,6 +498,10 @@ async def websocket_classroom(
 
 async def handle_chat_message(room: ClassroomRoom, user_id: str, nickname: str, data: dict, db):
     """处理聊天消息"""
+    # 速率限制检查
+    if not room.check_rate_limit(user_id):
+        return  # 超过速率限制，忽略消息
+
     content = data.get("content", "")
 
     # 安全检查：清理内容
@@ -508,6 +541,10 @@ async def handle_chat_message(room: ClassroomRoom, user_id: str, nickname: str, 
 
 async def handle_whiteboard_action(room: ClassroomRoom, user_id: str, data: dict):
     """处理白板操作"""
+    # 速率限制检查（白板操作也可能有频繁更新）
+    if not room.check_rate_limit(user_id):
+        return  # 超过速率限制，忽略操作
+
     action_type = data.get("action")  # draw, clear, add_shape, etc.
     action_data = data.get("data", {})
 

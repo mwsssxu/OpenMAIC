@@ -1,19 +1,47 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 
 export default function HomePage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [pointBalance, setPointBalance] = useState(0);
+  const [classroomCount, setClassroomCount] = useState(0);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
     }
   }, [isLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadStats();
+    }
+  }, [isAuthenticated]);
+
+  async function loadStats() {
+    try {
+      const [tokenData, pointData, classroomsData] = await Promise.all([
+        apiClient.getTokenBalance().catch(() => ({ balance: 0 })),
+        apiClient.getPointBalance().catch(() => ({ balance: 0 })),
+        apiClient.getClassrooms().catch(() => []),
+      ]);
+      setTokenBalance(tokenData.balance || 0);
+      setPointBalance(pointData.balance || 0);
+      setClassroomCount(classroomsData.length || 0);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -114,7 +142,7 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">
                 📖
               </div>
-              <div className="text-3xl font-bold text-indigo-600">0</div>
+              <div className="text-3xl font-bold text-indigo-600">{classroomCount}</div>
               <div className="text-sm text-gray-500 mt-1">课程数量</div>
             </div>
 
@@ -130,7 +158,7 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">
                 ⭐
               </div>
-              <div className="text-3xl font-bold text-orange-500">500</div>
+              <div className="text-3xl font-bold text-orange-500">{statsLoading ? '...' : pointBalance}</div>
               <div className="text-sm text-gray-500 mt-1">积分余额</div>
             </div>
 
@@ -138,7 +166,7 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-gradient-to-br from-pink-400 to-rose-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">
                 💎
               </div>
-              <div className="text-3xl font-bold text-pink-500">200</div>
+              <div className="text-3xl font-bold text-pink-500">{statsLoading ? '...' : tokenBalance}</div>
               <div className="text-sm text-gray-500 mt-1">Token余额</div>
             </div>
           </div>
