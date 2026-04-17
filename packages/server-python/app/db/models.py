@@ -848,3 +848,43 @@ class ShareEvent(Base):
     action = Column(String(20), default="share")
     referrer = Column(Text)
     shared_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class PersonaSession(Base):
+    """智能体对话会话表"""
+    __tablename__ = "persona_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    persona_id = Column(String(50), nullable=False, index=True)  # 'confucius', 'socrates', 'da_vinci'
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ended_at = Column(DateTime)
+    message_count = Column(Integer, default=0)
+    topic = Column(Text)
+    rating = Column(Integer)
+    feedback = Column(Text)
+    mode = Column(String(20), default="teaching")
+
+
+class PersonaMessage(Base):
+    """智能体对话消息表"""
+    __tablename__ = "persona_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("persona_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_message = Column(Text, nullable=False)
+    persona_response = Column(Text, nullable=False)
+    style_used = Column(String(50))
+    quotes_used = Column(Text)  # JSON array
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PersonaStat(Base):
+    """智能体统计数据表"""
+    __tablename__ = "persona_stats"
+
+    persona_id = Column(String(50), primary_key=True)
+    total_sessions = Column(Integer, default=0)
+    total_messages = Column(Integer, default=0)
+    avg_rating = Column(Float, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
