@@ -69,6 +69,6 @@ next-env.d.ts
 /data
 /logs
 
-# docs
-/docs
+# docs - now tracked in repository
+# /docs
 .history
