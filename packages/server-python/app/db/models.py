@@ -815,3 +815,36 @@ class CourseVideoMapping(Base):
     timestamp_start = Column(Integer)
     timestamp_end = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShareCard(Base):
+    """分享卡片表"""
+    __tablename__ = "share_cards"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    card_type = Column(String(20), nullable=False)  # 'achievement', 'course_completion', 'passport', 'checkin'
+    reference_id = Column(String(100))
+    title = Column(String(200), nullable=False)
+    subtitle = Column(String(300))
+    image_url = Column(Text)
+    share_url = Column(Text)
+    qr_code_url = Column(Text)
+    style = Column(String(20), default="gradient")
+    platform = Column(String(20), default="wechat")
+    view_count = Column(Integer, default=0)
+    share_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShareEvent(Base):
+    """分享事件追踪表"""
+    __tablename__ = "share_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    card_id = Column(UUID(as_uuid=True), ForeignKey("share_cards.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(String(20), nullable=False)
+    action = Column(String(20), default="share")
+    referrer = Column(Text)
+    shared_at = Column(DateTime, default=datetime.utcnow, index=True)
