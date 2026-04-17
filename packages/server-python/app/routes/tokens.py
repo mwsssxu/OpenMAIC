@@ -5,6 +5,9 @@ Token路由 - Token账户管理、购买、兑换、消费记录
 from fastapi import APIRouter, HTTPException, Depends
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
+from app.core.redis import (
+    get_cached_token_balance, cache_token_balance, invalidate_balance_cache
+)
 import asyncpg
 import uuid
 from datetime import datetime
@@ -21,6 +24,15 @@ TOKEN_PACKAGES = {
 }
 
 
+# ==================== 积分兑换档位 ====================
+
+TOKEN_EXCHANGE_RATES = {
+    "small": {"points": 50, "tokens": 10},      # 50积分 → 10Token
+    "standard": {"points": 100, "tokens": 25},  # 100积分 → 25Token (效率提升150%)
+    "large": {"points": 200, "tokens": 60},     # 200积分 → 60Token (效率提升200%)
+}
+
+
 # ==================== API端点 ====================
 
 @router.get("/balance")
@@ -28,8 +40,13 @@ async def get_token_balance(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """获取Token余额"""
+    """获取Token余额 - 优先从 Redis 缓存读取"""
     user_uuid = uuid.UUID(current_user_id)
+
+    # 尝试从 Redis 缓存获取
+    cached_balance = await get_cached_token_balance(current_user_id)
+    if cached_balance is not None:
+        return {"balance": cached_balance, "source": "cache"}
 
     account = await db.fetchrow(
         "SELECT balance, updated_at FROM token_accounts WHERE user_id = $1",
@@ -42,11 +59,15 @@ async def get_token_balance(
             "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
             uuid.uuid4(), user_uuid
         )
-        return {"balance": 0, "updated_at": datetime.utcnow().isoformat()}
+        return {"balance": 0, "updated_at": datetime.utcnow().isoformat(), "source": "db"}
+
+    # 缓存余额
+    await cache_token_balance(current_user_id, account["balance"])
 
     return {
         "balance": account["balance"],
-        "updated_at": account["updated_at"].isoformat() if account["updated_at"] else None
+        "updated_at": account["updated_at"].isoformat() if account["updated_at"] else None,
+        "source": "db"
     }
 
 
@@ -116,22 +137,39 @@ async def get_token_transactions(
     }
 
 
+@router.get("/exchange-rates")
+async def get_exchange_rates():
+    """获取积分兑换 Token 档位列表"""
+    return {
+        "tiers": [
+            {
+                "tier": id_,
+                "points": data["points"],
+                "tokens": data["tokens"],
+                "efficiency": round(data["tokens"] / data["points"], 2),  # 效率比
+            }
+            for id_, data in TOKEN_EXCHANGE_RATES.items()
+        ],
+        "message": "兑换效率：档位越大，Token 获得越多"
+    }
+
+
 @router.post("/exchange")
 async def exchange_points_to_tokens(
     body: dict,
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """积分兑换Token（100积分 = 10 Token）- 使用事务隔离防止并发问题"""
+    """积分兑换Token（按档位兑换）"""
     user_uuid = uuid.UUID(current_user_id)
-    points = body.get("points", 0)
+    tier = body.get("tier", "standard")
 
-    # 最小兑换100积分
-    if points < 100:
-        raise HTTPException(status_code=400, detail="最小兑换100积分")
+    # 验证档位
+    if tier not in TOKEN_EXCHANGE_RATES:
+        raise HTTPException(status_code=400, detail="无效兑换档位，可选：small, standard, large")
 
-    # 计算Token数量
-    tokens = points // 10
+    points = TOKEN_EXCHANGE_RATES[tier]["points"]
+    tokens = TOKEN_EXCHANGE_RATES[tier]["tokens"]
 
     # 使用事务确保原子性
     async with db.transaction():
@@ -186,14 +224,20 @@ async def exchange_points_to_tokens(
             INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
             VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
             """,
-            uuid.uuid4(), user_uuid, tokens, new_token_balance, f"积分兑换：{points}积分", datetime.utcnow()
+            uuid.uuid4(), user_uuid, tokens, new_token_balance,
+            f"积分兑换（{tier}档位）：{points}积分 → {tokens}Token", datetime.utcnow()
         )
 
+    # 清除余额缓存
+    await invalidate_balance_cache(current_user_id)
+
     return {
+        "tier": tier,
         "points_used": points,
         "tokens_gained": tokens,
         "point_balance": new_point_balance,
         "token_balance": new_token_balance,
+        "efficiency": round(tokens / points, 2),
     }
 
 
@@ -240,6 +284,9 @@ async def spend_tokens(
             uuid.uuid4(), user_uuid, -amount, new_balance, description,
             uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
         )
+
+    # 清除余额缓存
+    await invalidate_balance_cache(current_user_id)
 
     return {
         "amount_spent": amount,
@@ -294,6 +341,9 @@ async def reward_tokens(
             """,
             uuid.uuid4(), user_uuid, amount, new_balance, description, datetime.utcnow()
         )
+
+    # 清除余额缓存
+    await invalidate_balance_cache(current_user_id)
 
     return {
         "amount_rewarded": amount,

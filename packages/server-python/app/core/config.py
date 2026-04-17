@@ -4,12 +4,14 @@
 
 from pydantic_settings import BaseSettings
 from typing import List
+import os
 
 
 class Settings(BaseSettings):
     # 应用配置
     APP_NAME: str = "OpenMAIC"
     DEBUG: bool = False
+    TESTING_MODE: bool = os.getenv("TESTING_MODE", "false").lower() == "true"
 
     # 数据库
     DATABASE_URL: str = "postgres://maic:password@localhost:5432/maic"

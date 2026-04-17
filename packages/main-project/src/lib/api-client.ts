@@ -257,6 +257,106 @@ class ApiClient {
     const { data } = await this.client.get('/achievements/me');
     return data;
   }
+
+  // Questions endpoints
+  async getQuestions(params?: { page?: number; limit?: number; status?: string; sort?: string }) {
+    const { data } = await this.client.get('/questions', { params });
+    return data;
+  }
+
+  async getQuestion(id: string) {
+    const { data } = await this.client.get(`/questions/${id}`);
+    return data;
+  }
+
+  async createQuestion(body: { title: string; content: string; bounty?: number; tags?: string }) {
+    const { data } = await this.client.post('/questions', body);
+    return data;
+  }
+
+  // Answers endpoints
+  async getAnswers(questionId: string, params?: { page?: number; sort?: string }) {
+    const { data } = await this.client.get(`/answers/question/${questionId}`, { params });
+    return data;
+  }
+
+  async createAnswer(body: { question_id: string; content: string }) {
+    const { data } = await this.client.post('/answers', body);
+    return data;
+  }
+
+  async voteAnswer(answerId: string, vote: 1 | -1) {
+    const { data } = await this.client.post(`/answers/${answerId}/vote`, { vote });
+    return data;
+  }
+
+  async acceptAnswer(answerId: string) {
+    const { data } = await this.client.post(`/answers/${answerId}/accept`);
+    return data;
+  }
+
+  // Invitations endpoints
+  async getMyInviteCode() {
+    const { data } = await this.client.get('/invitations/my-code');
+    return data;
+  }
+
+  async getInviteStats() {
+    const { data } = await this.client.get('/invitations/stats');
+    return data;
+  }
+
+  async applyInviteCode(code: string) {
+    const { data } = await this.client.post('/invitations/apply', { invite_code: code });
+    return data;
+  }
+
+  // Payment endpoints
+  async getPaymentPackages() {
+    const { data } = await this.client.get('/payment/packages');
+    return data;
+  }
+
+  async createPaymentOrder(body: { package: string; payment_method: string }) {
+    const { data } = await this.client.post('/payment/create-order', body);
+    return data;
+  }
+
+  async getOrders(params?: { page?: number; status?: string }) {
+    const { data } = await this.client.get('/payment/orders', { params });
+    return data;
+  }
+
+  async getOrder(orderId: string) {
+    const { data } = await this.client.get(`/payment/orders/${orderId}`);
+    return data;
+  }
+
+  async mockPay(orderId: string) {
+    const { data } = await this.client.post(`/payment/mock-pay/${orderId}`);
+    return data;
+  }
+
+  // Token/Points detailed endpoints
+  async getTokenTransactions(params?: { page?: number; type?: string }) {
+    const { data } = await this.client.get('/tokens/transactions', { params });
+    return data;
+  }
+
+  async getPointsTransactions(params?: { page?: number; source?: string }) {
+    const { data } = await this.client.get('/points/transactions', { params });
+    return data;
+  }
+
+  async exchangeTokens(tier: string) {
+    const { data } = await this.client.post('/tokens/exchange', { tier });
+    return data;
+  }
+
+  async getExchangeRates() {
+    const { data } = await this.client.get('/tokens/exchange-rates');
+    return data;
+  }
 }
 
 export const apiClient = new ApiClient();
