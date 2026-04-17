@@ -888,3 +888,18 @@ class PersonaStat(Base):
     total_messages = Column(Integer, default=0)
     avg_rating = Column(Float, default=0)
     last_updated = Column(DateTime, default=datetime.utcnow)
+
+
+class DepthProgress(Base):
+    """学习深度进度追踪表"""
+    __tablename__ = "depth_progress"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    depth = Column(String(20), nullable=False, index=True)  # 'skim', 'understand', 'master'
+    scenes_completed = Column(Integer, default=0)
+    total_scenes = Column(Integer)
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = Column(DateTime)
