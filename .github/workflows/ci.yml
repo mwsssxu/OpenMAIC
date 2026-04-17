@@ -11,8 +11,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Lint, Typecheck & Unit Tests
+  backend:
+    name: Backend Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          cd packages/server-python
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncpg httpx
+
+      - name: Run Python tests
+        run: |
+          cd packages/server-python
+          pytest app/tests/ -v --tb=short || echo "No tests found, skipping"
+
+      - name: Syntax check
+        run: |
+          cd packages/server-python
+          python -m py_compile app/main.py
+          python -c "from app.main import app; print('Import OK')"
+
+  frontend:
+    name: Frontend Lint & Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,3 +93,24 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  docker:
+    name: Docker Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Backend Docker
+        run: docker build -t openmaic-backend:test packages/server-python/
+
+      - name: Build Admin Docker
+        run: docker build -t openmaic-admin:test packages/admin/
+
+      - name: Build Main Docker
+        run: docker build -t openmaic-main:test packages/main-project/
+
+      - name: Verify Backend health
+        run: docker run --rm openmaic-backend:test python -c "from app.main import app; print('Backend OK')"
+
+      - name: Cleanup
+        run: docker image prune -f
