@@ -509,3 +509,44 @@ class LearningPath(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User")
+
+
+class ReviewSchedule(Base):
+    """复习计划表"""
+    __tablename__ = "review_schedules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    scene_id = Column(UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"))
+    review_type = Column(String(20), nullable=False)
+    trigger_at = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer, default=5)
+    status = Column(String(20), default='pending')
+    priority = Column(Integer, default=1)
+    content_preview = Column(Text)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class ReviewRecord(Base):
+    """复习记录表"""
+    __tablename__ = "review_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    schedule_id = Column(UUID(as_uuid=True), ForeignKey("review_schedules.id", ondelete="CASCADE"))
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False)
+    review_type = Column(String(20), nullable=False)
+    started_at = Column(DateTime, nullable=False)
+    completed_at = Column(DateTime)
+    time_spent_minutes = Column(Integer, default=0)
+    effectiveness_rating = Column(Integer)
+    quiz_score = Column(Integer)
+    notes = Column(Text)
+    next_review_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
