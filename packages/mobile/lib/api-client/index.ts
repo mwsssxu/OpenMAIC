@@ -542,6 +542,391 @@ class ApiClient {
     const { data } = await this.client.post('/subscriptions/trial');
     return data;
   }
+
+  // ==================== Assessments ====================
+
+  async getAssessmentTypes() {
+    const { data } = await this.client.get('/assessments/types');
+    return data;
+  }
+
+  async createAssessment(courseId: string, assessmentType: string) {
+    const { data } = await this.client.post('/assessments/create', {
+      course_id: courseId,
+      assessment_type: assessmentType,
+    });
+    return data;
+  }
+
+  async getAssessment(assessmentId: string) {
+    const { data } = await this.client.get(`/assessments/${assessmentId}`);
+    return data;
+  }
+
+  async submitAssessment(assessmentId: string, answers: any[]) {
+    const { data } = await this.client.post('/assessments/submit', {
+      assessment_id: assessmentId,
+      answers,
+    });
+    return data;
+  }
+
+  async getAssessmentResults(courseId: string) {
+    const { data } = await this.client.get(`/assessments/results/${courseId}`);
+    return data;
+  }
+
+  async getAssessmentStats() {
+    const { data } = await this.client.get('/assessments/stats');
+    return data;
+  }
+
+  // ==================== Course Recommendations ====================
+
+  async markCourseCompleted(courseId: string, body?: any) {
+    const { data } = await this.client.post(`/recommendations/completions/${courseId}`, body || {});
+    return data;
+  }
+
+  async getMyCompletions() {
+    const { data } = await this.client.get('/recommendations/completions');
+    return data;
+  }
+
+  async getCourseRecommendations(courseId: string) {
+    const { data } = await this.client.get(`/recommendations/${courseId}/recommendations`);
+    return data;
+  }
+
+  async getMyLearningPaths() {
+    const { data } = await this.client.get('/recommendations/paths');
+    return data;
+  }
+
+  async createLearningPath(name: string, courseIds: string[], description?: string) {
+    const { data } = await this.client.post('/recommendations/paths', {
+      name,
+      course_ids: courseIds,
+      description,
+    });
+    return data;
+  }
+
+  // ==================== Review (Spaced Repetition) ====================
+
+  async getReviewSchedules(status?: string) {
+    const { data } = await this.client.get('/review/schedules', {
+      params: { status },
+    });
+    return data;
+  }
+
+  async getReviewRecords(courseId?: string) {
+    const { data } = await this.client.get('/review/records', {
+      params: { course_id: courseId },
+    });
+    return data;
+  }
+
+  async startReview(scheduleId: string) {
+    const { data } = await this.client.post(`/review/start/${scheduleId}`);
+    return data;
+  }
+
+  async completeReview(scheduleId: string, effectivenessRating?: number, notes?: string) {
+    const { data } = await this.client.post('/review/complete', {
+      schedule_id: scheduleId,
+      effectiveness_rating: effectivenessRating,
+      notes,
+    });
+    return data;
+  }
+
+  async getReviewStats() {
+    const { data } = await this.client.get('/review/stats');
+    return data;
+  }
+
+  // ==================== Learning Passport ====================
+
+  async getMyPassport() {
+    const { data } = await this.client.get('/passport/me');
+    return data;
+  }
+
+  async getPassportSkills() {
+    const { data } = await this.client.get('/passport/skills');
+    return data;
+  }
+
+  async getSkillPassport(skillName: string) {
+    const { data } = await this.client.get(`/passport/skill/${skillName}`);
+    return data;
+  }
+
+  async createProjectPortfolio(projectName: string, projectType: string, description?: string, contentUrl?: string) {
+    const { data } = await this.client.post('/passport/projects', {
+      project_name: projectName,
+      project_type: projectType,
+      description,
+      content_url: contentUrl,
+    });
+    return data;
+  }
+
+  async getMyProjects() {
+    const { data } = await this.client.get('/passport/projects/me');
+    return data;
+  }
+
+  async requestSkillAssessment(skillName: string) {
+    const { data } = await this.client.post('/passport/assess', {
+      skill_name: skillName,
+    });
+    return data;
+  }
+
+  // ==================== Enterprise ====================
+
+  async getMyEnterprise() {
+    const { data } = await this.client.get('/enterprise/my');
+    return data;
+  }
+
+  async createEnterprise(name: string, industry?: string, size?: string, planType?: string) {
+    const { data } = await this.client.post('/enterprise/', {
+      name,
+      industry,
+      size,
+      plan_type: planType || 'basic',
+      contact_email: '', // will be filled from user
+    });
+    return data;
+  }
+
+  async getEnterpriseDetail(enterpriseId: string) {
+    const { data } = await this.client.get(`/enterprise/${enterpriseId}`);
+    return data;
+  }
+
+  async getEnterpriseMembers(enterpriseId: string, role?: string) {
+    const { data } = await this.client.get(`/enterprise/${enterpriseId}/members`, {
+      params: { role },
+    });
+    return data;
+  }
+
+  async inviteEnterpriseMembers(enterpriseId: string, emails: string[], role?: string) {
+    const { data } = await this.client.post(`/enterprise/${enterpriseId}/members/invite`, {
+      enterprise_id: enterpriseId,
+      emails,
+      role: role || 'member',
+    });
+    return data;
+  }
+
+  async getEnterpriseCourses(enterpriseId: string) {
+    const { data } = await this.client.get(`/enterprise/${enterpriseId}/courses`);
+    return data;
+  }
+
+  async getEnterpriseStats(enterpriseId: string) {
+    const { data } = await this.client.get(`/enterprise/${enterpriseId}/stats`);
+    return data;
+  }
+
+  // ==================== Note Citations ====================
+
+  async addNoteCitation(noteId: string, sceneId: string, contentSnippet: string, citationType?: string) {
+    const { data } = await this.client.post(`/notes/${noteId}/citations`, {
+      note_id: noteId,
+      scene_id: sceneId,
+      content_snippet: contentSnippet,
+      citation_type: citationType || 'direct',
+    });
+    return data;
+  }
+
+  async getNoteCitations(noteId: string) {
+    const { data } = await this.client.get(`/notes/${noteId}/citations`);
+    return data;
+  }
+
+  async getSceneCitations(sceneId: string, page?: number, limit?: number) {
+    const { data } = await this.client.get(`/notes/scenes/${sceneId}/citations`, {
+      params: { page, limit },
+    });
+    return data;
+  }
+
+  async getCourseCitationStats(courseId: string) {
+    const { data } = await this.client.get(`/notes/courses/${courseId}/citation-stats`);
+    return data;
+  }
+
+  async deleteNoteCitation(noteId: string, citationId: string) {
+    const { data } = await this.client.delete(`/notes/${noteId}/citations/${citationId}`);
+    return data;
+  }
+
+  // ==================== Video Course ====================
+
+  async createCourseFromVideo(videoUrl: string, language?: string, depth?: string) {
+    const { data } = await this.client.post('/generate/from-video', {
+      video_url: videoUrl,
+      language: language || 'zh-CN',
+      depth: depth || 'understand',
+    });
+    return data;
+  }
+
+  async getVideoSources() {
+    const { data } = await this.client.get('/generate/video-sources');
+    return data;
+  }
+
+  async getVideoSourceStatus(videoSourceId: string) {
+    const { data } = await this.client.get(`/generate/video-source/${videoSourceId}`);
+    return data;
+  }
+
+  // ==================== AI Personas ====================
+
+  async getAvailablePersonas() {
+    const { data } = await this.client.get('/personas');
+    return data;
+  }
+
+  async startPersonaSession(personaId: string, topic?: string, mode?: string) {
+    const { data } = await this.client.post('/personas/session', {
+      persona_id: personaId,
+      topic,
+      mode: mode || 'teaching',
+    });
+    return data;
+  }
+
+  async getPersonaSession(sessionId: string) {
+    const { data } = await this.client.get(`/personas/session/${sessionId}`);
+    return data;
+  }
+
+  async sendPersonaMessage(sessionId: string, message: string) {
+    const { data } = await this.client.post(`/personas/session/${sessionId}/message`, {
+      user_message: message,
+    });
+    return data;
+  }
+
+  async endPersonaSession(sessionId: string, rating?: number, feedback?: string) {
+    const { data } = await this.client.post(`/personas/session/${sessionId}/end`, {
+      rating,
+      feedback,
+    });
+    return data;
+  }
+
+  // ==================== Share Cards ====================
+
+  async createShareCard(cardType: string, referenceId: string, title: string, subtitle?: string) {
+    const { data } = await this.client.post('/share-cards', {
+      card_type: cardType,
+      reference_id: referenceId,
+      title,
+      subtitle,
+    });
+    return data;
+  }
+
+  async getMyShareCards() {
+    const { data } = await this.client.get('/share-cards/me');
+    return data;
+  }
+
+  async getShareCard(cardId: string) {
+    const { data } = await this.client.get(`/share-cards/${cardId}`);
+    return data;
+  }
+
+  // ==================== Programming Exercises ====================
+
+  async getProgrammingExercises(courseId: string) {
+    const { data } = await this.client.get('/programming/exercises', {
+      params: { course_id: courseId },
+    });
+    return data;
+  }
+
+  async getExerciseDetail(exerciseId: string) {
+    const { data } = await this.client.get(`/programming/exercises/${exerciseId}`);
+    return data;
+  }
+
+  async submitCode(exerciseId: string, code: string, language: string) {
+    const { data } = await this.client.post('/programming/submit', {
+      exercise_id: exerciseId,
+      code,
+      language,
+    });
+    return data;
+  }
+
+  async getMySubmissions(exerciseId?: string) {
+    const { data } = await this.client.get('/programming/submissions', {
+      params: { exercise_id: exerciseId },
+    });
+    return data;
+  }
+
+  // ==================== Depth Levels ====================
+
+  async getDepthProgress(courseId: string) {
+    const { data } = await this.client.get('/depth/progress', {
+      params: { course_id: courseId },
+    });
+    return data;
+  }
+
+  async setCourseDepth(courseId: string, depth: string) {
+    const { data } = await this.client.post('/depth/set', {
+      course_id: courseId,
+      depth,
+    });
+    return data;
+  }
+
+  async getDepthStats() {
+    const { data } = await this.client.get('/depth/stats');
+    return data;
+  }
+
+  // ==================== Note Reminders ====================
+
+  async getNoteReminders(status?: string) {
+    const { data } = await this.client.get('/note-reminders', {
+      params: { status },
+    });
+    return data;
+  }
+
+  async completeNoteReminder(reminderId: string, noteId: string) {
+    const { data } = await this.client.post(`/note-reminders/${reminderId}/complete`, {
+      note_id: noteId,
+    });
+    return data;
+  }
+
+  async skipNoteReminder(reminderId: string, reason?: string) {
+    const { data } = await this.client.post(`/note-reminders/${reminderId}/skip`, {
+      reason,
+    });
+    return data;
+  }
+
+  async getReminderTemplates() {
+    const { data } = await this.client.get('/note-reminders/templates');
+    return data;
+  }
 }
 
 export const apiClient = new ApiClient();
