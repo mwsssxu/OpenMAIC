@@ -195,3 +195,264 @@ class Order(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User")
+
+
+class Question(Base):
+    """问题表"""
+    __tablename__ = "questions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    bounty = Column(Integer, default=0)  # 悬赏积分
+    bounty_status = Column(String(20), default='open')  # open, claimed, closed
+    tags = Column(Text)
+    view_count = Column(Integer, default=0)
+    answer_count = Column(Integer, default=0)
+    accepted_answer_id = Column(UUID(as_uuid=True), ForeignKey("answers.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    answers = relationship("Answer", back_populates="question", cascade="delete")
+
+
+class Answer(Base):
+    """回答表"""
+    __tablename__ = "answers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    question_id = Column(UUID(as_uuid=True), ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    rating = Column(Integer, default=0)
+    vote_count = Column(Integer, default=0)
+    is_accepted = Column(Boolean, default=False)
+    accepted_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    question = relationship("Question", back_populates="answers")
+    user = relationship("User")
+
+
+class AnswerVote(Base):
+    """回答投票表"""
+    __tablename__ = "answer_votes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    answer_id = Column(UUID(as_uuid=True), ForeignKey("answers.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    vote = Column(Integer, nullable=False)  # 1=赞成, -1=反对
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("answer_id", "user_id"),
+    )
+
+
+class UserInvitationCode(Base):
+    """用户邀请码表"""
+    __tablename__ = "user_invitation_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    invite_code = Column(String(16), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class UserInvitation(Base):
+    """邀请记录表"""
+    __tablename__ = "user_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    inviter_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    invitee_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    level = Column(Integer, default=1)  # 1=直接, 2=二级, 3=三级
+    reward_points = Column(Integer, default=0)
+    reward_tokens = Column(Integer, default=0)
+    rewarded_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PaymentCallback(Base):
+    """支付回调记录表"""
+    __tablename__ = "payment_callbacks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(20), nullable=False)  # wechat, alipay
+    transaction_id = Column(String(64), index=True)
+    amount = Column(Integer)
+    status = Column(String(20))
+    raw_data = Column(Text)
+    processed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Subscription(Base):
+    """会员订阅表"""
+    __tablename__ = "subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    plan_type = Column(String(20), nullable=False)  # 'free', 'premium', 'enterprise'
+    status = Column(String(20), nullable=False)  # 'active', 'trial', 'expired', 'cancelled'
+    started_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    auto_renew = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class SubscriptionUsage(Base):
+    """会员权益使用记录表"""
+    __tablename__ = "subscription_usage"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    feature = Column(String(50), nullable=False)
+    usage_count = Column(Integer, default=0)
+    reset_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class BuddyConfig(Base):
+    """学习搭子配置表"""
+    __tablename__ = "buddy_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    buddy_type = Column(String(20), nullable=False)
+    buddy_name = Column(String(50))
+    buddy_avatar = Column(String(100))
+    tone_style = Column(String(20))
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class BuddyMessage(Base):
+    """学习搭子消息记录表"""
+    __tablename__ = "buddy_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    trigger_event = Column(String(30), nullable=False)
+    message_type = Column(String(20))
+    content = Column(Text, nullable=False)
+    read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class SharedNote(Base):
+    """共享笔记表"""
+    __tablename__ = "shared_notes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="SET NULL"))
+    visibility = Column(String(20), default='public')
+    price = Column(Integer, default=0)
+    tags = Column(Text)
+    rating = Column(Integer, default=0)
+    rating_count = Column(Integer, default=0)
+    purchase_count = Column(Integer, default=0)
+    status = Column(String(20), default='published')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    purchases = relationship("NotePurchase", back_populates="note", cascade="delete")
+
+
+class NotePurchase(Base):
+    """笔记购买记录表"""
+    __tablename__ = "note_purchases"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("shared_notes.id", ondelete="CASCADE"), nullable=False, index=True)
+    price = Column(Integer, nullable=False)
+    author_reward = Column(Integer, nullable=False)
+    platform_fee = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    note = relationship("SharedNote", back_populates="purchases")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "note_id"),
+    )
+
+
+class MatchingPreference(Base):
+    """用户匹配偏好表"""
+    __tablename__ = "matching_preferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    goal_tags = Column(Text)
+    course_ids = Column(Text)
+    progress_level = Column(String(20))
+    schedule_preference = Column(String(20))
+    match_mode = Column(String(20), default='auto')
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class LearningMatch(Base):
+    """学习匹配记录表"""
+    __tablename__ = "learning_matches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id_1 = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id_2 = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    match_type = Column(String(20), default='study')
+    match_score = Column(Integer, default=0)
+    common_courses = Column(Text)
+    common_tags = Column(Text)
+    status = Column(String(20), default='pending')
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id_1", "user_id_2"),
+    )
+
+
+class DailyTaskProgress(Base):
+    """每日任务进度表"""
+    __tablename__ = "daily_task_progress"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id = Column(String(50), nullable=False)
+    task_date = Column(DateTime, nullable=False)
+    progress = Column(Integer, default=0)
+    completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "task_id", "task_date"),
+    )
