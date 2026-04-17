@@ -696,3 +696,87 @@ class SystemSetting(Base):
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Admin(Base):
+    """管理员账户表"""
+    __tablename__ = "admins"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    nickname = Column(String(100))
+    is_super_admin = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    last_login_at = Column(DateTime)
+    last_login_ip = Column(String(50))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AdminRole(Base):
+    """管理员角色表"""
+    __tablename__ = "admin_roles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(50), unique=True, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdminRoleAssignment(Base):
+    """管理员角色分配表"""
+    __tablename__ = "admin_role_assignments"
+
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("admins.id", ondelete="CASCADE"), primary_key=True)
+    role_id = Column(UUID(as_uuid=True), ForeignKey("admin_roles.id", ondelete="CASCADE"), primary_key=True)
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey("admins.id"))
+
+
+class AdminPermission(Base):
+    """管理员权限表"""
+    __tablename__ = "admin_permissions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(100), unique=True, nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    category = Column(String(50))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RolePermission(Base):
+    """角色权限关联表"""
+    __tablename__ = "role_permissions"
+
+    role_id = Column(UUID(as_uuid=True), ForeignKey("admin_roles.id", ondelete="CASCADE"), primary_key=True)
+    permission_id = Column(UUID(as_uuid=True), ForeignKey("admin_permissions.id", ondelete="CASCADE"), primary_key=True)
+
+
+class AdminSession(Base):
+    """管理员会话表"""
+    __tablename__ = "admin_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("admins.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, index=True)
+    ip_address = Column(String(50))
+    user_agent = Column(Text)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+
+class LoginLog(Base):
+    """登录日志表"""
+    __tablename__ = "login_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("admins.id", ondelete="SET NULL"))
+    email = Column(String(255), nullable=False)
+    ip_address = Column(String(50))
+    user_agent = Column(Text)
+    success = Column(Boolean, nullable=False)
+    failure_reason = Column(String(100))
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

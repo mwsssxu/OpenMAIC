@@ -4,28 +4,20 @@ Provides endpoints for admin dashboard operations.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, List
 from datetime import datetime, timedelta
 import asyncpg
 from app.db.database import get_db
+from app.routes.admin_auth import get_current_admin, check_permission
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-security = HTTPBearer()
-
-
-async def verify_admin(token: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Verify admin token and return admin_id."""
-    # TODO: Implement proper admin verification
-    # For now, accept any token for development
-    return token.credentials
 
 
 # ============ Dashboard Stats ============
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get dashboard overview statistics."""
@@ -91,7 +83,7 @@ async def list_users(
     tier: Optional[str] = Query(None),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List users with search and filter."""
@@ -130,7 +122,7 @@ async def list_users(
 @router.post("/users/{user_id}/ban")
 async def ban_user(
     user_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Ban a user account."""
@@ -144,7 +136,7 @@ async def ban_user(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'user_ban', $2, '禁用用户账号', $3)
         """,
-        admin_id, user_id, datetime.now()
+        admin["id"], user_id, datetime.now()
     )
 
     return {"success": True}
@@ -153,7 +145,7 @@ async def ban_user(
 @router.post("/users/{user_id}/unban")
 async def unban_user(
     user_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Unban a user account."""
@@ -167,7 +159,7 @@ async def unban_user(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'user_unban', $2, '启用用户账号', $3)
         """,
-        admin_id, user_id, datetime.now()
+        admin["id"], user_id, datetime.now()
     )
 
     return {"success": True}
@@ -178,7 +170,7 @@ async def gift_tokens(
     user_id: str,
     amount: int,
     reason: str = "管理员赠送",
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Gift tokens to a user."""
@@ -202,7 +194,7 @@ async def gift_tokens(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'gift_tokens', $2, $3, $4)
         """,
-        admin_id, user_id, f"赠送{amount}Token", datetime.now()
+        admin["id"], user_id, f"赠送{amount}Token", datetime.now()
     )
 
     return {"success": True}
@@ -213,7 +205,7 @@ async def gift_points(
     user_id: str,
     amount: int,
     reason: str = "管理员赠送",
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Gift points to a user."""
@@ -237,7 +229,7 @@ async def gift_points(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'gift_points', $2, $3, $4)
         """,
-        admin_id, user_id, f"赠送{amount}积分", datetime.now()
+        admin["id"], user_id, f"赠送{amount}积分", datetime.now()
     )
 
     return {"success": True}
@@ -251,7 +243,7 @@ async def list_questions_for_review(
     status: Optional[str] = Query(None),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List questions for content review."""
@@ -301,7 +293,7 @@ async def list_questions_for_review(
 @router.post("/content/questions/{question_id}/approve")
 async def approve_question(
     question_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Approve a question."""
@@ -315,7 +307,7 @@ async def approve_question(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_approve', $2, '审核通过问题', $3)
         """,
-        admin_id, question_id, datetime.now()
+        admin["id"], question_id, datetime.now()
     )
 
     return {"success": True}
@@ -324,7 +316,7 @@ async def approve_question(
 @router.post("/content/questions/{question_id}/reject")
 async def reject_question(
     question_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Reject a question."""
@@ -338,7 +330,7 @@ async def reject_question(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_reject', $2, '审核拒绝问题', $3)
         """,
-        admin_id, question_id, datetime.now()
+        admin["id"], question_id, datetime.now()
     )
 
     return {"success": True}
@@ -349,7 +341,7 @@ async def list_answers_for_review(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50, le=100),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List answers for content review."""
@@ -400,7 +392,7 @@ async def list_answers_for_review(
 @router.post("/content/answers/{answer_id}/approve")
 async def approve_answer(
     answer_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Approve an answer."""
@@ -414,7 +406,7 @@ async def approve_answer(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_approve', $2, '审核通过回答', $3)
         """,
-        admin_id, answer_id, datetime.now()
+        admin["id"], answer_id, datetime.now()
     )
 
     return {"success": True}
@@ -423,7 +415,7 @@ async def approve_answer(
 @router.post("/content/answers/{answer_id}/reject")
 async def reject_answer(
     answer_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Reject an answer."""
@@ -437,7 +429,7 @@ async def reject_answer(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_reject', $2, '审核拒绝回答', $3)
         """,
-        admin_id, answer_id, datetime.now()
+        admin["id"], answer_id, datetime.now()
     )
 
     return {"success": True}
@@ -448,7 +440,7 @@ async def list_notes_for_review(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50, le=100),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List notes for content review."""
@@ -499,7 +491,7 @@ async def list_notes_for_review(
 @router.post("/content/notes/{note_id}/approve")
 async def approve_note(
     note_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Approve a note."""
@@ -513,7 +505,7 @@ async def approve_note(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_approve', $2, '审核通过笔记', $3)
         """,
-        admin_id, note_id, datetime.now()
+        admin["id"], note_id, datetime.now()
     )
 
     return {"success": True}
@@ -522,7 +514,7 @@ async def approve_note(
 @router.post("/content/notes/{note_id}/reject")
 async def reject_note(
     note_id: str,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Reject a note."""
@@ -536,7 +528,7 @@ async def reject_note(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_reject', $2, '审核拒绝笔记', $3)
         """,
-        admin_id, note_id, datetime.now()
+        admin["id"], note_id, datetime.now()
     )
 
     return {"success": True}
@@ -547,7 +539,7 @@ async def reject_note(
 @router.get("/statistics/users")
 async def get_user_statistics(
     days: int = Query(7, le=30),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get user statistics."""
@@ -630,7 +622,7 @@ async def get_user_statistics(
 @router.get("/statistics/classrooms")
 async def get_classroom_statistics(
     days: int = Query(7, le=30),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get classroom/course statistics."""
@@ -713,7 +705,7 @@ async def get_classroom_statistics(
 @router.get("/statistics/economy")
 async def get_economy_statistics(
     days: int = Query(7, le=30),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get economy statistics."""
@@ -844,7 +836,7 @@ async def get_economy_statistics(
 
 @router.get("/settings/llm")
 async def get_llm_settings(
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get LLM configuration settings."""
@@ -864,7 +856,7 @@ async def get_llm_settings(
 @router.put("/settings/llm")
 async def update_llm_settings(
     configs: List[dict],
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update LLM configuration settings."""
@@ -888,7 +880,7 @@ async def update_llm_settings(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'settings_update', 'llm_config', '更新LLM配置', $2)
         """,
-        admin_id, datetime.now()
+        admin["id"], datetime.now()
     )
 
     return {"success": True}
@@ -896,7 +888,7 @@ async def update_llm_settings(
 
 @router.get("/settings/pricing")
 async def get_pricing_settings(
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get pricing settings."""
@@ -914,7 +906,7 @@ async def get_pricing_settings(
 @router.put("/settings/pricing")
 async def update_pricing_settings(
     pricing: List[dict],
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update pricing settings."""
@@ -933,7 +925,7 @@ async def update_pricing_settings(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'pricing_update', 'pricing_config', '更新价格配置', $2)
         """,
-        admin_id, datetime.now()
+        admin["id"], datetime.now()
     )
 
     return {"success": True}
@@ -941,7 +933,7 @@ async def update_pricing_settings(
 
 @router.get("/settings/rules")
 async def get_rules_settings(
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get reward rules settings."""
@@ -980,7 +972,7 @@ async def get_rules_settings(
 @router.put("/settings/rules")
 async def update_rules_settings(
     config: dict,
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update reward rules settings."""
@@ -1028,7 +1020,7 @@ async def update_rules_settings(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'settings_update', 'rules_config', '更新规则配置', $2)
         """,
-        admin_id, datetime.now()
+        admin["id"], datetime.now()
     )
 
     return {"success": True}
@@ -1042,7 +1034,7 @@ async def get_admin_logs(
     action: Optional[str] = Query(None),
     limit: int = Query(100, le=200),
     offset: int = Query(0, ge=0),
-    admin_id: str = Depends(verify_admin),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get admin operation logs."""
@@ -1077,7 +1069,7 @@ async def get_admin_logs(
         "logs": [
             {
                 "id": str(l["id"]),
-                "admin_id": l["admin_id"],
+                "admin_id": str(l["admin_id"]),
                 "admin_name": l["admin_name"],
                 "action": l["action"],
                 "target": l["target"],
