@@ -39,27 +39,27 @@
 
 ### Major (建议修复) - 8个
 
-| 问题 | 文件 | 优先级 | 说明 |
-|------|------|--------|------|
-| 测评题目Mock数据 | assessments.py | 高 | 需实现AI生成题目 |
-| OAuth登录模拟实现 | auth.py | 中 | 需实现真实OAuth验证 |
-| RBAC权限检查不完整 | admin_full.py | 中 | permission_code传递问题 |
-| notes表字段错误 | admin.py, admin_full.py | 中 | classroom_id应为course_id |
-| note_citations引用错误 | models.py | 低 | notes.id应为shared_notes.id |
-| Redis连接池固定大小 | redis.py | 低 | 高并发可能不足 |
-| datetime.utcnow已弃用 | 多处 | 低 | 改用timezone.utc |
-| API缺少请求限流 | 全局 | 低 | 需添加rate limiting |
+| 问题 | 文件 | 优先级 | 状态 | 说明 |
+|------|------|--------|------|------|
+| 测评题目Mock数据 | assessments.py | 高 | 待修复 | 需实现AI生成题目 |
+| OAuth登录模拟实现 | auth.py | 中 | 待修复 | 需实现真实OAuth验证 |
+| RBAC权限检查不完整 | admin_full.py | 中 | 待修复 | permission_code传递问题 |
+| notes表字段错误 | admin.py, admin_full.py | 中 | 待修复 | classroom_id应为course_id |
+| note_citations引用错误 | models.py | 低 | 待修复 | notes.id应为shared_notes.id |
+| Redis连接池固定大小 | redis.py | 低 | 待修复 | 高并发可能不足 |
+| datetime.utcnow已弃用 | 多处 | 低 | ✅ 关键文件已修复 | security.py, auth.py, payment.py已改用timezone.utc |
+| API缺少请求限流 | 全局 | 低 | 待修复 | 需添加rate limiting |
 
 ### Minor (建议改进) - 6个
 
-| 问题 | 说明 |
-|------|------|
-| 异常处理不完善 | 裸except应指定具体异常类型 |
-| 缺少API版本控制 | 建议添加 /api/v1 prefix |
-| 错误响应格式不统一 | 部分用detail，部分用message |
-| 缺少API请求日志 | 建议添加中间件记录请求 |
-| SQL动态拼接 | 添加白名单字段验证 |
-| ORM模型注释 | 添加字段说明注释 |
+| 问题 | 状态 | 说明 |
+|------|------|------|
+| 异常处理不完善 | 待改进 | 裸except应指定具体异常类型 |
+| 缺少API版本控制 | 待改进 | 建议添加 /api/v1 prefix |
+| 错误响应格式不统一 | 待改进 | 部分用detail，部分用message |
+| 缺少API请求日志 | 待改进 | 建议添加中间件记录请求 |
+| SQL动态拼接 | ✅ 已增强 | 添加白名单注释+安全指南文档 |
+| ORM模型注释 | 待改进 | 添加字段说明注释 |
 
 ---
 
@@ -71,6 +71,8 @@
 | 支付接口安全 | 40% | 80% | 禁用模拟接口，签名框架已添加 |
 | 表名正确性 | 0% | 100% | 修复所有错误引用 |
 | RBAC权限 | 80% | 80% | 概念正确，实现待完善 |
+| datetime兼容性 | 0% | 70% | 关键安全文件已修复 |
+| SQL注入防护 | 90% | 95% | 添加安全指南和白名单注释 |
 
 ---
 
@@ -107,6 +109,8 @@
 
 ```
 41f999813 fix: 代码审查Critical问题修复
+0ef3135f8 fix: datetime.utcnow()弃用修复 - 关键文件
+352345067 security: SQL动态拼接安全增强
 ```
 
 ---
