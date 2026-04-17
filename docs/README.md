@@ -16,6 +16,8 @@ OpenMAIC Business 是一个开源的商业策略研究平台，将文档或主�
 ### 设计文档 (design/)
 - [架构概述](design/overview.md) - 技术架构和设计原则
 - [深入设计](design/deep-dive/) - 各子系统详细设计
+- [商业模式闭环修复方案](design/business-loop-fixes.md) - 6个断裂点修复设计
+- [AI辅助自学平台扩展机会](design/ai-learning-platform-opportunities.md) - 平台发展方向分析
 
 ### API 文档 (api/)
 - [API 概述](api/overview.md) - API 设计原则和认证
@@ -26,9 +28,13 @@ OpenMAIC Business 是一个开源的商业策略研究平台，将文档或主�
 ### 进度文档 (progress/)
 - [进度概述](progress/overview.md) - 开发阶段总览
 - [Phase 1: 核心重构](progress/main-project-phase1.md) - 主项目核心功能
+- [Phase 1 完成报告](phase1-completion-report.md) - Phase 1 完成状态
 - [Phase 2: 增值功能](progress/core-features-phase2.md) - Token/积分/问答系统
 - [Phase 3: 增强体验](progress/enhancement-phase3.md) - 游戏化/学习搭子
 - [Phase 4: 后台管理](progress/admin-phase4.md) - 管理后台开发
+
+### 实现计划 (superpowers/plans/)
+- [P0: 商业模式闭环修复](superpowers/plans/2026-04-17-p0-business-loop-fix.md) - 积分比例+会员订阅实现计划
 
 ## 技术栈
 
