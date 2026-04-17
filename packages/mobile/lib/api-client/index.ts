@@ -199,6 +199,59 @@ class ApiClient {
       body: JSON.stringify({ messages, config, storeState }),
     };
   }
+
+  // ==================== Token Economy ====================
+
+  async getTokenBalance() {
+    const { data } = await this.client.get('/tokens/balance');
+    return data;
+  }
+
+  async getTokenTransactions(limit?: number, offset?: number) {
+    const { data } = await this.client.get('/tokens/transactions', {
+      params: { limit, offset },
+    });
+    return data;
+  }
+
+  async exchangeTokens(points: number) {
+    const { data } = await this.client.post('/tokens/exchange', { points });
+    return data;
+  }
+
+  async getTokenPackages() {
+    const { data } = await this.client.get('/tokens/packages');
+    return data;
+  }
+
+  async purchaseTokens(packageId: string) {
+    const { data } = await this.client.post('/tokens/purchase', { package_id: packageId });
+    return data;
+  }
+
+  // ==================== Points Economy ====================
+
+  async getPointsBalance() {
+    const { data } = await this.client.get('/points/balance');
+    return data;
+  }
+
+  async getPointsTransactions(limit?: number, offset?: number) {
+    const { data } = await this.client.get('/points/transactions', {
+      params: { limit, offset },
+    });
+    return data;
+  }
+
+  async getPointsSources() {
+    const { data } = await this.client.get('/points/sources');
+    return data;
+  }
+
+  async claimNewUserPackage() {
+    const { data } = await this.client.post('/points/new_user_package');
+    return data;
+  }
 }
 
 export const apiClient = new ApiClient();

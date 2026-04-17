@@ -145,9 +145,75 @@ packages/main-project/src/lib/stores/
 |--------|------|--------|------|------|
 | P1-PENDING-001 | 运行数据库迁移 | P0 | pending | 执行alembic upgrade |
 | P1-PENDING-002 | 主项目+后端集成测试 | P0 | pending | 验证API调用 |
-| P1-PENDING-003 | WebSocket协作完善 | P1 | pending | 已有基础实现 |
-| P1-PENDING-004 | CRDT集成(Yjs) | P1 | pending | 白板实时同步 |
-| P1-PENDING-005 | 移动端Token/积分页面 | P1 | pending | 添加余额显示 |
+| P1-PENDING-003 | WebSocket协作完善 | P1 | ✅ 完成 | 已有基础实现 |
+| P1-PENDING-004 | CRDT集成(Yjs) | P1 | ✅ 完成 | 白板实时同步 |
+| P1-PENDING-005 | 移动端Token/积分页面 | P1 | ✅ 完成 | 添加余额显示 |
+
+#### WebSocket协作完善 ✅
+创建完整的WebSocket多人协作客户端：
+
+**已实现功能**:
+- `CollaborationClient` WebSocket客户端类
+- `useCollaboration` React hook
+- 聊天面板组件 (`ChatPanel`)
+- 参与者列表组件 (`ParticipantsList`)
+- 白板协作组件 (`Whiteboard`)
+
+**文件结构**:
+```
+packages/main-project/src/
+├── lib/websocket/
+│   ├── collaboration-client.ts
+│   ├── whiteboard-sync.ts (CRDT)
+│   ├── use-whiteboard-sync.ts
+│   └── index.ts
+└── components/collaboration/
+    ├── whiteboard.tsx
+    ├── chat-panel.tsx
+    ├── participants-list.tsx
+    └── index.ts
+```
+
+#### CRDT集成(Yjs) ✅
+实现基于Yjs的实时白板同步：
+
+**已实现功能**:
+- `WhiteboardSync` CRDT同步类
+- 画笔绘制实时同步
+- 橡皮擦功能
+- 清空白板同步
+- 元素增删改同步
+
+**关键技术**:
+- Y.Doc 文档对象
+- Y.Array 存储白板元素
+- WebsocketProvider 连接同步服务器
+
+#### 移动端Token/积分页面 ✅
+为移动端添加Token/积分经济显示：
+
+**已实现功能**:
+- Profile页面Token/积分余额显示
+- 积分兑换Token按钮
+- Wallet钱包详情页面
+- Token/积分交易记录列表
+
+**新增文件**:
+```
+packages/mobile/
+├── lib/api-client/index.ts (添加Token/积分API)
+├── app/(tabs)/profile.tsx (更新余额显示)
+└── app/wallet.tsx (钱包详情页面)
+```
+
+**新增API方法**:
+- `getTokenBalance()` - Token余额
+- `getPointsBalance()` - 积分余额
+- `getTokenTransactions()` - Token交易流水
+- `getPointsTransactions()` - 积分交易流水
+- `exchangeTokens()` - 积分兑换Token
+- `getTokenPackages()` - Token套餐列表
+- `purchaseTokens()` - 购买Token
 
 ## 测试结果
 

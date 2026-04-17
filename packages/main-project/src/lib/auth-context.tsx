@@ -12,6 +12,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -32,12 +34,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadStoredAuth() {
     try {
-      const token = localStorage.getItem('access_token');
+      const storedToken = localStorage.getItem('access_token');
       const userData = localStorage.getItem('user_data');
 
-      if (token && userData) {
+      if (storedToken && userData) {
         setUser(JSON.parse(userData));
-        apiClient.setToken(token);
+        setToken(storedToken);
+        apiClient.setToken(storedToken);
       }
     } catch (error) {
       console.error('Load auth error:', error);
@@ -54,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('user_data', JSON.stringify(response.user));
 
     setUser(response.user);
+    setToken(response.access_token);
     apiClient.setToken(response.access_token);
   }
 
@@ -65,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('user_data', JSON.stringify(response.user));
 
     setUser(response.user);
+    setToken(response.access_token);
     apiClient.setToken(response.access_token);
   }
 
@@ -74,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('user_data');
 
     setUser(null);
+    setToken(null);
     apiClient.clearToken();
   }
 
@@ -91,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        token,
         isAuthenticated: !!user,
         isLoading,
         login,
