@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
-from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations
+from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise
 
 
 @asynccontextmanager
@@ -26,8 +26,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="OpenMAIC API",
-    description="多用户交互课堂 API - 支持成就系统、打卡激励、课程分享、多人实时讨论、问答悬赏、邀请奖励、支付系统、会员订阅、学习搭子、共享笔记、学习匹配、游戏化增强、课程推荐、间隔复习、学习护照、管理后台、视频转课程、学习效果测评、笔记引用",
-    version="0.22.0",
+    description="多用户交互课堂 API - 支持成就系统、打卡激励、课程分享、多人实时讨论、问答悬赏、邀请奖励、支付系统、会员订阅、学习搭子、共享笔记、学习匹配、游戏化增强、课程推荐、间隔复习、学习护照、管理后台、视频转课程、学习效果测评、笔记引用、企业功能",
+    version="0.23.0",
     lifespan=lifespan,
 )
 
@@ -76,9 +76,10 @@ app.include_router(programming.router, tags=["编程学习模板"])
 app.include_router(note_reminders.router, tags=["笔记提醒系统"])
 app.include_router(assessments.router, prefix="/assessments", tags=["学习效果测评"])
 app.include_router(note_citations.router, tags=["笔记引用"])
+app.include_router(enterprise.router, tags=["企业功能"])
 
 
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    return {"status": "ok", "version": "0.22.0"}
+    return {"status": "ok", "version": "0.23.0"}

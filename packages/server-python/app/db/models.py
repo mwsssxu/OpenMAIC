@@ -1004,3 +1004,117 @@ class NoteCitation(Base):
     __table_args__ = (
         UniqueConstraint("note_id", "scene_id", name="uq_note_scene"),
     )
+
+
+class Enterprise(Base):
+    """企业账户表"""
+    __tablename__ = "enterprises"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    industry = Column(String(100))
+    size = Column(String(20))
+    contact_email = Column(String(255), nullable=False)
+    contact_phone = Column(String(50))
+    plan_type = Column(String(20), default="basic")
+    member_count = Column(Integer, default=1)
+    member_limit = Column(Integer, default=10)
+    course_count = Column(Integer, default=0)
+    course_limit = Column(Integer, default=50)
+    storage_used = Column(Integer, default=0)
+    storage_limit = Column(Integer, default=100)
+    subscription_starts_at = Column(DateTime)
+    subscription_ends_at = Column(DateTime)
+    status = Column(String(20), default="active", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EnterpriseMember(Base):
+    """企业成员表"""
+    __tablename__ = "enterprise_members"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id = Column(UUID(as_uuid=True), ForeignKey("enterprises.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(20), default="member")
+    joined_at = Column(DateTime, default=datetime.utcnow)
+    last_active_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("enterprise_id", "user_id", name="uq_enterprise_member"),
+    )
+
+
+class EnterpriseInvite(Base):
+    """企业邀请表"""
+    __tablename__ = "enterprise_invites"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id = Column(UUID(as_uuid=True), ForeignKey("enterprises.id", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(String(20), default="member")
+    invite_code = Column(String(12), nullable=False, index=True)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    accepted_at = Column(DateTime)
+    status = Column(String(20), default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EnterpriseCourse(Base):
+    """企业课程分配表"""
+    __tablename__ = "enterprise_courses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id = Column(UUID(as_uuid=True), ForeignKey("enterprises.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False)
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+    is_required = Column(Boolean, default=False)
+    deadline = Column(DateTime)
+    status = Column(String(20), default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("enterprise_id", "course_id", name="uq_enterprise_course"),
+    )
+
+
+class EnterpriseCourseProgress(Base):
+    """企业课程进度表"""
+    __tablename__ = "enterprise_course_progress"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id = Column(UUID(as_uuid=True), ForeignKey("enterprises.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False)
+    scenes_completed = Column(Integer, default=0)
+    total_scenes = Column(Integer)
+    completion_rate = Column(Float, default=0)
+    time_spent_minutes = Column(Integer, default=0)
+    started_at = Column(DateTime)
+    last_accessed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("enterprise_id", "user_id", "course_id", name="uq_enterprise_progress"),
+    )
+
+
+class EnterpriseCourseCompletion(Base):
+    """企业课程完成记录表"""
+    __tablename__ = "enterprise_course_completions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id = Column(UUID(as_uuid=True), ForeignKey("enterprises.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False)
+    time_spent_minutes = Column(Integer)
+    score = Column(Float)
+    mastery_level = Column(String(20))
+    completed_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
