@@ -780,3 +780,38 @@ class LoginLog(Base):
     success = Column(Boolean, nullable=False)
     failure_reason = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class VideoSource(Base):
+    """视频转课程源表"""
+    __tablename__ = "video_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_url = Column(Text, nullable=False)
+    platform = Column(String(20), nullable=False)  # 'youtube', 'bilibili', 'other'
+    video_id = Column(String(100))
+    title = Column(String(500))
+    duration_seconds = Column(Integer)
+    thumbnail_url = Column(Text)
+    language = Column(String(10), default="zh-CN")
+    subtitles_available = Column(Boolean, default=False)
+    subtitles_text = Column(Text)
+    status = Column(String(20), default="pending")  # pending, processing, completed, failed
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CourseVideoMapping(Base):
+    """课程-视频映射表"""
+    __tablename__ = "course_video_mappings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_source_id = Column(UUID(as_uuid=True), ForeignKey("video_sources.id", ondelete="CASCADE"), nullable=False)
+    topic_index = Column(Integer)
+    scene_id = Column(UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="SET NULL"))
+    timestamp_start = Column(Integer)
+    timestamp_end = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
