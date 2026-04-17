@@ -903,3 +903,39 @@ class DepthProgress(Base):
     started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime)
+
+
+class ProgrammingExercise(Base):
+    """编程练习题表"""
+    __tablename__ = "programming_exercises"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    difficulty = Column(String(20), default="medium")
+    language = Column(String(20), nullable=False, index=True)
+    starter_code = Column(Text)
+    test_cases = Column(Text)
+    hints = Column(Text)
+    max_score = Column(Integer, default=100)
+    time_limit = Column(Integer, default=10)
+    memory_limit = Column(Integer, default=256)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CodeSubmission(Base):
+    """代码提交记录表"""
+    __tablename__ = "code_submissions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    exercise_id = Column(UUID(as_uuid=True), ForeignKey("programming_exercises.id", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(Text, nullable=False)
+    language = Column(String(20), nullable=False, index=True)
+    passed = Column(Boolean, default=False)
+    score = Column(Integer, default=0)
+    execution_time = Column(Float)
+    memory_used = Column(Float)
+    errors = Column(Text)
+    submitted_at = Column(DateTime, default=datetime.utcnow)
