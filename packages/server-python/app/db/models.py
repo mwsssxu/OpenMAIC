@@ -81,6 +81,7 @@ class Scene(Base):
     content = Column(JSONB)
     actions = Column(JSONB)
     whiteboards = Column(JSONB)
+    citation_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -983,3 +984,23 @@ class LearningAssessment(Base):
     completed_at = Column(DateTime)
 
     user = relationship("User")
+
+
+class NoteCitation(Base):
+    """笔记引用表"""
+    __tablename__ = "note_citations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("shared_notes.id", ondelete="CASCADE"), nullable=False, index=True)
+    scene_id = Column(UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_snippet = Column(Text, nullable=False)
+    citation_type = Column(String(20), default="direct")  # direct, paraphrase, summary
+    position_start = Column(Integer)
+    position_end = Column(Integer)
+    context = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("note_id", "scene_id", name="uq_note_scene"),
+    )
