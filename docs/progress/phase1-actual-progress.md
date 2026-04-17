@@ -12,6 +12,9 @@
 | P1-NEW-002 | 实现用户认证模块 | P0 | ✅ 完成 | 0.5d |
 | P1-NEW-003 | 实现课程列表/创建/播放页面 | P0 | ✅ 完成 | 0.5d |
 | P1-NEW-004 | 完善Python后端Token/积分系统 | P0 | ✅ 完成 | 0.5d |
+| P1-NEW-005 | 集成Zustand状态管理 | P0 | ✅ 完成 | 0.25d |
+| P1-NEW-006 | 完善多智能体商业策略Agent | P0 | ✅ 完成 | 0.5d |
+| P1-NEW-007 | 创建数据库迁移脚本 | P0 | ✅ 完成 | 0.25d |
 
 ### 实际完成详情
 
@@ -95,24 +98,56 @@ Point routes: 6
 **新用户礼包**: 
 - 注册自动发放 200 Token + 500 积分
 
+#### Zustand状态管理 ✅
+为主项目添加完整的状态管理：
+
+**已实现stores**:
+- `useUserStore` - 用户状态、Token/积分余额
+- `useClassroomStore` - 课程列表、当前课程
+- `usePlaybackStore` - 播放状态、场景索引、白板元素、笔记
+
+**文件结构**:
+```
+packages/main-project/src/lib/stores/
+├── user-store.ts
+├── classroom-store.ts
+├── playback-store.ts
+└── index.ts
+```
+
+#### 多智能体商业策略Agent ✅
+完善LangGraph多智能体编排系统：
+
+**新增Agent角色**:
+- `chief_analyst` - 首席分析师（整体框架、关键洞察）
+- `market_expert` - 市场专家（市场趋势、消费者分析）
+- `competition_expert` - 竞争专家（竞争格局、竞争策略）
+- `finance_risk_expert` - 财务/风险专家（财务分析、风险评估）
+
+**轮转逻辑**:
+- 商业策略主题自动选择商业Agent轮转
+- 教育主题选择原有教育Agent轮转
+
+**验证**: ✅ 7种Agent定义正确注册
+
+#### 数据库迁移脚本 ✅
+创建Alembic迁移脚本添加Token/积分表：
+
+**迁移文件**: `alembic/versions/token_points_schema.py`
+- 创建5个新表及索引
+- 支持up/down迁移
+
 ## 待完成任务
 
 ### Week 3-4: 后端完善与集成
 
 | 任务ID | 任务 | 优先级 | 状态 | 备注 |
 |--------|------|--------|------|------|
-| P1-PENDING-001 | 数据库迁移(Alembic) | P0 | pending | 需创建新表迁移脚本 |
+| P1-PENDING-001 | 运行数据库迁移 | P0 | pending | 执行alembic upgrade |
 | P1-PENDING-002 | 主项目+后端集成测试 | P0 | pending | 验证API调用 |
 | P1-PENDING-003 | WebSocket协作完善 | P1 | pending | 已有基础实现 |
 | P1-PENDING-004 | CRDT集成(Yjs) | P1 | pending | 白板实时同步 |
-| P1-PENDING-005 | 多智能体商业策略Agent完善 | P0 | pending | 需修改Prompt |
-
-### Week 5-6: 移动端完善
-
-| 任务ID | 任务 | 优先级 | 状态 | 备注 |
-|--------|------|--------|------|------|
-| P1-PENDING-006 | 移动端Token/积分页面 | P1 | pending | 添加余额显示 |
-| P1-PENDING-007 | 移动端+后端集成测试 | P0 | pending | 验证完整流程 |
+| P1-PENDING-005 | 移动端Token/积分页面 | P1 | pending | 添加余额显示 |
 
 ## 测试结果
 
