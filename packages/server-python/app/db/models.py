@@ -122,3 +122,76 @@ class GenerationJob(Base):
     error = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TokenAccount(Base):
+    """Token账户表"""
+    __tablename__ = "token_accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    balance = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class PointAccount(Base):
+    """积分账户表"""
+    __tablename__ = "point_accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    balance = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class TokenTransaction(Base):
+    """Token交易流水表"""
+    __tablename__ = "token_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(50), nullable=False)  # purchase, exchange, spend, reward
+    amount = Column(Integer, nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    description = Column(Text)
+    reference_id = Column(UUID(as_uuid=True))  # 关联订单或操作
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class PointTransaction(Base):
+    """积分交易流水表"""
+    __tablename__ = "point_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source = Column(String(50), nullable=False)  # course, daily, qanda, notes, invitation, exchange
+    amount = Column(Integer, nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    reference_id = Column(UUID(as_uuid=True))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class Order(Base):
+    """支付订单表"""
+    __tablename__ = "orders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Integer, nullable=False)  # 金额（分）
+    token_amount = Column(Integer, nullable=False)  # Token数量
+    payment_method = Column(String(20), nullable=False)  # wechat, alipay
+    status = Column(String(20), default='created')  # created, paid, cancelled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")

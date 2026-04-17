@@ -44,6 +44,37 @@ async def register(
         user_id, body.email, password_hash, body.nickname
     )
 
+    # 发放新用户礼包
+    # 创建Token账户并发放200 Token
+    await db.execute(
+        """
+        INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 200)
+        """,
+        uuid.uuid4(), user_id
+    )
+    await db.execute(
+        """
+        INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
+        VALUES ($1, $2, 'reward', 200, 200, '新用户礼包', $3)
+        """,
+        uuid.uuid4(), user_id, datetime.utcnow()
+    )
+
+    # 创建积分账户并发放500积分
+    await db.execute(
+        """
+        INSERT INTO point_accounts (id, user_id, balance) VALUES ($1, $2, 500)
+        """,
+        uuid.uuid4(), user_id
+    )
+    await db.execute(
+        """
+        INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
+        VALUES ($1, $2, 'new_user', 500, 500, $3)
+        """,
+        uuid.uuid4(), user_id, datetime.utcnow()
+    )
+
     # 返回 token
     access_token = create_access_token(str(user_id))
     refresh_token = create_refresh_token(str(user_id))

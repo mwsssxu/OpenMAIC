@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import init_db, close_db
-from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions
+from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points
 
 
 @asynccontextmanager
@@ -48,6 +48,8 @@ app.include_router(achievements.router, prefix="/achievements", tags=["成就"])
 app.include_router(checkin.router, prefix="/checkin", tags=["打卡"])
 app.include_router(sharing.router, prefix="/sharing", tags=["分享"])
 app.include_router(classroom_sessions.router, prefix="/sessions", tags=["多人课堂"])
+app.include_router(tokens.router, prefix="/tokens", tags=["Token"])
+app.include_router(points.router, prefix="/points", tags=["积分"])
 
 
 @app.get("/health")
