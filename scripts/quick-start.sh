@@ -16,20 +16,27 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null; then
+# 检查 Docker Compose (支持新旧两种命令格式)
+DOCKER_COMPOSE=""
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+else
     echo "❌ Docker Compose 未安装，请先安装"
     echo "   https://docs.docker.com/compose/install/"
     exit 1
 fi
 
 echo "✓ Docker 已安装"
+echo "✓ Docker Compose 已安装 ($DOCKER_COMPOSE)"
 echo ""
 
 # 检查环境配置
 ENV_FILE=".env.local"
 if [ ! -f "$ENV_FILE" ]; then
     echo "⚠️  环境配置文件不存在，创建默认配置..."
-    cp docs/deployment/env-production.template "$ENV_FILE"
+    cp docs/deployment/env-production.template "$ENV_FILE" 2>/dev/null || cp .env.example "$ENV_FILE"
     echo ""
     echo "📝 已创建 $ENV_FILE，请编辑填入以下必需配置："
     echo "   - SECRET_KEY (安全密钥)"
@@ -79,11 +86,11 @@ read -p "输入选择 (1/2/3): " mode
 case $mode in
     1)
         echo "启动开发模式..."
-        docker-compose up -d
+        $DOCKER_COMPOSE up -d
         ;;
     2)
         echo "启动完整模式..."
-        docker-compose --profile admin --profile main up -d
+        $DOCKER_COMPOSE --profile admin --profile main up -d
         ;;
     3)
         echo "启动生产模式..."
@@ -92,11 +99,11 @@ case $mode in
             echo "⚠️  .env.production 不存在，使用 .env.local"
             cp "$ENV_FILE" .env.production
         fi
-        docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+        $DOCKER_COMPOSE -f docker-compose.yml -f docker-compose.prod.yml up -d --build
         ;;
     *)
         echo "无效选择，启动开发模式..."
-        docker-compose up -d
+        $DOCKER_COMPOSE up -d
         ;;
 esac
 
@@ -107,7 +114,7 @@ echo ""
 # 等待数据库
 echo "等待 PostgreSQL..."
 sleep 10
-until docker-compose exec -T postgres pg_isready -U maic -d maic 2>/dev/null; do
+until $DOCKER_COMPOSE exec -T postgres pg_isready -U maic -d maic 2>/dev/null; do
     echo "数据库未就绪，等待..."
     sleep 5
 done
@@ -117,7 +124,7 @@ echo "✓ PostgreSQL 就绪"
 echo ""
 echo "=== 数据库迁移 ==="
 echo ""
-docker-compose exec -T python-server alembic upgrade head || echo "迁移已在之前完成"
+$DOCKER_COMPOSE exec -T python-server alembic upgrade head || echo "迁移已在之前完成"
 
 # 健康检查
 echo ""
@@ -135,11 +142,11 @@ else
 fi
 
 # Frontend (如果启动)
-if docker-compose ps main 2>/dev/null | grep -q "running"; then
+if $DOCKER_COMPOSE ps main 2>/dev/null | grep -q "running"; then
     echo "✓ Main App: http://localhost:3000"
 fi
 
-if docker-compose ps admin 2>/dev/null | grep -q "running"; then
+if $DOCKER_COMPOSE ps admin 2>/dev/null | grep -q "running"; then
     echo "✓ Admin: http://localhost:3001"
 fi
 
@@ -159,9 +166,9 @@ echo "  PostgreSQL:   localhost:5432 (用户: maic, 密码: password)"
 echo "  Redis:        localhost:6379"
 echo ""
 echo "常用命令："
-echo "  查看日志:     docker-compose logs -f"
-echo "  停止服务:     docker-compose down"
-echo "  重启服务:     docker-compose restart"
-echo "  进入Backend:  docker-compose exec python-server bash"
+echo "  查看日志:     $DOCKER_COMPOSE logs -f"
+echo "  停止服务:     $DOCKER_COMPOSE down"
+echo "  重启服务:     $DOCKER_COMPOSE restart"
+echo "  进入Backend:  $DOCKER_COMPOSE exec python-server bash"
 echo ""
 echo "================================================"

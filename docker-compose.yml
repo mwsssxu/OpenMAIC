@@ -1,7 +1,8 @@
-version: '3.8'
+# OpenMAIC Docker Compose 配置
+# 使用外部 redis 和 postgres 容器（已存在于 openmaic_default 网络）
 
 services:
-  # Python 后端服务（新）
+  # Python 后端服务
   python-server:
     build:
       context: ./packages/server-python
@@ -9,7 +10,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgres://maic:password@postgres:5432/maic
+      - DATABASE_URL=postgres://postgres:0okm9ijn@postgres:5432/postgres
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - DEBUG=true
@@ -31,38 +32,11 @@ services:
       - WECHAT_APP_ID=${WECHAT_APP_ID:-}
       # CORS
       - ALLOWED_ORIGINS=["http://localhost:3030","http://localhost:3000"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     volumes:
       - ./packages/server-python/app:/app/app:ro  # 开发时热重载
-
-  # PostgreSQL 数据库（新）
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: maic
-      POSTGRES_USER: maic
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U maic -d maic"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # Redis 缓存（新）
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
+    extra_hosts:
+      - "postgres:host-gateway"
+      - "redis:host-gateway"
 
   # 原有 Next.js Web 应用（保留）
   openmaic-web:
@@ -77,11 +51,11 @@ services:
       - openmaic-data:/app/data
     restart: unless-stopped
     profiles:
-      - web  # 使用 docker compose --profile web up 启动
+      - web
     depends_on:
       - python-server
 
-# Admin Dashboard
+  # Admin Dashboard
   admin:
     build:
       context: ./packages/admin
@@ -110,6 +84,4 @@ services:
       - main
 
 volumes:
-  pgdata:
-  redisdata:
   openmaic-data:
