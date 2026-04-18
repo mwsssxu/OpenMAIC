@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
-import { Canvas, Rect, Text, Image, Group } from '@shopify/react-native-skia';
+import { View, StyleSheet, Dimensions, Text as RNText, Image as RNImage } from 'react-native';
 
 interface SlideElement {
   id: string;
-  type: string; // text, shape, image, chart, latex, table
+  type: string;
   content?: string;
   position?: { left: number; top: number; width?: number; height?: number };
   style?: { fontSize?: number; color?: string; backgroundColor?: string };
@@ -17,9 +16,8 @@ interface SlideCanvasProps {
 
 export function SlideCanvas({ elements, width }: SlideCanvasProps) {
   const screenWidth = width || Dimensions.get('window').width - 20;
-  const height = screenWidth * 0.5625; // 16:9 比例
+  const height = screenWidth * 0.5625;
 
-  // 简化渲染：仅支持 text 和 shape
   const renderElement = (el: SlideElement) => {
     const left = el.position?.left || 0;
     const top = el.position?.top || 0;
@@ -29,25 +27,47 @@ export function SlideCanvas({ elements, width }: SlideCanvasProps) {
     switch (el.type) {
       case 'text':
         return (
-          <Text
+          <RNText
             key={el.id}
-            x={left}
-            y={top + (el.style?.fontSize || 18)}
-            text={el.content || ''}
-            fontSize={el.style?.fontSize || 18}
-            color={el.style?.color || '#333333'}
-          />
+            style={{
+              position: 'absolute',
+              left: left,
+              top: top,
+              fontSize: el.style?.fontSize || 18,
+              color: el.style?.color || '#333333',
+            }}
+          >
+            {el.content || ''}
+          </RNText>
         );
 
       case 'shape':
         return (
-          <Rect
+          <View
             key={el.id}
-            x={left}
-            y={top}
-            width={w}
-            height={h}
-            color={el.style?.backgroundColor || '#5b9bd5'}
+            style={{
+              position: 'absolute',
+              left: left,
+              top: top,
+              width: w,
+              height: h,
+              backgroundColor: el.style?.backgroundColor || '#5b9bd5',
+            }}
+          />
+        );
+
+      case 'image':
+        return (
+          <RNImage
+            key={el.id}
+            source={{ uri: el.content }}
+            style={{
+              position: 'absolute',
+              left: left,
+              top: top,
+              width: w,
+              height: h,
+            }}
           />
         );
 
@@ -58,11 +78,7 @@ export function SlideCanvas({ elements, width }: SlideCanvasProps) {
 
   return (
     <View style={[styles.canvas, { width: screenWidth, height: height }]}>
-      <Canvas style={{ width: screenWidth, height: height }}>
-        <Group>
-          {elements.map(renderElement)}
-        </Group>
-      </Canvas>
+      {elements.map(renderElement)}
     </View>
   );
 }

@@ -8,6 +8,22 @@
 
 ## 一、快速启动
 
+### 方法一：使用启动脚本
+
+```bash
+cd packages/mobile
+./scripts/start.sh
+```
+
+脚本提供以下选项：
+1. 开发模式 - Expo 开发服务器
+2. Web 模式 - 浏览器预览
+3. Android - Android 模拟器
+4. iOS - iOS 模拟器
+5. 清理缓存
+
+### 方法二：手动启动
+
 ### 前置要求
 
 1. **Node.js** >= 18
@@ -368,6 +384,26 @@ pnpm install
 # 或清除缓存重启
 pnpm expo start --clear
 ```
+
+### Q7: React 版本冲突
+
+**问题:** monorepo 中 React 版本不一致
+
+**解决:**
+```bash
+# 使用独立目录运行
+cp -r packages/mobile ~/openmaic-mobile
+cd ~/openmaic-mobile
+rm -rf node_modules
+pnpm install
+npx expo start
+```
+
+### Q8: Web 版本组件报错
+
+**问题:** Skia 组件在 Web 不支持
+
+**解决:** 项目已移除 @shopify/react-native-skia 依赖，使用标准 React Native 组件替代。
 
 ---
 

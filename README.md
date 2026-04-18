@@ -528,3 +528,33 @@ If you find OpenMAIC useful in your research, please consider citing:
 
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 
+---
+
+## 📦 Business Packages
+
+OpenMAIC Business extends the base project with commercial features organized in separate packages:
+
+| Package | Description | Start Command |
+|---------|-------------|---------------|
+| `packages/server-python` | FastAPI Backend + PostgreSQL + Redis | `./scripts/start.sh` |
+| `packages/main-project` | Next.js 主应用前端 | `./scripts/start.sh` |
+| `packages/admin` | Next.js 管理后台 | `./scripts/start.sh` |
+| `packages/mobile` | Expo React Native 移动端 | `./scripts/start.sh` |
+
+### Quick Start
+
+```bash
+# 启动后端服务
+./scripts/quick-start.sh
+
+# 或分别启动各包
+cd packages/server-python && ./scripts/start.sh  # 后端
+cd packages/main-project && ./scripts/start.sh   # 主前端
+cd packages/mobile && ./scripts/start.sh         # 移动端
+```
+
+### Package Documentation
+
+- [Backend 启动指南](docs/deployment/quick-start-guide.md)
+- [Mobile 启动指南](packages/mobile/docs/start-guide.md)
+

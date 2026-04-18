@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   Text,
 } from 'react-native';
-import { Canvas, Circle, Group } from '@shopify/react-native-skia';
 import { useI18n } from '@/lib/i18n';
 
 interface PointerOverlayProps {
@@ -36,11 +35,9 @@ export function PointerOverlay({
 
   // 激光笔动画
   const laserOpacity = useRef(new Animated.Value(1)).current;
-  const laserScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (pointerMode === 'laser' && active) {
-      // 激光笔闪烁效果
       Animated.loop(
         Animated.sequence([
           Animated.timing(laserOpacity, { toValue: 0.7, duration: 300, useNativeDriver: true }),
@@ -57,7 +54,6 @@ export function PointerOverlay({
 
   useEffect(() => {
     if (pointerMode === 'spotlight' && active) {
-      // 聚光灯呼吸效果
       Animated.loop(
         Animated.sequence([
           Animated.timing(spotlightRadius, { toValue: 70, duration: 500, useNativeDriver: true }),
@@ -91,30 +87,32 @@ export function PointerOverlay({
         onTouchMove={handleTouchMove}
       />
 
-      {/* 指针可视化 */}
-      {active && (
-        <Canvas style={{ width, height }}>
-          <Group>
-            {pointerMode === 'laser' && (
-              // 激光笔：红色小点
-              <Circle
-                cx={position.x}
-                cy={position.y}
-                r={8}
-                color="#ff0000"
-              />
-            )}
-            {pointerMode === 'spotlight' && (
-              // 聚光灯：圆形高亮区域
-              <Circle
-                cx={position.x}
-                cy={position.y}
-                r={60}
-                color="rgba(255, 255, 255, 0.3)"
-              />
-            )}
-          </Group>
-        </Canvas>
+      {/* 指针可视化 - 使用 Animated.View 替代 Skia */}
+      {active && pointerMode === 'laser' && (
+        <Animated.View
+          style={[
+            styles.laserPointer,
+            {
+              left: position.x - 8,
+              top: position.y - 8,
+              opacity: laserOpacity,
+            },
+          ]}
+        />
+      )}
+
+      {active && pointerMode === 'spotlight' && (
+        <Animated.View
+          style={[
+            styles.spotlight,
+            {
+              left: position.x - 60,
+              top: position.y - 60,
+              width: spotlightRadius,
+              height: spotlightRadius,
+            },
+          ]}
+        />
       )}
 
       {/* 控制按钮 */}
@@ -161,6 +159,18 @@ const styles = StyleSheet.create({
   },
   touchLayer: {
     backgroundColor: 'transparent',
+  },
+  laserPointer: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#ff0000',
+  },
+  spotlight: {
+    position: 'absolute',
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   controls: {
     position: 'absolute',
