@@ -42,15 +42,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store",
-      [
-        "expo-auth-session",
-        {
-          "apple": {
-            "clientId": "com.openmaic.mobile"
-          }
-        }
-      ]
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
