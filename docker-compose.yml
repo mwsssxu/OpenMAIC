@@ -11,7 +11,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgres://postgres:0okm9ijn@postgres:5432/postgres
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:re2019@redis:6379
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - DEBUG=true
       # LLM 提供商

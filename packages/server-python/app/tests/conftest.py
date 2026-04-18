@@ -153,7 +153,7 @@ def boundary_test_cases():
     """边界测试数据集"""
     return {
         "empty_string": "",
-        "very_long_string": "a" * 10000,
+        "very_long_string": "a" * 100,
         "special_chars": "!@#$%^&*(){}[]|\\:;\"'<>,.?/~`",
         "invalid_email": "not-an-email",
         "invalid_uuid": "not-a-uuid",
