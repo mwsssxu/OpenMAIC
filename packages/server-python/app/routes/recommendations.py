@@ -8,6 +8,7 @@ from app.db.database import get_db
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 from typing import Optional, List
 
 router = APIRouter()
@@ -74,7 +75,7 @@ async def mark_course_completed(
     total_scenes = body.get("total_scenes", 0)
     time_spent = body.get("time_spent_minutes", 0)
 
-    now = datetime.utcnow()
+    now = utcnow()
 
     if existing:
         await db.execute(
@@ -184,7 +185,7 @@ async def trigger_note_reminder_if_needed(
         {"title": "实际应用", "hint": "这些知识可以应用在哪些场景"},
     ]
 
-    deadline = datetime.utcnow() + timedelta(days=7)
+    deadline = utcnow() + timedelta(days=7)
     reminder_id = uuid.uuid4()
 
     await db.execute(
@@ -194,7 +195,7 @@ async def trigger_note_reminder_if_needed(
         VALUES ($1, $2, $3, 'general', $4, 25, $5, 'pending', $6)
         """,
         reminder_id, user_uuid, course_uuid,
-        json.dumps(template_sections), deadline, datetime.utcnow()
+        json.dumps(template_sections), deadline, utcnow()
     )
 
     return {
@@ -302,7 +303,7 @@ async def generate_recommendations(
                     (id, source_course_id, target_course_id, recommendation_type, weight, reason, created_at)
                     VALUES ($1, $2, $3, 'advanced', 0.8, '同主题进阶', $4)
                     """,
-                    rec_id, course_uuid, sim["id"], datetime.utcnow()
+                    rec_id, course_uuid, sim["id"], utcnow()
                 )
                 recommendations.append({
                     "id": str(rec_id),
@@ -334,7 +335,7 @@ async def generate_recommendations(
                 (id, source_course_id, target_course_id, recommendation_type, weight, reason, created_at)
                 VALUES ($1, $2, $3, 'related', 0.6, '热门课程', $4)
                 """,
-                rec_id, course_uuid, rel["id"], datetime.utcnow()
+                rec_id, course_uuid, rel["id"], utcnow()
             )
             recommendations.append({
                 "id": str(rec_id),
@@ -506,7 +507,7 @@ async def create_learning_path(
         (id, user_id, path_name, description, course_ids, status, progress, created_at)
         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6)
         """,
-        path_id, user_uuid, path_name, description, ",".join(course_ids), datetime.utcnow()
+        path_id, user_uuid, path_name, description, ",".join(course_ids), utcnow()
     )
 
     return {
@@ -554,7 +555,7 @@ async def update_path_progress(
         """
         UPDATE learning_paths SET progress = $1, status = $2, updated_at = $3 WHERE id = $4
         """,
-        progress, status, datetime.utcnow(), path_uuid
+        progress, status, utcnow(), path_uuid
     )
 
     # 完成路径奖励

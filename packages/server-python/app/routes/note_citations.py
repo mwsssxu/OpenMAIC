@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import json
@@ -112,7 +113,7 @@ async def add_citation(
         citation_id, note_uuid, scene_uuid, scene["stage_id"],
         request.content_snippet, request.citation_type,
         request.position_start, request.position_end,
-        request.context, datetime.utcnow()
+        request.context, utcnow()
     )
 
     # 更新场景引用计数

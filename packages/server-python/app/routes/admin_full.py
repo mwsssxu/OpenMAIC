@@ -5,6 +5,7 @@ Admin API routes - Full implementation with permission checks
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 import asyncpg
 from app.db.database import get_db
 from app.routes.admin_auth import get_current_admin, check_permission, get_admin_permissions
@@ -159,7 +160,7 @@ async def ban_user(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'user_ban', $2, $3, $4)
         """,
-        admin["id"], user_id, f"禁用用户: {reason}", datetime.utcnow()
+        admin["id"], user_id, f"禁用用户: {reason}", utcnow()
     )
 
     return {"success": True, "action": "banned", "reason": reason}
@@ -179,7 +180,7 @@ async def unban_user(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'user_unban', $2, '启用用户', $3)
         """,
-        admin["id"], user_id, datetime.utcnow()
+        admin["id"], user_id, utcnow()
     )
 
     return {"success": True, "action": "unbanned"}
@@ -207,7 +208,7 @@ async def gift_tokens_to_user(
         INSERT INTO token_transactions (user_id, tokens, transaction_type, description, created_at)
         VALUES ($1, $2, 'gift', $3, $4)
         """,
-        user_id, amount, reason, datetime.utcnow()
+        user_id, amount, reason, utcnow()
     )
 
     await db.execute(
@@ -215,7 +216,7 @@ async def gift_tokens_to_user(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'gift_tokens', $2, $3, $4)
         """,
-        admin["id"], user_id, f"赠送{amount}Token: {reason}", datetime.utcnow()
+        admin["id"], user_id, f"赠送{amount}Token: {reason}", utcnow()
     )
 
     return {"success": True, "tokens_added": amount}
@@ -243,7 +244,7 @@ async def gift_points_to_user(
         INSERT INTO point_transactions (user_id, points, transaction_type, description, created_at)
         VALUES ($1, $2, 'gift', $3, $4)
         """,
-        user_id, amount, reason, datetime.utcnow()
+        user_id, amount, reason, utcnow()
     )
 
     await db.execute(
@@ -251,7 +252,7 @@ async def gift_points_to_user(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'gift_points', $2, $3, $4)
         """,
-        admin["id"], user_id, f"赠送{amount}积分: {reason}", datetime.utcnow()
+        admin["id"], user_id, f"赠送{amount}积分: {reason}", utcnow()
     )
 
     return {"success": True, "points_added": amount}
@@ -297,7 +298,7 @@ async def approve_question(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_approve', $2, '审核通过问题', $3)
         """,
-        admin["id"], question_id, datetime.utcnow()
+        admin["id"], question_id, utcnow()
     )
 
     return {"success": True}
@@ -318,7 +319,7 @@ async def reject_question(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_reject', $2, $3, $4)
         """,
-        admin["id"], question_id, f"审核拒绝问题: {reason}", datetime.utcnow()
+        admin["id"], question_id, f"审核拒绝问题: {reason}", utcnow()
     )
 
     return {"success": True}
@@ -363,7 +364,7 @@ async def approve_answer(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_approve', $2, '审核通过回答', $3)
         """,
-        admin["id"], answer_id, datetime.utcnow()
+        admin["id"], answer_id, utcnow()
     )
 
     return {"success": True}
@@ -384,7 +385,7 @@ async def reject_answer(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_reject', $2, $3, $4)
         """,
-        admin["id"], answer_id, f"审核拒绝回答: {reason}", datetime.utcnow()
+        admin["id"], answer_id, f"审核拒绝回答: {reason}", utcnow()
     )
 
     return {"success": True}
@@ -428,7 +429,7 @@ async def approve_note(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_approve', $2, '审核通过笔记', $3)
         """,
-        admin["id"], note_id, datetime.utcnow()
+        admin["id"], note_id, utcnow()
     )
 
     return {"success": True}
@@ -449,7 +450,7 @@ async def reject_note(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'content_reject', $2, $3, $4)
         """,
-        admin["id"], note_id, f"审核拒绝笔记: {reason}", datetime.utcnow()
+        admin["id"], note_id, f"审核拒绝笔记: {reason}", utcnow()
     )
 
     return {"success": True}
@@ -464,7 +465,7 @@ async def get_user_stats(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get user statistics. Requires finance.view permission."""
-    start_date = datetime.utcnow().date() - timedelta(days=days)
+    start_date = utcnow().date() - timedelta(days=days)
 
     total = await db.fetchval("SELECT COUNT(*) FROM users")
     new_today = await db.fetchval("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURRENT_DATE")
@@ -496,7 +497,7 @@ async def get_economy_stats(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get economy statistics. Requires finance.view permission."""
-    start_date = datetime.utcnow().date() - timedelta(days=days)
+    start_date = utcnow().date() - timedelta(days=days)
 
     revenue_today = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = CURRENT_DATE AND status = 'completed'") or 0
     revenue_month = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) AND status = 'completed'") or 0
@@ -547,7 +548,7 @@ async def update_llm_settings(
             UPDATE llm_configs SET model = $2, temperature = $3, max_tokens = $4, top_p = $5, updated_at = $6
             WHERE provider = $1
             """,
-            config["provider"], config["model"], config["temperature"], config["max_tokens"], config["top_p"], datetime.utcnow()
+            config["provider"], config["model"], config["temperature"], config["max_tokens"], config["top_p"], utcnow()
         )
 
     await db.execute(
@@ -555,7 +556,7 @@ async def update_llm_settings(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'settings_update', 'llm_config', '更新LLM配置', $2)
         """,
-        admin["id"], datetime.utcnow()
+        admin["id"], utcnow()
     )
 
     return {"success": True}
@@ -584,7 +585,7 @@ async def update_pricing_settings(
             UPDATE pricing_configs SET price = $3, tokens = $4, description = $5, updated_at = $6
             WHERE type = $1 AND name = $2
             """,
-            p["type"], p["name"], p["price"], p["tokens"], p["description"], datetime.utcnow()
+            p["type"], p["name"], p["price"], p["tokens"], p["description"], utcnow()
         )
 
     await db.execute(
@@ -592,7 +593,7 @@ async def update_pricing_settings(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'pricing_update', 'pricing_config', '更新价格配置', $2)
         """,
-        admin["id"], datetime.utcnow()
+        admin["id"], utcnow()
     )
 
     return {"success": True}
@@ -637,7 +638,7 @@ async def update_rules_settings(
         INSERT INTO admin_logs (admin_id, action, target, details, created_at)
         VALUES ($1, 'settings_update', 'rules_config', '更新规则配置', $2)
         """,
-        admin["id"], datetime.utcnow()
+        admin["id"], utcnow()
     )
 
     return {"success": True}

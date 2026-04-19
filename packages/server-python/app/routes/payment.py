@@ -12,6 +12,7 @@ from app.core.config import settings
 import asyncpg
 import uuid
 from datetime import datetime, timezone
+from app.core.time_utils import utcnow
 import hashlib
 import json
 
@@ -89,7 +90,7 @@ async def create_payment_order(
         INSERT INTO orders (id, user_id, amount, token_amount, payment_method, status, created_at)
         VALUES ($1, $2, $3, $4, $5, 'created', $6)
         """,
-        order_id, user_uuid, actual_price, token_amount, payment_method, datetime.now(timezone.utc)
+        order_id, user_uuid, actual_price, token_amount, payment_method, utcnow()
     )
 
     # 根据支付方式获取支付参数
@@ -100,8 +101,8 @@ async def create_payment_order(
             "appid": "模拟appid",
             "partnerid": "模拟商户号",
             "prepayid": f"mock_prepay_{order_id.hex}",
-            "noncestr": hashlib.md5(str(datetime.now(timezone.utc)).encode()).hexdigest(),
-            "timestamp": int(datetime.now(timezone.utc).timestamp()),
+            "noncestr": hashlib.md5(str(utcnow()).encode()).hexdigest(),
+            "timestamp": int(utcnow().timestamp()),
             "sign": "模拟签名",
         }
         payment_url = None
@@ -123,7 +124,7 @@ async def create_payment_order(
         "status": "created",
         "wechat_params": payment_params if payment_method == "wechat" else None,
         "alipay_url": payment_url if payment_method == "alipay" else None,
-        "expires_at": (datetime.now(timezone.utc) + datetime.timedelta(hours=2)).isoformat(),
+        "expires_at": (utcnow() + datetime.timedelta(hours=2)).isoformat(),
     }
 
 
@@ -292,7 +293,7 @@ async def wechat_pay_callback(
         VALUES ($1, $2, 'wechat', $3, $4, 'success', $5, $6)
         """,
         uuid.uuid4(), order_id, transaction_id,
-        data.get("total_fee", 0), body.decode(), datetime.now(timezone.utc)
+        data.get("total_fee", 0), body.decode(), utcnow()
     )
 
     # 处理订单
@@ -330,7 +331,7 @@ async def alipay_callback(
         """,
         uuid.uuid4(), order_id, transaction_id,
         int(float(form_data.get("total_amount", 0)) * 100),
-        json.dumps(dict(form_data)), datetime.now(timezone.utc)
+        json.dumps(dict(form_data)), utcnow()
     )
 
     # 处理订单
@@ -368,7 +369,7 @@ async def process_payment_success(
             UPDATE orders SET status = 'paid', transaction_id = $1, paid_at = $2, updated_at = $2
             WHERE id = $3
             """,
-            transaction_id, datetime.now(timezone.utc), order_id
+            transaction_id, utcnow(), order_id
         )
 
         # 入账 Token
@@ -416,7 +417,7 @@ async def mock_pay_success(
         return {"message": "订单已支付"}
 
     # 模拟支付成功
-    result = await process_payment_success(db, o_uuid, f"mock_tx_{datetime.now(timezone.utc).timestamp()}", "mock")
+    result = await process_payment_success(db, o_uuid, f"mock_tx_{utcnow().timestamp()}", "mock")
 
     if result:
         return {"message": "模拟支付成功，Token已入账"}

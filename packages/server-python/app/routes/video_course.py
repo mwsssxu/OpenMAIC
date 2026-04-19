@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel, HttpUrl
 from typing import Optional, List
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import re
@@ -242,7 +243,7 @@ async def create_course_from_outline(
         uuid.UUID(user_id),
         course_name,
         f"从{video_info['platform']}视频生成的课程",
-        datetime.utcnow()
+        utcnow()
     )
 
     # Create scenes for each topic
@@ -256,7 +257,7 @@ async def create_course_from_outline(
             course_id,
             topic["title"],
             i + 1,
-            datetime.utcnow()
+            utcnow()
         )
 
         # In production, generate actual slide content via LLM
@@ -297,7 +298,7 @@ async def process_video_to_course(
         await conn.execute(
             "UPDATE video_sources SET status = 'processing', updated_at = $2 WHERE id = $1",
             uuid.UUID(source_id),
-            datetime.utcnow()
+            utcnow()
         )
 
         # Fetch video info
@@ -320,7 +321,7 @@ async def process_video_to_course(
             video_info.get("duration"),
             video_info.get("thumbnail"),
             video_info.get("subtitles_available", False),
-            datetime.utcnow()
+            utcnow()
         )
 
         # Fetch or generate subtitles
@@ -340,7 +341,7 @@ async def process_video_to_course(
             """,
             uuid.UUID(source_id),
             subtitles,
-            datetime.utcnow()
+            utcnow()
         )
 
         # Analyze and generate outline
@@ -357,7 +358,7 @@ async def process_video_to_course(
             UPDATE video_sources SET status = 'completed', updated_at = $2 WHERE id = $1
             """,
             uuid.UUID(source_id),
-            datetime.utcnow()
+            utcnow()
         )
 
         # Create mapping
@@ -373,7 +374,7 @@ async def process_video_to_course(
                 i,
                 topic.get("start_time", 0),
                 topic.get("end_time", 30),
-                datetime.utcnow()
+                utcnow()
             )
 
     except Exception as e:
@@ -385,7 +386,7 @@ async def process_video_to_course(
             """,
             uuid.UUID(source_id),
             str(e),
-            datetime.utcnow()
+            utcnow()
         )
 
     finally:
@@ -427,7 +428,7 @@ async def submit_video_course(
         platform,
         video_id,
         request.language,
-        datetime.utcnow()
+        utcnow()
     )
 
     # Start background processing

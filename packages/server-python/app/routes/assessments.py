@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import json
@@ -225,7 +226,7 @@ async def create_assessment(
 
     # Create assessment record
     assessment_id = uuid.uuid4()
-    expires_at = datetime.utcnow() + timedelta(minutes=config["duration_minutes"] * 2)
+    expires_at = utcnow() + timedelta(minutes=config["duration_minutes"] * 2)
 
     await db.execute(
         """
@@ -236,7 +237,7 @@ async def create_assessment(
         """,
         assessment_id, user_uuid, course_uuid, request.assessment_type,
         json.dumps(questions), config["duration_minutes"],
-        expires_at, datetime.utcnow()
+        expires_at, utcnow()
     )
 
     return {
@@ -287,7 +288,7 @@ async def get_assessment(
         "duration_minutes": assessment["duration_minutes"],
         "expires_at": assessment["expires_at"].isoformat(),
         "status": assessment["status"],
-        "time_remaining": max(0, int((assessment["expires_at"] - datetime.utcnow()).total_seconds() / 60))
+        "time_remaining": max(0, int((assessment["expires_at"] - utcnow()).total_seconds() / 60))
     }
 
 
@@ -312,7 +313,7 @@ async def submit_assessment(
     if assessment["status"] != "pending":
         raise HTTPException(status_code=400, detail="Assessment already submitted")
 
-    if datetime.utcnow() > assessment["expires_at"]:
+    if utcnow() > assessment["expires_at"]:
         raise HTTPException(status_code=400, detail="Assessment expired")
 
     questions = json.loads(assessment["questions"])
@@ -326,7 +327,7 @@ async def submit_assessment(
     )
 
     # Calculate time spent (approximate)
-    now = datetime.utcnow()
+    now = utcnow()
     created = assessment.get("created_at", now)
     time_spent = int((now - created).total_seconds() / 60) if created else 5
 

@@ -248,7 +248,7 @@ async def check_and_award_achievements(
                 INSERT INTO user_achievements (id, user_id, achievement_id, progress, earned_at)
                 VALUES ($1, $2, $3, $4, $5)
                 """,
-                uuid.uuid4(), user_uuid, ach_id, current, datetime.utcnow()
+                uuid.uuid4(), user_uuid, ach_id, current, utcnow()
             )
             newly_earned.append({
                 "id": ach_id,
@@ -315,7 +315,7 @@ async def calculate_streak(db: asyncpg.Connection, user_uuid) -> int:
         return 0
 
     streak = 0
-    today = datetime.utcnow().date()
+    today = utcnow().date()
 
     for i, row in enumerate(dates):
         expected_date = today - timedelta(days=i)

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import json
@@ -316,7 +317,7 @@ async def submit_code(
         result["passed"],
         result["score"],
         result["execution_time"],
-        datetime.utcnow()
+        utcnow()
     )
 
     # Give points based on score
@@ -457,7 +458,7 @@ async def create_project_portfolio(
         request.code_url,
         json.dumps(request.tags),
         request.is_public,
-        datetime.utcnow()
+        utcnow()
     )
 
     return {

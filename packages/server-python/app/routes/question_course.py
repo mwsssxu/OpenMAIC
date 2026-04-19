@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 from app.db.database import get_db
@@ -162,7 +163,7 @@ async def create_course_from_outline(
         uuid.UUID(user_id),
         outline["title"],
         outline["description"],
-        datetime.utcnow()
+        utcnow()
     )
 
     # Create scenes for each topic
@@ -176,7 +177,7 @@ async def create_course_from_outline(
             course_id,
             topic["title"],
             i + 1,
-            datetime.utcnow()
+            utcnow()
         )
 
         # Store key points and examples as scene content

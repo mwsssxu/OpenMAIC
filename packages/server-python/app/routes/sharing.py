@@ -50,7 +50,7 @@ async def share_classroom(
             body.get("is_public", True),
             body.get("title", stage["name"]),
             body.get("description", stage["description"]),
-            datetime.utcnow(),
+            utcnow(),
             existing_share["id"]
         )
         share_code = existing_share["share_code"]
@@ -70,7 +70,7 @@ async def share_classroom(
             body.get("is_public", True),
             body.get("title", stage["name"]),
             body.get("description", stage["description"]),
-            datetime.utcnow()
+            utcnow()
         )
 
         # 授予分享成就
@@ -197,7 +197,7 @@ async def like_shared_classroom(
             INSERT INTO classroom_likes (id, shared_classroom_id, user_id, created_at)
             VALUES ($1, $2, $3, $4)
             """,
-            uuid.uuid4(), share["id"], user_uuid, datetime.utcnow()
+            uuid.uuid4(), share["id"], user_uuid, utcnow()
         )
         await db.execute(
             "UPDATE shared_classrooms SET like_count = like_count + 1 WHERE id = $1",
@@ -310,5 +310,5 @@ async def check_share_achievement(db: asyncpg.Connection, user_uuid):
             VALUES ($1, $2, 'share_first', 1, $3)
             ON CONFLICT DO NOTHING
             """,
-            uuid.uuid4(), user_uuid, datetime.utcnow()
+            uuid.uuid4(), user_uuid, utcnow()
         )

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 from app.db.database import get_db
@@ -156,7 +157,7 @@ async def trigger_note_reminder(
 
     # Create reminder
     reminder_id = uuid.uuid4()
-    deadline = datetime.utcnow() + timedelta(days=7)  # 7 days to write note
+    deadline = utcnow() + timedelta(days=7)  # 7 days to write note
 
     await db.execute(
         """
@@ -167,7 +168,7 @@ async def trigger_note_reminder(
         """,
         reminder_id, user_uuid, course_uuid, template_type,
         json.dumps(template["sections"]), template["reward_points"],
-        deadline, datetime.utcnow()
+        deadline, utcnow()
     )
 
     return {
@@ -216,7 +217,7 @@ async def get_pending_reminders(
                 "reward_points": r["reward_points"],
                 "deadline": r["deadline"].isoformat(),
                 "created_at": r["created_at"].isoformat(),
-                "days_left": max(0, (r["deadline"] - datetime.utcnow()).days),
+                "days_left": max(0, (r["deadline"] - utcnow()).days),
                 "status": r["status"]
             }
             for r in reminders
@@ -287,7 +288,7 @@ async def submit_note_from_reminder(
         raise HTTPException(status_code=400, detail="Reminder already processed")
 
     # Check deadline for bonus
-    is_before_deadline = datetime.utcnow() < reminder["deadline"]
+    is_before_deadline = utcnow() < reminder["deadline"]
     bonus_multiplier = 1.5 if is_before_deadline else 1.0
 
     # Create the note
@@ -303,7 +304,7 @@ async def submit_note_from_reminder(
         request.title,
         request.content,
         json.dumps(request.tags or []),
-        datetime.utcnow()
+        utcnow()
     )
 
     # Calculate and award points
@@ -328,7 +329,7 @@ async def submit_note_from_reminder(
         uuid.UUID(user_id),
         earned_points,
         f"完成课程笔记{'(提前奖励)' if is_before_deadline else ''}",
-        datetime.utcnow()
+        utcnow()
     )
 
     # Mark reminder as completed
@@ -338,7 +339,7 @@ async def submit_note_from_reminder(
         WHERE id = $1
         """,
         reminder["id"],
-        datetime.utcnow(),
+        utcnow(),
         note_id
     )
 
@@ -378,7 +379,7 @@ async def skip_reminder(
         WHERE id = $1
         """,
         reminder["id"],
-        datetime.utcnow(),
+        utcnow(),
         reason
     )
 

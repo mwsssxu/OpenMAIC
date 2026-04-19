@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
@@ -78,7 +79,7 @@ async def get_subscription_status(
         }
 
     # 检查是否过期
-    if subscription["expires_at"] and subscription["expires_at"] < datetime.utcnow():
+    if subscription["expires_at"] and subscription["expires_at"] < utcnow():
         plan_type = "free"
         status = "expired"
     else:
@@ -113,7 +114,7 @@ async def start_trial_subscription(
         raise HTTPException(status_code=400, detail="已有订阅记录，无法再次试用")
 
     # 创建试用订阅
-    now = datetime.utcnow()
+    now = utcnow()
     expires_at = now + timedelta(days=7)
 
     await db.execute(

@@ -11,6 +11,7 @@ from app.core.redis import (
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
@@ -53,7 +54,7 @@ async def get_point_balance(
             "INSERT INTO point_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
             uuid.uuid4(), user_uuid
         )
-        return {"balance": 0, "updated_at": datetime.utcnow().isoformat(), "source": "db"}
+        return {"balance": 0, "updated_at": utcnow().isoformat(), "source": "db"}
 
     # 缓存余额
     await cache_points_balance(current_user_id, account["balance"])
@@ -178,7 +179,7 @@ async def earn_points(
         new_balance = current_balance + amount
         await db.execute(
             "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_balance, datetime.utcnow(), user_uuid
+            new_balance, utcnow(), user_uuid
         )
 
         # 记录流水
@@ -188,7 +189,7 @@ async def earn_points(
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             uuid.uuid4(), user_uuid, source, amount, new_balance,
-            uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
+            uuid.UUID(reference_id) if reference_id else None, utcnow()
         )
 
     # 清除余额缓存
@@ -233,7 +234,7 @@ async def spend_points(
         new_balance = point_account["balance"] - amount
         await db.execute(
             "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_balance, datetime.utcnow(), user_uuid
+            new_balance, utcnow(), user_uuid
         )
 
         # 记录流水（消费用exchange来源）
@@ -243,7 +244,7 @@ async def spend_points(
             VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
             """,
             uuid.uuid4(), user_uuid, -amount, new_balance,
-            uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
+            uuid.UUID(reference_id) if reference_id else None, utcnow()
         )
 
     # 清除余额缓存
@@ -289,7 +290,7 @@ async def grant_new_user_package(
     if existing:
         raise HTTPException(status_code=400, detail="已领取新用户礼包")
 
-    now = datetime.utcnow()
+    now = utcnow()
     trial_expires = now + timedelta(days=7)
 
     # 使用事务发放积分、Token和订阅
@@ -360,7 +361,7 @@ async def earn_points_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, sou
     new_balance = current_balance + amount
     await db.execute(
         "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_balance, datetime.utcnow(), user_uuid
+        new_balance, utcnow(), user_uuid
     )
 
     # 记录流水
@@ -369,5 +370,5 @@ async def earn_points_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, sou
         INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
         VALUES ($1, $2, $3, $4, $5, $6)
         """,
-        uuid.uuid4(), user_uuid, source, amount, new_balance, datetime.utcnow()
+        uuid.uuid4(), user_uuid, source, amount, new_balance, utcnow()
     )

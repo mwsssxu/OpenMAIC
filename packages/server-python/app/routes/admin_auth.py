@@ -89,8 +89,8 @@ def create_jwt(admin_id: str, roles: List[str]) -> str:
     payload = {
         "admin_id": admin_id,
         "roles": roles,
-        "exp": datetime.utcnow() + timedelta(hours=SESSION_DURATION_HOURS),
-        "iat": datetime.utcnow()
+        "exp": utcnow() + timedelta(hours=SESSION_DURATION_HOURS),
+        "iat": utcnow()
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -239,7 +239,7 @@ async def admin_login(
             user_agent,
             success,
             reason,
-            datetime.utcnow()
+            utcnow()
         )
 
     if not admin:
@@ -268,7 +268,7 @@ async def admin_login(
 
     # Create JWT
     jwt_token = create_jwt(str(admin["id"]), role_names)
-    expires_at = datetime.utcnow() + timedelta(hours=SESSION_DURATION_HOURS)
+    expires_at = utcnow() + timedelta(hours=SESSION_DURATION_HOURS)
 
     # Create session
     session_token = generate_token()
@@ -283,7 +283,7 @@ async def admin_login(
         ip_address,
         user_agent,
         expires_at,
-        datetime.utcnow()
+        utcnow()
     )
 
     # Update last login
@@ -292,7 +292,7 @@ async def admin_login(
         UPDATE admins SET last_login_at = $2, last_login_ip = $3 WHERE id = $1
         """,
         admin["id"],
-        datetime.utcnow(),
+        utcnow(),
         ip_address
     )
 
@@ -439,7 +439,7 @@ async def create_admin(
                 admin_id,
                 role_id,
                 admin["id"],
-                datetime.utcnow()
+                utcnow()
             )
 
     # Log action
@@ -451,7 +451,7 @@ async def create_admin(
         admin["id"],
         str(admin_id),
         f"Created admin: {body.email}",
-        datetime.utcnow()
+        utcnow()
     )
 
     return {"success": True, "admin_id": str(admin_id)}
@@ -494,7 +494,7 @@ async def update_admin_roles(
                 target_admin_id,
                 role_id,
                 admin["id"],
-                datetime.utcnow()
+                utcnow()
             )
 
     return {"success": True}
@@ -527,7 +527,7 @@ async def disable_admin(
         """,
         admin["id"],
         target_admin_id,
-        datetime.utcnow()
+        utcnow()
     )
 
     return {"success": True}
@@ -552,7 +552,7 @@ async def enable_admin(
         """,
         admin["id"],
         target_admin_id,
-        datetime.utcnow()
+        utcnow()
     )
 
     return {"success": True}
@@ -585,7 +585,7 @@ async def delete_admin(
         """,
         admin["id"],
         target_admin_id,
-        datetime.utcnow()
+        utcnow()
     )
 
     return {"success": True}
@@ -600,7 +600,7 @@ async def get_login_logs(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get login logs."""
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = utcnow() - timedelta(days=days)
 
     logs = await db.fetch(
         """

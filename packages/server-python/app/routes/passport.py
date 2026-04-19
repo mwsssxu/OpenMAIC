@@ -8,6 +8,7 @@ from app.db.database import get_db
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 from typing import Optional, List
 import json
 
@@ -189,7 +190,7 @@ async def add_or_update_skill(
         user_uuid, skill_name
     )
 
-    now = datetime.utcnow()
+    now = utcnow()
 
     if existing:
         # 更新技能（增加课程数）
@@ -276,7 +277,7 @@ async def assess_skill(
 
     # 创建评估记录
     assessment_id = uuid.uuid4()
-    now = datetime.utcnow()
+    now = utcnow()
 
     await db.execute(
         """
@@ -382,7 +383,7 @@ async def create_portfolio(
         raise HTTPException(status_code=400, detail="项目名称不能为空")
 
     portfolio_id = uuid.uuid4()
-    now = datetime.utcnow()
+    now = utcnow()
 
     await db.execute(
         """

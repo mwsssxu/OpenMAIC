@@ -17,6 +17,7 @@ import asyncpg
 import uuid
 import json
 from datetime import datetime
+from app.core.time_utils import utcnow
 from typing import Dict, Set, Optional
 import asyncio
 import hashlib
@@ -48,13 +49,13 @@ class ClassroomRoom:
         self.whiteboard_state: dict = {}
         self.current_scene: int = 0
         self.is_active: bool = True
-        self.created_at = datetime.utcnow()
-        self.last_persist_at = datetime.utcnow()
+        self.created_at = utcnow()
+        self.last_persist_at = utcnow()
         self.user_message_times: Dict[str, list] = {}  # user_id -> [timestamps] for rate limiting
 
     def check_rate_limit(self, user_id: str) -> bool:
         """检查用户是否超过消息速率限制"""
-        now = datetime.utcnow()
+        now = utcnow()
         times = self.user_message_times.get(user_id, [])
 
         # 移除超过 1 秒的旧时间戳
@@ -74,7 +75,7 @@ class ClassroomRoom:
         if len(self.participants) >= MAX_PARTICIPANTS:
             raise ValueError("房间已满")
         self.participants[user_id] = ws
-        self.user_info[user_id] = {"nickname": nickname, "role": role, "joined_at": datetime.utcnow()}
+        self.user_info[user_id] = {"nickname": nickname, "role": role, "joined_at": utcnow()}
 
     def remove_participant(self, user_id: str):
         if user_id in self.participants:
@@ -225,7 +226,7 @@ async def create_classroom_session(
         VALUES ($1, $2, $3, $4, 'active', $5)
         """,
         uuid.uuid4(), uuid.UUID(classroom_id) if len(classroom_id) > 10 else None,
-        user_uuid, room_id, datetime.utcnow()
+        user_uuid, room_id, utcnow()
     )
 
     return {
@@ -289,7 +290,7 @@ async def generate_invite_link(
         "invite_code": invite_code,
         "invite_url": f"/classroom/join/{room_id}?code={invite_code}",
         "max_participants": max_participants,
-        "expires_at": datetime.utcnow().isoformat(),  # TODO: 实际过期时间
+        "expires_at": utcnow().isoformat(),  # TODO: 实际过期时间
     }
 
 
@@ -322,7 +323,7 @@ async def end_classroom_session(
         SET status = 'ended', ended_at = $1, participant_count = $2
         WHERE room_id = $3
         """,
-        datetime.utcnow(), room.get_participant_count(), room_id
+        utcnow(), room.get_participant_count(), room_id
     )
 
     # 清理房间
@@ -331,7 +332,7 @@ async def end_classroom_session(
 
     return {
         "message": "课堂已结束",
-        "duration_minutes": int((datetime.utcnow() - room.created_at).total_seconds() / 60),
+        "duration_minutes": int((utcnow() - room.created_at).total_seconds() / 60),
         "total_participants": room.get_participant_count(),
     }
 
@@ -517,7 +518,7 @@ async def handle_chat_message(room: ClassroomRoom, user_id: str, nickname: str, 
         "user_hash": hash_user_id(user_id),  # 使用哈希 ID
         "nickname": nickname,
         "content": content,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utcnow().isoformat(),
     }
 
     # 存储消息（使用限制后的历史）
@@ -529,7 +530,7 @@ async def handle_chat_message(room: ClassroomRoom, user_id: str, nickname: str, 
         INSERT INTO classroom_messages (id, session_id, user_id, content, created_at)
         VALUES ($1, (SELECT id FROM classroom_sessions WHERE room_id = $2), $3, $4, $5)
         """,
-        uuid.UUID(message_id), room.room_id, uuid.UUID(user_id), content, datetime.utcnow()
+        uuid.UUID(message_id), room.room_id, uuid.UUID(user_id), content, utcnow()
     )
 
     # 广播给所有参与者
@@ -564,7 +565,7 @@ async def handle_whiteboard_action(room: ClassroomRoom, user_id: str, data: dict
             "type": action_type,
             "data": action_data,
             "user_hash": hash_user_id(user_id),  # 使用哈希 ID
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
         }
 
     # 广播给所有参与者
@@ -607,7 +608,7 @@ async def handle_agent_request(room: ClassroomRoom, user_id: str, nickname: str,
             "user_id": user_id,
             "nickname": nickname,
             "content": f"@{agent_id} {question}",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
         }
     })
 
@@ -640,7 +641,7 @@ async def handle_reaction(room: ClassroomRoom, user_id: str, nickname: str, data
             "user_id": user_id,
             "nickname": nickname,
             "reaction": reaction_type,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
         }
     })
 

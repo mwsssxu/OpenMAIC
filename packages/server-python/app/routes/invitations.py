@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 import random
 import string
 
@@ -57,7 +58,7 @@ async def get_or_create_invite_code(db: asyncpg.Connection, user_uuid: uuid.UUID
         INSERT INTO user_invitation_codes (id, user_id, invite_code, created_at)
         VALUES ($1, $2, $3, $4)
         """,
-        uuid.uuid4(), user_uuid, code, datetime.utcnow()
+        uuid.uuid4(), user_uuid, code, utcnow()
     )
 
     return code
@@ -197,7 +198,7 @@ async def apply_invite_code(
             VALUES ($1, $2, $3, 1, $4, $5, $6, $7)
             """,
             uuid.uuid4(), inviter_id, user_uuid,
-            LEVEL1_INVITER_POINTS, LEVEL1_INVITER_TOKENS, datetime.utcnow(), datetime.utcnow()
+            LEVEL1_INVITER_POINTS, LEVEL1_INVITER_TOKENS, utcnow(), utcnow()
         )
 
         # 给邀请人发放奖励
@@ -238,7 +239,7 @@ async def reward_user(db: asyncpg.Connection, user_uuid: uuid.UUID, points: int,
                 INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
                 VALUES ($1, $2, 'invitation', $3, $4, $5)
                 """,
-                uuid.uuid4(), user_uuid, points, new_balance, datetime.utcnow()
+                uuid.uuid4(), user_uuid, points, new_balance, utcnow()
             )
         else:
             await db.execute(
@@ -269,7 +270,7 @@ async def process_multi_level_invitation(db: asyncpg.Connection, inviter_id: uui
             VALUES ($1, $2, $3, 2, $4, $5, $6)
             """,
             uuid.uuid4(), level2_inviter, new_invitee_id,
-            LEVEL2_INVITER_POINTS, datetime.utcnow(), datetime.utcnow()
+            LEVEL2_INVITER_POINTS, utcnow(), utcnow()
         )
 
         # 给二级邀请人发放奖励
@@ -292,7 +293,7 @@ async def process_multi_level_invitation(db: asyncpg.Connection, inviter_id: uui
                 VALUES ($1, $2, $3, 3, $4, $5, $6)
                 """,
                 uuid.uuid4(), level3_inviter, new_invitee_id,
-                LEVEL3_INVITER_POINTS, datetime.utcnow(), datetime.utcnow()
+                LEVEL3_INVITER_POINTS, utcnow(), utcnow()
             )
 
             # 给三级邀请人发放奖励

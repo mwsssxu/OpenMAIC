@@ -11,6 +11,7 @@ import asyncpg
 import uuid
 import json
 from datetime import datetime, timezone
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ async def register(
         INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
         VALUES ($1, $2, 'reward', 200, 200, '新用户礼包', $3)
         """,
-        uuid.uuid4(), user_id, datetime.now(timezone.utc)
+        uuid.uuid4(), user_id, utcnow()
     )
 
     # 创建积分账户并发放500积分
@@ -72,7 +73,7 @@ async def register(
         INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
         VALUES ($1, $2, 'new_user', 500, 500, $3)
         """,
-        uuid.uuid4(), user_id, datetime.now(timezone.utc)
+        uuid.uuid4(), user_id, utcnow()
     )
 
     # 返回 token
@@ -311,7 +312,7 @@ async def update_user_info(
         )
 
     updates.append(f"updated_at = ${idx}")
-    values.append(datetime.now(timezone.utc))
+    values.append(utcnow())
     values.append(uuid.UUID(current_user_id))
 
     query = f"UPDATE users SET {', '.join(updates)} WHERE id = ${idx + 1}"
@@ -354,7 +355,7 @@ async def change_password(
     new_hash = hash_password(body.new_password)
     await db.execute(
         "UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3",
-        new_hash, datetime.now(timezone.utc), uuid.UUID(current_user_id)
+        new_hash, utcnow(), uuid.UUID(current_user_id)
     )
 
     return {"message": "Password updated successfully"}
@@ -443,7 +444,7 @@ async def export_user_data(
     )
 
     return {
-        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_at": utcnow().isoformat(),
         "user": {
             "id": str(user["id"]),
             "email": user["email"],

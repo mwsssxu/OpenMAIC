@@ -48,7 +48,7 @@ async def create_classroom(
 ):
     """创建课程"""
     stage_id = uuid.uuid4()
-    now = datetime.utcnow()
+    now = utcnow()
 
     await db.execute(
         """

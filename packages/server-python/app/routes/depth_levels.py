@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 from app.db.database import get_db
@@ -174,7 +175,7 @@ async def select_depth_level(
             existing["id"],
             request.depth,
             scenes_for_depth,
-            datetime.utcnow()
+            utcnow()
         )
         progress_id = existing["id"]
     else:
@@ -189,7 +190,7 @@ async def select_depth_level(
             uuid.UUID(request.course_id),
             request.depth,
             scenes_for_depth,
-            datetime.utcnow()
+            utcnow()
         )
 
     return {
@@ -348,7 +349,7 @@ async def complete_scene_at_depth(
         """,
         progress["id"],
         new_completed,
-        datetime.utcnow()
+        utcnow()
     )
 
     # Give points with multiplier
@@ -450,7 +451,7 @@ async def change_depth_level(
         uuid.UUID(user_id),
         new_depth,
         scenes_for_depth,
-        datetime.utcnow(),
+        utcnow(),
         uuid.UUID(course_id)
     )
 

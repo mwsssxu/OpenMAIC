@@ -8,6 +8,7 @@ from app.db.database import get_db
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
@@ -166,7 +167,7 @@ async def set_buddy_config(
             SET buddy_type = $1, buddy_name = $2, tone_style = $3, updated_at = $4
             WHERE user_id = $5
             """,
-            buddy_type, buddy_name, tone_style, datetime.utcnow(), user_uuid
+            buddy_type, buddy_name, tone_style, utcnow(), user_uuid
         )
     else:
         await db.execute(
@@ -174,7 +175,7 @@ async def set_buddy_config(
             INSERT INTO buddy_configs (id, user_id, buddy_type, buddy_name, tone_style, created_at)
             VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            uuid.uuid4(), user_uuid, buddy_type, buddy_name, tone_style, datetime.utcnow()
+            uuid.uuid4(), user_uuid, buddy_type, buddy_name, tone_style, utcnow()
         )
 
     return {
@@ -287,7 +288,7 @@ async def generate_buddy_message(
         INSERT INTO buddy_messages (id, user_id, trigger_event, message_type, content, created_at)
         VALUES ($1, $2, $3, 'text', $4, $5)
         """,
-        uuid.uuid4(), user_uuid, trigger_event, template, datetime.utcnow()
+        uuid.uuid4(), user_uuid, trigger_event, template, utcnow()
     )
 
     return template

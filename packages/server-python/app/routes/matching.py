@@ -8,6 +8,7 @@ from app.db.database import get_db
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 from typing import Optional
 
 router = APIRouter()
@@ -98,7 +99,7 @@ async def set_matching_preferences(
             WHERE user_id = $7
             """,
             tags_str, courses_str, progress_level, schedule_preference, match_mode,
-            datetime.utcnow(), user_uuid
+            utcnow(), user_uuid
         )
     else:
         await db.execute(
@@ -108,7 +109,7 @@ async def set_matching_preferences(
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             uuid.uuid4(), user_uuid, tags_str, courses_str, progress_level,
-            schedule_preference, match_mode, datetime.utcnow()
+            schedule_preference, match_mode, utcnow()
         )
 
     return {
@@ -261,8 +262,8 @@ async def search_matches(
                 match_id, user_uuid, candidate_uuid, match_result["score"],
                 ",".join(match_result["common_courses"]) if match_result["common_courses"] else None,
                 ",".join(match_result["common_tags"]) if match_result["common_tags"] else None,
-                datetime.utcnow() + timedelta(days=MATCH_EXPIRE_DAYS),
-                datetime.utcnow()
+                utcnow() + timedelta(days=MATCH_EXPIRE_DAYS),
+                utcnow()
             )
 
             # 获取候选人信息
@@ -359,7 +360,7 @@ async def accept_match(
         """
         UPDATE learning_matches SET status = 'accepted', updated_at = $1 WHERE id = $2
         """,
-        datetime.utcnow(), m_uuid
+        utcnow(), m_uuid
     )
 
     return {"match_id": str(m_uuid), "status": "accepted", "message": "匹配已接受"}
@@ -395,7 +396,7 @@ async def reject_match(
         """
         UPDATE learning_matches SET status = 'rejected', updated_at = $1 WHERE id = $2
         """,
-        datetime.utcnow(), m_uuid
+        utcnow(), m_uuid
     )
 
     return {"match_id": str(m_uuid), "status": "rejected", "message": "匹配已拒绝"}

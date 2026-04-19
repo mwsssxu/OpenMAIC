@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 from typing import Optional, List
 
 router = APIRouter()
@@ -113,7 +114,7 @@ async def create_review_schedule(
             """,
             schedule_id, user_uuid, course_uuid, point["type"],
             trigger_at, point["duration_minutes"], point["priority"],
-            datetime.utcnow()
+            utcnow()
         )
 
         schedules_created.append({
@@ -140,7 +141,7 @@ async def get_pending_reviews(
 ):
     """获取待复习列表"""
     user_uuid = uuid.UUID(current_user_id)
-    now = datetime.utcnow()
+    now = utcnow()
 
     # 获取今天及过期的待复习
     rows = await db.fetch(
@@ -232,7 +233,7 @@ async def start_review(
 
     # 创建复习记录
     record_id = uuid.uuid4()
-    now = datetime.utcnow()
+    now = utcnow()
 
     await db.execute(
         """
@@ -297,7 +298,7 @@ async def complete_review(
     if not record:
         raise HTTPException(status_code=400, detail="复习未开始或已完成")
 
-    now = datetime.utcnow()
+    now = utcnow()
     time_spent = body.get("time_spent_minutes", 0)
     effectiveness = body.get("effectiveness_rating", 3)
     quiz_score = body.get("quiz_score")
@@ -395,7 +396,7 @@ async def skip_review(
         SET status = 'skipped', completed_at = $1
         WHERE id = $2 AND user_id = $3
         """,
-        datetime.utcnow(), schedule_uuid, user_uuid
+        utcnow(), schedule_uuid, user_uuid
     )
 
     # 创建延期复习（3天后）
@@ -405,7 +406,7 @@ async def skip_review(
     )
 
     if schedule:
-        new_trigger = datetime.utcnow() + timedelta(days=3)
+        new_trigger = utcnow() + timedelta(days=3)
         await db.execute(
             """
             INSERT INTO review_schedules
@@ -413,7 +414,7 @@ async def skip_review(
             VALUES ($1, $2, $3, $4, $5, 5, 'pending', 1, $6)
             """,
             uuid.uuid4(), user_uuid, schedule["course_id"], schedule["review_type"],
-            new_trigger, datetime.utcnow()
+            new_trigger, utcnow()
         )
 
     return {

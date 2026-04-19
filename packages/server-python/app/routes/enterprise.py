@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 from app.db.database import get_db
@@ -87,7 +88,7 @@ async def create_enterprise(
         enterprise_id, request.name, user_uuid, request.industry, request.size,
         request.contact_email, request.contact_phone, request.plan_type,
         plan_limits["members"], plan_limits["courses"], plan_limits["storage"],
-        datetime.utcnow()
+        utcnow()
     )
 
     # 添加创建者为企业管理员
@@ -97,7 +98,7 @@ async def create_enterprise(
         (id, enterprise_id, user_id, role, joined_at, created_at)
         VALUES ($1, $2, $3, 'admin', $4, $4)
         """,
-        uuid.uuid4(), enterprise_id, user_uuid, datetime.utcnow()
+        uuid.uuid4(), enterprise_id, user_uuid, utcnow()
     )
 
     return {
@@ -290,7 +291,7 @@ async def invite_members(
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
             """,
             invite_id, ent_uuid, email, request.role, invite_code,
-            user_uuid, datetime.utcnow() + timedelta(days=7), datetime.utcnow()
+            user_uuid, utcnow() + timedelta(days=7), utcnow()
         )
 
         invites_created.append({
@@ -556,7 +557,7 @@ async def assign_courses(
              is_required, deadline, status, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $5)
             """,
-            assignment_id, ent_uuid, course_uuid, user_uuid, datetime.utcnow(),
+            assignment_id, ent_uuid, course_uuid, user_uuid, utcnow(),
             request.assign_to_all, request.deadline
         )
 
@@ -739,8 +740,8 @@ async def get_learning_report(
     if not membership or membership["role"] not in ["admin", "owner"]:
         raise HTTPException(status_code=403, detail="只有管理员可以查看报表")
 
-    start = datetime.strptime(start_date, "%Y-%m-%d") if start_date else datetime.utcnow() - timedelta(days=30)
-    end = datetime.strptime(end_date, "%Y-%m-%d") if end_date else datetime.utcnow()
+    start = datetime.strptime(start_date, "%Y-%m-%d") if start_date else utcnow() - timedelta(days=30)
+    end = datetime.strptime(end_date, "%Y-%m-%d") if end_date else utcnow()
 
     # 每日学习统计
     daily_stats = await db.fetch(

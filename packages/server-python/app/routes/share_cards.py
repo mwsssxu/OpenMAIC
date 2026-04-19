@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import hashlib
@@ -306,7 +307,7 @@ async def generate_checkin_card(
             "total_checkins": total_checkins,
             "milestone_type": milestone_type,
             "user_name": user["nickname"],
-            "checkin_date": datetime.utcnow().isoformat(),
+            "checkin_date": utcnow().isoformat(),
         }
     }
 
@@ -331,7 +332,7 @@ async def store_share_card(
         card_data["subtitle"],
         card_data["image_url"],
         card_data["share_url"],
-        datetime.utcnow()
+        utcnow()
     )
     return card_data["card_id"]
 
@@ -484,7 +485,7 @@ async def track_share_event(
         card_id,
         uuid.UUID(user_id),
         platform,
-        datetime.utcnow()
+        utcnow()
     )
 
     # Give share reward points

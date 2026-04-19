@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 from typing import Optional
 
 router = APIRouter()
@@ -247,7 +248,7 @@ async def get_league_leaderboard(
 
     return {
         "leaderboard": leaderboard[:20] if tier else leaderboard,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": utcnow().isoformat(),
     }
 
 
@@ -260,7 +261,7 @@ async def get_daily_tasks(
 ):
     """获取今日任务列表"""
     user_uuid = uuid.UUID(current_user_id)
-    today = datetime.utcnow().date()
+    today = utcnow().date()
 
     # 获取今日任务完成状态
     completed_tasks = await db.fetch(
@@ -321,7 +322,7 @@ async def update_task_progress(
 ):
     """更新任务进度"""
     user_uuid = uuid.UUID(current_user_id)
-    today = datetime.utcnow().date()
+    today = utcnow().date()
 
     if task_id not in DAILY_TASKS:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -353,7 +354,7 @@ async def update_task_progress(
             WHERE id = $4
             """,
             new_progress, is_completed,
-            datetime.utcnow() if is_completed else None,
+            utcnow() if is_completed else None,
             existing["id"]
         )
     else:
@@ -366,8 +367,8 @@ async def update_task_progress(
             """,
             uuid.uuid4(), user_uuid, task_id, today,
             new_progress, is_completed,
-            datetime.utcnow() if is_completed else None,
-            datetime.utcnow()
+            utcnow() if is_completed else None,
+            utcnow()
         )
 
     # 如果任务完成且之前未完成，发放奖励
@@ -395,7 +396,7 @@ async def update_task_progress(
                 """,
                 uuid.uuid4(), user_uuid, reward_points, new_balance,
                 uuid.UUID(task_id) if len(task_id) == 36 else None,
-                datetime.utcnow()
+                utcnow()
             )
             await invalidate_balance_cache(current_user_id)
             reward_issued = True
@@ -417,7 +418,7 @@ async def complete_checkin_task(
 ):
     """完成打卡任务（打卡后调用）"""
     user_uuid = uuid.UUID(current_user_id)
-    today = datetime.utcnow().date()
+    today = utcnow().date()
 
     # 检查打卡任务是否已完成
     existing = await db.fetchrow(
@@ -441,7 +442,7 @@ async def complete_checkin_task(
             SET progress = 1, completed = TRUE, completed_at = $1
             WHERE id = $2
             """,
-            datetime.utcnow(), existing["id"]
+            utcnow(), existing["id"]
         )
     else:
         await db.execute(
@@ -450,7 +451,7 @@ async def complete_checkin_task(
             (id, user_id, task_id, task_date, progress, completed, completed_at, created_at)
             VALUES ($1, $2, 'checkin', $3, 1, TRUE, $4, $5)
             """,
-            uuid.uuid4(), user_uuid, today, datetime.utcnow(), datetime.utcnow()
+            uuid.uuid4(), user_uuid, today, utcnow(), utcnow()
         )
 
     # 发放积分奖励
@@ -472,7 +473,7 @@ async def complete_checkin_task(
             (id, user_id, source, amount, balance_after, created_at)
             VALUES ($1, $2, 'daily_task', $3, $4, $5)
             """,
-            uuid.uuid4(), user_uuid, reward_points, new_balance, datetime.utcnow()
+            uuid.uuid4(), user_uuid, reward_points, new_balance, utcnow()
         )
         await invalidate_balance_cache(current_user_id)
 
@@ -497,7 +498,7 @@ async def get_streak_reward_info(
 
     # 如果未传 streak 参数，获取用户当前连续天数
     if streak == 0:
-        today = datetime.utcnow().date()
+        today = utcnow().date()
         today_checkin = await db.fetchrow(
             """
             SELECT streak_count FROM daily_checkins

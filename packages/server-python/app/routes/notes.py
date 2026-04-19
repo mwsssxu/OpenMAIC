@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
@@ -54,7 +55,7 @@ async def publish_note(
         """,
         note_id, user_uuid, title, content,
         uuid.UUID(course_id) if course_id else None,
-        visibility, price, tags, datetime.utcnow()
+        visibility, price, tags, utcnow()
     )
 
     return {
@@ -273,7 +274,7 @@ async def purchase_note(
             INSERT INTO note_purchases (id, user_id, note_id, price, author_reward, platform_fee, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
-            uuid.uuid4(), user_uuid, n_uuid, price, author_reward, platform_fee, datetime.utcnow()
+            uuid.uuid4(), user_uuid, n_uuid, price, author_reward, platform_fee, utcnow()
         )
 
         # 给作者发放积分
@@ -292,7 +293,7 @@ async def purchase_note(
                 INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
                 VALUES ($1, $2, 'notes', $3, $4, $5, $6)
                 """,
-                uuid.uuid4(), note["user_id"], author_reward, author_new_balance, n_uuid, datetime.utcnow()
+                uuid.uuid4(), note["user_id"], author_reward, author_new_balance, n_uuid, utcnow()
             )
 
         # 更新笔记购买数

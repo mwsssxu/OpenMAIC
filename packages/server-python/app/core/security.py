@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from app.core.config import settings
+from app.core.time_utils import utcnow
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -23,9 +24,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(user_id: str, expires_delta: timedelta = None) -> str:
     """创建 JWT access token"""
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = utcnow() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     payload = {
         "sub": user_id,
@@ -37,7 +38,7 @@ def create_access_token(user_id: str, expires_delta: timedelta = None) -> str:
 
 def create_refresh_token(user_id: str) -> str:
     """创建 JWT refresh token"""
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "exp": expire,

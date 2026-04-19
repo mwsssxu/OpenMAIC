@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 import re
 
 router = APIRouter()
@@ -83,7 +84,7 @@ async def create_question(
             new_balance = point_account["balance"] - bounty
             await db.execute(
                 "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-                new_balance, datetime.utcnow(), user_uuid
+                new_balance, utcnow(), user_uuid
             )
 
             # 记录积分流水
@@ -92,7 +93,7 @@ async def create_question(
                 INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
                 VALUES ($1, $2, 'bounty', $3, $4, $5, $6)
                 """,
-                uuid.uuid4(), user_uuid, -bounty, new_balance, question_id, datetime.utcnow()
+                uuid.uuid4(), user_uuid, -bounty, new_balance, question_id, utcnow()
             )
 
         # 创建问题
@@ -101,7 +102,7 @@ async def create_question(
             INSERT INTO questions (id, user_id, title, content, bounty, bounty_status, tags, created_at)
             VALUES ($1, $2, $3, $4, $5, 'open', $6, $7)
             """,
-            question_id, user_uuid, title, content, bounty, tags, datetime.utcnow()
+            question_id, user_uuid, title, content, bounty, tags, utcnow()
         )
 
     # 清除余额缓存

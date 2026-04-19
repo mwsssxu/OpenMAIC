@@ -19,7 +19,7 @@ async def daily_checkin(
 ):
     """每日打卡"""
     user_uuid = uuid.UUID(current_user_id)
-    today = datetime.utcnow().date()
+    today = utcnow().date()
 
     # 检查今天是否已打卡
     existing = await db.fetchrow(
@@ -54,7 +54,7 @@ async def daily_checkin(
         INSERT INTO daily_checkins (id, user_id, checkin_date, streak_count, created_at)
         VALUES ($1, $2, $3, $4, $5)
         """,
-        uuid.uuid4(), user_uuid, today, new_streak, datetime.utcnow()
+        uuid.uuid4(), user_uuid, today, new_streak, utcnow()
     )
 
     # 更新用户最大连续天数
@@ -87,7 +87,7 @@ async def get_checkin_status(
 ):
     """获取打卡状态"""
     user_uuid = uuid.UUID(current_user_id)
-    today = datetime.utcnow().date()
+    today = utcnow().date()
 
     # 今日是否打卡
     today_checkin = await db.fetchrow(
@@ -172,7 +172,7 @@ async def get_streak_leaderboard(
             }
             for i, row in enumerate(rows)
         ],
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": utcnow().isoformat(),
     }
 
 

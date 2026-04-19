@@ -9,6 +9,7 @@ from app.core.redis import invalidate_balance_cache
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 import re
 
 router = APIRouter()
@@ -70,7 +71,7 @@ async def create_answer(
         INSERT INTO answers (id, question_id, user_id, content, created_at)
         VALUES ($1, $2, $3, $4, $5)
         """,
-        answer_id, q_uuid, user_uuid, content, datetime.utcnow()
+        answer_id, q_uuid, user_uuid, content, utcnow()
     )
 
     # 更新问题回答数
@@ -207,7 +208,7 @@ async def vote_answer(
                 INSERT INTO answer_votes (id, answer_id, user_id, vote, created_at)
                 VALUES ($1, $2, $3, $4, $5)
                 """,
-                uuid.uuid4(), a_uuid, user_uuid, vote, datetime.utcnow()
+                uuid.uuid4(), a_uuid, user_uuid, vote, utcnow()
             )
             vote_delta = vote
 
@@ -277,7 +278,7 @@ async def accept_answer(
         # 采纳答案
         await db.execute(
             "UPDATE answers SET is_accepted = TRUE, accepted_at = $1 WHERE id = $2",
-            datetime.utcnow(), a_uuid
+            utcnow(), a_uuid
         )
 
         # 更新问题的采纳答案
@@ -304,7 +305,7 @@ async def accept_answer(
                     INSERT INTO point_transactions (id, user_id, source, amount, balance_after, reference_id, created_at)
                     VALUES ($1, $2, 'qanda', $3, $4, $5, $6)
                     """,
-                    uuid.uuid4(), answer["user_id"], author_reward, new_balance, question["id"], datetime.utcnow()
+                    uuid.uuid4(), answer["user_id"], author_reward, new_balance, question["id"], utcnow()
                 )
 
             # 平台积分（可忽略或记录）

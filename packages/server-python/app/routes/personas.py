@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from datetime import datetime
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import json
@@ -253,7 +254,7 @@ async def chat_with_persona(
         """,
         uuid.UUID(user_id),
         request.persona_id,
-        datetime.utcnow(),
+        utcnow(),
         request.context
     )
 
@@ -277,7 +278,7 @@ async def chat_with_persona(
         session_id,
         request.message,
         response_data["response"],
-        datetime.utcnow()
+        utcnow()
     )
 
     # Update session message count

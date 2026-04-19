@@ -11,6 +11,7 @@ from app.core.redis import (
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
@@ -59,7 +60,7 @@ async def get_token_balance(
             "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
             uuid.uuid4(), user_uuid
         )
-        return {"balance": 0, "updated_at": datetime.utcnow().isoformat(), "source": "db"}
+        return {"balance": 0, "updated_at": utcnow().isoformat(), "source": "db"}
 
     # 缓存余额
     await cache_token_balance(current_user_id, account["balance"])
@@ -199,14 +200,14 @@ async def exchange_points_to_tokens(
         new_point_balance = point_account["balance"] - points
         await db.execute(
             "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_point_balance, datetime.utcnow(), user_uuid
+            new_point_balance, utcnow(), user_uuid
         )
 
         # 更新Token账户
         new_token_balance = token_balance + tokens
         await db.execute(
             "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_token_balance, datetime.utcnow(), user_uuid
+            new_token_balance, utcnow(), user_uuid
         )
 
         # 记录积分流水
@@ -215,7 +216,7 @@ async def exchange_points_to_tokens(
             INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
             VALUES ($1, $2, 'exchange', $3, $4, $5)
             """,
-            uuid.uuid4(), user_uuid, -points, new_point_balance, datetime.utcnow()
+            uuid.uuid4(), user_uuid, -points, new_point_balance, utcnow()
         )
 
         # 记录Token流水
@@ -225,7 +226,7 @@ async def exchange_points_to_tokens(
             VALUES ($1, $2, 'exchange', $3, $4, $5, $6)
             """,
             uuid.uuid4(), user_uuid, tokens, new_token_balance,
-            f"积分兑换（{tier}档位）：{points}积分 → {tokens}Token", datetime.utcnow()
+            f"积分兑换（{tier}档位）：{points}积分 → {tokens}Token", utcnow()
         )
 
     # 清除余额缓存
@@ -272,7 +273,7 @@ async def spend_tokens(
         new_balance = token_account["balance"] - amount
         await db.execute(
             "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_balance, datetime.utcnow(), user_uuid
+            new_balance, utcnow(), user_uuid
         )
 
         # 记录流水
@@ -282,7 +283,7 @@ async def spend_tokens(
             VALUES ($1, $2, 'spend', $3, $4, $5, $6, $7)
             """,
             uuid.uuid4(), user_uuid, -amount, new_balance, description,
-            uuid.UUID(reference_id) if reference_id else None, datetime.utcnow()
+            uuid.UUID(reference_id) if reference_id else None, utcnow()
         )
 
     # 清除余额缓存
@@ -330,7 +331,7 @@ async def reward_tokens(
         new_balance = current_balance + amount
         await db.execute(
             "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_balance, datetime.utcnow(), user_uuid
+            new_balance, utcnow(), user_uuid
         )
 
         # 记录流水
@@ -339,7 +340,7 @@ async def reward_tokens(
             INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
             VALUES ($1, $2, 'reward', $3, $4, $5, $6)
             """,
-            uuid.uuid4(), user_uuid, amount, new_balance, description, datetime.utcnow()
+            uuid.uuid4(), user_uuid, amount, new_balance, description, utcnow()
         )
 
     # 清除余额缓存
@@ -390,7 +391,7 @@ async def create_purchase_order(
         VALUES ($1, $2, $3, $4, $5, 'created', $6)
         """,
         order_id, user_uuid, package["price"], package["tokens"] + package["bonus"],
-        payment_method, datetime.utcnow()
+        payment_method, utcnow()
     )
 
     # TODO: 调用支付API获取支付参数
@@ -430,7 +431,7 @@ async def reward_tokens_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, a
     new_balance = current_balance + amount
     await db.execute(
         "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-        new_balance, datetime.utcnow(), user_uuid
+        new_balance, utcnow(), user_uuid
     )
 
     # 记录流水
@@ -439,7 +440,7 @@ async def reward_tokens_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, a
         INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
         VALUES ($1, $2, 'reward', $3, $4, $5, $6)
         """,
-        uuid.uuid4(), user_uuid, amount, new_balance, description, datetime.utcnow()
+        uuid.uuid4(), user_uuid, amount, new_balance, description, utcnow()
     )
 
     return new_balance
