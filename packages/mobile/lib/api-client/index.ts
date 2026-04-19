@@ -174,6 +174,11 @@ class ApiClient {
     return data;
   }
 
+  async updateClassroom(id: string, name?: string, description?: string) {
+    const { data } = await this.client.put(`/classrooms/${id}`, { name, description });
+    return data;
+  }
+
   async deleteClassroom(id: string) {
     const { data } = await this.client.delete(`/classrooms/${id}`);
     return data;

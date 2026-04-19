@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  TextInput,
+  Modal,
+  Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 
 interface Classroom {
@@ -8,6 +20,8 @@ interface Classroom {
   name: string;
   description?: string;
   created_at: string;
+  updated_at?: string;
+  scene_count?: number;
 }
 
 export default function CoursesScreen() {
@@ -15,6 +29,16 @@ export default function CoursesScreen() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 删除确认模态框
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteName, setPendingDeleteName] = useState<string>('');
+
+  // 重命名模态框
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
+  const [newName, setNewName] = useState<string>('');
 
   useEffect(() => {
     loadClassrooms();
@@ -33,24 +57,128 @@ export default function CoursesScreen() {
     }
   };
 
+  const handleCreate = () => {
+    router.push('/classroom/create' as any);
+  };
+
+  // 打开删除确认
+  const openDeleteConfirm = (classroom: Classroom) => {
+    setPendingDeleteId(classroom.id);
+    setPendingDeleteName(classroom.name);
+    setDeleteModalVisible(true);
+  };
+
+  // 执行删除
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+
+    setDeleteModalVisible(false);
+    try {
+      await apiClient.deleteClassroom(pendingDeleteId);
+      setClassrooms(prev => prev.filter(c => c.id !== pendingDeleteId));
+      if (Platform.OS === 'web') {
+        window.alert('课程已删除');
+      } else {
+        Alert.alert('成功', '课程已删除');
+      }
+    } catch (err: any) {
+      if (Platform.OS === 'web') {
+        window.alert('删除失败: ' + err.message);
+      } else {
+        Alert.alert('错误', '删除失败: ' + err.message);
+      }
+    } finally {
+      setPendingDeleteId(null);
+      setPendingDeleteName('');
+    }
+  };
+
+  // 打开重命名
+  const openRename = (classroom: Classroom) => {
+    setPendingRenameId(classroom.id);
+    setNewName(classroom.name);
+    setRenameModalVisible(true);
+  };
+
+  // 执行重命名
+  const confirmRename = async () => {
+    if (!pendingRenameId || !newName.trim()) return;
+
+    setRenameModalVisible(false);
+    try {
+      // 更新课程名称
+      await apiClient.updateClassroom(pendingRenameId, newName.trim());
+      setClassrooms(prev => prev.map(c =>
+        c.id === pendingRenameId ? { ...c, name: newName.trim() } : c
+      ));
+    } catch (err: any) {
+      if (Platform.OS === 'web') {
+        window.alert('重命名失败: ' + err.message);
+      } else {
+        Alert.alert('错误', '重命名失败: ' + err.message);
+      }
+    } finally {
+      setPendingRenameId(null);
+      setNewName('');
+    }
+  };
+
+  // 格式化日期
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return '今天';
+    if (diffDays === 1) return '昨天';
+    if (diffDays < 7) return `${diffDays}天前`;
+    return date.toLocaleDateString();
+  };
+
   const renderClassroom = ({ item }: { item: Classroom }) => (
     <TouchableOpacity
       style={styles.classroomCard}
       onPress={() => router.push(`/classroom/${item.id}` as any)}
+      activeOpacity={0.7}
     >
-      <Text style={styles.classroomName}>{item.name}</Text>
-      {item.description && (
-        <Text style={styles.classroomDesc}>{item.description}</Text>
-      )}
-      <Text style={styles.classroomDate}>
-        {new Date(item.created_at).toLocaleDateString()}
-      </Text>
+      {/* 缩略图区域 */}
+      <View style={styles.thumbnailArea}>
+        <View style={styles.thumbnailPlaceholder}>
+          <Ionicons name="document-text-outline" size={32} color="#5b9bd5" />
+        </View>
+        {/* 删除和重命名按钮 */}
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.cardActionBtn}
+            onPress={() => openRename(item)}
+          >
+            <Ionicons name="pencil" size={16} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.cardActionBtn, styles.deleteBtn]}
+            onPress={() => openDeleteConfirm(item)}
+          >
+            <Ionicons name="trash-outline" size={16} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 课程信息 */}
+      <View style={styles.cardInfo}>
+        <Text style={styles.classroomName} numberOfLines={2}>{item.name}</Text>
+        {item.description && (
+          <Text style={styles.classroomDesc} numberOfLines={1}>{item.description}</Text>
+        )}
+        <View style={styles.cardMeta}>
+          <Ionicons name="layers-outline" size={12} color="#999" />
+          <Text style={styles.classroomMeta}>
+            {item.scene_count || 0} 场景 · {formatDate(item.created_at)}
+          </Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
-
-  const handleCreate = () => {
-    router.push('/classroom/create' as any);
-  };
 
   if (loading) {
     return (
@@ -63,6 +191,7 @@ export default function CoursesScreen() {
   if (error) {
     return (
       <View style={styles.center}>
+        <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={loadClassrooms}>
           <Text style={styles.retryText}>重试</Text>
@@ -73,62 +202,243 @@ export default function CoursesScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.createHeaderBtn}
-        onPress={handleCreate}
-      >
-        <Text style={styles.createHeaderText}>+ 创建新课程</Text>
-      </TouchableOpacity>
+      {/* 头部 */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>我的课程</Text>
+        <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
+          <Ionicons name="add-circle" size={24} color="white" />
+          <Text style={styles.createBtnText}>新建</Text>
+        </TouchableOpacity>
+      </View>
 
+      {/* 课程列表 */}
       <FlatList
         data={classrooms}
         keyExtractor={(item) => item.id}
         renderItem={renderClassroom}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>暂无课程</Text>
-            <TouchableOpacity
-              style={styles.createBtn}
-              onPress={handleCreate}
-            >
-              <Text style={styles.createText}>创建新课程</Text>
+            <Ionicons name="folder-open-outline" size={48} color="#999" />
+            <Text style={styles.emptyTitle}>暂无课程</Text>
+            <Text style={styles.emptyHint}>点击右上角按钮创建您的第一个课程</Text>
+            <TouchableOpacity style={styles.emptyCreateBtn} onPress={handleCreate}>
+              <Text style={styles.emptyCreateText}>创建课程</Text>
             </TouchableOpacity>
           </View>
         }
         refreshing={loading}
         onRefresh={loadClassrooms}
+        contentContainerStyle={styles.listContent}
       />
+
+      {/* 删除确认模态框 */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Ionicons name="warning-outline" size={48} color="#ef4444" />
+            <Text style={styles.modalTitle}>确认删除</Text>
+            <Text style={styles.modalMessage}>
+              确定要删除课程 "{pendingDeleteName}" 吗？此操作无法撤销。
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setDeleteModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={confirmDelete}
+              >
+                <Text style={styles.modalConfirmText}>删除</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 重命名模态框 */}
+      <Modal
+        visible={renameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Ionicons name="pencil-outline" size={48} color="#5b9bd5" />
+            <Text style={styles.modalTitle}>重命名课程</Text>
+            <TextInput
+              style={styles.renameInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="输入新名称"
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setRenameModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={confirmRename}
+              >
+                <Text style={styles.modalConfirmText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f7fa' },
-  createHeaderBtn: {
+
+  // 头部
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#5b9bd5',
-    padding: 12,
-    marginHorizontal: 15,
-    marginTop: 10,
-    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  createBtnText: { color: 'white', marginLeft: 5, fontWeight: '600' },
+
+  // 列表
+  listContent: { padding: 15 },
+  gridRow: { justifyContent: 'space-between' },
+
+  // 课程卡片
+  classroomCard: {
+    width: '48%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  thumbnailArea: {
+    height: 100,
+    backgroundColor: '#f5f7fa',
+    borderRadius: 12,
+    position: 'relative',
+  },
+  thumbnailPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardActions: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    gap: 5,
+  },
+  cardActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtn: { backgroundColor: '#ef4444' },
+  cardInfo: { padding: 12 },
+  classroomName: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 4 },
+  classroomDesc: { fontSize: 12, color: '#666', marginBottom: 8 },
+  cardMeta: { flexDirection: 'row', alignItems: 'center' },
+  classroomMeta: { fontSize: 11, color: '#999', marginLeft: 4 },
+
+  // 空状态
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  empty: { alignItems: 'center', padding: 40 },
+  emptyTitle: { fontSize: 18, color: '#333', marginTop: 15 },
+  emptyHint: { fontSize: 14, color: '#666', marginTop: 8 },
+  emptyCreateBtn: {
+    marginTop: 20,
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    backgroundColor: '#5b9bd5',
+    borderRadius: 25,
+  },
+  emptyCreateText: { color: 'white', fontSize: 16, fontWeight: '600' },
+
+  // 错误
+  errorText: { color: '#ef4444', fontSize: 16, marginTop: 10 },
+  retryBtn: { marginTop: 20, paddingHorizontal: 30, paddingVertical: 12, backgroundColor: '#5b9bd5', borderRadius: 25 },
+  retryText: { color: 'white', fontSize: 16 },
+
+  // 模态框
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 25,
+    width: '85%',
     alignItems: 'center',
   },
-  createHeaderText: { color: 'white', fontSize: 16, fontWeight: '600' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  classroomCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    marginHorizontal: 15,
-    marginTop: 10,
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15 },
+  modalMessage: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 10 },
+  renameInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 10,
+    padding: 12,
+    marginTop: 15,
+    fontSize: 16,
   },
-  classroomName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  classroomDesc: { fontSize: 14, color: '#666', marginTop: 5 },
-  classroomDate: { fontSize: 12, color: '#999', marginTop: 8 },
-  errorText: { color: '#ef4444', fontSize: 16 },
-  retryBtn: { marginTop: 15, padding: 10, backgroundColor: '#5b9bd5', borderRadius: 5 },
-  retryText: { color: 'white' },
-  empty: { alignItems: 'center', paddingTop: 50 },
-  emptyText: { color: '#666', fontSize: 16 },
-  createBtn: { marginTop: 20, padding: 15, backgroundColor: '#5b9bd5', borderRadius: 8 },
-  createText: { color: 'white', fontSize: 16 },
+  modalButtons: {
+    flexDirection: 'row',
+    marginTop: 20,
+    gap: 15,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 25,
+    backgroundColor: '#e5e7eb',
+  },
+  modalCancelText: { color: '#666', fontSize: 16 },
+  modalConfirmBtn: {
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 25,
+    backgroundColor: '#5b9bd5',
+  },
+  modalConfirmText: { color: 'white', fontSize: 16 },
 });
