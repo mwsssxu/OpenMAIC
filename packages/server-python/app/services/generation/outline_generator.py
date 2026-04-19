@@ -161,25 +161,8 @@ async def generate_outlines(
 
         return outlines
     except json.JSONDecodeError as e:
-        # 解析失败，返回默认大纲
-        return [
-            SceneOutline(
-                id=str(uuid.uuid4()),
-                title="课程简介",
-                type="slide",
-                description=f"基于需求 '{requirement[:50]}...' 的课程简介",
-                order=1,
-                key_points=["主题概述", "学习目标"],
-            ),
-            SceneOutline(
-                id=str(uuid.uuid4()),
-                title="核心内容",
-                type="slide",
-                description="讲解核心概念",
-                order=2,
-                key_points=["概念定义", "原理说明"],
-            ),
-        ]
+        # 解析失败，返回智能默认大纲
+        return generate_smart_default_outlines(requirement, language)
 
 
 async def stream_outlines(
@@ -277,3 +260,97 @@ def extract_outlines_from_buffer(buffer: str, already_parsed: int) -> List[Dict]
                 object_start = -1
 
     return results
+
+def generate_smart_default_outlines(
+    requirement: str,
+    language: str = "zh-CN",
+    agent_ids: Optional[List[str]] = None,
+) -> List[SceneOutline]:
+    """
+    根据需求内容生成智能默认大纲（当LLM不可用时使用）
+
+    Args:
+        requirement: 用户需求描述
+        language: 语言
+        agent_ids: 智能体ID列表
+
+    Returns:
+        场景大纲列表
+    """
+    # 分析需求关键词，提取主题
+    topic_keywords = {
+        "python": "Python", "编程": "编程", "代码": "代码", "函数": "函数",
+        "变量": "变量", "循环": "循环", "算法": "算法",
+        "数学": "数学", "物理": "物理", "化学": "化学", "生物": "生物",
+        "历史": "历史", "地理": "地理", "英语": "英语", "写作": "写作",
+        "设计": "设计", "绘画": "绘画", "音乐": "音乐",
+    }
+
+    detected_topic = "课程"
+    for keyword, topic in topic_keywords.items():
+        if keyword.lower() in requirement.lower():
+            detected_topic = topic
+            break
+
+    # 检测目标受众
+    audience_keywords = {
+        "小学生": "小学生", "初中生": "初中生", "高中生": "高中生",
+        "大学生": "大学生", "成人": "成人学习者", "初学者": "初学者", "入门": "初学者",
+    }
+    detected_audience = "学习者" if language == "zh-CN" else "learners"
+    for keyword, audience in audience_keywords.items():
+        if keyword in requirement:
+            detected_audience = audience
+            break
+
+    # 是否有智能体配置
+    has_agents = agent_ids and len(agent_ids) > 0
+
+    if language == "zh-CN":
+        outlines = [
+            SceneOutline(id=str(uuid.uuid4()), title=f"{detected_topic}课程简介", type="slide",
+                description=f"介绍{detected_topic}课程的主题、学习目标和课程安排，面向{detected_audience}",
+                order=1, key_points=["课程主题概述", "学习目标说明", "课程结构介绍"]),
+            SceneOutline(id=str(uuid.uuid4()), title="基础概念讲解", type="slide",
+                description=f"讲解{detected_topic}的基础概念和核心术语",
+                order=2, key_points=["核心概念定义", "术语解释", "基础原理说明"]),
+            SceneOutline(id=str(uuid.uuid4()), title="核心内容深入", type="slide",
+                description=f"深入讲解{detected_topic}的核心内容和重要知识点",
+                order=3, key_points=["重点知识讲解", "典型案例分析", "实际应用示例"]),
+        ]
+        if has_agents:
+            outlines.append(SceneOutline(id=str(uuid.uuid4()), title="互动讨论环节", type="interactive",
+                description="智能体与学员互动讨论，答疑解惑", order=4, key_points=["问题讨论", "案例互动", "答疑环节"]))
+        outlines.extend([
+            SceneOutline(id=str(uuid.uuid4()), title="知识检测", type="quiz",
+                description=f"通过测验检验{detected_topic}学习效果",
+                order=5 if has_agents else 4, key_points=["基础题目测试", "进阶题目挑战", "学习效果评估"]),
+            SceneOutline(id=str(uuid.uuid4()), title="总结与延伸", type="slide",
+                description=f"总结{detected_topic}课程要点，提供延伸学习建议",
+                order=6 if has_agents else 5, key_points=["要点总结回顾", "延伸学习建议", "课后作业布置"]),
+        ])
+    else:
+        outlines = [
+            SceneOutline(id=str(uuid.uuid4()), title=f"{detected_topic} Course Introduction", type="slide",
+                description=f"Introduction to {detected_topic} for {detected_audience}",
+                order=1, key_points=["Course overview", "Learning objectives", "Course structure"]),
+            SceneOutline(id=str(uuid.uuid4()), title="Basic Concepts", type="slide",
+                description=f"Explanation of {detected_topic} fundamentals",
+                order=2, key_points=["Core concepts", "Key terminology", "Basic principles"]),
+            SceneOutline(id=str(uuid.uuid4()), title="Core Content", type="slide",
+                description=f"Deep dive into {detected_topic} key topics",
+                order=3, key_points=["Key topics", "Case analysis", "Practical examples"]),
+        ]
+        if has_agents:
+            outlines.append(SceneOutline(id=str(uuid.uuid4()), title="Interactive Discussion", type="interactive",
+                description="Interactive discussion with AI agents", order=4, key_points=["Discussion", "Q&A session"]))
+        outlines.extend([
+            SceneOutline(id=str(uuid.uuid4()), title="Knowledge Assessment", type="quiz",
+                description=f"Test understanding of {detected_topic}",
+                order=5 if has_agents else 4, key_points=["Basic questions", "Advanced challenges"]),
+            SceneOutline(id=str(uuid.uuid4()), title="Summary & Extension", type="slide",
+                description=f"Summary of {detected_topic} key points",
+                order=6 if has_agents else 5, key_points=["Key summary", "Extension suggestions", "Homework"]),
+        ])
+
+    return outlines

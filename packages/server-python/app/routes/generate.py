@@ -42,29 +42,11 @@ async def generate_outlines_endpoint(
         )
         return {"outlines": [o.model_dump() for o in outlines]}
     except Exception as e:
-        # LLM调用失败，返回默认大纲
+        # LLM调用失败，返回智能默认大纲
         import logging
         logging.warning(f"大纲生成失败: {e}")
-        from app.services.generation.outline_generator import SceneOutline
-        import uuid
-        default_outlines = [
-            SceneOutline(
-                id=str(uuid.uuid4()),
-                title="课程简介",
-                type="slide",
-                description=f"基于需求 '{requirement[:50]}...' 的课程简介",
-                order=1,
-                key_points=["主题概述", "学习目标"],
-            ),
-            SceneOutline(
-                id=str(uuid.uuid4()),
-                title="核心内容",
-                type="slide",
-                description="讲解核心概念",
-                order=2,
-                key_points=["概念定义", "原理说明"],
-            ),
-        ]
+        from app.services.generation.outline_generator import SceneOutline, generate_smart_default_outlines
+        default_outlines = generate_smart_default_outlines(requirement, language, agent_ids)
         return {"outlines": [o.model_dump() for o in default_outlines]}
 
 
