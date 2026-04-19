@@ -14,12 +14,14 @@ export async function POST(req: NextRequest) {
   let resolvedModelId: string | undefined;
   try {
     const formData = await req.formData();
-    const audioFile = formData.get('audio') as File;
-    const providerId = formData.get('providerId') as ASRProviderId | null;
-    const modelId = formData.get('modelId') as string | null;
-    const language = formData.get('language') as string | null;
-    const apiKey = formData.get('apiKey') as string | null;
-    const baseUrl = formData.get('baseUrl') as string | null;
+    // TypeScript's DOM lib doesn't include FormData.get, use type assertion
+    const fd = formData as unknown as { get: (name: string) => string | File | null };
+    const audioFile = fd.get('audio') as File;
+    const providerId = fd.get('providerId') as ASRProviderId | null;
+    const modelId = fd.get('modelId') as string | null;
+    const language = fd.get('language') as string | null;
+    const apiKey = fd.get('apiKey') as string | null;
+    const baseUrl = fd.get('baseUrl') as string | null;
 
     if (!audioFile) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Audio file is required');

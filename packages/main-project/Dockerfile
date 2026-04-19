@@ -15,6 +15,9 @@ COPY packages/ ./packages/
 # Install all dependencies
 RUN pnpm install --frozen-lockfile
 
+# Copy all source files (app, components, lib, configs, etc)
+COPY . .
+
 # Build main-project package (next.js根项目)
 RUN pnpm build
 
