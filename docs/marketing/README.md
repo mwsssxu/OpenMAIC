@@ -18,7 +18,7 @@ marketing/
 │   ├── social-media-plan.md     # 各平台运营策略、内容排期
 │   └── xiaohongshu-series.md    # 小红书系列宣传文章（10篇）
 ├── video-scripts/          # 视频宣传脚本
-│   └ video-scripts.md      # 视频生成脚本系列（15个脚本）
+│   └── video-scripts.md     # 视频生成脚本系列（15个脚本）
 ```
 
 ---
