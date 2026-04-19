@@ -1,5 +1,5 @@
 """
-生成路由 - 大纲/场景/异步作业
+生成路由 - 大纲/场景/异步作业/智能体
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +8,7 @@ from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.services.generation.outline_generator import generate_outlines, stream_outlines
 from app.services.generation.scene_generator import generate_full_scene
+from app.services.generation.agent_generator import generate_agent_profiles, get_default_agents
 from app.core.config import settings
 import asyncpg
 import uuid
@@ -114,6 +115,38 @@ async def generate_scenes_endpoint(
         scenes.append(scene)
 
     return {"scenes": scenes}
+
+
+@router.post("/agent-profiles")
+async def generate_agent_profiles_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """生成智能体配置（根据课程信息和大纲）"""
+    stage_name = body.get("stage_name", "课程")
+    stage_description = body.get("stage_description")
+    scene_outlines = body.get("scene_outlines", [])
+    language = body.get("language", "zh-CN")
+    model = body.get("model", settings.DEFAULT_MODEL)
+
+    agents = await generate_agent_profiles(
+        stage_name=stage_name,
+        stage_description=stage_description,
+        scene_outlines=scene_outlines,
+        language=language,
+        model=model,
+    )
+
+    return {"agents": [a.model_dump() for a in agents]}
+
+
+@router.get("/default-agents")
+async def get_default_agents_endpoint(
+    language: str = "zh-CN"
+):
+    """获取默认智能体配置（无需认证）"""
+    agents = get_default_agents(language)
+    return {"agents": [a.model_dump() for a in agents]}
 
 
 @router.post("/classroom")

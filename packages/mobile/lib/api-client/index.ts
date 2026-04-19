@@ -189,6 +189,23 @@ class ApiClient {
     return data;
   }
 
+  async generateAgentProfiles(stageName: string, stageDescription?: string, sceneOutlines?: any[], language?: string) {
+    const { data } = await this.client.post('/generate/agent-profiles', {
+      stage_name: stageName,
+      stage_description: stageDescription,
+      scene_outlines: sceneOutlines,
+      language: language || 'zh-CN',
+    });
+    return data;
+  }
+
+  async getDefaultAgents(language?: string) {
+    const { data } = await this.client.get('/generate/default-agents', {
+      params: { language: language || 'zh-CN' },
+    });
+    return data;
+  }
+
   async generateScenes(outlines: any[], options?: Record<string, any>) {
     const { data } = await this.client.post('/generate/scenes', {
       outlines,

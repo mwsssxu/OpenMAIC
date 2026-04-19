@@ -15,17 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 
-// 步骤定义
-const STEPS = ['需求输入', '智能体配置', '大纲生成', '确认创建'];
-
-// 默认智能体配置
-const DEFAULT_AGENTS = [
-  { id: 'teacher', name: '老师', role: '主讲', color: '#5b9bd5', avatar: 'teacher.png', enabled: true },
-  { id: 'assistant', name: '助教', role: '辅助讲解', color: '#10b981', avatar: 'assist.png', enabled: true },
-  { id: 'curious', name: '好奇同学', role: '提问互动', color: '#f59e0b', avatar: 'curious.png', enabled: true },
-  { id: 'thinker', name: '思考者', role: '深度分析', color: '#8b5cf6', avatar: 'thinker.png', enabled: false },
-  { id: 'notetaker', name: '笔记员', role: '总结归纳', color: '#06b6d4', avatar: 'note-taker.png', enabled: false },
-];
+// 步骤定义 - 按照原逻辑：需求输入 → 大纲生成 → 智能体配置 → 确认创建
+const STEPS = ['需求输入', '大纲生成', '智能体配置', '确认创建'];
 
 interface SceneOutline {
   id: string;
@@ -34,6 +25,17 @@ interface SceneOutline {
   description: string;
   key_points: string[];
   order: number;
+}
+
+interface AgentProfile {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  avatar: string;
+  color: string;
+  priority: number;
+  enabled: boolean;
 }
 
 export default function CreateClassroomScreen() {
@@ -49,12 +51,13 @@ export default function CreateClassroomScreen() {
   const [requirement, setRequirement] = useState('');
   const [language, setLanguage] = useState<'zh-CN' | 'en-US'>('zh-CN');
 
-  // 步骤2: 智能体配置
-  const [agents, setAgents] = useState(DEFAULT_AGENTS);
-
-  // 步骤3: 大纲
+  // 步骤2: 大纲（LLM实时生成）
   const [outlines, setOutlines] = useState<SceneOutline[]>([]);
   const [generatingOutlines, setGeneratingOutlines] = useState(false);
+
+  // 步骤3: 智能体（LLM根据大纲实时生成）
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [generatingAgents, setGeneratingAgents] = useState(false);
 
   // 步骤4: 创建结果
   const [createdClassroomId, setCreatedClassroomId] = useState<string | null>(null);
@@ -74,7 +77,7 @@ export default function CreateClassroomScreen() {
     );
   }
 
-  // 步骤1: 提交需求，进入智能体配置
+  // 步骤1: 提交需求，进入大纲生成
   const handleStep1Next = () => {
     if (!requirement.trim()) {
       setError('请输入课程需求');
@@ -82,24 +85,22 @@ export default function CreateClassroomScreen() {
     }
     setError(null);
     setCurrentStep(1);
+    // 自动开始生成大纲
+    generateOutlines();
   };
 
-  // 步骤2: 配置智能体，进入大纲生成
-  const handleStep2Next = async () => {
-    setCurrentStep(2);
+  // 生成大纲（LLM实时生成）
+  const generateOutlines = async () => {
     setGeneratingOutlines(true);
     setError(null);
 
     try {
-      // 调用生成大纲API
-      const result = await apiClient.generateOutlines(requirement, {
-        language,
-        agent_ids: agents.filter(a => a.enabled).map(a => a.id),
-      });
-      setOutlines(result.outlines || result);
+      const result = await apiClient.generateOutlines(requirement, { language });
+      const generatedOutlines = result.outlines || [];
+      setOutlines(generatedOutlines);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || '大纲生成失败');
-      // 如果大纲生成失败，创建默认大纲
+      // 失败时显示默认大纲（用户可以继续）
       setOutlines([
         { id: '1', type: 'slide', title: '课程介绍', description: '介绍课程主题和学习目标', key_points: ['主题概述', '学习目标', '课程安排'], order: 1 },
         { id: '2', type: 'slide', title: '核心内容', description: '讲解核心知识点', key_points: ['概念定义', '原理说明', '示例演示'], order: 2 },
@@ -111,7 +112,44 @@ export default function CreateClassroomScreen() {
     }
   };
 
-  // 步骤3: 编辑大纲后，确认创建
+  // 步骤2: 大纲确认后，进入智能体配置（LLM根据大纲生成）
+  const handleStep2Next = async () => {
+    setCurrentStep(2);
+    // 自动开始生成智能体
+    await generateAgents();
+  };
+
+  // 生成智能体（LLM根据大纲实时生成）
+  const generateAgents = async () => {
+    setGeneratingAgents(true);
+    setError(null);
+
+    try {
+      const result = await apiClient.generateAgentProfiles(
+        requirement.slice(0, 50),
+        requirement,
+        outlines,
+        language
+      );
+      const generatedAgents = result.agents || [];
+      // 默认全部启用
+      setAgents(generatedAgents.map(a => ({ ...a, enabled: true })));
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || '智能体生成失败');
+      // 失败时获取默认配置
+      try {
+        const defaultResult = await apiClient.getDefaultAgents(language);
+        setAgents((defaultResult.agents || []).map(a => ({ ...a, enabled: true })));
+      } catch {
+        // 最终fallback
+        setAgents([]);
+      }
+    } finally {
+      setGeneratingAgents(false);
+    }
+  };
+
+  // 步骤3: 配置智能体后，确认创建
   const handleStep3Next = () => {
     setCurrentStep(3);
   };
@@ -122,15 +160,13 @@ export default function CreateClassroomScreen() {
     setError(null);
 
     try {
-      // 创建课程
       const result = await apiClient.createClassroom(
-        `课程: ${requirement.slice(0, 50)}...`,
+        requirement.slice(0, 50),
         requirement
       );
 
       setCreatedClassroomId(result.id);
 
-      // 显示成功提示
       if (Platform.OS === 'web') {
         window.alert('课程创建成功！');
       } else {
@@ -139,7 +175,6 @@ export default function CreateClassroomScreen() {
         ]);
       }
 
-      // 跳转到课程详情
       setTimeout(() => {
         router.replace(`/classroom/${result.id}`);
       }, 1000);
@@ -223,58 +258,16 @@ export default function CreateClassroomScreen() {
       {error && <Text style={styles.errorText}>{error}</Text>}
 
       <TouchableOpacity style={styles.nextBtn} onPress={handleStep1Next}>
-        <Text style={styles.nextBtnText}>下一步：配置智能体</Text>
+        <Text style={styles.nextBtnText}>生成大纲</Text>
       </TouchableOpacity>
     </View>
   );
 
-  // 渲染步骤2: 智能体配置
+  // 渲染步骤2: 大纲生成（LLM实时生成）
   const renderStep2 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>配置课堂智能体</Text>
-      <Text style={styles.stepHint}>选择参与课堂互动的AI角色（同学/助教）</Text>
-
-      <ScrollView style={styles.agentList}>
-        {agents.map(agent => (
-          <TouchableOpacity
-            key={agent.id}
-            style={[styles.agentCard, agent.enabled && styles.agentCardActive]}
-            onPress={() => toggleAgent(agent.id)}
-          >
-            <View style={[styles.agentAvatar, { backgroundColor: agent.color + '20' }]}>
-              <Ionicons name="person" size={24} color={agent.color} />
-            </View>
-            <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>{agent.name}</Text>
-              <Text style={styles.agentRole}>{agent.role}</Text>
-            </View>
-            <View style={[styles.agentCheckbox, agent.enabled && styles.agentCheckboxActive]}>
-              {agent.enabled && <Ionicons name="checkmark" size={16} color="white" />}
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <Text style={styles.selectedCount}>
-        已选择 {agents.filter(a => a.enabled).length} 个智能体
-      </Text>
-
-      <View style={styles.stepButtons}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(0)}>
-          <Text style={styles.backBtnText}>返回</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.nextBtn} onPress={handleStep2Next}>
-          <Text style={styles.nextBtnText}>生成大纲</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  // 渲染步骤3: 大纲预览
-  const renderStep3 = () => (
-    <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>课程大纲</Text>
-      <Text style={styles.stepHint}>AI已根据您的需求生成以下课程结构</Text>
+      <Text style={styles.stepHint}>AI正在根据您的需求生成课程结构...</Text>
 
       {generatingOutlines ? (
         <View style={styles.centerContent}>
@@ -302,7 +295,7 @@ export default function CreateClassroomScreen() {
               </View>
               <Text style={styles.outlineTitle}>{outline.title}</Text>
               <Text style={styles.outlineDesc}>{outline.description}</Text>
-              {outline.key_points.length > 0 && (
+              {outline.key_points && outline.key_points.length > 0 && (
                 <View style={styles.keyPoints}>
                   {outline.key_points.map((point, i) => (
                     <Text key={i} style={styles.keyPointText}>• {point}</Text>
@@ -317,15 +310,83 @@ export default function CreateClassroomScreen() {
       {error && !generatingOutlines && <Text style={styles.errorText}>{error}</Text>}
 
       <View style={styles.stepButtons}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(1)}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(0)}>
           <Text style={styles.backBtnText}>返回</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.nextBtn, generatingOutlines && styles.btnDisabled]}
-          onPress={handleStep3Next}
+          onPress={handleStep2Next}
           disabled={generatingOutlines}
         >
-          <Text style={styles.nextBtnText}>确认大纲</Text>
+          <Text style={styles.nextBtnText}>生成智能体</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // 渲染步骤3: 智能体配置（LLM根据大纲实时生成）
+  const renderStep3 = () => (
+    <View style={styles.stepContent}>
+      <Text style={styles.stepTitle}>课堂智能体</Text>
+      <Text style={styles.stepHint}>AI根据课程大纲生成互动角色，可调整启用状态</Text>
+
+      {generatingAgents ? (
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color="#5b9bd5" />
+          <Text style={styles.generatingText}>正在生成智能体...</Text>
+        </View>
+      ) : agents.length > 0 ? (
+        <ScrollView style={styles.agentList}>
+          {agents.map(agent => (
+            <TouchableOpacity
+              key={agent.id}
+              style={[styles.agentCard, agent.enabled && styles.agentCardActive]}
+              onPress={() => toggleAgent(agent.id)}
+            >
+              <View style={[styles.agentAvatar, { backgroundColor: agent.color + '20' }]}>
+                <Ionicons name="person" size={24} color={agent.color} />
+              </View>
+              <View style={styles.agentInfo}>
+                <Text style={styles.agentName}>{agent.name}</Text>
+                <Text style={styles.agentRoleType}>
+                  {agent.role === 'teacher' ? '主讲老师' :
+                   agent.role === 'assistant' ? '助教' : '学生'}
+                </Text>
+                <Text style={styles.agentPersona} numberOfLines={2}>{agent.persona}</Text>
+              </View>
+              <View style={[styles.agentCheckbox, agent.enabled && styles.agentCheckboxActive]}>
+                {agent.enabled && <Ionicons name="checkmark" size={16} color="white" />}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : (
+        <View style={styles.centerContent}>
+          <Text style={styles.errorText}>智能体生成失败</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={generateAgents}>
+            <Text style={styles.retryText}>重新生成</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!generatingAgents && agents.length > 0 && (
+        <Text style={styles.selectedCount}>
+          已选择 {agents.filter(a => a.enabled).length} 个智能体
+        </Text>
+      )}
+
+      {error && !generatingAgents && agents.length > 0 && <Text style={styles.errorText}>{error}</Text>}
+
+      <View style={styles.stepButtons}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(1)}>
+          <Text style={styles.backBtnText}>返回</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.nextBtn, (generatingAgents || agents.length === 0) && styles.btnDisabled]}
+          onPress={handleStep3Next}
+          disabled={generatingAgents || agents.length === 0}
+        >
+          <Text style={styles.nextBtnText}>确认配置</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -351,15 +412,15 @@ export default function CreateClassroomScreen() {
         </View>
 
         <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>场景数</Text>
+          <Text style={styles.summaryValue}>{outlines.length} 个</Text>
+        </View>
+
+        <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>智能体</Text>
           <Text style={styles.summaryValue}>
             {agents.filter(a => a.enabled).map(a => a.name).join(', ')}
           </Text>
-        </View>
-
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>场景数</Text>
-          <Text style={styles.summaryValue}>{outlines.length} 个</Text>
         </View>
       </View>
 
@@ -462,8 +523,30 @@ const styles = StyleSheet.create({
   langText: { fontSize: 14, color: '#666' },
   langTextActive: { color: 'white', fontWeight: '600' },
 
-  // 步骤2
-  agentList: { maxHeight: 300 },
+  // 步骤2 - 大纲
+  outlineList: { maxHeight: 400 },
+  outlineCard: {
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  outlineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  outlineTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
+  badgeSlide: { backgroundColor: '#5b9bd5' },
+  badgeQuiz: { backgroundColor: '#f59e0b' },
+  badgeInteractive: { backgroundColor: '#10b981' },
+  badgePbl: { backgroundColor: '#8b5cf6' },
+  outlineTypeText: { fontSize: 12, color: 'white', fontWeight: '500' },
+  outlineOrder: { fontSize: 14, color: '#666' },
+  outlineTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
+  outlineDesc: { fontSize: 14, color: '#666', marginTop: 5 },
+  keyPoints: { marginTop: 10 },
+  keyPointText: { fontSize: 13, color: '#555', lineHeight: 20 },
+  generatingText: { marginTop: 15, color: '#666', fontSize: 14 },
+
+  // 步骤3 - 智能体
+  agentList: { maxHeight: 350 },
   agentCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -484,7 +567,8 @@ const styles = StyleSheet.create({
   },
   agentInfo: { flex: 1, marginLeft: 12 },
   agentName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  agentRole: { fontSize: 14, color: '#666' },
+  agentRoleType: { fontSize: 12, color: '#5b9bd5', marginTop: 2 },
+  agentPersona: { fontSize: 13, color: '#666', marginTop: 4 },
   agentCheckbox: {
     width: 24,
     height: 24,
@@ -496,32 +580,8 @@ const styles = StyleSheet.create({
   },
   agentCheckboxActive: { backgroundColor: '#5b9bd5', borderColor: '#5b9bd5' },
   selectedCount: { fontSize: 14, color: '#5b9bd5', textAlign: 'center', marginTop: 10 },
-
-  // 步骤3
-  outlineList: { maxHeight: 400 },
-  outlineCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  outlineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  outlineTypeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  badgeSlide: { backgroundColor: '#5b9bd5' },
-  badgeQuiz: { backgroundColor: '#f59e0b' },
-  badgeInteractive: { backgroundColor: '#10b981' },
-  badgePbl: { backgroundColor: '#8b5cf6' },
-  outlineTypeText: { fontSize: 12, color: 'white', fontWeight: '500' },
-  outlineOrder: { fontSize: 14, color: '#666' },
-  outlineTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  outlineDesc: { fontSize: 14, color: '#666', marginTop: 5 },
-  keyPoints: { marginTop: 10 },
-  keyPointText: { fontSize: 13, color: '#555', lineHeight: 20 },
-  generatingText: { marginTop: 15, color: '#666', fontSize: 14 },
+  retryBtn: { marginTop: 15, padding: 15, backgroundColor: '#5b9bd5', borderRadius: 8 },
+  retryText: { color: 'white', fontSize: 14 },
 
   // 步骤4
   summaryCard: {
