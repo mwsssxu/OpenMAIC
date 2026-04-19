@@ -307,7 +307,8 @@ class TestInvitations:
         assert response.status_code in [200, 400, 404, 500]
         if response.status_code == 200:
             data = response.json()
-            assert "code" in data or "invitation_code" in data
+            # 返回invite_code而非code
+            assert "invite_code" in data or "code" in data or "invitation_code" in data
 
     def test_get_invitation_stats(self, auth_client):
         """测试获取邀请统计"""

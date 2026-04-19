@@ -72,12 +72,11 @@ async def get_my_passport(
 
     total_time = await db.fetchval(
         """
-        SELECT COALESCE(SUM(time_spent_minutes), 0) +
-               COALESCE(SUM(total_time_hours * 60), 0)
+        SELECT COALESCE(SUM(time_minutes), 0)
         FROM (
-            SELECT time_spent_minutes FROM course_completions WHERE user_id = $1
+            SELECT time_spent_minutes as time_minutes FROM course_completions WHERE user_id = $1
             UNION ALL
-            SELECT total_time_hours * 60 FROM learning_passports WHERE user_id = $1
+            SELECT total_time_hours * 60 as time_minutes FROM learning_passports WHERE user_id = $1
         ) subq
         """,
         user_uuid
@@ -94,7 +93,7 @@ async def get_my_passport(
     # 联赛等级
     league = await db.fetchrow(
         """
-        SELECT tier, name, icon FROM subscriptions WHERE user_id = $1
+        SELECT plan_type as tier, plan_type as name, plan_type as icon FROM subscriptions WHERE user_id = $1
         """,
         user_uuid
     )

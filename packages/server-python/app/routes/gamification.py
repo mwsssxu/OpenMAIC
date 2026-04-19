@@ -184,7 +184,7 @@ async def get_my_league(
     # 获取用户总积分
     total_points = await db.fetchval(
         """
-        SELECT COALESCE(SUM(p.amount), 0) as total_points
+        SELECT COALESCE(SUM(amount), 0) as total_points
         FROM point_transactions WHERE user_id = $1
         """,
         user_uuid
