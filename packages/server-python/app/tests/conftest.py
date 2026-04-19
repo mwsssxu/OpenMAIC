@@ -11,9 +11,9 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 import os
 
-# 设置测试环境
-os.environ["TESTING_MODE"] = "true"
-os.environ["SECRET_KEY"] = "test-secret-key-for-unit-tests"
+# 设置测试环境 - 必须在导入app之前设置
+os.environ.setdefault("TESTING_MODE", "true")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-unit-tests")
 
 from app.main import app
 
@@ -37,64 +37,34 @@ def client():
 
 
 @pytest.fixture(scope="module")
-async def async_client():
-    """异步测试客户端"""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
-
-
-# ==================== 认证 Fixture ====================
-
-@pytest.fixture
-def test_user_data():
-    """测试用户数据 - 使用短密码避免bcrypt限制"""
+def registered_user(client):
+    """注册一个测试用户并返回其token和数据"""
     unique_id = uuid.uuid4().hex[:8]
-    return {
+    user_data = {
         "email": f"test_{unique_id}@example.com",
-        "password": "TestPwd1!",  # 短密码，避免bcrypt72字节限制
-        "nickname": "testuser"  # 简单昵称
+        "password": "TestPwd1!",
+        "nickname": "testuser"
     }
-
-
-@pytest.fixture
-def auth_client(client, test_user_data):
-    """已认证的测试客户端 - 使用新邮箱确保注册成功"""
-    # 尝试注册测试用户
-    response = client.post("/auth/register", json=test_user_data)
-    
-    # 如果注册返回500（服务器错误），跳过需要认证的测试
-    if response.status_code == 500:
-        pytest.skip("服务器内部错误，无法完成认证")
-        yield client
-        return
-    
-    # 注册成功或已存在，获取token
+    response = client.post("/auth/register", json=user_data)
+    print(f"Register response: {response.status_code}")
     if response.status_code in [200, 201]:
         token = response.json().get("access_token")
-        if token:
-            client.headers["Authorization"] = f"Bearer {token}"
-            yield client
-            client.headers.pop("Authorization", None)
-            return
-    
-    # 尝试登录获取token
-    login_response = client.post("/auth/login", json={
-        "email": test_user_data["email"],
-        "password": test_user_data["password"]
-    })
-    
-    if login_response.status_code == 200:
-        token = login_response.json().get("access_token")
-        if token:
-            client.headers["Authorization"] = f"Bearer {token}"
-            yield client
-            client.headers.pop("Authorization", None)
-            return
-    
-    # 无法认证，跳过测试
-    pytest.skip("无法获取认证token")
+        print(f"Token obtained: {token[:20] if token else 'None'}...")
+        return {"token": token, "user_data": user_data}
+    print(f"Register failed: {response.json()}")
+    return None
+
+
+@pytest.fixture(scope="module")
+def auth_client(client, registered_user):
+    """已认证的测试客户端 - module级别确保token全局可用"""
+    if registered_user and registered_user.get("token"):
+        token = registered_user['token']
+        client.headers["Authorization"] = f"Bearer {token}"
+        print(f"Authorization header set: Bearer {token[:20]}...")
     yield client
+    # 清理
+    client.headers.pop("Authorization", None)
 
 
 @pytest.fixture

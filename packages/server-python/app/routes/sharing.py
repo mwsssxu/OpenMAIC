@@ -8,6 +8,7 @@ from app.middleware.auth import get_current_user_id, get_current_user
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 from typing import Optional
 
 router = APIRouter()

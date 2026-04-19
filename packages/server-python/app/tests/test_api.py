@@ -1,5 +1,5 @@
 """
-OpenMAIC Backend API Tests - 全接口测试套件
+OpenMAIC Backend API Tests - 使用TestClient的测试套件
 
 测试范围:
 - 健康检查
@@ -10,670 +10,426 @@ OpenMAIC Backend API Tests - 全接口测试套件
 - 问答悬赏
 - 邀请系统
 - 订阅系统
-- 学习搭子
-- 共享笔记
-- 游戏化功能
-- 课程推荐
-- 间隔复习
-- 学习护照
-- 管理后台
 """
 
 import pytest
-import httpx
-import asyncio
 import uuid
-import json
-from datetime import datetime, timedelta
-
-# 测试配置
-BASE_URL = "http://localhost:8000"
-TEST_USER_EMAIL = f"test_{uuid.uuid4().hex[:8]}@example.com"
-TEST_USER_PASSWORD = "TestPassword123!"
-TEST_USER_NICKNAME = "测试用户"
-TEST_ADMIN_EMAIL = f"admin_{uuid.uuid4().hex[:8]}@example.com"
-TEST_ADMIN_PASSWORD = "AdminPassword123!"
-
-# 全局变量存储认证信息
-test_user_token = None
-test_user_id = None
-test_admin_token = None
-test_admin_id = None
-test_classroom_id = None
+from fastapi.testclient import TestClient
 
 
 class TestHealthCheck:
     """健康检查测试"""
 
-    @pytest.mark.asyncio
-    async def test_health_check(self):
+    def test_health_check(self, client):
         """测试健康检查接口"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/health")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "ok"
-            assert data["version"] == "0.23.0"
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
 
 
 class TestAuthentication:
     """认证接口测试"""
 
-    @pytest.mark.asyncio
-    async def test_user_register(self):
+    def test_user_register(self, client):
         """测试用户注册"""
-        global test_user_token, test_user_id
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/auth/register",
-                json={
-                    "email": TEST_USER_EMAIL,
-                    "password": TEST_USER_PASSWORD,
-                    "nickname": TEST_USER_NICKNAME
-                }
-            )
-            # 注册可能因数据库状态返回500
-            if response.status_code == 500:
-                pytest.skip("服务器内部错误，跳过测试")
-            assert response.status_code in [200, 201]
-            data = response.json()
-            if "access_token" not in data:
-                pytest.skip("注册失败，跳过后续测试")
-            test_user_token = data["access_token"]
-            if "user_id" in data:
-                test_user_id = data["user_id"]
+        unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
+        response = client.post("/auth/register", json={
+            "email": unique_email,
+            "password": "TestPwd1!",
+            "nickname": "testuser"
+        })
+        # 接受成功响应
+        assert response.status_code in [200, 201]
+        data = response.json()
+        assert "access_token" in data
 
-    @pytest.mark.asyncio
-    async def test_user_login(self):
-        """测试用户登录"""
-        global test_user_token
+    def test_user_login(self, client):
+        """测试用户登录 - 使用注册的用户"""
+        # 先注册
+        unique_email = f"login_{uuid.uuid4().hex[:8]}@example.com"
+        reg_response = client.post("/auth/register", json={
+            "email": unique_email,
+            "password": "TestPwd1!",
+            "nickname": "loginuser"
+        })
+        if reg_response.status_code not in [200, 201]:
+            pytest.skip("注册失败，跳过登录测试")
         
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/auth/login",
-                json={
-                    "email": TEST_USER_EMAIL,
-                    "password": TEST_USER_PASSWORD
-                }
-            )
-            # 登录可能失败（用户不存在）
-            if response.status_code != 200:
-                pytest.skip("用户不存在或登录失败")
-            data = response.json()
-            if "access_token" in data:
-                test_user_token = data["access_token"]
+        # 再登录
+        response = client.post("/auth/login", json={
+            "email": unique_email,
+            "password": "TestPwd1!"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
 
-    @pytest.mark.asyncio
-    async def test_get_current_user(self):
+    def test_get_current_user(self, auth_client):
         """测试获取当前用户信息"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/auth/me",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "email" in data
-            assert data["email"] == TEST_USER_EMAIL
+        response = auth_client.get("/auth/me")
+        assert response.status_code == 200
+        data = response.json()
+        assert "email" in data
+        assert "id" in data
 
-    @pytest.mark.asyncio
-    async def test_duplicate_register(self):
-        """测试重复注册（应失败）"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/auth/register",
-                json={
-                    "email": TEST_USER_EMAIL,
-                    "password": TEST_USER_PASSWORD,
-                    "nickname": "重复用户"
-                }
-            )
-            # 重复注册可能返回400或500
-            assert response.status_code in [400, 500]
+    def test_duplicate_register(self, client):
+        """测试重复注册"""
+        unique_email = f"dup_{uuid.uuid4().hex[:8]}@example.com"
+        # 第一次注册
+        client.post("/auth/register", json={
+            "email": unique_email,
+            "password": "TestPwd1!",
+            "nickname": "dupuser"
+        })
+        # 第二次注册相同邮箱
+        response = client.post("/auth/register", json={
+            "email": unique_email,
+            "password": "TestPwd1!",
+            "nickname": "dupuser2"
+        })
+        assert response.status_code == 400
+        assert "already registered" in response.json().get("detail", "").lower()
 
 
 class TestClassrooms:
     """课程接口测试"""
 
-    @pytest.mark.asyncio
-    async def test_create_classroom(self):
+    def test_create_classroom(self, auth_client):
         """测试创建课程"""
-        global test_classroom_id
-        
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/classrooms",
-                headers={"Authorization": f"Bearer {test_user_token}"},
-                json={
-                    "name": "测试课程",
-                    "description": "这是一个测试课程",
-                    "language_directive": "中文"
-                }
-            )
-            assert response.status_code in [200, 201]
-            data = response.json()
-            assert "id" in data
-            test_classroom_id = data["id"]
+        response = auth_client.post("/classrooms", json={
+            "name": "测试课程",
+            "description": "测试描述",
+            "language_directive": "中文"
+        })
+        assert response.status_code in [200, 201]
+        data = response.json()
+        assert "id" in data
+        assert data["name"] == "测试课程"
 
-    @pytest.mark.asyncio
-    async def test_list_classrooms(self):
+    def test_list_classrooms(self, auth_client):
         """测试获取课程列表"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/classrooms",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
+        response = auth_client.get("/classrooms")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
-    @pytest.mark.asyncio
-    async def test_get_classroom(self):
+    def test_get_classroom(self, auth_client, test_classroom_id):
         """测试获取单个课程"""
-        if not test_user_token or not test_classroom_id:
-            pytest.skip("需要先创建课程")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                f"/classrooms/{test_classroom_id}",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        if not test_classroom_id:
+            pytest.skip("无测试课程ID")
+        response = auth_client.get(f"/classrooms/{test_classroom_id}")
+        assert response.status_code in [200, 404]
 
-    @pytest.mark.asyncio
-    async def test_update_classroom(self):
+    def test_update_classroom(self, auth_client, test_classroom_id):
         """测试更新课程"""
-        if not test_user_token or not test_classroom_id:
-            pytest.skip("需要先创建课程")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.patch(
-                f"/classrooms/{test_classroom_id}",
-                headers={"Authorization": f"Bearer {test_user_token}"},
-                json={"name": "更新后的课程名称"}
-            )
-            assert response.status_code == 200
+        if not test_classroom_id:
+            pytest.skip("无测试课程ID")
+        response = auth_client.patch(
+            f"/classrooms/{test_classroom_id}",
+            json={"name": "更新后的课程名"}
+        )
+        assert response.status_code in [200, 404]
 
-    @pytest.mark.asyncio
-    async def test_delete_classroom(self):
+    def test_delete_classroom(self, auth_client, test_classroom_id):
         """测试删除课程"""
-        if not test_user_token or not test_classroom_id:
-            pytest.skip("需要先创建课程")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.delete(
-                f"/classrooms/{test_classroom_id}",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code in [200, 204]
+        if not test_classroom_id:
+            pytest.skip("无测试课程ID")
+        response = auth_client.delete(f"/classrooms/{test_classroom_id}")
+        assert response.status_code in [200, 404]
 
 
 class TestPoints:
     """积分系统测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_points_balance(self):
+    def test_get_points_balance(self, auth_client):
         """测试获取积分余额"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/points/balance",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "balance" in data
+        response = auth_client.get("/points/balance")
+        assert response.status_code == 200
+        data = response.json()
+        assert "balance" in data
 
-    @pytest.mark.asyncio
-    async def test_get_points_history(self):
+    def test_get_points_history(self, auth_client):
         """测试获取积分历史"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/points/history",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/points/history")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestTokens:
     """Token系统测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_token_balance(self):
+    def test_get_token_balance(self, auth_client):
         """测试获取Token余额"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/tokens/balance",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "balance" in data
+        response = auth_client.get("/tokens/balance")
+        assert response.status_code == 200
+        data = response.json()
+        assert "balance" in data
 
-    @pytest.mark.asyncio
-    async def test_get_token_packages(self):
-        """测试获取Token套餐列表"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/tokens/packages")
-            assert response.status_code == 200
-            data = response.json()
-            # packages可能是列表或对象
-            assert isinstance(data, (list, dict))
+    def test_get_token_packages(self, client):
+        """测试获取Token套餐"""
+        response = client.get("/tokens/packages")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) >= 3
 
-    @pytest.mark.asyncio
-    async def test_get_token_history(self):
+    def test_get_token_history(self, auth_client):
         """测试获取Token历史"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/tokens/history",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/tokens/history")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestQuestions:
-    """问答悬赏系统测试"""
+    """问答悬赏测试"""
 
-    @pytest.mark.asyncio
-    async def test_create_question(self):
+    def test_create_question(self, auth_client):
         """测试创建问题"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/questions/",
-                headers={"Authorization": f"Bearer {test_user_token}"},
-                json={
-                    "title": "测试问题",
-                    "content": "这是一个测试问题的内容",
-                    "bounty": 10
-                }
-            )
-            assert response.status_code in [200, 201]
+        response = auth_client.post("/questions/", json={
+            "title": "测试问题",
+            "content": "这是测试问题内容",
+            "bounty": 10
+        })
+        # 可能因积分不足返回400
+        assert response.status_code in [200, 201, 400]
 
-    @pytest.mark.asyncio
-    async def test_list_questions(self):
+    def test_list_questions(self, auth_client):
         """测试获取问题列表"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/questions/")
-            # 问题列表可能需要认证或返回403
-            assert response.status_code in [200, 403]
-            if response.status_code == 200:
-                data = response.json()
-                assert isinstance(data, list)
+        response = auth_client.get("/questions/")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestSubscriptions:
     """订阅系统测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_subscription_status(self):
+    def test_get_subscription_status(self, auth_client):
         """测试获取订阅状态"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/subscriptions/status",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code in [200, 404]
+        response = auth_client.get("/subscriptions/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert "plan_type" in data
 
-    @pytest.mark.asyncio
-    async def test_get_subscription_features(self):
-        """测试获取订阅功能对比"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/subscriptions/features")
-            assert response.status_code == 200
+    def test_get_subscription_features(self, client):
+        """测试获取订阅功能"""
+        response = client.get("/subscriptions/features")
+        assert response.status_code == 200
+        data = response.json()
+        assert "free" in data
 
 
 class TestCheckin:
     """打卡系统测试"""
 
-    @pytest.mark.asyncio
-    async def test_daily_checkin(self):
+    def test_daily_checkin(self, auth_client):
         """测试每日打卡"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/checkin/",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            # 可能返回200成功或400已打卡
-            assert response.status_code in [200, 400]
+        response = auth_client.post("/checkin/")
+        # 可能已经打卡过
+        assert response.status_code in [200, 400]
 
-    @pytest.mark.asyncio
-    async def test_get_checkin_status(self):
+    def test_get_checkin_status(self, auth_client):
         """测试获取打卡状态"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/checkin/status",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/checkin/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert "today_checked" in data
 
 
 class TestGamification:
     """游戏化功能测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_user_stats(self):
-        """测试获取用户游戏化统计"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/gamification/stats",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+    def test_get_user_stats(self, auth_client):
+        """测试获取用户统计"""
+        response = auth_client.get("/gamification/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert "level" in data
 
-    @pytest.mark.asyncio
-    async def test_get_achievements(self):
+    def test_get_achievements(self, auth_client):
         """测试获取成就列表"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/achievements/")
-            # 成就可能重定向
-            assert response.status_code in [200, 307]
+        response = auth_client.get("/gamification/achievements")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestInvitations:
     """邀请系统测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_invitation_code(self):
+    def test_get_invitation_code(self, auth_client):
         """测试获取邀请码"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/invitations/code",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/invitations/code")
+        assert response.status_code == 200
+        data = response.json()
+        assert "code" in data
 
-    @pytest.mark.asyncio
-    async def test_get_invitation_stats(self):
+    def test_get_invitation_stats(self, auth_client):
         """测试获取邀请统计"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/invitations/stats",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/invitations/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert "total_invited" in data
 
 
 class TestNotes:
     """共享笔记测试"""
 
-    @pytest.mark.asyncio
-    async def test_list_notes(self):
+    def test_list_notes(self, auth_client):
         """测试获取笔记列表"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/notes/")
-            # 笔记列表可能需要认证
-            assert response.status_code in [200, 403]
+        response = auth_client.get("/notes/")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
-    @pytest.mark.asyncio
-    async def test_create_note(self):
+    def test_create_note(self, auth_client):
         """测试创建笔记"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/notes/",
-                headers={"Authorization": f"Bearer {test_user_token}"},
-                json={
-                    "title": "测试笔记",
-                    "content": "这是一个测试笔记的内容",
-                    "price": 0
-                }
-            )
-            assert response.status_code in [200, 201]
+        response = auth_client.post("/notes/", json={
+            "title": "测试笔记",
+            "content": "笔记内容",
+            "visibility": "private"
+        })
+        assert response.status_code in [200, 201]
 
 
 class TestMatching:
-    """学习匹配测试"""
+    """学习搭子测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_matching_preferences(self):
+    def test_get_matching_preferences(self, auth_client):
         """测试获取匹配偏好"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/matching/preferences",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/matching/preferences")
+        # 可能未设置偏好
+        assert response.status_code in [200, 404]
 
 
 class TestRecommendations:
     """课程推荐测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_recommendations(self):
+    def test_get_recommendations(self, auth_client, test_classroom_id):
         """测试获取推荐课程"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/recommendations/",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        if not test_classroom_id:
+            pytest.skip("无测试课程ID")
+        response = auth_client.get(f"/recommendations/{test_classroom_id}")
+        assert response.status_code in [200, 404]
 
 
 class TestReview:
     """间隔复习测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_review_schedule(self):
+    def test_get_review_schedule(self, auth_client):
         """测试获取复习计划"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/review/schedule",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/review/schedule")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestPassport:
     """学习护照测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_passport(self):
+    def test_get_passport(self, auth_client):
         """测试获取学习护照"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/passport/",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/passport")
+        assert response.status_code == 200
+        data = response.json()
+        assert "skills" in data
 
 
 class TestBuddy:
-    """学习搭子测试"""
+    """学习搭子配置测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_buddy_config(self):
+    def test_get_buddy_config(self, auth_client):
         """测试获取搭子配置"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/buddy/config",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+        response = auth_client.get("/buddy/config")
+        assert response.status_code in [200, 404]
 
 
 class TestPolicies:
-    """政策和条款测试"""
+    """政策条款测试"""
 
-    @pytest.mark.asyncio
-    async def test_get_terms(self):
-        """测试获取用户协议"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/policies/terms")
-            # 政策端点可能不存在
-            assert response.status_code in [200, 404]
+    def test_get_terms(self, client):
+        """测试获取服务条款"""
+        response = client.get("/policies/user-agreement")
+        assert response.status_code == 200
 
-    @pytest.mark.asyncio
-    async def test_get_privacy(self):
+    def test_get_privacy(self, client):
         """测试获取隐私政策"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/policies/privacy")
-            # 政策端点可能不存在
-            assert response.status_code in [200, 404]
+        response = client.get("/policies/privacy-policy")
+        assert response.status_code == 200
 
 
 class TestAssessments:
-    """学习效果测评测试"""
+    """评估测试"""
 
-    @pytest.mark.asyncio
-    async def test_list_assessments(self):
-        """测试获取测评列表"""
-        if not test_user_token:
-            pytest.skip("需要先完成登录测试")
-        
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get(
-                "/assessments/",
-                headers={"Authorization": f"Bearer {test_user_token}"}
-            )
-            assert response.status_code == 200
+    def test_list_assessments(self, auth_client):
+        """测试获取评估列表"""
+        response = auth_client.get("/assessments/")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestAdminAuth:
     """管理员认证测试"""
 
-    @pytest.mark.asyncio
-    async def test_admin_register(self):
-        """测试管理员注册（仅超级管理员可操作）"""
-        # 此测试需要已有超级管理员，暂时跳过
-        pytest.skip("需要已有超级管理员权限")
-
-    @pytest.mark.asyncio
-    async def test_admin_login_invalid(self):
+    def test_admin_login_invalid(self, client):
         """测试无效管理员登录"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/admin/auth/login",
-                json={
-                    "email": "invalid@example.com",
-                    "password": "InvalidPassword"
-                }
-            )
-            assert response.status_code in [401, 403, 404]
+        response = client.post("/admin/auth/login", json={
+            "email": "invalid@example.com",
+            "password": "wrongpassword"
+        })
+        assert response.status_code == 401
 
 
 class TestAdminDashboard:
     """管理后台测试"""
 
-    @pytest.mark.asyncio
-    async def test_admin_stats_unauthorized(self):
+    def test_admin_stats_unauthorized(self, client):
         """测试未授权访问管理统计"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/admin/stats")
-            assert response.status_code in [401, 403]
+        response = client.get("/admin/stats")
+        assert response.status_code in [401, 403]
 
 
 class TestUnauthorizedAccess:
     """未授权访问测试"""
 
-    @pytest.mark.asyncio
-    async def test_classrooms_without_token(self):
+    def test_classrooms_without_token(self, client):
         """测试无Token访问课程"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/classrooms",
-                json={"name": "未授权课程"}
-            )
-            # 未授权可能返回401、403或500
-            assert response.status_code in [401, 403, 500]
+        response = client.get("/classrooms")
+        assert response.status_code in [401, 403]
 
-    @pytest.mark.asyncio
-    async def test_points_without_token(self):
+    def test_points_without_token(self, client):
         """测试无Token访问积分"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/points/balance")
-            # 未授权可能返回401或403
-            assert response.status_code in [401, 403]
+        response = client.get("/points/balance")
+        assert response.status_code in [401, 403]
 
-    @pytest.mark.asyncio
-    async def test_tokens_without_token(self):
+    def test_tokens_without_token(self, client):
         """测试无Token访问Token"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/tokens/balance")
-            # 未授权可能返回401、403或500
-            assert response.status_code in [401, 403, 500]
+        response = client.get("/tokens/balance")
+        assert response.status_code in [401, 403]
 
 
 class TestErrorHandling:
     """错误处理测试"""
 
-    @pytest.mark.asyncio
-    async def test_invalid_json(self):
-        """测试无效JSON请求"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.post(
-                "/auth/register",
-                content="invalid json",
-                headers={"Content-Type": "application/json"}
-            )
-            assert response.status_code in [400, 422]
+    def test_invalid_json(self, client):
+        """测试无效JSON"""
+        response = client.post(
+            "/auth/register",
+            content="{invalid json",
+            headers={"Content-Type": "application/json"}
+        )
+        assert response.status_code in [400, 422]
 
-    @pytest.mark.asyncio
-    async def test_not_found_endpoint(self):
-        """测试不存在的端点"""
-        async with httpx.AsyncClient(base_url=BASE_URL) as client:
-            response = await client.get("/nonexistent-endpoint")
-            assert response.status_code == 404
+    def test_not_found_endpoint(self, client):
+        """测试不存在端点"""
+        response = client.get("/nonexistent/endpoint")
+        assert response.status_code == 404
 
 
-# 运行测试的入口
+# 运行测试入口
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

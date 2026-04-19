@@ -39,10 +39,10 @@ async def register(
 
     await db.execute(
         """
-        INSERT INTO users (id, email, password_hash, nickname)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO users (id, email, password_hash, nickname, is_active)
+        VALUES ($1, $2, $3, $4, $5)
         """,
-        user_id, body.email, password_hash, body.nickname
+        user_id, body.email, password_hash, body.nickname, True
     )
 
     # 发放新用户礼包
@@ -234,10 +234,10 @@ async def oauth_login(
 
     await db.execute(
         """
-        INSERT INTO users (id, email, nickname)
-        VALUES ($1, $2, $3)
+        INSERT INTO users (id, email, nickname, is_active)
+        VALUES ($1, $2, $3, $4)
         """,
-        user_id, email, body.user_info.get("nickname") if body.user_info else None
+        user_id, email, body.user_info.get("nickname") if body.user_info else None, True
     )
 
     # 创建 OAuth 关联

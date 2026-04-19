@@ -8,6 +8,7 @@ from app.db.database import get_db
 import asyncpg
 import uuid
 from datetime import datetime
+from app.core.time_utils import utcnow
 
 router = APIRouter()
 
