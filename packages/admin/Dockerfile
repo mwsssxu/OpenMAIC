@@ -16,16 +16,20 @@ COPY packages/ ./packages/
 RUN pnpm install --frozen-lockfile
 
 # Build admin package
-RUN pnpm --filter admin build
+WORKDIR /app/packages/admin
+RUN pnpm build
+
+# Find the standalone output path (varies based on workspace detection)
+RUN find .next/standalone -name "server.js" -type f | head -1
 
 # Production stage
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-COPY --from=builder /app/packages/admin/.next/standalone ./
+# Copy standalone files - use wildcard to handle nested path
+COPY --from=builder /app/packages/admin/.next/standalone/*/project/*/packages/admin ./
 COPY --from=builder /app/packages/admin/.next/static ./.next/static
-COPY --from=builder /app/packages/admin/public ./public
 
 EXPOSE 3001
 
