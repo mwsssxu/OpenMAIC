@@ -11,7 +11,7 @@ from app.core.redis import invalidate_balance_cache
 from app.core.config import settings
 import asyncpg
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.core.time_utils import utcnow
 import hashlib
 import json
@@ -124,7 +124,7 @@ async def create_payment_order(
         "status": "created",
         "wechat_params": payment_params if payment_method == "wechat" else None,
         "alipay_url": payment_url if payment_method == "alipay" else None,
-        "expires_at": (utcnow() + datetime.timedelta(hours=2)).isoformat(),
+        "expires_at": (utcnow() + timedelta(hours=2)).isoformat(),
     }
 
 
