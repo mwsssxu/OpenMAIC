@@ -28,6 +28,8 @@ async def generate_outlines_endpoint(
     pdf_content = body.get("pdf_content")
     language = body.get("language", "zh-CN")
     model = body.get("model", settings.DEFAULT_MODEL)
+    agent_ids = body.get("agent_ids", [])
+    web_search = body.get("web_search", False)
 
     try:
         outlines = await generate_outlines(
@@ -35,6 +37,8 @@ async def generate_outlines_endpoint(
             pdf_content=pdf_content,
             language=language,
             model=model,
+            agent_ids=agent_ids,
+            web_search=web_search,
         )
         return {"outlines": [o.model_dump() for o in outlines]}
     except Exception as e:

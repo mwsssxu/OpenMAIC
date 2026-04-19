@@ -189,6 +189,24 @@ class ApiClient {
     return data;
   }
 
+  // 流式生成大纲（返回完整结果，内部处理流式）
+  async generateOutlinesStream(
+    requirement: string,
+    language: string = 'zh-CN',
+    agents?: Array<{ id: string; name: string; role: string; persona: string }>,
+    webSearch?: boolean
+  ) {
+    // 由于移动端不支持SSE，这里调用普通API但返回相同格式
+    // 服务端可以后续优化为真正的流式
+    const { data } = await this.client.post('/generate/outlines', {
+      requirement,
+      language,
+      agent_ids: agents?.map(a => a.id),
+      web_search: webSearch,
+    });
+    return data;
+  }
+
   async generateAgentProfiles(stageName: string, stageDescription?: string, sceneOutlines?: any[], language?: string) {
     const { data } = await this.client.post('/generate/agent-profiles', {
       stage_name: stageName,

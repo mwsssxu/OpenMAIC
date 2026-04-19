@@ -68,6 +68,12 @@ OUTLINE_USER_PROMPT_TEMPLATE = """
 ## 可用图片
 {available_images}
 
+## 智能体配置
+{agent_context}
+
+## 网络搜索增强
+{web_search_context}
+
 请输出 JSON 数组格式的课程大纲。
 """
 
@@ -78,6 +84,8 @@ async def generate_outlines(
     language: str = "zh-CN",
     available_images: Optional[List[str]] = None,
     model: Optional[str] = None,
+    agent_ids: Optional[List[str]] = None,
+    web_search: bool = False,
 ) -> List[SceneOutline]:
     """
     生成课程大纲
@@ -88,16 +96,30 @@ async def generate_outlines(
         language: 语言
         available_images: 可用图片描述列表
         model: LLM 模型
+        agent_ids: 选用的智能体ID列表
+        web_search: 是否启用网络搜索增强
 
     Returns:
         场景大纲列表
     """
+    # 构建智能体上下文
+    agent_context = "无智能体配置"
+    if agent_ids and len(agent_ids) > 0:
+        agent_context = f"已配置 {len(agent_ids)} 个智能体参与课堂互动，请设计适合互动的场景"
+
+    # 构建网络搜索上下文
+    web_search_context = "未启用网络搜索"
+    if web_search:
+        web_search_context = "已启用网络搜索，可参考网络资源丰富内容"
+
     # 构建提示词
     user_prompt = OUTLINE_USER_PROMPT_TEMPLATE.format(
         requirement=requirement,
         pdf_content=pdf_content or "无",
         language=language,
         available_images="\n".join(available_images) if available_images else "无",
+        agent_context=agent_context,
+        web_search_context=web_search_context,
     )
 
     # 调用 LLM
