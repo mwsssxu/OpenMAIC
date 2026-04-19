@@ -19,17 +19,18 @@ RUN pnpm install --frozen-lockfile
 WORKDIR /app/packages/admin
 RUN pnpm build
 
-# Find the standalone output path (varies based on workspace detection)
-RUN find .next/standalone -name "server.js" -type f | head -1
+# Move standalone files to known location for easier COPY
+# Next.js standalone output path varies based on workspace detection
+RUN STANDALONE_PATH=$(find .next/standalone -name "server.js" -type f | head -1 | xargs dirname) && \
+    cp -r "$STANDALONE_PATH" /standalone && \
+    cp -r .next/static /standalone/.next/static
 
 # Production stage
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Copy standalone files - use wildcard to handle nested path
-COPY --from=builder /app/packages/admin/.next/standalone/*/project/*/packages/admin ./
-COPY --from=builder /app/packages/admin/.next/static ./.next/static
+COPY --from=builder /standalone ./
 
 EXPOSE 3001
 

@@ -39,11 +39,12 @@ class Settings(BaseSettings):
 
     # LLM 提供商
     OPENAI_API_KEY: str = ""
+    OPENAI_API_BASE: str = ""  # 自定义 API endpoint (如阿里云百炼)
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
     MINIMAX_API_KEY: str = ""
-    DEFAULT_MODEL: str = "openai/gpt-4o"
+    DEFAULT_MODEL: str = "openai/glm-5"  # 默认使用阿里云百炼 GLM-5
 
     # 阿里云 OSS
     OSS_ACCESS_KEY_ID: str = ""

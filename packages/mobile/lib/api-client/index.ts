@@ -552,6 +552,36 @@ class ApiClient {
     return data;
   }
 
+  async getCelebrationEffect(eventType: string, points?: number, name?: string) {
+    const { data } = await this.client.get(`/gamification/celebration/${eventType}`, {
+      params: { points, name },
+    });
+    return data;
+  }
+
+  async checkHiddenAchievements(triggerType: string, context?: Record<string, any>) {
+    const { data } = await this.client.post('/gamification/check-hidden-achievements', {
+      trigger_type: triggerType,
+      context,
+    });
+    return data;
+  }
+
+  async completeTaskWithCelebration(taskId: string, progress: number) {
+    const { data } = await this.client.post(`/gamification/tasks/${taskId}/complete-with-celebration`, { progress });
+    return data;
+  }
+
+  async getGamificationOverview() {
+    const { data } = await this.client.get('/gamification/overview');
+    return data;
+  }
+
+  async getRarityLevels() {
+    const { data } = await this.client.get('/gamification/rarity-levels');
+    return data;
+  }
+
   // ==================== Checkin ====================
 
   async dailyCheckin() {

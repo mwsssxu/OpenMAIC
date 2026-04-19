@@ -1,5 +1,5 @@
 """
-游戏化增强路由 - 每日任务、联赛等级、奖励递增
+游戏化增强路由 - 每日任务、联赛等级、奖励递增、成就系统、庆典效果
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -10,9 +10,71 @@ import asyncpg
 import uuid
 from datetime import datetime, timedelta
 from app.core.time_utils import utcnow
-from typing import Optional
+from typing import Optional, Dict, Any, List
+import random
 
 router = APIRouter()
+
+
+# ==================== 庆典效果配置 ====================
+
+CELEBRATION_EFFECTS = {
+    # 任务完成效果
+    "task_complete": {
+        "animation": "confetti",
+        "duration": 1.5,
+        "sound": "ding",
+        "vibration": "short",
+        "message_template": "完成任务！获得 {points} 积分",
+        "color": "#4CAF50",
+    },
+    # 成就解锁效果
+    "achievement_unlock": {
+        "animation": "fireworks",
+        "duration": 2.0,
+        "sound": "trumpet",
+        "vibration": "medium",
+        "message_template": "解锁成就「{name}」！",
+        "color": "#FFD700",
+    },
+    # 连续打卡里程碑
+    "streak_milestone": {
+        "animation": "sparkle",
+        "duration": 2.5,
+        "sound": "applause",
+        "vibration": "long",
+        "message_template": "连续打卡 {days} 天！奖励 {reward} 积分",
+        "color": "#9C27B0",
+    },
+    # 联赛升级
+    "league_upgrade": {
+        "animation": "cascade",
+        "duration": 3.0,
+        "sound": "fanfare",
+        "vibration": "pattern",
+        "message_template": "晋级至 {league}！",
+        "color": "#E91E63",
+    },
+    # 隐藏成就（惊喜）
+    "hidden_achievement": {
+        "animation": "mystery",
+        "duration": 2.5,
+        "sound": "magic",
+        "vibration": "double",
+        "message_template": "惊喜解锁！隐藏成就「{name}」",
+        "color": "#673AB7",
+    },
+}
+
+
+# ==================== 稀有度等级 ====================
+
+RARITY_LEVELS = {
+    "common": {"name": "普通", "color": "#9E9E9E", "glow": False, "chance": 0.6},
+    "rare": {"name": "稀有", "color": "#2196F3", "glow": True, "chance": 0.25},
+    "epic": {"name": "史诗", "color": "#9C27B0", "glow": True, "chance": 0.12},
+    "legendary": {"name": "传说", "color": "#FFD700", "glow": True, "chance": 0.03},
+}
 
 
 # ==================== 增量奖励配置 ====================
@@ -47,6 +109,8 @@ DAILY_TASKS = {
         "description": "完成每日学习打卡",
         "reward_points": 5,
         "type": "checkin",
+        "icon": "📅",
+        "animation": "pulse",
     },
     "learn_30min": {
         "name": "学习30分钟",
@@ -54,6 +118,8 @@ DAILY_TASKS = {
         "reward_points": 10,
         "type": "time",
         "target": 30,
+        "icon": "⏰",
+        "animation": "slideIn",
     },
     "complete_quiz": {
         "name": "完成测验",
@@ -61,6 +127,8 @@ DAILY_TASKS = {
         "reward_points": 15,
         "type": "quiz",
         "target": 1,
+        "icon": "📝",
+        "animation": "bounce",
     },
     "interact_agent": {
         "name": "与AI互动",
@@ -68,6 +136,8 @@ DAILY_TASKS = {
         "reward_points": 10,
         "type": "interaction",
         "target": 5,
+        "icon": "🤖",
+        "animation": "fadeIn",
     },
     "share_note": {
         "name": "分享笔记",
@@ -75,6 +145,8 @@ DAILY_TASKS = {
         "reward_points": 20,
         "type": "note",
         "target": 1,
+        "icon": "📤",
+        "animation": "scaleUp",
     },
     "answer_question": {
         "name": "回答问题",
@@ -82,6 +154,87 @@ DAILY_TASKS = {
         "reward_points": 15,
         "type": "qanda",
         "target": 1,
+        "icon": "💡",
+        "animation": "glow",
+    },
+}
+
+
+# ==================== 隐藏成就配置 ====================
+
+HIDDEN_ACHIEVEMENTS = {
+    # 惊喜类（随机触发）
+    "lucky_checkin": {
+        "name": "幸运打卡",
+        "description": "打卡时触发幸运奖励",
+        "icon": "🍀",
+        "rarity": "rare",
+        "trigger": "random",
+        "trigger_chance": 0.05,  # 5%概率
+        "reward_points": 50,
+    },
+    "night_scholar": {
+        "name": "深夜学者",
+        "description": "在午夜（23:00-01:00）学习",
+        "icon": "🌙",
+        "rarity": "rare",
+        "trigger": "time",
+        "trigger_hours": [23, 0],
+        "reward_points": 30,
+    },
+    "speed_master": {
+        "name": "闪电快手",
+        "description": "5分钟内完成测验且正确率>80%",
+        "icon": "⚡",
+        "rarity": "epic",
+        "trigger": "quiz_speed",
+        "reward_points": 100,
+    },
+    # 里程碑类
+    "week_warrior": {
+        "name": "周战士",
+        "description": "连续学习满7天",
+        "icon": "🔥",
+        "rarity": "common",
+        "trigger": "streak",
+        "streak_target": 7,
+        "reward_points": 60,
+    },
+    "month_master": {
+        "name": "月度大师",
+        "description": "连续学习满30天",
+        "icon": "🏆",
+        "rarity": "epic",
+        "trigger": "streak",
+        "streak_target": 30,
+        "reward_points": 200,
+    },
+    "legend_100": {
+        "name": "百日传奇",
+        "description": "连续学习满100天",
+        "icon": "👑",
+        "rarity": "legendary",
+        "trigger": "streak",
+        "streak_target": 100,
+        "reward_points": 1000,
+    },
+    # 特殊类
+    "first_friend": {
+        "name": "社交先锋",
+        "description": "首次邀请好友成功",
+        "icon": "👋",
+        "rarity": "rare",
+        "trigger": "invitation",
+        "reward_points": 50,
+    },
+    "helper_star": {
+        "name": "帮助之星",
+        "description": "回答被采纳超过10次",
+        "icon": "⭐",
+        "rarity": "epic",
+        "trigger": "answers_adopted",
+        "target": 10,
+        "reward_points": 150,
     },
 }
 
@@ -457,7 +610,7 @@ async def complete_checkin_task(
     # 发放积分奖励
     reward_points = task_data["reward_points"]
     point_account = await db.fetchrow(
-        "SELECT balance FROM point_accounts WHERE user_id = $1",
+        "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
         user_uuid
     )
 
@@ -529,7 +682,7 @@ async def get_streak_reward_info(
         preview.append({
             "day": day,
             "reward": calculate_streak_reward(day),
-            "is_cycle_end": ((day - 1) % 7) == 0,
+            "is_cycle_end": (day % 7) == 0,
         })
 
     return {
@@ -538,3 +691,339 @@ async def get_streak_reward_info(
         "next_reward_info": next_reward_info,
         "reward_preview": preview,
     }
+
+
+# ==================== 庆典效果API ====================
+
+@router.get("/celebration/{event_type}")
+async def get_celebration_effect(
+    event_type: str,
+    points: int = 0,
+    name: str = "",
+    days: int = 0,
+    league: str = "",
+):
+    """获取庆典效果配置（前端渲染用）"""
+    effect = CELEBRATION_EFFECTS.get(event_type)
+    if not effect:
+        raise HTTPException(status_code=404, detail=f"庆典效果 '{event_type}' 不存在")
+
+    # 生成动态消息
+    message = effect["message_template"].format(
+        points=points, name=name, days=days, league=league, reward=points
+    )
+
+    return {
+        "event_type": event_type,
+        "animation": effect["animation"],
+        "duration": effect["duration"],
+        "sound": effect["sound"],
+        "vibration": effect["vibration"],
+        "message": message,
+        "color": effect["color"],
+        "particles": get_particle_config(effect["animation"]),
+    }
+
+
+def get_particle_config(animation_type: str) -> Dict:
+    """根据动画类型返回粒子配置"""
+    configs = {
+        "confetti": {
+            "count": 50,
+            "colors": ["#FF6B6B", "#4ECDC4", "#FFE66D", "#95E1D3"],
+            "spread": 70,
+            "origin": {"y": 0.7},
+        },
+        "fireworks": {
+            "count": 30,
+            "colors": ["#FFD700", "#FF6B6B", "#9C27B0", "#2196F3"],
+            "spread": 180,
+            "origin": {"y": 0.5},
+        },
+        "sparkle": {
+            "count": 20,
+            "colors": ["#9C27B0", "#E91E63", "#FFD700"],
+            "spread": 50,
+            "origin": {"y": 0.3},
+        },
+        "cascade": {
+            "count": 100,
+            "colors": ["#E91E63", "#FF6B6B", "#FFE66D"],
+            "spread": 90,
+            "origin": {"y": 1},
+        },
+        "mystery": {
+            "count": 40,
+            "colors": ["#673AB7", "#9C27B0", "#E91E63", "#FFD700"],
+            "spread": 360,
+            "origin": {"y": 0.5},
+        },
+    }
+    return configs.get(animation_type, configs["confetti"])
+
+
+# ==================== 隐藏成就触发 ====================
+
+@router.post("/check-hidden-achievements")
+async def check_hidden_achievements(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """检查隐藏成就触发条件"""
+    user_uuid = uuid.UUID(current_user_id)
+    trigger_type = body.get("trigger_type", "")
+    context = body.get("context", {})
+
+    unlocked = []
+
+    for ach_id, ach_data in HIDDEN_ACHIEVEMENTS.items():
+        # 检查是否已获得
+        already_earned = await db.fetchrow(
+            "SELECT id FROM user_achievements WHERE user_id = $1 AND achievement_id = $2",
+            user_uuid, ach_id
+        )
+        if already_earned:
+            continue
+
+        # 检查触发条件
+        if should_unlock_hidden(ach_data, trigger_type, context):
+            # 授予隐藏成就
+            await db.execute(
+                """
+                INSERT INTO user_achievements (id, user_id, achievement_id, progress, earned_at)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                uuid.uuid4(), user_uuid, ach_id, 100, utcnow()
+            )
+
+            # 发放奖励积分
+            reward_points = ach_data["reward_points"]
+            await grant_reward_points(db, user_uuid, reward_points, ach_id)
+
+            rarity_info = RARITY_LEVELS[ach_data["rarity"]]
+            unlocked.append({
+                "id": ach_id,
+                "name": ach_data["name"],
+                "description": ach_data["description"],
+                "icon": ach_data["icon"],
+                "rarity": ach_data["rarity"],
+                "rarity_name": rarity_info["name"],
+                "rarity_color": rarity_info["color"],
+                "reward_points": reward_points,
+                "celebration": get_celebration_effect_internal("hidden_achievement", reward_points, ach_data["name"]),
+            })
+
+    return {
+        "unlocked_count": len(unlocked),
+        "unlocked_achievements": unlocked,
+        "message": f"惊喜解锁 {len(unlocked)} 个隐藏成就！" if unlocked else "",
+    }
+
+
+def should_unlock_hidden(ach_data: dict, trigger_type: str, context: dict) -> bool:
+    """判断是否应该解锁隐藏成就"""
+    trigger = ach_data.get("trigger")
+
+    if trigger == "random":
+        # 随机触发
+        if trigger_type == "checkin":
+            return random.random() < ach_data.get("trigger_chance", 0.05)
+
+    elif trigger == "time":
+        # 时间触发
+        current_hour = context.get("hour", utcnow().hour)
+        trigger_hours = ach_data.get("trigger_hours", [])
+        return current_hour in trigger_hours
+
+    elif trigger == "streak":
+        # 连续天数触发
+        streak = context.get("streak", 0)
+        return streak >= ach_data.get("streak_target", 999)
+
+    elif trigger == "quiz_speed":
+        # 测验速度触发
+        duration = context.get("duration", 999)
+        accuracy = context.get("accuracy", 0)
+        return duration <= 5 and accuracy > 0.8
+
+    elif trigger == "invitation":
+        # 邀请触发
+        return trigger_type == "invitation_success"
+
+    elif trigger == "answers_adopted":
+        # 回答采纳触发
+        adopted_count = context.get("adopted_count", 0)
+        return adopted_count >= ach_data.get("target", 999)
+
+    return False
+
+
+async def grant_reward_points(db: asyncpg.Connection, user_uuid: uuid.UUID, amount: int, source: str):
+    """发放奖励积分"""
+    point_account = await db.fetchrow(
+        "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
+        user_uuid
+    )
+
+    if point_account:
+        new_balance = point_account["balance"] + amount
+        await db.execute(
+            "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+            new_balance, utcnow(), user_uuid
+        )
+        await db.execute(
+            """
+            INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
+            VALUES ($1, $2, 'hidden_achievement', $3, $4, $5)
+            """,
+            uuid.uuid4(), user_uuid, amount, new_balance, utcnow()
+        )
+
+
+def get_celebration_effect_internal(event_type: str, points: int = 0, name: str = "") -> dict:
+    """内部函数：获取庆典效果"""
+    effect = CELEBRATION_EFFECTS.get(event_type, CELEBRATION_EFFECTS["task_complete"])
+    message = effect["message_template"].format(points=points, name=name, days=0, league="", reward=points)
+    return {
+        "animation": effect["animation"],
+        "duration": effect["duration"],
+        "sound": effect["sound"],
+        "vibration": effect["vibration"],
+        "message": message,
+        "color": effect["color"],
+    }
+
+
+# ==================== 增强任务完成（带庆典效果） ====================
+
+@router.post("/tasks/{task_id}/complete-with-celebration")
+async def complete_task_with_celebration(
+    task_id: str,
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """完成任务并返回庆典效果数据"""
+    # 先调用原有的进度更新逻辑
+    result = await update_task_progress(task_id, body, current_user_id, db)
+
+    if result.get("reward_issued"):
+        task_data = DAILY_TASKS.get(task_id, {})
+        # 返回庆典效果
+        result["celebration"] = get_celebration_effect_internal(
+            "task_complete",
+            result["reward_points"]
+        )
+        result["task_icon"] = task_data.get("icon", "✅")
+        result["task_animation"] = task_data.get("animation", "fadeIn")
+
+    return result
+
+
+# ==================== 稀有度信息 ====================
+
+@router.get("/rarity-levels")
+async def get_rarity_levels():
+    """获取稀有度等级配置"""
+    return [
+        {
+            "id": id_,
+            "name": data["name"],
+            "color": data["color"],
+            "glow": data["glow"],
+            "chance": data["chance"],
+        }
+        for id_, data in RARITY_LEVELS.items()
+    ]
+
+
+# ==================== 用户激励总览 ====================
+
+@router.get("/overview")
+async def get_gamification_overview(
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """获取用户激励系统总览（一页展示所有激励信息）"""
+    user_uuid = uuid.UUID(current_user_id)
+
+    # 获取联赛信息
+    total_points = await db.fetchval(
+        "SELECT COALESCE(SUM(amount), 0) FROM point_transactions WHERE user_id = $1",
+        user_uuid
+    ) or 0
+    league = get_user_league(total_points)
+
+    # 获取打卡状态
+    today = utcnow().date()
+    today_checkin = await db.fetchrow(
+        "SELECT streak_count FROM daily_checkins WHERE user_id = $1 AND checkin_date = $2",
+        user_uuid, today
+    )
+    streak = today_checkin["streak_count"] if today_checkin else 0
+
+    # 获取任务完成情况
+    tasks_result = await get_daily_tasks(current_user_id, db)
+
+    # 获取成就数量
+    achievements_count = await db.fetchval(
+        "SELECT COUNT(*) FROM user_achievements WHERE user_id = $1",
+        user_uuid
+    ) or 0
+
+    # 检查隐藏成就里程碑
+    hidden_unlocked = []
+    for ach_id, ach_data in HIDDEN_ACHIEVEMENTS.items():
+        if ach_data.get("trigger") == "streak":
+            streak_target = ach_data.get("streak_target", 999)
+            if streak >= streak_target:
+                already_earned = await db.fetchrow(
+                    "SELECT id FROM user_achievements WHERE user_id = $1 AND achievement_id = $2",
+                    user_uuid, ach_id
+                )
+                if not already_earned:
+                    hidden_unlocked.append({
+                        "id": ach_id,
+                        "name": ach_data["name"],
+                        "icon": ach_data["icon"],
+                        "rarity": ach_data["rarity"],
+                        "streak_target": streak_target,
+                    })
+
+    return {
+        "league": league,
+        "streak": {
+            "current": streak,
+            "today_checked": bool(today_checkin),
+            "reward_preview": calculate_streak_reward(streak + 1) if not today_checkin else 0,
+        },
+        "tasks": {
+            "total": tasks_result["total_tasks"],
+            "completed": tasks_result["completed_tasks"],
+            "total_reward_available": tasks_result["total_reward"],
+            "reward_earned": tasks_result["completed_reward"],
+        },
+        "achievements": {
+            "earned": achievements_count,
+            "total": len(HIDDEN_ACHIEVEMENTS) + 14,  # 隐藏成就 + 普通成就
+        },
+        "pending_milestones": hidden_unlocked,
+        "motivation_message": get_motivation_message(streak, tasks_result["completed_tasks"], achievements_count),
+    }
+
+
+def get_motivation_message(streak: int, tasks_completed: int, achievements: int) -> str:
+    """生成激励消息"""
+    if streak >= 30:
+        return "你是学习传奇！继续保持！"
+    elif streak >= 7:
+        return "连续学习一周！太棒了！"
+    elif tasks_completed >= 5:
+        return "今日任务达人！继续加油！"
+    elif achievements >= 5:
+        return "成就收集者！更多成就等你解锁！"
+    elif streak == 0:
+        return "开始你的学习之旅吧！"
+    else:
+        return f"已连续学习{streak}天，继续保持！"

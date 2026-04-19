@@ -7,21 +7,21 @@ services:
     build:
       context: ./packages/server-python
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    network_mode: "host"  # 使用主机网络，避免 Docker 网络隔离问题
     environment:
       - DATABASE_URL=postgres://postgres:0okm9ijn@postgres:5432/postgres
       - REDIS_URL=redis://:re2019@redis:6379
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - DEBUG=true
       - TESTING_MODE=true
-      # LLM 提供商
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # LLM 提供商 - 阿里云百炼
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-sp-359fa096d7144a5da564f9af9c73abaf}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://coding.dashscope.aliyuncs.com/v1}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai:gpt-4o}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai/glm-5}
       # 阿里云 OSS
       - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-}
       - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-}
@@ -35,9 +35,6 @@ services:
       - ALLOWED_ORIGINS=["http://localhost:3030","http://localhost:3000","http://localhost:3001","http://localhost:8081","http://localhost:8082","http://localhost:19000","http://localhost:19006"]
     volumes:
       - ./packages/server-python/app:/app/app:ro  # 开发时热重载
-    extra_hosts:
-      - "postgres:host-gateway"
-      - "redis:host-gateway"
 
   # 原有 Next.js Web 应用（保留）
   openmaic-web:
@@ -59,8 +56,8 @@ services:
   # Admin Dashboard
   admin:
     build:
-      context: ./packages/admin
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: packages/admin/Dockerfile
     ports:
       - "3001:3000"
     environment:
@@ -73,8 +70,8 @@ services:
   # Main Project
   main:
     build:
-      context: ./packages/main-project
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: packages/main-project/Dockerfile
     ports:
       - "3000:3000"
     environment:

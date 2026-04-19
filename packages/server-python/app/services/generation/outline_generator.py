@@ -20,62 +20,24 @@ class SceneOutline(BaseModel):
     media_generations: Optional[List[Dict]] = None
 
 
-OUTLINE_SYSTEM_PROMPT = """
-你是一个专业的课程设计专家。你的任务是根据用户的需求和参考材料，
-设计一个结构化的教学大纲。
+OUTLINE_SYSTEM_PROMPT = """你是课程设计专家。根据需求生成教学大纲JSON数组。
 
-输出要求：
-1. 返回 JSON 数组，每个元素是一个场景大纲
-2. 每个场景包含：id, title, type, description, order, key_points
-3. type 可以是：slide（幻灯片）、quiz（测验）、interactive（交互）、pbl（项目式学习）
-4. key_points 是该场景的核心要点列表
-5. 顺序合理，循序渐进
-6. 只输出 JSON，不要其他内容
+输出格式要求：
+- JSON数组，每个场景包含：id, title, type, description, order, key_points
+- type可选：slide/quiz/interactive/pbl
+- key_points是核心要点列表
+- 只输出JSON，无其他内容
 
-示例输出格式：
-[
-  {
-    "id": "scene_1",
-    "title": "课程简介",
-    "type": "slide",
-    "description": "介绍本课程的主题和学习目标",
-    "order": 1,
-    "key_points": ["主题概述", "学习目标", "课程安排"]
-  },
-  {
-    "id": "scene_2",
-    "title": "核心概念",
-    "type": "slide",
-    "description": "讲解核心概念和原理",
-    "order": 2,
-    "key_points": ["概念定义", "原理说明", "示例演示"]
-  }
-]
+示例：
+[{"id":"scene_1","title":"课程简介","type":"slide","description":"介绍课程主题","order":1,"key_points":["概述","目标"]}]
 """
 
-OUTLINE_USER_PROMPT_TEMPLATE = """
-请根据以下需求设计课程大纲：
+OUTLINE_USER_PROMPT_TEMPLATE = """需求：{requirement}
+语言：{language}
+参考材料：{pdf_content}
+可用图片：{available_images}
 
-## 用户需求
-{requirement}
-
-## 参考材料
-{pdf_content}
-
-## 语言要求
-{language}
-
-## 可用图片
-{available_images}
-
-## 智能体配置
-{agent_context}
-
-## 网络搜索增强
-{web_search_context}
-
-请输出 JSON 数组格式的课程大纲。
-"""
+请生成课程大纲JSON数组。"""
 
 
 async def generate_outlines(

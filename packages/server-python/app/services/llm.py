@@ -1,20 +1,28 @@
 """
-LiteLLM 统一接口 - 支持 100+ LLM 提供商
+LLM 统一接口 - 支持 OpenAI 兼容 API
 """
 
+import asyncio
+import urllib.request
+import urllib.error
+import json
 import os
-from litellm import completion
+
+# 强制禁用所有代理
+for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']:
+    if key in os.environ:
+        del os.environ[key]
+os.environ['NO_PROXY'] = '*'
+os.environ['no_proxy'] = '*'
+
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
 
 # 提供商映射
 PROVIDER_MODEL_MAP = {
-    "openai": "openai/gpt-4o",
-    "anthropic": "anthropic/claude-3-5-sonnet-20241022",
-    "google": "gemini/gemini-1.5-pro",
-    "deepseek": "deepseek/deepseek-chat",
-    "minimax": "minimax/MiniMax-M2.7-highspeed",
-    "ollama": "ollama/llama3",
+    "openai": "gpt-4o",
+    "anthropic": "claude-3-5-sonnet-20241022",
+    "deepseek": "deepseek-chat",
 }
 
 
@@ -27,40 +35,52 @@ async def call_llm(
     stream: bool = False,
 ) -> str:
     """
-    调用 LLM（统一接口）
-
-    Args:
-        prompt: 用户输入
-        system_prompt: 系统提示词
-        model: 模型名称（如 openai:gpt-4o）
-        temperature: 温度参数
-        max_tokens: 最大输出 tokens
-        stream: 是否流式输出
-
-    Returns:
-        LLM 响应文本
+    调用 LLM（使用 urllib.request）
     """
     model_str = model or settings.DEFAULT_MODEL
+    # 移除 openai/ 前缀
+    if model_str.startswith("openai/"):
+        model_str = model_str[7:]
 
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    # LiteLLM 自动处理 API Key
-    response = await completion(
-        model=model_str,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stream=stream,
-    )
+    api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
+    api_key = settings.OPENAI_API_KEY
 
-    if stream:
-        # 流式返回需要特殊处理
-        return response
-    else:
-        return response.choices[0].message.content
+    payload = {
+        "model": model_str,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
+
+    def _sync_call():
+        url = f"{api_base}/chat/completions"
+        data = json.dumps(payload).encode('utf-8')
+
+        # 创建不使用代理的请求
+        handler = urllib.request.ProxyHandler({})
+        opener = urllib.request.build_opener(handler)
+
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        response = opener.open(req, timeout=60)
+        result = json.loads(response.read().decode('utf-8'))
+        return result
+
+    result = await asyncio.to_thread(_sync_call)
+    return result["choices"][0]["message"]["content"]
 
 
 async def stream_llm(
@@ -71,29 +91,10 @@ async def stream_llm(
     max_tokens: Optional[int] = None,
 ):
     """
-    流式调用 LLM
-
-    Yields:
-        文本 chunk
+    流式调用 LLM（暂不支持，使用非流式）
     """
-    model_str = model or settings.DEFAULT_MODEL
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
-
-    response = await completion(
-        model=model_str,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stream=True,
-    )
-
-    for chunk in response:
-        if chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
+    result = await call_llm(prompt, system_prompt, model, temperature, max_tokens)
+    yield result
 
 
 async def call_llm_with_vision(
@@ -104,16 +105,11 @@ async def call_llm_with_vision(
 ) -> str:
     """
     调用视觉模型（多模态）
-
-    Args:
-        prompt: 文本输入
-        images: 图片列表 [{type: "image_url", image_url: {url: "..."}}]
-        system_prompt: 系统提示词
-        model: 模型名称
     """
     model_str = model or settings.DEFAULT_MODEL
+    if model_str.startswith("openai/"):
+        model_str = model_str[7:]
 
-    # 构建多模态消息
     content = [{"type": "text", "text": prompt}]
     for img in images:
         content.append({
@@ -126,9 +122,30 @@ async def call_llm_with_vision(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": content})
 
-    response = await completion(
-        model=model_str,
-        messages=messages,
-    )
+    api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
+    api_key = settings.OPENAI_API_KEY
 
-    return response.choices[0].message.content
+    def _sync_call():
+        url = f"{api_base}/chat/completions"
+        data = json.dumps({
+            "model": model_str,
+            "messages": messages,
+        }).encode('utf-8')
+
+        handler = urllib.request.ProxyHandler({})
+        opener = urllib.request.build_opener(handler)
+
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        response = opener.open(req, timeout=60)
+        return json.loads(response.read().decode('utf-8'))
+
+    result = await asyncio.to_thread(_sync_call)
+    return result["choices"][0]["message"]["content"]

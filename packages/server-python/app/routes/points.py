@@ -156,6 +156,7 @@ async def earn_points(
         # 测试模式：允许任意来源和数量
         if amount <= 0:
             raise HTTPException(status_code=400, detail="积分数量必须大于0")
+        source_config = {"description": f"测试积分: {source}"}
 
     new_balance = 0
 
