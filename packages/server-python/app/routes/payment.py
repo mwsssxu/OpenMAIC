@@ -15,8 +15,10 @@ from datetime import datetime, timezone, timedelta
 from app.core.time_utils import utcnow
 import hashlib
 import json
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ==================== Token套餐配置 ====================
 
@@ -265,17 +267,20 @@ async def wechat_pay_callback(
     except json.JSONDecodeError:
         return {"code": "FAIL", "message": "无效的数据格式"}
 
-    # CRITICAL: 签名验证 - 生产环境必须启用
-    # 从配置获取微信API密钥
-    # wechat_api_key = settings.WECHAT_PAY_API_KEY
-    # if wechat_api_key:
-    #     signature = request.headers.get("Wechatpay-Signature", "")
-    #     if not verify_wechat_signature(body, signature, wechat_api_key):
-    #         logger.warning(f"微信支付签名验证失败: {out_trade_no}")
-    #         return {"code": "FAIL", "message": "签名验证失败"}
-    # else:
-    #     # 开发环境警告
-    #     logger.warning("微信支付签名验证未启用 - 仅限开发环境使用")
+    # SECURITY: 签名验证 - 生产环境强制启用
+    wechat_api_key = settings.WECHAT_PAY_API_KEY
+    if wechat_api_key:
+        signature = request.headers.get("Wechatpay-Signature", "")
+        if not signature or not verify_wechat_signature(body, signature, wechat_api_key):
+            logger.warning(f"微信支付签名验证失败")
+            return {"code": "FAIL", "message": "签名验证失败"}
+    elif not settings.TESTING_MODE:
+        # 生产环境必须配置API密钥
+        logger.error("WECHAT_PAY_API_KEY未配置 - 生产环境拒绝支付回调")
+        return {"code": "FAIL", "message": "支付配置错误"}
+    else:
+        # 开发环境警告
+        logger.warning("微信支付签名验证未启用 - 仅限开发环境使用")
 
     # 解析订单号和交易号
     out_trade_no = data.get("out_trade_no", "")
@@ -312,11 +317,24 @@ async def alipay_callback(
 ):
     """支付宝回调"""
     form_data = await request.form()
+    form_dict = dict(form_data)
+
+    # SECURITY: 签名验证 - 生产环境强制启用
+    alipay_public_key = settings.ALIPAY_PUBLIC_KEY
+    if alipay_public_key:
+        if not verify_alipay_signature(form_dict, alipay_public_key):
+            logger.warning("支付宝签名验证失败")
+            return "fail"
+    elif not settings.TESTING_MODE:
+        # 生产环境必须配置公钥
+        logger.error("ALIPAY_PUBLIC_KEY未配置 - 生产环境拒绝支付回调")
+        return "fail"
+    else:
+        # 开发环境警告
+        logger.warning("支付宝签名验证未启用 - 仅限开发环境使用")
 
     out_trade_no = form_data.get("out_trade_no", "")
     transaction_id = form_data.get("trade_no", "")
-
-    # TODO: 实际验证签名
 
     try:
         order_id = uuid.UUID(out_trade_no.replace("mock_", ""))

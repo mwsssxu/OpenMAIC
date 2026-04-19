@@ -9,17 +9,42 @@ echo "   OpenMAIC Business v0.23.0 快速启动"
 echo "================================================"
 echo ""
 
+# Docker Desktop 常见安装路径
+DOCKER_PATHS="/usr/local/bin /opt/homebrew/bin /Applications/Docker.app/Contents/Resources/bin"
+
+# 查找 Docker 命令路径
+find_docker() {
+    for path_dir in $DOCKER_PATHS; do
+        if [ -x "$path_dir/docker" ]; then
+            echo "$path_dir/docker"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # 检查 Docker
-if ! command -v docker &> /dev/null; then
+DOCKER_CMD=""
+if command -v docker &> /dev/null; then
+    DOCKER_CMD="docker"
+elif DOCKER_CMD=$(find_docker); then
+    # 添加到 PATH
+    DOCKER_DIR=$(dirname "$DOCKER_CMD")
+    export PATH="$DOCKER_DIR:$PATH"
+    DOCKER_CMD="docker"
+else
     echo "❌ Docker 未安装，请先安装 Docker"
     echo "   https://docs.docker.com/get-docker/"
+    echo ""
+    echo "提示：如果已安装 Docker Desktop，请确保运行："
+    echo "   open -a Docker"
     exit 1
 fi
 
 # 检查 Docker Compose (支持新旧两种命令格式)
 DOCKER_COMPOSE=""
-if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+if $DOCKER_CMD compose version &> /dev/null; then
+    DOCKER_COMPOSE="$DOCKER_CMD compose"
 elif command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE="docker-compose"
 else
@@ -114,7 +139,8 @@ echo ""
 # 等待数据库
 echo "等待 PostgreSQL..."
 sleep 10
-until $DOCKER_COMPOSE exec -T postgres pg_isready -U maic -d maic 2>/dev/null; do
+# 使用 docker exec 直接访问外部 postgres 容器
+until docker exec postgres pg_isready -U postgres -d postgres 2>/dev/null; do
     echo "数据库未就绪，等待..."
     sleep 5
 done

@@ -114,32 +114,40 @@ def upgrade():
     )
 
     # Assign permissions to roles
+    # super_admin: all permissions
     op.execute("""
-        -- super_admin: all permissions
         INSERT INTO role_permissions (role_id, permission_id)
-        SELECT r.id, p.id FROM admin_roles r, admin_permissions p WHERE r.name = 'super_admin';
-
-        -- content_manager: content permissions + logs.view
-        INSERT INTO role_permissions (role_id, permission_id)
-        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
-        WHERE r.name = 'content_manager' AND p.code IN ('content.list', 'content.approve', 'content.reject', 'logs.view');
-
-        -- user_manager: user permissions + logs.view
-        INSERT INTO role_permissions (role_id, permission_id)
-        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
-        WHERE r.name = 'user_manager' AND p.code IN ('users.list', 'users.view', 'users.ban', 'users.gift', 'logs.view');
-
-        -- finance_manager: finance permissions
-        INSERT INTO role_permissions (role_id, permission_id)
-        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
-        WHERE r.name = 'finance_manager' AND p.code IN ('finance.view', 'logs.view');
-
-        -- viewer: view permissions only
-        INSERT INTO role_permissions (role_id, permission_id)
-        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
-        WHERE r.name = 'viewer' AND p.code LIKE '%.view';
+        SELECT r.id, p.id FROM admin_roles r, admin_permissions p WHERE r.name = 'super_admin'
     """)
-
+    
+    # content_manager: content permissions + logs.view
+    op.execute("""
+        INSERT INTO role_permissions (role_id, permission_id)
+        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
+        WHERE r.name = 'content_manager' AND p.code IN ('content.list', 'content.approve', 'content.reject', 'logs.view')
+    """)
+    
+    # user_manager: user permissions + logs.view
+    op.execute("""
+        INSERT INTO role_permissions (role_id, permission_id)
+        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
+        WHERE r.name = 'user_manager' AND p.code IN ('users.list', 'users.view', 'users.ban', 'users.gift', 'logs.view')
+    """)
+    
+    # finance_manager: finance permissions
+    op.execute("""
+        INSERT INTO role_permissions (role_id, permission_id)
+        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
+        WHERE r.name = 'finance_manager' AND p.code IN ('finance.view', 'logs.view')
+    """)
+    
+    # viewer: view permissions only
+    op.execute("""
+        INSERT INTO role_permissions (role_id, permission_id)
+        SELECT r.id, p.id FROM admin_roles r, admin_permissions p
+        WHERE r.name = 'viewer' AND p.code LIKE '%.view'
+    """)
+    
     # Admin sessions table
     op.create_table(
         'admin_sessions',

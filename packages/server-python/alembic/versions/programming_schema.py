@@ -64,16 +64,8 @@ def upgrade():
     op.create_index('ix_submissions_exercise', 'code_submissions', ['exercise_id'])
     op.create_index('ix_submissions_language', 'code_submissions', ['language'])
 
-    # Insert sample exercises
-    op.execute("""
-        INSERT INTO programming_exercises (course_id, title, description, difficulty, language, starter_code, max_score) VALUES
-        ('00000000-0000-0000-0000-000000000001', 'Hello World', '输出 Hello World', 'easy', 'python', 'print("Hello World")', 10),
-        ('00000000-0000-0000-0000-000000000001', '计算平方', '编写函数计算数字的平方', 'easy', 'python', 'def square(n):\\n    return n * n', 20),
-        ('00000000-0000-0000-0000-000000000001', '字符串反转', '反转输入字符串', 'medium', 'python', 'def reverse_string(s):\\n    pass', 30),
-        ('00000000-0000-0000-0000-000000000001', '数组排序', '实现冒泡排序算法', 'medium', 'python', 'def bubble_sort(arr):\\n    pass', 50),
-        ('00000000-0000-0000-0000-000000000001', '二叉树遍历', '实现二叉树前序遍历', 'hard', 'python', 'def preorder_traversal(root):\\n    pass', 100)
-    """)
-
+    # Sample exercises can be added after stages/courses are created
+    # Skipping default data to avoid foreign key constraint errors
 
 def downgrade():
     op.drop_index('ix_submissions_language', 'code_submissions')

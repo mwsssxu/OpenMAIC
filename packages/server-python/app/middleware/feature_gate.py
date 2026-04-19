@@ -9,6 +9,7 @@ from app.routes.subscriptions import PLAN_FEATURES
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
+from app.core.time_utils import utcnow
 
 
 async def get_user_subscription(user_id: str, db: asyncpg.Connection) -> dict:
@@ -27,7 +28,7 @@ async def get_user_subscription(user_id: str, db: asyncpg.Connection) -> dict:
         return {"plan_type": "free", "status": "active"}
 
     # 检查过期
-    if subscription["expires_at"] and subscription["expires_at"] < datetime.utcnow():
+    if subscription["expires_at"] and subscription["expires_at"] < utcnow():
         return {"plan_type": "free", "status": "expired"}
 
     return {
@@ -87,14 +88,14 @@ async def get_feature_usage(
         return 0
 
     # 检查是否需要重置
-    if usage["reset_at"] and usage["reset_at"] < datetime.utcnow():
+    if usage["reset_at"] and usage["reset_at"] < utcnow():
         # 重置计数
         await db.execute(
             """
             UPDATE subscription_usage SET usage_count = 0, reset_at = $1
             WHERE user_id = $2 AND feature = $3
             """,
-            datetime.utcnow() + timedelta(days=1),
+            utcnow() + timedelta(days=1),
             user_uuid, feature
         )
         return 0
@@ -130,7 +131,7 @@ async def increment_feature_usage(
             INSERT INTO subscription_usage (id, user_id, feature, usage_count, reset_at)
             VALUES ($1, $2, $3, 1, $4)
             """,
-            uuid.uuid4(), user_uuid, feature, datetime.utcnow() + timedelta(days=1)
+            uuid.uuid4(), user_uuid, feature, utcnow() + timedelta(days=1)
         )
 
 

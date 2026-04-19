@@ -19,16 +19,21 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # SECURITY CHECK: Verify SECRET_KEY is configured
-    if not settings.SECRET_KEY:
+    if not settings.SECRET_KEY or settings.SECRET_KEY == "your-secret-key-change-in-production":
         if settings.TESTING_MODE:
-            # Allow empty key in testing mode (use default)
-            settings.SECRET_KEY = "test-secret-key-for-development-only"
-            logger.warning("Using default SECRET_KEY for testing mode - NOT SAFE FOR PRODUCTION!")
+            # Allow weak key in testing mode (use secure random)
+            import secrets
+            settings.SECRET_KEY = secrets.token_urlsafe(32)
+            logger.warning("Using random SECRET_KEY for testing mode - NOT SAFE FOR PRODUCTION!")
         else:
             raise RuntimeError(
-                "SECRET_KEY must be set in environment variables for production! "
-                "Set SECRET_KEY in .env file or environment."
+                "SECRET_KEY must be set to a secure random value in environment variables! "
+                "Generate with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             )
+
+    # 启动警告检查
+    if not settings.TESTING_MODE:
+        logger.warning("Production mode enabled - ensure payment callback signatures are verified!")
 
     # 启动时初始化数据库和 Redis 连接
     await init_db()
@@ -48,12 +53,19 @@ app = FastAPI(
 )
 
 # CORS 配置（支持 Web 和移动端）
+# 开发模式允许所有localhost端口，生产模式使用白名单
+cors_origins = settings.ALLOWED_ORIGINS
+if settings.TESTING_MODE or settings.DEBUG:
+    # 开发模式：动态允许所有localhost和expo端口
+    cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # 注册路由

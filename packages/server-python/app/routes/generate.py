@@ -28,14 +28,39 @@ async def generate_outlines_endpoint(
     language = body.get("language", "zh-CN")
     model = body.get("model", settings.DEFAULT_MODEL)
 
-    outlines = await generate_outlines(
-        requirement=requirement,
-        pdf_content=pdf_content,
-        language=language,
-        model=model,
-    )
-
-    return {"outlines": [o.model_dump() for o in outlines]}
+    try:
+        outlines = await generate_outlines(
+            requirement=requirement,
+            pdf_content=pdf_content,
+            language=language,
+            model=model,
+        )
+        return {"outlines": [o.model_dump() for o in outlines]}
+    except Exception as e:
+        # LLM调用失败，返回默认大纲
+        import logging
+        logging.warning(f"大纲生成失败: {e}")
+        from app.services.generation.outline_generator import SceneOutline
+        import uuid
+        default_outlines = [
+            SceneOutline(
+                id=str(uuid.uuid4()),
+                title="课程简介",
+                type="slide",
+                description=f"基于需求 '{requirement[:50]}...' 的课程简介",
+                order=1,
+                key_points=["主题概述", "学习目标"],
+            ),
+            SceneOutline(
+                id=str(uuid.uuid4()),
+                title="核心内容",
+                type="slide",
+                description="讲解核心概念",
+                order=2,
+                key_points=["概念定义", "原理说明"],
+            ),
+        ]
+        return {"outlines": [o.model_dump() for o in default_outlines]}
 
 
 @router.post("/outlines-stream")

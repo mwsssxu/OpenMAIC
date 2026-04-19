@@ -376,17 +376,17 @@ async def update_task_progress(
     if is_completed and (not existing or not existing["completed"]):
         reward_points = task_data["reward_points"]
 
-        # 发放积分
+        # 发放积分 - 使用FOR UPDATE锁防止并发
         point_account = await db.fetchrow(
-            "SELECT balance FROM point_accounts WHERE user_id = $1",
+            "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE",
             user_uuid
         )
 
         if point_account:
             new_balance = point_account["balance"] + reward_points
             await db.execute(
-                "UPDATE point_accounts SET balance = $1 WHERE user_id = $2",
-                new_balance, user_uuid
+                "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+                new_balance, utcnow(), user_uuid
             )
             await db.execute(
                 """

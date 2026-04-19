@@ -2,21 +2,21 @@
 Pydantic 模型 - 用户
 """
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
 
 class UserRegister(BaseModel):
     """用户注册请求"""
-    email: EmailStr
-    password: str
-    nickname: Optional[str] = None
+    email: EmailStr = Field(..., max_length=255, description="用户邮箱，最大255字符")
+    password: str = Field(..., min_length=6, max_length=72, description="密码，6-72字符")
+    nickname: Optional[str] = Field(None, max_length=50, description="昵称，最大50字符")
 
 
 class UserLogin(BaseModel):
     """用户登录请求"""
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(..., max_length=255, description="用户邮箱")
+    password: str = Field(..., min_length=1, max_length=72, description="密码")
 
 
 class UserResponse(BaseModel):
@@ -29,8 +29,8 @@ class UserResponse(BaseModel):
 
 class UserUpdate(BaseModel):
     """用户更新请求"""
-    nickname: Optional[str] = None
-    avatar_url: Optional[str] = None
+    nickname: Optional[str] = Field(None, max_length=50, description="昵称")
+    avatar_url: Optional[str] = Field(None, max_length=500, description="头像URL")
 
 
 class PasswordChange(BaseModel):

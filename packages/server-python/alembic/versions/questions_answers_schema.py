@@ -12,9 +12,9 @@ from datetime import datetime
 import uuid
 
 revision = 'questions_answers_schema'
-down_revision = 'token_points_schema'
+down_revision = 'invitation_schema'
 branch_labels = None
-depends_on = 'token_points_schema'
+depends_on = None
 
 
 def upgrade():

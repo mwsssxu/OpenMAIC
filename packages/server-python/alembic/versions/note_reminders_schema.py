@@ -37,7 +37,7 @@ def upgrade():
         sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['course_id'], ['stages.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['note_id'], ['notes.id'], ondelete='SET NULL'),
+        # note_id 外键将在 notes_schema 之后添加
     )
     op.create_index('ix_note_reminders_user', 'note_reminders', ['user_id'])
     op.create_index('ix_note_reminders_course', 'note_reminders', ['course_id'])

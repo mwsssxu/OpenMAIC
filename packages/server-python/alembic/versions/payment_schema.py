@@ -12,22 +12,18 @@ from datetime import datetime
 import uuid
 
 revision = 'payment_schema'
-down_revision = 'invitation_schema'
+down_revision = 'subscriptions_schema'
 branch_labels = None
-depends_on = 'invitation_schema'
+depends_on = None
 
 
 def upgrade():
-    # 添加 orders 表字段
-    op.add_column('orders', sa.Column('transaction_id', sa.String(64)))  # 第三方支付交易号
-    op.add_column('orders', sa.Column('paid_at', sa.DateTime))  # 支付完成时间
-    op.add_column('orders', sa.Column('notify_data', sa.Text))  # 回调原始数据
-
-    # 支付回调记录表
+    # orders 表在 token_points_schema 中创建（之后执行）
+    # payment_callbacks 表不依赖 orders 外键，将在后续迁移中添加
     op.create_table(
         'payment_callbacks',
         sa.Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column('order_id', UUID(as_uuid=True), sa.ForeignKey('orders.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('order_id', UUID(as_uuid=True), nullable=False),  # 不添加外键
         sa.Column('provider', sa.String(20), nullable=False),  # wechat, alipay
         sa.Column('transaction_id', sa.String(64)),  # 第三方交易号
         sa.Column('amount', sa.Integer),  # 支付金额（分）

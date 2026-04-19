@@ -27,7 +27,15 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3030", "http://localhost:3000"]
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3030",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:8081",
+        "http://localhost:8082",
+        "http://localhost:19000",  # Expo default
+        "http://localhost:19006",  # Expo web
+    ]
 
     # LLM 提供商
     OPENAI_API_KEY: str = ""
@@ -35,7 +43,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
     MINIMAX_API_KEY: str = ""
-    DEFAULT_MODEL: str = "openai:gpt-4o"
+    DEFAULT_MODEL: str = "openai/gpt-4o"
 
     # 阿里云 OSS
     OSS_ACCESS_KEY_ID: str = ""
@@ -50,6 +58,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     WECHAT_APP_ID: str = ""
     WECHAT_APP_SECRET: str = ""
+
+    # Payment - 支付签名验证密钥 (生产环境必须配置)
+    WECHAT_PAY_API_KEY: str = ""  # 微信支付API密钥
+    ALIPAY_PUBLIC_KEY: str = ""   # 支付宝公钥
 
     class Config:
         env_file = ".env"

@@ -12,9 +12,9 @@ from datetime import datetime
 import uuid
 
 revision = 'buddy_schema'
-down_revision = 'subscriptions_schema'
+down_revision = 'notes_schema'
 branch_labels = None
-depends_on = 'subscriptions_schema'
+depends_on = None
 
 
 def upgrade():

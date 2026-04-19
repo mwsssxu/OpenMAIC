@@ -1,39 +1,71 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
 
+// Web端使用window.alert，Mobile端使用Alert.alert
+const showAlert = (title: string, message: string, buttons?: any[]) => {
+  if (Platform.OS === 'web') {
+    if (buttons && buttons.length > 0) {
+      const confirm = window.confirm(`${title}\n\n${message}\n\n点击确定继续`);
+      if (confirm && buttons[0].onPress) {
+        buttons[0].onPress();
+      }
+    } else {
+      window.alert(`${title}\n\n${message}`);
+    }
+  } else {
+    const Alert = require('react-native').Alert;
+    Alert.alert(title, message, buttons);
+  }
+};
+
 export default function RegisterScreen() {
   const router = useRouter();
-  const { register, isLoading } = useAuth();
+  const { register, isLoading, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [policyAgreed, setPolicyAgreed] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 注册成功后自动跳转
+  if (isAuthenticated && !registering) {
+    router.replace('/');
+    return null;
+  }
 
   const handleRegister = async () => {
+    setError(null);
+
     if (!email || !password) {
-      Alert.alert('提示', '请输入邮箱和密码');
+      setError('请输入邮箱和密码');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('提示', '密码至少 6 位');
+      setError('密码至少需要 6 位字符');
       return;
     }
 
     if (!policyAgreed) {
-      Alert.alert('提示', '请先阅读并同意用户协议和隐私政策');
+      setError('请先勾选同意用户协议和隐私政策');
       return;
     }
 
+    setRegistering(true);
     try {
-      await register(email, password, nickname);
-      router.replace('/');
+      await register(email, password, nickname || undefined);
+      showAlert('注册成功', '欢迎加入 OpenMAIC!', [
+        { text: '开始使用', onPress: () => router.replace('/') }
+      ]);
     } catch (error) {
-      Alert.alert('注册失败', error instanceof Error ? error.message : '请稍后重试');
+      setRegistering(false);
+      const message = error instanceof Error ? error.message : '请稍后重试';
+      setError(message);
     }
   };
 
@@ -66,14 +98,22 @@ export default function RegisterScreen() {
 
         <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
 
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
         <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
+          style={[styles.button, (isLoading || registering) && styles.buttonDisabled]}
           onPress={handleRegister}
-          disabled={isLoading}
+          disabled={isLoading || registering}
         >
-          <Text style={styles.buttonText}>
-            {isLoading ? '注册中...' : '注册'}
-          </Text>
+          {registering ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>注册</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.back()}>
@@ -85,8 +125,8 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center' },
+  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
   form: { marginTop: 40 },
   input: {
     height: 50,
@@ -95,6 +135,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 15,
     marginBottom: 15,
+    fontSize: 16,
+  },
+  errorBox: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#ef4444',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 15,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    textAlign: 'center',
   },
   button: {
     height: 50,
@@ -104,6 +158,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonDisabled: { backgroundColor: '#ccc' },
-  buttonText: { color: 'white', fontSize: 18 },
-  link: { color: '#007AFF', textAlign: 'center', marginTop: 20 },
+  buttonText: { color: 'white', fontSize: 18, fontWeight: '600' },
+  link: { color: '#007AFF', textAlign: 'center', marginTop: 20, fontSize: 16 },
 });

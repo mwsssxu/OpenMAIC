@@ -1,6 +1,31 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { apiClient } from '@/lib/api-client';
+
+// Web端使用localStorage，Mobile端使用SecureStore
+const storage = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    }
+    return SecureStore.getItemAsync(key);
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+      return;
+    }
+    return SecureStore.setItemAsync(key, value);
+  },
+  async deleteItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(key);
+      return;
+    }
+    return SecureStore.deleteItemAsync(key);
+  },
+};
 
 interface User {
   id: string;
@@ -35,8 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadStoredAuth() {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
-      const userData = await SecureStore.getItemAsync(USER_KEY);
+      const token = await storage.getItem(TOKEN_KEY);
+      const userData = await storage.getItem(USER_KEY);
 
       if (token && userData) {
         setUser(JSON.parse(userData));
@@ -50,31 +75,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function login(email: string, password: string) {
-    const response = await apiClient.login(email, password);
+    try {
+      const response = await apiClient.login(email, password);
 
-    await SecureStore.setItemAsync(TOKEN_KEY, response.access_token);
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.refresh_token);
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(response.user));
+      await storage.setItem(TOKEN_KEY, response.access_token);
+      await storage.setItem(REFRESH_TOKEN_KEY, response.refresh_token);
+      await storage.setItem(USER_KEY, JSON.stringify(response.user));
 
-    setUser(response.user);
-    apiClient.setToken(response.access_token);
+      setUser(response.user);
+      apiClient.setToken(response.access_token);
+    } catch (error: any) {
+      const message = error.response?.data?.detail || error.message || '登录失败';
+      throw new Error(message);
+    }
   }
 
   async function register(email: string, password: string, nickname?: string) {
-    const response = await apiClient.register(email, password, nickname);
+    try {
+      const response = await apiClient.register(email, password, nickname);
 
-    await SecureStore.setItemAsync(TOKEN_KEY, response.access_token);
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.refresh_token);
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(response.user));
+      await storage.setItem(TOKEN_KEY, response.access_token);
+      await storage.setItem(REFRESH_TOKEN_KEY, response.refresh_token);
+      await storage.setItem(USER_KEY, JSON.stringify(response.user));
 
-    setUser(response.user);
-    apiClient.setToken(response.access_token);
+      setUser(response.user);
+      apiClient.setToken(response.access_token);
+    } catch (error: any) {
+      const message = error.response?.data?.detail || error.message || '注册失败';
+      throw new Error(message);
+    }
   }
 
   async function logout() {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_KEY);
+    await storage.deleteItem(TOKEN_KEY);
+    await storage.deleteItem(REFRESH_TOKEN_KEY);
+    await storage.deleteItem(USER_KEY);
 
     setUser(null);
     apiClient.setToken(null);
@@ -84,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const userData = await apiClient.getCurrentUser();
       setUser(userData);
-      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userData));
+      await storage.setItem(USER_KEY, JSON.stringify(userData));
     } catch (error) {
       console.error('Refresh user error:', error);
     }

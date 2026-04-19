@@ -622,49 +622,30 @@ async def get_user_statistics(
     }
 
 
-@router.get("/statistics/classrooms")
-async def get_classroom_statistics(
+@router.get("/statistics/courses")
+async def get_course_statistics(
     days: int = Query(7, le=30),
     admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """Get classroom/course statistics."""
+    """Get course statistics."""
     today = datetime.now().date()
     start_date = today - timedelta(days=days)
 
-    # Total courses
-    total_courses = await db.fetchval("SELECT COUNT(*) FROM classrooms")
+    # Total courses (stages table)
+    total_courses = await db.fetchval("SELECT COUNT(*) FROM stages")
 
     # Generated today
     generated_today = await db.fetchval(
-        "SELECT COUNT(*) FROM classrooms WHERE DATE(created_at) = $1", today
+        "SELECT COUNT(*) FROM stages WHERE DATE(created_at) = $1", today
     ) or 0
-
-    # Average completion rate
-    avg_completion = await db.fetchval(
-        """
-        SELECT AVG(completion_rate) FROM classrooms
-        WHERE completion_rate IS NOT NULL
-        """
-    ) or 0
-
-    # Popular tags
-    popular_tags = await db.fetch(
-        """
-        SELECT tag, COUNT(*) as count
-        FROM classroom_tags
-        GROUP BY tag
-        ORDER BY count DESC
-        LIMIT 10
-        """
-    )
 
     # Generation trend
     trend = await db.fetch(
         """
         SELECT DATE(created_at) as date,
                COUNT(*) as courses
-        FROM classrooms
+        FROM stages
         WHERE DATE(created_at) >= $1
         GROUP BY DATE(created_at)
         ORDER BY date
@@ -699,8 +680,6 @@ async def get_classroom_statistics(
     return {
         "total_courses": total_courses or 0,
         "generated_today": generated_today,
-        "avg_completion_rate": round(avg_completion, 1),
-        "popular_tags": [{"tag": t["tag"], "count": t["count"]} for t in popular_tags],
         "generation_trend": trend_data
     }
 

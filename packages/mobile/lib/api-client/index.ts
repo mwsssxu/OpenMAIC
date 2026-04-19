@@ -1,7 +1,32 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+
+// Web端使用localStorage，Mobile端使用SecureStore
+const storage = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    }
+    return SecureStore.getItemAsync(key);
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+      return;
+    }
+    return SecureStore.setItemAsync(key, value);
+  },
+  async deleteItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(key);
+      return;
+    }
+    return SecureStore.deleteItemAsync(key);
+  },
+};
 
 // Types
 export interface UserStats {
@@ -55,22 +80,22 @@ class ApiClient {
       async (error) => {
         if (error.response?.status === 401) {
           // Token 过期，尝试刷新
-          const refreshToken = await SecureStore.getItemAsync('refresh_token');
+          const refreshToken = await storage.getItem('refresh_token');
           if (refreshToken) {
             try {
               const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
                 refresh_token: refreshToken,
               });
               this.setToken(data.access_token);
-              await SecureStore.setItemAsync('auth_token', data.access_token);
+              await storage.setItem('auth_token', data.access_token);
               // 重试原请求
               error.config.headers.Authorization = `Bearer ${data.access_token}`;
               return this.client.request(error.config);
             } catch {
               // 刷新失败，清除登录状态
               this.setToken(null);
-              await SecureStore.deleteItemAsync('auth_token');
-              await SecureStore.deleteItemAsync('refresh_token');
+              await storage.deleteItem('auth_token');
+              await storage.deleteItem('refresh_token');
             }
           }
         }
@@ -117,8 +142,8 @@ class ApiClient {
     const { data } = await this.client.delete('/auth/me');
     // 清除本地 token
     this.setToken(null);
-    await SecureStore.deleteItemAsync('auth_token');
-    await SecureStore.deleteItemAsync('refresh_token');
+    await storage.deleteItem('auth_token');
+    await storage.deleteItem('refresh_token');
     return data;
   }
 

@@ -8,10 +8,12 @@ import {
   ScrollView,
   PanResponder,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
 import { useI18n } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth/auth-context';
 import { SlideCanvas } from '@/components/playback/slide-canvas';
 import { WhiteboardInteractive } from '@/components/playback/WhiteboardInteractive';
 import { Quiz } from '@/components/playback/Quiz';
@@ -34,6 +36,7 @@ interface ClassroomData {
 export default function ClassroomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useI18n();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<ClassroomData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +54,11 @@ export default function ClassroomScreen() {
   const screenHeight = screenWidth * 0.5625;
 
   useEffect(() => {
-    loadClassroom();
-  }, [id]);
+    // 等待认证加载完成后再请求
+    if (!authLoading && isAuthenticated) {
+      loadClassroom();
+    }
+  }, [id, authLoading, isAuthenticated]);
 
   // 手势导航（左滑下一页，右滑上一页）
   const panResponder = useRef(
@@ -115,10 +121,36 @@ export default function ClassroomScreen() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#5b9bd5" />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>请先登录</Text>
+        <TouchableOpacity
+          style={styles.loginButton}
+          onPress={() => {
+            // 跳转到登录页
+            const router = require('expo-router').useRouter();
+            router.replace('/auth/login');
+          }}
+        >
+          <Text style={styles.loginButtonText}>去登录</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <Text>{t('classroom.loadingScene')}</Text>
+        <ActivityIndicator size="large" color="#5b9bd5" />
       </View>
     );
   }
@@ -126,7 +158,7 @@ export default function ClassroomScreen() {
   if (error || !data) {
     return (
       <View style={styles.center}>
-        <Text>{t('errors.serverError')}: {error}</Text>
+        <Text style={styles.errorText}>{t('errors.serverError')}: {error}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={loadClassroom}>
           <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
         </TouchableOpacity>
@@ -284,7 +316,12 @@ export default function ClassroomScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f7fa' },
+  errorText: { color: '#ef4444', fontSize: 16, textAlign: 'center', marginBottom: 20 },
+  loginButton: { backgroundColor: '#5b9bd5', padding: 15, borderRadius: 8 },
+  loginButtonText: { color: 'white', fontSize: 16 },
+  retryButton: { backgroundColor: '#5b9bd5', padding: 10, borderRadius: 5, marginTop: 15 },
+  retryButtonText: { color: 'white', fontSize: 14 },
   header: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   title: { fontSize: 20, fontWeight: 'bold' },
   progress: { fontSize: 14, color: '#666', marginTop: 5 },

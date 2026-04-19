@@ -15,7 +15,7 @@ import uuid
 revision = 'passport_schema'
 down_revision = 'review_schema'
 branch_labels = None
-depends_on = 'review_schema'
+depends_on = None
 
 
 def upgrade():

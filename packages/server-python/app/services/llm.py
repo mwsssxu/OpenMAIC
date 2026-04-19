@@ -9,9 +9,9 @@ from app.core.config import settings
 
 # 提供商映射
 PROVIDER_MODEL_MAP = {
-    "openai": "gpt-4o",
-    "anthropic": "claude-3-5-sonnet-20241022",
-    "google": "gemini-1.5-pro",
+    "openai": "openai/gpt-4o",
+    "anthropic": "anthropic/claude-3-5-sonnet-20241022",
+    "google": "gemini/gemini-1.5-pro",
     "deepseek": "deepseek/deepseek-chat",
     "minimax": "minimax/MiniMax-M2.7-highspeed",
     "ollama": "ollama/llama3",

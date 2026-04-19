@@ -19,7 +19,10 @@
       "output": "static"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,39 +1,61 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
 
+// Web端使用window.alert，Mobile端使用Alert.alert
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    const Alert = require('react-native').Alert;
+    Alert.alert(title, message);
+  }
+};
+
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [policyAgreed, setPolicyAgreed] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 登录成功后自动跳转
+  if (isAuthenticated && !loggingIn) {
+    router.replace('/');
+    return null;
+  }
 
   const handleLogin = async () => {
+    setError(null);
+
     if (!email || !password) {
-      Alert.alert('提示', '请输入邮箱和密码');
+      setError('请输入邮箱和密码');
       return;
     }
 
     if (!policyAgreed) {
-      Alert.alert('提示', '请先阅读并同意用户协议和隐私政策');
+      setError('请先勾选同意用户协议和隐私政策');
       return;
     }
 
+    setLoggingIn(true);
     try {
       await login(email, password);
       router.replace('/');
     } catch (error) {
-      Alert.alert('登录失败', error instanceof Error ? error.message : '请检查邮箱和密码');
+      setLoggingIn(false);
+      const message = error instanceof Error ? error.message : '请检查邮箱和密码';
+      setError(message);
     }
   };
 
   const handleOAuthLogin = async (provider: string) => {
-    // TODO: 实现 OAuth 登录
-    Alert.alert('提示', `${provider} 登录功能即将上线`);
+    showAlert('提示', `${provider} 登录功能即将上线`);
   };
 
   return (
@@ -60,14 +82,22 @@ export default function LoginScreen() {
 
         <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
 
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
         <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
+          style={[styles.button, (isLoading || loggingIn) && styles.buttonDisabled]}
           onPress={handleLogin}
-          disabled={isLoading}
+          disabled={isLoading || loggingIn}
         >
-          <Text style={styles.buttonText}>
-            {isLoading ? '登录中...' : '登录'}
-          </Text>
+          {loggingIn ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>登录</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.push('/auth/register')}>
@@ -80,19 +110,19 @@ export default function LoginScreen() {
         <View style={styles.oauthButtons}>
           <TouchableOpacity
             style={[styles.oauthButton, { backgroundColor: '#000' }]}
-            onPress={() => handleOAuthLogin('apple')}
+            onPress={() => handleOAuthLogin('Apple')}
           >
             <Text style={styles.oauthButtonText}>Apple</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.oauthButton, { backgroundColor: '#4285F4' }]}
-            onPress={() => handleOAuthLogin('google')}
+            onPress={() => handleOAuthLogin('Google')}
           >
             <Text style={styles.oauthButtonText}>Google</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.oauthButton, { backgroundColor: '#07C160' }]}
-            onPress={() => handleOAuthLogin('wechat')}
+            onPress={() => handleOAuthLogin('WeChat')}
           >
             <Text style={styles.oauthButtonText}>微信</Text>
           </TouchableOpacity>
@@ -103,7 +133,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#fff' },
   title: { fontSize: 32, fontWeight: 'bold' },
   subtitle: { fontSize: 16, color: '#666', marginTop: 5 },
   form: { width: '100%', marginTop: 40 },
@@ -114,6 +144,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 15,
     marginBottom: 15,
+    fontSize: 16,
+  },
+  errorBox: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#ef4444',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 15,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    textAlign: 'center',
   },
   button: {
     height: 50,
@@ -123,8 +167,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonDisabled: { backgroundColor: '#ccc' },
-  buttonText: { color: 'white', fontSize: 18 },
-  link: { color: '#007AFF', textAlign: 'center', marginTop: 20 },
+  buttonText: { color: 'white', fontSize: 18, fontWeight: '600' },
+  link: { color: '#007AFF', textAlign: 'center', marginTop: 20, fontSize: 16 },
   oauthSection: { marginTop: 40 },
   oauthTitle: { textAlign: 'center', color: '#666' },
   oauthButtons: { flexDirection: 'row', justifyContent: 'center', marginTop: 15, gap: 10 },

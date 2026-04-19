@@ -32,7 +32,7 @@ def upgrade():
         sa.Column('context', sa.Text()),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()')),
         sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['note_id'], ['shared_notes.id'], ondelete='CASCADE'),
+        # shared_notes 外键将在 notes_schema 之后添加
         sa.ForeignKeyConstraint(['scene_id'], ['scenes.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['course_id'], ['stages.id'], ondelete='CASCADE'),
     )

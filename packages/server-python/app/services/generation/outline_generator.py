@@ -15,6 +15,7 @@ class SceneOutline(BaseModel):
     type: str  # slide, quiz, interactive, pbl
     description: str
     order: int
+    key_points: Optional[List[str]] = []
     estimated_duration: Optional[int] = None
     media_generations: Optional[List[Dict]] = None
 
@@ -25,10 +26,11 @@ OUTLINE_SYSTEM_PROMPT = """
 
 输出要求：
 1. 返回 JSON 数组，每个元素是一个场景大纲
-2. 每个场景包含：id, title, type, description, order
+2. 每个场景包含：id, title, type, description, order, key_points
 3. type 可以是：slide（幻灯片）、quiz（测验）、interactive（交互）、pbl（项目式学习）
-4. 顺序合理，循序渐进
-5. 只输出 JSON，不要其他内容
+4. key_points 是该场景的核心要点列表
+5. 顺序合理，循序渐进
+6. 只输出 JSON，不要其他内容
 
 示例输出格式：
 [
@@ -37,14 +39,16 @@ OUTLINE_SYSTEM_PROMPT = """
     "title": "课程简介",
     "type": "slide",
     "description": "介绍本课程的主题和学习目标",
-    "order": 1
+    "order": 1,
+    "key_points": ["主题概述", "学习目标", "课程安排"]
   },
   {
     "id": "scene_2",
     "title": "核心概念",
     "type": "slide",
     "description": "讲解核心概念和原理",
-    "order": 2
+    "order": 2,
+    "key_points": ["概念定义", "原理说明", "示例演示"]
   }
 ]
 """
@@ -128,6 +132,7 @@ async def generate_outlines(
                 type=item.get("type", "slide"),
                 description=item.get("description", ""),
                 order=item.get("order", i+1),
+                key_points=item.get("key_points", []),
                 estimated_duration=item.get("estimated_duration"),
                 media_generations=item.get("media_generations"),
             ))
@@ -142,6 +147,7 @@ async def generate_outlines(
                 type="slide",
                 description=f"基于需求 '{requirement[:50]}...' 的课程简介",
                 order=1,
+                key_points=["主题概述", "学习目标"],
             ),
             SceneOutline(
                 id=str(uuid.uuid4()),
@@ -149,6 +155,7 @@ async def generate_outlines(
                 type="slide",
                 description="讲解核心概念",
                 order=2,
+                key_points=["概念定义", "原理说明"],
             ),
         ]
 

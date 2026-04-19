@@ -1,7 +1,7 @@
 """token_points_schema
 
 Revision ID: token_points
-Revises: gamification_schema
+Revises: classroom_sessions
 Create Date: 2026-04-17
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'token_points'
-down_revision: Union[str, None] = 'classroom_sessions'
+down_revision: Union[str, None] = 'questions_answers_schema'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

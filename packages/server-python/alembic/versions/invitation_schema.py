@@ -11,9 +11,9 @@ from datetime import datetime
 import uuid
 
 revision = 'invitation_schema'
-down_revision = 'questions_answers_schema'
+down_revision = 'payment_schema'
 branch_labels = None
-depends_on = 'questions_answers_schema'
+depends_on = None
 
 
 def upgrade():
