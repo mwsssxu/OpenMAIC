@@ -67,7 +67,23 @@ services:
     profiles:
       - admin
 
-  # Main Project
+  # Website 官网
+  website:
+    build:
+      context: .
+      dockerfile: packages/website/Dockerfile
+    ports:
+      - "3003:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://python-server:8000
+      - NEXT_PUBLIC_MAIN_APP_URL=http://localhost:3031
+    depends_on:
+      - python-server
+    profiles:
+      - web
+      - main
+
+  # Main Project 主应用
   main:
     build:
       context: .
