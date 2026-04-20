@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { Locale, TranslationKeys } from '@/lib/i18n';
 import { Sparkles } from 'lucide-react';
+import HeroCTA from './hero-cta';
 
 interface HeroProps {
   locale: Locale;
@@ -28,9 +28,7 @@ export default function Hero({ locale, t }: HeroProps) {
 
         {/* CTA */}
         <div className="flex gap-4 justify-center mb-12">
-          <Link href={`/${locale}/register`} className="btn-primary text-lg">
-            {t['hero.cta']}
-          </Link>
+          <HeroCTA locale={locale} />
         </div>
 
         {/* Stats */}

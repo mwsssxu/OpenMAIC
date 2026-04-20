@@ -4,7 +4,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Locale, TranslationKeys } from '@/lib/i18n';
 import { register, saveToken } from '@/lib/api-client';
-import { Eye, EyeOff, UserPlus, Gift } from 'lucide-react';
+import { Eye, EyeOff, UserPlus, Gift, Rocket } from 'lucide-react';
+
+// 主应用入口
+const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3000';
 
 interface RegisterPageProps {
   locale: Locale;
@@ -51,9 +54,10 @@ export default function RegisterPage({ locale, t }: RegisterPageProps) {
             <Gift className="w-5 h-5" />
             <span className="font-medium">{t['register.success']}</span>
           </div>
-          <Link href="/" className="btn-primary inline-block">
+          <a href={MAIN_APP_URL} className="btn-primary inline-block flex items-center justify-center gap-2">
+            <Rocket className="w-5 h-5" />
             {locale === 'zh' ? '开始探索' : 'Start Exploring'}
-          </Link>
+          </a>
         </div>
       </div>
     );

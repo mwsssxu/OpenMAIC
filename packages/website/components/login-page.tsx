@@ -6,6 +6,9 @@ import { Locale, TranslationKeys } from '@/lib/i18n';
 import { login, saveToken } from '@/lib/api-client';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 
+// 主应用入口
+const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3000';
+
 interface LoginPageProps {
   locale: Locale;
   t: Record<TranslationKeys, string>;
@@ -27,8 +30,8 @@ export default function LoginPage({ locale, t }: LoginPageProps) {
 
     if (response.data) {
       saveToken(response.data.accessToken);
-      // 跳转到主页或移动端
-      window.location.href = '/';
+      // 跳转到主应用
+      window.location.href = MAIN_APP_URL;
     } else {
       setError(response.error || t['login.error']);
     }

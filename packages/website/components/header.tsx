@@ -1,8 +1,13 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Locale, TranslationKeys, locales } from '@/lib/i18n';
-import { Globe } from 'lucide-react';
+import { getToken, clearToken } from '@/lib/api-client';
+import { Globe, LogOut, Rocket } from 'lucide-react';
+
+// 主应用入口
+const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3000';
 
 interface HeaderProps {
   locale: Locale;
@@ -10,9 +15,22 @@ interface HeaderProps {
 }
 
 export default function Header({ locale, t }: HeaderProps) {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    // 检查登录状态
+    const token = getToken();
+    setIsLoggedIn(Boolean(token));
+  }, []);
+
   const switchLocale = (newLocale: Locale) => {
-    // 切换语言时跳转到对应路径
     window.location.href = `/${newLocale}`;
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setIsLoggedIn(false);
+    window.location.reload();
   };
 
   return (
@@ -34,12 +52,33 @@ export default function Header({ locale, t }: HeaderProps) {
           <Link href={`/${locale}/pricing`} className="text-gray-600 hover:text-primary transition-colors">
             {t['nav.pricing']}
           </Link>
-          <Link href={`/${locale}/login`} className="text-gray-600 hover:text-primary transition-colors">
-            {t['nav.login']}
-          </Link>
-          <Link href={`/${locale}/register`} className="btn-primary text-sm">
-            {t['nav.register']}
-          </Link>
+          {isLoggedIn ? (
+            <>
+              <a
+                href={MAIN_APP_URL}
+                className="btn-primary text-sm flex items-center gap-1"
+              >
+                <Rocket className="w-4 h-4" />
+                {locale === 'zh' ? '进入应用' : 'Enter App'}
+              </a>
+              <button
+                onClick={handleLogout}
+                className="text-gray-600 hover:text-red-500 transition-colors flex items-center gap-1"
+              >
+                <LogOut className="w-4 h-4" />
+                {locale === 'zh' ? '退出' : 'Logout'}
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href={`/${locale}/login`} className="text-gray-600 hover:text-primary transition-colors">
+                {t['nav.login']}
+              </Link>
+              <Link href={`/${locale}/register`} className="btn-primary text-sm">
+                {t['nav.register']}
+              </Link>
+            </>
+          )}
         </nav>
 
         {/* Language Switch */}

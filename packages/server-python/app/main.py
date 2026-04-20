@@ -59,8 +59,25 @@ app = FastAPI(
 # 开发模式允许所有localhost端口，生产模式使用白名单
 cors_origins = settings.ALLOWED_ORIGINS
 if settings.TESTING_MODE or settings.DEBUG:
-    # 开发模式：动态允许所有localhost和expo端口
-    cors_origins = ["*"]
+    # 开发模式：允许所有来源（但不能与credentials同时使用*）
+    # 所以使用具体的localhost端口列表
+    cors_origins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3003",
+        "http://localhost:3030",
+        "http://localhost:8081",
+        "http://localhost:8082",
+        "http://localhost:19000",
+        "http://localhost:19006",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3003",
+        "http://127.0.0.1:3030",
+    ]
+logger.info(f"CORS origins configured: {cors_origins}, TESTING_MODE={settings.TESTING_MODE}, DEBUG={settings.DEBUG}")
+for i, origin in enumerate(cors_origins):
+    logger.info(f"  CORS origin [{i}]: '{origin}' (len={len(origin)})")
 
 app.add_middleware(
     CORSMiddleware,
