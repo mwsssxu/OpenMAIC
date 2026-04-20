@@ -17,13 +17,26 @@ interface OutlineItem {
   order: number;
 }
 
+interface AgentProfile {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  avatar: string;
+  color: string;
+  priority: number;
+  enabled: boolean;
+}
+
 export default function CreateClassroomPage() {
   const { isAuthenticated, isLoading } = useAuth();
   const [topic, setTopic] = useState('');
   const [description, setDescription] = useState('');
   const [outlines, setOutlines] = useState<OutlineItem[]>([]);
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingAgents, setGeneratingAgents] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
 
@@ -47,6 +60,7 @@ export default function CreateClassroomPage() {
     setError('');
     setGenerating(true);
     setOutlines([]);
+    setAgents([]);
 
     try {
       const data = await apiClient.generateOutlines({
@@ -54,10 +68,37 @@ export default function CreateClassroomPage() {
         language: 'zh-CN',
       });
       setOutlines(data.outlines);
+
+      // 自动生成 Agent
+      await generateAgents(data.outlines);
     } catch (err: any) {
       setError(err.response?.data?.detail || '大纲生成失败');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateAgents(outlinesData: OutlineItem[]) {
+    setGeneratingAgents(true);
+    try {
+      const data = await apiClient.generateAgentProfiles({
+        stage_name: topic,
+        stage_description: description,
+        scene_outlines: outlinesData,
+        language: 'zh-CN',
+      });
+      setAgents(data.agents);
+    } catch (err: any) {
+      // Agent 生成失败不影响流程，使用默认配置
+      console.warn('Agent生成失败，使用默认配置:', err);
+      try {
+        const defaultData = await apiClient.getDefaultAgents('zh-CN');
+        setAgents(defaultData.agents);
+      } catch {
+        // 完全失败也继续，后端会提供默认 agent
+      }
+    } finally {
+      setGeneratingAgents(false);
     }
   }
 
@@ -71,12 +112,15 @@ export default function CreateClassroomPage() {
     setLoading(true);
 
     try {
+      // 创建课程，传递 agent_ids
       const classroom = await apiClient.createClassroom({
         name: topic,
         description: description,
         language_directive: 'zh-CN',
+        agent_ids: agents.map(a => a.id),
       });
 
+      // 生成场景内容
       await apiClient.generateScenes({
         outlines: outlines,
         language: 'zh-CN',
@@ -90,6 +134,15 @@ export default function CreateClassroomPage() {
     }
   }
 
+  function getRoleLabel(role: string) {
+    const labels: Record<string, string> = {
+      teacher: '👨‍🏫 老师',
+      assistant: '👨‍💼 助教',
+      student: '👨‍🎓 学生',
+    };
+    return labels[role] || role;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -99,7 +152,7 @@ export default function CreateClassroomPage() {
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-xl">
               🎯
             </div>
-            <span className="text-xl font-bold">OpenMAIC</span>
+            <span className="text-xl font-bold">侧伴</span>
           </Link>
           <Link href="/classrooms" className="bg-white/20 px-4 py-2 rounded-lg hover:bg-white/30 transition-colors flex items-center gap-1">
             <span>📚</span> 返回列表
@@ -166,7 +219,7 @@ export default function CreateClassroomPage() {
                 <span className="flex items-center gap-2">
                   <span className="loading-spinner"></span> AI正在思考...
                 </span>
-              ) : '🚀 生成大纲'}
+              ) : '🚀 生成大纲和智能体'}
             </Button>
           </div>
         </div>
@@ -179,6 +232,7 @@ export default function CreateClassroomPage() {
                 2
               </div>
               <h2 className="font-bold text-lg text-gray-800">大纲预览</h2>
+              <span className="text-sm text-gray-500">({outlines.length} 个场景)</span>
             </div>
 
             {/* 大纲列表 */}
@@ -204,9 +258,57 @@ export default function CreateClassroomPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
 
-            {/* 操作按钮 */}
-            <div className="mt-6 flex gap-3">
+        {/* Step 3: Agent Preview */}
+        {agents.length > 0 && (
+          <div className="card p-6 mb-6 animate-bounce-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center text-xl text-white shadow">
+                3
+              </div>
+              <h2 className="font-bold text-lg text-gray-800">智能体配置</h2>
+              <span className="text-sm text-gray-500">({agents.length} 位角色)</span>
+              {generatingAgents && (
+                <span className="text-xs text-accent animate-pulse">正在生成...</span>
+              )}
+            </div>
+
+            {/* Agent 列表 */}
+            <div className="grid grid-cols-2 gap-3">
+              {agents.map((agent) => (
+                <div
+                  key={agent.id}
+                  className="p-4 bg-gradient-to-r from-white to-gray-50 rounded-xl border-2 hover:shadow-md transition-all"
+                  style={{ borderColor: agent.color }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-xl text-white"
+                      style={{ backgroundColor: agent.color }}
+                    >
+                      {agent.avatar === 'teacher.png' ? '👨‍🏫' :
+                       agent.avatar === 'assistant.png' ? '👨‍💼' :
+                       agent.avatar === 'student1.png' ? '👨' :
+                       agent.avatar === 'student2.png' ? '👩' : '🧑'}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-800">{agent.name}</div>
+                      <div className="text-xs text-gray-500">{getRoleLabel(agent.role)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 line-clamp-2">{agent.persona}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 操作按钮 */}
+        {outlines.length > 0 && (
+          <div className="card p-6 mb-6">
+            <div className="flex gap-3">
               <Button
                 onClick={handleCreateClassroom}
                 disabled={loading}
@@ -220,7 +322,10 @@ export default function CreateClassroomPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setOutlines([])}
+                onClick={() => {
+                  setOutlines([]);
+                  setAgents([]);
+                }}
                 className="hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200"
               >
                 🔄 重新生成

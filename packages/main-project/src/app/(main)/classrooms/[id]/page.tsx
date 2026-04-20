@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
@@ -18,13 +18,27 @@ interface Scene {
   actions: any[];
 }
 
+interface Agent {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  avatar: string;
+  color: string;
+  priority: number;
+  enabled: boolean;
+}
+
 interface ClassroomData {
   stage: {
     id: string;
     name: string;
     description?: string;
+    agent_ids?: string[];
+    style?: any;
   };
   scenes: Scene[];
+  agents?: Agent[];
 }
 
 export default function ClassroomPlayPage() {
@@ -37,6 +51,9 @@ export default function ClassroomPlayPage() {
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
 
   const id = params.id as string;
 
@@ -56,13 +73,40 @@ export default function ClassroomPlayPage() {
   }, [isAuthenticated, id]);
 
   async function loadClassroom() {
+    setLoading(true);
+    setAgentsLoading(true);
     try {
       const classroomData = await apiClient.getClassroom(id);
+
+      // 如果有 agent_ids，获取 agent 详情
+      if (classroomData.stage.agent_ids?.length > 0) {
+        try {
+          const agentsData = await apiClient.generateAgentProfiles({
+            stage_name: classroomData.stage.name,
+            stage_description: classroomData.stage.description,
+            language: 'zh-CN',
+          });
+          setAgents(agentsData.agents);
+          setSelectedAgentId(agentsData.agents[0]?.id || '');
+        } catch {
+          // 使用默认 agent
+          const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
+          setAgents(defaultAgents.agents);
+          setSelectedAgentId(defaultAgents.agents[0]?.id || '');
+        }
+      } else {
+        // 没有 agent_ids，使用默认
+        const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
+        setAgents(defaultAgents.agents);
+        setSelectedAgentId(defaultAgents.agents[0]?.id || '');
+      }
+
       setData(classroomData);
     } catch (err: any) {
       setError(err.response?.data?.detail || '加载课程失败');
     } finally {
       setLoading(false);
+      setAgentsLoading(false);
     }
   }
 
@@ -78,6 +122,15 @@ export default function ClassroomPlayPage() {
       setCurrentSceneIndex(currentSceneIndex - 1);
       client?.sendSceneChange(currentSceneIndex - 1);
     }
+  }
+
+  function getRoleLabel(role: string) {
+    const labels: Record<string, string> = {
+      teacher: '老师',
+      assistant: '助教',
+      student: '学生',
+    };
+    return labels[role] || role;
   }
 
   if (isLoading || !isAuthenticated) {
@@ -121,7 +174,7 @@ export default function ClassroomPlayPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-indigo-50 to-purple-50">
-      {/* Header - 活泼渐变 */}
+      {/* Header */}
       <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 text-white shadow-lg sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link href="/classrooms" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
@@ -162,6 +215,34 @@ export default function ClassroomPlayPage() {
         <div className="flex gap-6">
           {/* Scene Content */}
           <div className="flex-1">
+            {/* Agent 选择器 */}
+            {agents.length > 0 && (
+              <div className="mb-4 flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100">
+                <span className="text-sm text-gray-500">当前对话角色:</span>
+                <div className="flex gap-2">
+                  {agents.map((agent) => (
+                    <button
+                      key={agent.id}
+                      onClick={() => setSelectedAgentId(agent.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
+                        selectedAgentId === agent.id
+                          ? 'bg-indigo-100 border-2 border-indigo-400'
+                          : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white"
+                        style={{ backgroundColor: agent.color }}
+                      >
+                        {agent.name[0]}
+                      </div>
+                      <span className="text-sm font-medium text-gray-700">{agent.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="card aspect-video relative overflow-hidden animate-fade-in">
               {/* 场景类型标签 */}
               <div className="absolute top-4 left-4 z-10">
@@ -319,8 +400,43 @@ export default function ClassroomPlayPage() {
               <div className="card p-4">
                 <ParticipantsList client={client} />
               </div>
+              {/* Agent 信息卡片 */}
+              {agents.length > 0 && (
+                <div className="card p-4">
+                  <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <span>🤖</span> 课程智能体
+                  </h3>
+                  <div className="space-y-2">
+                    {agents.map((agent) => (
+                      <div
+                        key={agent.id}
+                        className={`p-3 rounded-lg cursor-pointer transition-all ${
+                          selectedAgentId === agent.id
+                            ? 'bg-indigo-50 border border-indigo-200'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                        onClick={() => setSelectedAgentId(agent.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-sm text-white"
+                            style={{ backgroundColor: agent.color }}
+                          >
+                            {agent.avatar === 'teacher.png' ? '👨‍🏫' :
+                             agent.avatar === 'assistant.png' ? '👨‍💼' : '👨'}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-800">{agent.name}</div>
+                            <div className="text-xs text-gray-500">{getRoleLabel(agent.role)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="card h-64">
-                <ChatPanel client={client} agentId="chief_analyst" />
+                <ChatPanel client={client} agentId={selectedAgentId} />
               </div>
             </div>
           )}

@@ -116,7 +116,7 @@ class ApiClient {
     return data;
   }
 
-  async createClassroom(body: { name: string; description?: string; language_directive?: string }) {
+  async createClassroom(body: { name: string; description?: string; language_directive?: string; agent_ids?: string[] }) {
     const { data } = await this.client.post('/classrooms', body);
     return data;
   }
@@ -127,13 +127,30 @@ class ApiClient {
   }
 
   // Generate endpoints
-  async generateOutlines(body: { requirement: string; pdf_content?: string; language?: string }) {
+  async generateOutlines(body: { requirement: string; pdf_content?: string; language?: string; agent_ids?: string[] }) {
     const { data } = await this.client.post('/generate/outlines', body);
     return data;
   }
 
   async generateScenes(body: { outlines: any[]; language?: string }) {
     const { data } = await this.client.post('/generate/scenes', body);
+    return data;
+  }
+
+  async generateAgentProfiles(body: {
+    stage_name: string;
+    stage_description?: string;
+    scene_outlines?: any[];
+    language?: string;
+  }) {
+    const { data } = await this.client.post('/generate/agent-profiles', body);
+    return data;
+  }
+
+  async getDefaultAgents(language?: string) {
+    const { data } = await this.client.get('/generate/default-agents', {
+      params: { language: language || 'zh-CN' },
+    });
     return data;
   }
 
