@@ -98,6 +98,22 @@ export const zh = {
   'profile.classrooms.empty': '暂无课程',
   'profile.classrooms.create': '创建课程',
   'profile.classrooms.count': '共 {count} 个课程',
+
+  // 课程建议
+  'profile.suggestions.title': '学习建议',
+  'profile.suggestions.noCourse': '开始创建你的第一个课程吧！AI会根据你的主题生成交互式学习内容。',
+  'profile.suggestions.fewCourses': '课程不多？试试这些热门主题：',
+  'profile.suggestions.explore': '探索更多',
+  'profile.suggestions.topics.swot': 'SWOT分析',
+  'profile.suggestions.topics.marketing': '市场营销策略',
+  'profile.suggestions.topics.leadership': '领导力培养',
+  'profile.suggestions.topics.finance': '财务管理',
+  'profile.suggestions.topics.startup': '创业指南',
+  'profile.suggestions.topics.negotiation': '商务谈判',
+  'profile.suggestions.topics.project': '项目管理',
+  'profile.suggestions.topics.team': '团队协作',
+  'profile.suggestions.moreCourses': '继续创建更多课程，解锁学习搭子功能！',
+  'profile.suggestions.streak': '保持学习节奏，连续打卡可获得积分加成！',
 };
 
 export type TranslationKeys = keyof typeof zh;

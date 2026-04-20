@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Locale, TranslationKeys } from '@/lib/i18n';
 import { getMe, updateMe, changePassword, clearToken, getToken, getClassrooms, Classroom } from '@/lib/api-client';
-import { User, Lock, Rocket, LogOut, Loader2, Eye, EyeOff, Check, Edit2, BookOpen, Plus } from 'lucide-react';
+import { User, Lock, Rocket, LogOut, Loader2, Eye, EyeOff, Check, Edit2, BookOpen, Plus, Lightbulb, Sparkles, TrendingUp } from 'lucide-react';
 import AvatarUpload from './avatar-upload';
 
 const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3031';
@@ -369,6 +369,94 @@ export default function ProfilePage({ locale, t }: ProfilePageProps) {
             </a>
           )}
         </div>
+
+        {/* 学习建议 */}
+        {!classroomsLoading && (
+          <div className="card mb-6 bg-gradient-to-r from-blue-50 to-purple-50 border-none">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-accent" />
+              {t['profile.suggestions.title']}
+            </h2>
+
+            {/* 根据课程数量给出不同建议 */}
+            {classrooms.length === 0 ? (
+              <div className="text-gray-600">
+                <p className="mb-4">{t['profile.suggestions.noCourse']}</p>
+                <a
+                  href={`${MAIN_APP_URL}/classrooms/create`}
+                  className="btn-accent inline-flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {t['profile.classrooms.create']}
+                </a>
+              </div>
+            ) : classrooms.length < 3 ? (
+              <div className="text-gray-600">
+                <p className="mb-3">{t['profile.suggestions.fewCourses']}</p>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {[
+                    { key: 'swot', icon: '📊' },
+                    { key: 'marketing', icon: '📣' },
+                    { key: 'leadership', icon: '👑' },
+                    { key: 'finance', icon: '💰' },
+                  ].map((topic) => (
+                    <a
+                      key={topic.key}
+                      href={`${MAIN_APP_URL}/classrooms/create?topic=${encodeURIComponent(t[`profile.suggestions.topics.${topic.key}` as TranslationKeys])}`}
+                      className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg hover:bg-blue-100 transition-colors text-sm"
+                    >
+                      <span>{topic.icon}</span>
+                      <span>{t[`profile.suggestions.topics.${topic.key}` as TranslationKeys]}</span>
+                    </a>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <TrendingUp className="w-4 h-4" />
+                  {t['profile.suggestions.moreCourses']}
+                </div>
+              </div>
+            ) : classrooms.length < 5 ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <TrendingUp className="w-4 h-4" />
+                  {t['profile.suggestions.moreCourses']}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-success">
+                  <Sparkles className="w-4 h-4" />
+                  {t['profile.suggestions.streak']}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: 'startup', icon: '🚀' },
+                    { key: 'negotiation', icon: '🤝' },
+                    { key: 'project', icon: '📋' },
+                    { key: 'team', icon: '👥' },
+                  ].map((topic) => (
+                    <a
+                      key={topic.key}
+                      href={`${MAIN_APP_URL}/classrooms/create?topic=${encodeURIComponent(t[`profile.suggestions.topics.${topic.key}` as TranslationKeys])}`}
+                      className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg hover:bg-blue-100 transition-colors text-sm"
+                    >
+                      <span>{topic.icon}</span>
+                      <span>{t[`profile.suggestions.topics.${topic.key}` as TranslationKeys]}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 text-gray-600">
+                <div className="flex items-center gap-2 text-sm text-success">
+                  <Sparkles className="w-4 h-4" />
+                  {locale === 'zh' ? '太棒了！你已创建多个课程，继续保持学习热情！' : 'Great! Keep up your learning momentum!'}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <TrendingUp className="w-4 h-4" />
+                  {t['profile.suggestions.streak']}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 操作按钮 */}
         <div className="flex gap-4">

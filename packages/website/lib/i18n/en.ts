@@ -99,4 +99,20 @@ export const en = {
   'profile.classrooms.empty': 'No courses yet',
   'profile.classrooms.create': 'Create Course',
   'profile.classrooms.count': '{count} courses total',
+
+  // Suggestions
+  'profile.suggestions.title': 'Learning Tips',
+  'profile.suggestions.noCourse': 'Start creating your first course! AI will generate interactive learning content.',
+  'profile.suggestions.fewCourses': 'Need more courses? Try these popular topics:',
+  'profile.suggestions.explore': 'Explore More',
+  'profile.suggestions.topics.swot': 'SWOT Analysis',
+  'profile.suggestions.topics.marketing': 'Marketing Strategy',
+  'profile.suggestions.topics.leadership': 'Leadership',
+  'profile.suggestions.topics.finance': 'Financial Management',
+  'profile.suggestions.topics.startup': 'Startup Guide',
+  'profile.suggestions.topics.negotiation': 'Business Negotiation',
+  'profile.suggestions.topics.project': 'Project Management',
+  'profile.suggestions.topics.team': 'Team Collaboration',
+  'profile.suggestions.moreCourses': 'Create more courses to unlock Study Buddy features!',
+  'profile.suggestions.streak': 'Keep learning! Daily check-ins earn bonus points!',
 };
