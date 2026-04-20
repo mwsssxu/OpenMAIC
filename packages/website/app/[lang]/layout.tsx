@@ -1,7 +1,7 @@
 import { Locale, locales, defaultLocale, getTranslations } from '@/lib/i18n';
 import Header from '@/components/header';
 import Footer from '@/components/footer';
-import './globals.css';
+import '../globals.css';
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ lang: locale }));
