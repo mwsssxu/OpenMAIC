@@ -36,6 +36,7 @@ marketing/
 
 | 文档 | 说明 | 状态 |
 |------|------|------|
+| [品牌命名-侧伴](product-docs/brand-name-ceban.md) | 品牌名称、定位、口号、故事 | ✅ 确定 |
 | [产品宣传介绍](product-docs/product-introduction.md) | 产品整体介绍、核心功能、用户价值 | 完成 |
 
 ### 社交媒体内容
