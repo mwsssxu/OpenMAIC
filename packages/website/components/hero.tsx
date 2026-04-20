@@ -1,5 +1,5 @@
+import Image from 'next/image';
 import { Locale, TranslationKeys } from '@/lib/i18n';
-import { Sparkles } from 'lucide-react';
 import HeroCTA from './hero-cta';
 
 interface HeroProps {
@@ -12,9 +12,13 @@ export default function Hero({ locale, t }: HeroProps) {
     <section className="py-20 px-4 bg-gradient-to-b from-white to-blue-50">
       <div className="max-w-4xl mx-auto text-center">
         {/* Logo */}
-        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-lg">
-          <Sparkles className="w-8 h-8 text-white" />
-        </div>
+        <Image
+          src="/ceban.png"
+          alt="侧伴"
+          width={64}
+          height={64}
+          className="mx-auto mb-8 shadow-lg rounded-2xl"
+        />
 
         {/* Title */}
         <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">

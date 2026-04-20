@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Locale, TranslationKeys, locales } from '@/lib/i18n';
 import { getToken, clearToken } from '@/lib/api-client';
 import { Globe, LogOut, Rocket } from 'lucide-react';
@@ -38,9 +39,13 @@ export default function Header({ locale, t }: HeaderProps) {
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link href={`/${locale}`} className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">伴</span>
-          </div>
+          <Image
+            src="/ceban.png"
+            alt="侧伴"
+            width={32}
+            height={32}
+            className="rounded-lg"
+          />
           <span className="font-semibold text-lg text-gray-900">侧伴</span>
         </Link>
 

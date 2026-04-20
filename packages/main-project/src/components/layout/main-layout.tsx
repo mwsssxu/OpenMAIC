@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/lib/auth-context';
 import { useState } from 'react';
 
@@ -29,12 +30,16 @@ export function MainLayout({ children, title }: MainLayoutProps) {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-2xl backdrop-blur">
-                🎯
-              </div>
+              <Image
+                src="/ceban.png"
+                alt="侧伴"
+                width={40}
+                height={40}
+                className="rounded-xl"
+              />
               <div>
-                <h1 className="text-xl font-bold">OpenMAIC</h1>
-                <p className="text-xs text-white/70 hidden sm:block">Business</p>
+                <h1 className="text-xl font-bold">侧伴</h1>
+                <p className="text-xs text-white/70 hidden sm:block">AI互动课堂</p>
               </div>
             </Link>
 
@@ -110,11 +115,17 @@ export function MainLayout({ children, title }: MainLayoutProps) {
             {/* Brand */}
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-2xl">🎯</span>
-                <span className="font-bold">OpenMAIC Business</span>
+                <Image
+                  src="/ceban.png"
+                  alt="侧伴"
+                  width={24}
+                  height={24}
+                  className="rounded"
+                />
+                <span className="font-bold">侧伴</span>
               </div>
               <p className="text-gray-400 text-sm">
-                AI驱动的交互式学习平台，让商业知识触手可及
+                AI多智能体互动课堂，让学习不再孤单
               </p>
             </div>
 
@@ -150,7 +161,7 @@ export function MainLayout({ children, title }: MainLayoutProps) {
           </div>
 
           <div className="border-t border-gray-700 mt-8 pt-4 text-center text-gray-400 text-sm">
-            © 2026 OpenMAIC Business. v0.23.0
+            © 2026 侧伴. v0.23.0
           </div>
         </div>
       </footer>
