@@ -98,3 +98,103 @@ export function clearToken() {
     localStorage.removeItem('refresh_token');
   }
 }
+
+// 用户信息接口
+export interface User {
+  id: string;
+  email: string;
+  nickname: string;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+// 获取用户信息
+export async function getMe(): Promise<ApiResponse<User>> {
+  try {
+    const response = await fetch('/api/auth/me');
+
+    if (!response.ok) {
+      return { error: 'Failed to get user info' };
+    }
+
+    const data = await response.json();
+    return { data };
+  } catch (err) {
+    console.error('GetMe error:', err);
+    return { error: 'Network error' };
+  }
+}
+
+// 更新用户信息
+export async function updateMe(nickname?: string, avatar_url?: string): Promise<ApiResponse<User>> {
+  try {
+    const body: { nickname?: string; avatar_url?: string } = {};
+    if (nickname) body.nickname = nickname;
+    if (avatar_url) body.avatar_url = avatar_url;
+
+    const response = await fetch('/api/auth/me', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      return { error: errorData.detail || 'Update failed' };
+    }
+
+    const data = await response.json();
+    return { data };
+  } catch (err) {
+    console.error('UpdateMe error:', err);
+    return { error: 'Network error' };
+  }
+}
+
+// 修改密码
+export async function changePassword(old_password: string, new_password: string): Promise<ApiResponse<void>> {
+  try {
+    const response = await fetch('/api/auth/password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ old_password, new_password }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      return { error: errorData.detail || 'Password change failed' };
+    }
+
+    return { data: undefined };
+  } catch (err) {
+    console.error('ChangePassword error:', err);
+    return { error: 'Network error' };
+  }
+}
+
+// 上传头像
+export async function uploadAvatar(file: File): Promise<ApiResponse<{ url: string }>> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/media/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      return { error: 'Upload failed' };
+    }
+
+    const data = await response.json();
+    return { data: { url: data.url } };
+  } catch (err) {
+    console.error('UploadAvatar error:', err);
+    return { error: 'Network error' };
+  }
+}

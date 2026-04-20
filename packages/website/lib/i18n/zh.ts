@@ -70,6 +70,28 @@ export const zh = {
   // 语言
   'lang.zh': '中文',
   'lang.en': 'English',
+
+  // 个人中心
+  'profile.title': '个人中心',
+  'profile.nickname': '昵称',
+  'profile.email': '邮箱',
+  'profile.avatar': '头像',
+  'profile.avatar.change': '更换头像',
+  'profile.registered': '注册时间',
+  'profile.password.title': '修改密码',
+  'profile.password.old': '旧密码',
+  'profile.password.new': '新密码',
+  'profile.password.confirm': '确认密码',
+  'profile.password.submit': '提交修改',
+  'profile.password.success': '密码修改成功',
+  'profile.password.error': '密码修改失败',
+  'profile.password.mismatch': '两次密码不一致',
+  'profile.nickname.edit': '修改昵称',
+  'profile.nickname.save': '保存',
+  'profile.nickname.success': '昵称修改成功',
+  'profile.enterApp': '进入应用',
+  'profile.logout': '退出登录',
+  'profile.notLoggedIn': '请先登录',
 };
 
 export type TranslationKeys = keyof typeof zh;

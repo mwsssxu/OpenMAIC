@@ -71,6 +71,26 @@ export const en = {
   // Language
   'lang.zh': '中文',
   'lang.en': 'English',
-};
 
-export type TranslationKeys = keyof typeof en;
+  // Profile
+  'profile.title': 'Profile',
+  'profile.nickname': 'Nickname',
+  'profile.email': 'Email',
+  'profile.avatar': 'Avatar',
+  'profile.avatar.change': 'Change Avatar',
+  'profile.registered': 'Registered',
+  'profile.password.title': 'Change Password',
+  'profile.password.old': 'Old Password',
+  'profile.password.new': 'New Password',
+  'profile.password.confirm': 'Confirm Password',
+  'profile.password.submit': 'Submit',
+  'profile.password.success': 'Password changed successfully',
+  'profile.password.error': 'Password change failed',
+  'profile.password.mismatch': 'Passwords do not match',
+  'profile.nickname.edit': 'Edit Nickname',
+  'profile.nickname.save': 'Save',
+  'profile.nickname.success': 'Nickname updated',
+  'profile.enterApp': 'Enter App',
+  'profile.logout': 'Logout',
+  'profile.notLoggedIn': 'Please login first',
+};

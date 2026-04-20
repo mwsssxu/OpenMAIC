@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Locale, TranslationKeys, locales } from '@/lib/i18n';
 import { getToken, clearToken } from '@/lib/api-client';
-import { Globe, LogOut, Rocket } from 'lucide-react';
+import { Globe, LogOut, Rocket, User } from 'lucide-react';
 
 // 主应用入口
 const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3031';
@@ -59,6 +59,13 @@ export default function Header({ locale, t }: HeaderProps) {
           </Link>
           {isLoggedIn ? (
             <>
+              <Link
+                href={`/${locale}/profile`}
+                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1"
+              >
+                <User className="w-4 h-4" />
+                {locale === 'zh' ? '个人中心' : 'Profile'}
+              </Link>
               <a
                 href={MAIN_APP_URL}
                 className="btn-primary text-sm flex items-center gap-1"
