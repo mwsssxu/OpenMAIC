@@ -1,7 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-// 调试：打印 API 地址
-console.log('API_BASE_URL:', API_BASE_URL);
+// 使用 Next.js API Routes 作为代理，避免 CORS 问题
+// 客户端调用本地 /api/* 路由，服务端再转发到后端
 
 interface ApiResponse<T> {
   data?: T;
@@ -11,13 +9,10 @@ interface ApiResponse<T> {
 // 注册
 export async function register(email: string, password: string, nickname: string): Promise<ApiResponse<{ accessToken: string; user: { id: string; email: string; nickname: string } }>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    const response = await fetch('/api/auth/register', {
       method: 'POST',
-      mode: 'cors',
-      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
       },
       body: JSON.stringify({ email, password, nickname }),
     });
@@ -38,13 +33,10 @@ export async function register(email: string, password: string, nickname: string
 // 登录
 export async function login(email: string, password: string): Promise<ApiResponse<{ accessToken: string; refreshToken: string; user: { id: string; email: string; nickname: string } }>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    const response = await fetch('/api/auth/login', {
       method: 'POST',
-      mode: 'cors',
-      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
       },
       body: JSON.stringify({ email, password }),
     });
@@ -73,7 +65,7 @@ export interface Package {
 
 export async function getPackages(): Promise<ApiResponse<Package[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/tokens/packages`);
+    const response = await fetch('/api/tokens/packages');
 
     if (!response.ok) {
       return { error: 'Failed to fetch packages' };
