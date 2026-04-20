@@ -1,5 +1,8 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// 调试：打印 API 地址
+console.log('API_BASE_URL:', API_BASE_URL);
+
 interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -10,19 +13,25 @@ export async function register(email: string, password: string, nickname: string
   try {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'cors',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email, password, nickname }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      return { error: error.detail || 'Registration failed' };
+      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      return { error: errorData.detail || 'Registration failed' };
     }
 
     const data = await response.json();
     return { data };
-  } catch {
-    return { error: 'Network error' };
+  } catch (err) {
+    console.error('Register error:', err);
+    return { error: 'Network error: ' + (err instanceof Error ? err.message : 'Unknown') };
   }
 }
 
@@ -31,19 +40,25 @@ export async function login(email: string, password: string): Promise<ApiRespons
   try {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'cors',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email, password }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      return { error: error.detail || 'Login failed' };
+      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      return { error: errorData.detail || 'Login failed' };
     }
 
     const data = await response.json();
     return { data };
-  } catch {
-    return { error: 'Network error' };
+  } catch (err) {
+    console.error('Login error:', err);
+    return { error: 'Network error: ' + (err instanceof Error ? err.message : 'Unknown') };
   }
 }
 
