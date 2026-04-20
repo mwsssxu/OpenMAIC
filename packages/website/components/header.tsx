@@ -7,7 +7,7 @@ import { getToken, clearToken } from '@/lib/api-client';
 import { Globe, LogOut, Rocket } from 'lucide-react';
 
 // 主应用入口
-const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3000';
+const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3031';
 
 interface HeaderProps {
   locale: Locale;

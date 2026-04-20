@@ -62,6 +62,7 @@ if settings.TESTING_MODE or settings.DEBUG:
     # 开发模式：允许所有来源（但不能与credentials同时使用*）
     # 所以使用具体的localhost端口列表
     cors_origins = [
+        "http://localhost:3031",
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:3003",
@@ -70,6 +71,7 @@ if settings.TESTING_MODE or settings.DEBUG:
         "http://localhost:8082",
         "http://localhost:19000",
         "http://localhost:19006",
+        "http://127.0.0.1:3031",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3003",

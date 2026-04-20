@@ -6,7 +6,7 @@ import { Locale } from '@/lib/i18n';
 import { getToken } from '@/lib/api-client';
 import { Rocket, UserPlus } from 'lucide-react';
 
-const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3000';
+const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3031';
 
 interface HeroCTAProps {
   locale: Locale;

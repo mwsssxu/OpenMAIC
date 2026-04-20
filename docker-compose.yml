@@ -32,7 +32,7 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - WECHAT_APP_ID=${WECHAT_APP_ID:-}
       # CORS - 开发模式允许所有来源
-      - ALLOWED_ORIGINS=["http://localhost:3030","http://localhost:3000","http://localhost:3001","http://localhost:3003","http://localhost:8081","http://localhost:8082","http://localhost:19000","http://localhost:19006"]
+      - ALLOWED_ORIGINS=["http://localhost:3030","http://localhost:3031","http://localhost:3000","http://localhost:3001","http://localhost:3003","http://localhost:8081","http://localhost:8082","http://localhost:19000","http://localhost:19006"]
     volumes:
       - ./packages/server-python/app:/app/app:ro  # 开发时热重载
 
@@ -73,7 +73,7 @@ services:
       context: .
       dockerfile: packages/main-project/Dockerfile
     ports:
-      - "3000:3000"
+      - "3031:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://python-server:8000
     depends_on:
