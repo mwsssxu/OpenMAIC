@@ -53,7 +53,6 @@ export default function ClassroomPlayPage() {
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [agentsLoading, setAgentsLoading] = useState(false);
 
   const id = params.id as string;
 
@@ -70,43 +69,53 @@ export default function ClassroomPlayPage() {
     if (isAuthenticated && id) {
       loadClassroom();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, id]);
 
   async function loadClassroom() {
     setLoading(true);
-    setAgentsLoading(true);
     try {
       const classroomData = await apiClient.getClassroom(id);
-
-      // 如果有 agent_ids，获取 agent 详情
-      if (classroomData.stage.agent_ids?.length > 0) {
-        try {
-          const agentsData = await apiClient.generateAgentProfiles({
-            stage_name: classroomData.stage.name,
-            stage_description: classroomData.stage.description,
-            language: 'zh-CN',
-          });
-          setAgents(agentsData.agents);
-          setSelectedAgentId(agentsData.agents[0]?.id || '');
-        } catch {
-          // 使用默认 agent
-          const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
-          setAgents(defaultAgents.agents);
-          setSelectedAgentId(defaultAgents.agents[0]?.id || '');
-        }
-      } else {
-        // 没有 agent_ids，使用默认
-        const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
-        setAgents(defaultAgents.agents);
-        setSelectedAgentId(defaultAgents.agents[0]?.id || '');
-      }
-
       setData(classroomData);
+
+      // 获取 agent 配置
+      await loadAgents(classroomData);
     } catch (err: any) {
       setError(err.response?.data?.detail || '加载课程失败');
     } finally {
       setLoading(false);
-      setAgentsLoading(false);
+    }
+  }
+
+  async function loadAgents(classroomData: ClassroomData) {
+    try {
+      // 尝试获取已配置的 agent
+      if (classroomData.stage.agent_ids?.length > 0) {
+        const agentsData = await apiClient.generateAgentProfiles({
+          stage_name: classroomData.stage.name,
+          stage_description: classroomData.stage.description,
+          language: 'zh-CN',
+        });
+        setAgents(agentsData.agents);
+        setSelectedAgentId(agentsData.agents[0]?.id || '');
+      } else {
+        // 使用默认 agent
+        const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
+        setAgents(defaultAgents.agents);
+        setSelectedAgentId(defaultAgents.agents[0]?.id || '');
+      }
+    } catch (err) {
+      console.warn('Agent加载失败，使用默认:', err);
+      // 降级到默认 agent
+      try {
+        const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
+        setAgents(defaultAgents.agents);
+        setSelectedAgentId(defaultAgents.agents[0]?.id || '');
+      } catch {
+        // 完全失败，设置空的 agent 列表，聊天功能将不可用
+        setAgents([]);
+        setSelectedAgentId('');
+      }
     }
   }
 
