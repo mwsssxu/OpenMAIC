@@ -9,7 +9,9 @@ from app.services.orchestration.director_graph import stream_agent_response, run
 from app.core.config import settings
 import json
 import asyncio
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -41,23 +43,42 @@ async def chat(
                 break
 
         if not last_user_message:
-            last_user_message = f"请开始讲解 {topic}"
+            last_user_message = body.get("message", f"请开始讲解 {topic}")
+
+        logger.info(f"Chat request: agent={first_agent}, message={last_user_message[:50]}")
 
         # 发送开始事件
         yield f"event: start\ndata: {json.dumps({'agent_id': first_agent, 'role': role})}\n\n"
 
-        # 流式生成回复
-        for event in await stream_agent_response(
-            agent_id=first_agent,
-            agent_role=role,
-            prompt=last_user_message,
-            context={"topic": topic, "scene_title": topic},
-            model=model,
-        ):
-            yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
-            await asyncio.sleep(0.05)
+        try:
+            # 先获取完整响应，再发送
+            response_text = ""
+            async for event in stream_agent_response(
+                agent_id=first_agent,
+                agent_role=role,
+                prompt=last_user_message,
+                context={"topic": topic, "scene_title": topic},
+                model=model,
+            ):
+                if event["type"] == "response_complete":
+                    response_text = event["content"]
+                    break
+
+            # 发送text_delta事件
+            logger.info(f"Got response: {response_text[:50]}")
+            yield f"event: text_delta\ndata: {json.dumps({'type': 'text_delta', 'agent_id': first_agent, 'text': response_text})}\n\n"
+
+            # 发送response_complete事件
+            yield f"event: response_complete\ndata: {json.dumps({'type': 'response_complete', 'agent_id': first_agent, 'content': response_text})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Error in stream: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
         # 发送结束事件
+        logger.info(f"Sending end event")
         yield f"event: end\ndata: {json.dumps({'agent_id': first_agent})}\n\n"
 
     return StreamingResponse(

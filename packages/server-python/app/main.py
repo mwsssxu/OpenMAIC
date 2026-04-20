@@ -7,6 +7,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
+# 配置日志级别
+logging.basicConfig(level=logging.INFO)
+
 from app.core.config import settings
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db

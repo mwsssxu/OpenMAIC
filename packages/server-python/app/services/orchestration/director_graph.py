@@ -209,25 +209,28 @@ async def stream_agent_response(
     """
     system_prompt = AGENT_SYSTEM_PROMPTS.get(agent_role, AGENT_SYSTEM_PROMPTS["teacher"])
 
-    buffer = ""
-    for chunk in await stream_llm(
+    # stream_llm 返回完整响应，不是逐字符流
+    response = ""
+    async for chunk in stream_llm(
         prompt=prompt,
         system_prompt=system_prompt,
         model=model,
         temperature=0.7,
     ):
-        buffer += chunk
-        yield {
-            "type": "text_delta",
-            "agent_id": agent_id,
-            "text": chunk,
-        }
+        response += chunk
+
+    # 发送完整响应作为单个事件
+    yield {
+        "type": "text_delta",
+        "agent_id": agent_id,
+        "text": response,
+    }
 
     # 流式结束，返回完整回复
     yield {
         "type": "response_complete",
         "agent_id": agent_id,
-        "content": buffer,
+        "content": response,
     }
 
 
