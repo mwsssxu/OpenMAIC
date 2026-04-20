@@ -93,4 +93,10 @@ export const en = {
   'profile.enterApp': 'Enter App',
   'profile.logout': 'Logout',
   'profile.notLoggedIn': 'Please login first',
+
+  // Classrooms
+  'profile.classrooms.title': 'My Courses',
+  'profile.classrooms.empty': 'No courses yet',
+  'profile.classrooms.create': 'Create Course',
+  'profile.classrooms.count': '{count} courses total',
 };

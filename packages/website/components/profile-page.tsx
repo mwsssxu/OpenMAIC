@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Locale, TranslationKeys } from '@/lib/i18n';
-import { getMe, updateMe, changePassword, clearToken, getToken } from '@/lib/api-client';
-import { User, Lock, Rocket, LogOut, Loader2, Eye, EyeOff, Check, Edit2 } from 'lucide-react';
+import { getMe, updateMe, changePassword, clearToken, getToken, getClassrooms, Classroom } from '@/lib/api-client';
+import { User, Lock, Rocket, LogOut, Loader2, Eye, EyeOff, Check, Edit2, BookOpen, Plus } from 'lucide-react';
 import AvatarUpload from './avatar-upload';
 
 const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3031';
@@ -24,6 +24,8 @@ export default function ProfilePage({ locale, t }: ProfilePageProps) {
     created_at: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [classroomsLoading, setClassroomsLoading] = useState(true);
 
   // 昵称修改
   const [editingNickname, setEditingNickname] = useState(false);
@@ -48,8 +50,9 @@ export default function ProfilePage({ locale, t }: ProfilePageProps) {
       return;
     }
 
-    // 加载用户信息
+    // 加载用户信息和课程
     loadUser();
+    loadClassrooms();
   }, [locale, router]);
 
   const loadUser = async () => {
@@ -64,6 +67,15 @@ export default function ProfilePage({ locale, t }: ProfilePageProps) {
       router.push(`/${locale}/login`);
     }
     setLoading(false);
+  };
+
+  const loadClassrooms = async () => {
+    setClassroomsLoading(true);
+    const result = await getClassrooms();
+    if (result.data) {
+      setClassrooms(result.data);
+    }
+    setClassroomsLoading(false);
   };
 
   const handleAvatarChange = (url: string) => {
@@ -298,6 +310,64 @@ export default function ProfilePage({ locale, t }: ProfilePageProps) {
               )}
             </button>
           </form>
+        </div>
+
+        {/* 课程列表 */}
+        <div className="card mb-6">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <BookOpen className="w-5 h-5" />
+            {t['profile.classrooms.title']}
+            {!classroomsLoading && classrooms.length > 0 && (
+              <span className="text-sm text-gray-500">
+                ({locale === 'zh' ? `共 ${classrooms.length} 个` : `${classrooms.length} total`})
+              </span>
+            )}
+          </h2>
+
+          {classroomsLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : classrooms.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>{t['profile.classrooms.empty']}</p>
+              <a
+                href={`${MAIN_APP_URL}/classrooms/create`}
+                className="btn-primary inline-flex items-center gap-2 mt-4"
+              >
+                <Plus className="w-4 h-4" />
+                {t['profile.classrooms.create']}
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {classrooms.map((classroom) => (
+                <a
+                  key={classroom.id}
+                  href={`${MAIN_APP_URL}/classrooms/${classroom.id}`}
+                  className="block p-4 rounded-lg border border-gray-200 hover:border-primary hover:bg-blue-50 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">{classroom.name}</div>
+                  {classroom.description && (
+                    <div className="text-sm text-gray-500 mt-1 line-clamp-2">{classroom.description}</div>
+                  )}
+                  <div className="text-xs text-gray-400 mt-2">
+                    {formatDate(classroom.updated_at)}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+
+          {classrooms.length > 0 && (
+            <a
+              href={`${MAIN_APP_URL}/classrooms`}
+              className="btn-secondary w-full mt-4 flex items-center justify-center gap-2"
+            >
+              {locale === 'zh' ? '查看全部课程' : 'View All Courses'}
+            </a>
+          )}
         </div>
 
         {/* 操作按钮 */}

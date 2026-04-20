@@ -198,3 +198,30 @@ export async function uploadAvatar(file: File): Promise<ApiResponse<{ url: strin
     return { error: 'Network error' };
   }
 }
+
+// 课程接口
+export interface Classroom {
+  id: string;
+  name: string;
+  description: string | null;
+  language_directive: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 获取用户课程列表
+export async function getClassrooms(): Promise<ApiResponse<Classroom[]>> {
+  try {
+    const response = await fetch('/api/classrooms');
+
+    if (!response.ok) {
+      return { error: 'Failed to fetch classrooms' };
+    }
+
+    const data = await response.json();
+    return { data };
+  } catch (err) {
+    console.error('GetClassrooms error:', err);
+    return { error: 'Network error' };
+  }
+}

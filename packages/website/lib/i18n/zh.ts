@@ -92,6 +92,12 @@ export const zh = {
   'profile.enterApp': '进入应用',
   'profile.logout': '退出登录',
   'profile.notLoggedIn': '请先登录',
+
+  // 课程列表
+  'profile.classrooms.title': '我的课程',
+  'profile.classrooms.empty': '暂无课程',
+  'profile.classrooms.create': '创建课程',
+  'profile.classrooms.count': '共 {count} 个课程',
 };
 
 export type TranslationKeys = keyof typeof zh;
