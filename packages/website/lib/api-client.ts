@@ -50,17 +50,15 @@ export async function login(email: string, password: string): Promise<ApiRespons
 // 获取价格套餐
 export interface Package {
   id: string;
-  name: string;
   price: number;
   tokens: number;
   bonus: number;
   total_tokens: number;
-  price_per_token: number;
 }
 
 export async function getPackages(): Promise<ApiResponse<Package[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/payment/packages`);
+    const response = await fetch(`${API_BASE_URL}/tokens/packages`);
 
     if (!response.ok) {
       return { error: 'Failed to fetch packages' };

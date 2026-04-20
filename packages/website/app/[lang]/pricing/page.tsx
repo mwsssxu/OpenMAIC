@@ -5,9 +5,9 @@ import { Sparkles, Check } from 'lucide-react';
 
 // 预定义套餐（当API不可用时使用）
 const defaultPackages: Package[] = [
-  { id: 'basic', name: '基础包', price: 10, tokens: 100, bonus: 0, total_tokens: 100, price_per_token: 0.1 },
-  { id: 'standard', name: '标准包', price: 50, tokens: 500, bonus: 100, total_tokens: 600, price_per_token: 0.08 },
-  { id: 'premium', name: '高级包', price: 100, tokens: 1000, bonus: 500, total_tokens: 1500, price_per_token: 0.07 },
+  { id: 'basic', price: 10, tokens: 100, bonus: 0, total_tokens: 100 },
+  { id: 'standard', price: 50, tokens: 500, bonus: 100, total_tokens: 600 },
+  { id: 'premium', price: 100, tokens: 1000, bonus: 500, total_tokens: 1500 },
 ];
 
 export default async function PricingPage({

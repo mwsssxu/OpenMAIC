@@ -5,7 +5,6 @@ import { Check } from 'lucide-react';
 interface PricingCardProps {
   package: {
     id: string;
-    name: string;
     price: number;
     tokens: number;
     bonus: number;
@@ -34,7 +33,7 @@ export default function PricingCard({ package: pkg, locale, t, recommended }: Pr
 
       {/* Package Name */}
       <h3 className="text-xl font-bold text-gray-900 mb-2">
-        {displayName[pkg.id as keyof typeof displayName] || pkg.name}
+        {displayName[pkg.id as keyof typeof displayName] || pkg.id}
       </h3>
 
       {/* Price */}
