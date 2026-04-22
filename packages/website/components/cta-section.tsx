@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Locale } from '@/lib/i18n';
+import { Locale, TranslationKeys } from '@/lib/i18n';
 import { getToken } from '@/lib/api-client';
 import { Rocket, UserPlus, CreditCard } from 'lucide-react';
 
@@ -10,9 +10,10 @@ const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL || 'http://localhost:3
 
 interface CTASectionProps {
   locale: Locale;
+  t?: Record<TranslationKeys, string>;
 }
 
-export default function CTASection({ locale }: CTASectionProps) {
+export default function CTASection({ locale, t }: CTASectionProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
@@ -24,16 +25,12 @@ export default function CTASection({ locale }: CTASectionProps) {
     <section className="py-20 bg-gradient-to-b from-blue-50 to-white">
       <div className="max-w-4xl mx-auto px-4 text-center">
         <h2 className="text-3xl font-bold text-gray-900 mb-4">
-          {isLoggedIn
-            ? (locale === 'zh' ? '继续你的学习之旅' : 'Continue Your Learning Journey')
-            : (locale === 'zh' ? '开始你的学习之旅' : 'Start Your Learning Journey')}
+          {t ? t['cta.title'] : (locale === 'zh' ? '开启你的 AI 学习之旅' : 'Start Your AI Learning Journey')}
         </h2>
         <p className="text-gray-600 mb-8">
-          {isLoggedIn
-            ? (locale === 'zh' ? '进入应用，开始互动学习' : 'Enter the app to start interactive learning')
-            : (locale === 'zh' ? '新用户注册即送 200 Token + 500 积分' : 'New users get 200 Tokens + 500 Points')}
+          {t ? t['cta.subtitle'] : (locale === 'zh' ? '新用户注册即送 200 Token + 500 积分' : 'New users get 200 Tokens + 500 Points')}
         </p>
-        <div className="flex gap-4 justify-center">
+        <div className="flex gap-4 justify-center flex-wrap">
           {isLoggedIn ? (
             <a
               href={MAIN_APP_URL}
@@ -45,7 +42,7 @@ export default function CTASection({ locale }: CTASectionProps) {
           ) : (
             <Link href={`/${locale}/register`} className="btn-primary flex items-center gap-2">
               <UserPlus className="w-5 h-5" />
-              {locale === 'zh' ? '立即注册' : 'Sign Up'}
+              {t ? t['cta.primary'] : (locale === 'zh' ? '立即注册' : 'Sign Up Free')}
             </Link>
           )}
           <Link href={`/${locale}/pricing`} className="btn-accent flex items-center gap-2">

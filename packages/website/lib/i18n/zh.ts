@@ -114,6 +114,38 @@ export const zh = {
   'profile.suggestions.topics.team': '团队协作',
   'profile.suggestions.moreCourses': '继续创建更多课程，解锁学习搭子功能！',
   'profile.suggestions.streak': '保持学习节奏，连续打卡可获得积分加成！',
+
+  // About / Brand
+  'about.title': '关于侧伴',
+  'about.subtitle': 'AI 时代的学习陪伴者——侧身陪伴，默默守护',
+  'about.story.p1': '古人读书，常有伴读在侧，添香掌灯，不喧宾夺主，却时时相助。',
+  'about.story.p2': '今人学习，屏幕为案，信息为书，却常感孤单。',
+  'about.story.p3': '侧伴，AI 时代的学习陪伴者。它在你身旁，默默守护，随时应答，从不打扰。',
+  'about.story.quote': '像古人案边的伴读，像窗下的添香人，侧伴让你的学习不再孤单。',
+  'about.name.side.title': '侧 — 恰到好处的存在',
+  'about.name.side.desc': '不打扰、不抢镜，在学习者身旁，随时可用但不打扰。既有存在感，又给人自主空间。',
+  'about.name.buddy.title': '伴 — 守护与同行',
+  'about.name.buddy.desc': '陪伴、支持、同行。长期守护不离弃，温暖回应每一次学习需求。',
+
+  // Architecture
+  'architecture.title': '产品架构',
+  'architecture.subtitle': '官网、Web 应用、移动端、后端服务，完整的产品生态',
+
+  // Use Cases
+  'usecases.title': '使用场景',
+  'usecases.subtitle': '无论你是学生、教师、企业管理者还是知识创作者，侧伴都能为你服务',
+
+  // CTA
+  'cta.title': '开启你的 AI 学习之旅',
+  'cta.subtitle': '新用户注册即送 200 Token + 500 积分',
+  'cta.primary': '立即注册',
+  'cta.secondary': '了解更多',
+
+  // Stats
+  'stats.endpoints': 'API 端点',
+  'stats.tables': '数据库表',
+  'stats.pages': '前端页面',
+  'stats.features': '核心功能',
 };
 
 export type TranslationKeys = keyof typeof zh;

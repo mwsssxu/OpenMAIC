@@ -115,4 +115,36 @@ export const en = {
   'profile.suggestions.topics.team': 'Team Collaboration',
   'profile.suggestions.moreCourses': 'Create more courses to unlock Study Buddy features!',
   'profile.suggestions.streak': 'Keep learning! Daily check-ins earn bonus points!',
+
+  // About / Brand
+  'about.title': 'About CeBan',
+  'about.subtitle': 'AI-era learning companion — by your side, quietly guarding',
+  'about.story.p1': 'In ancient times, scholars had companions beside them — tending lamps, never intruding, always helping when needed.',
+  'about.story.p2': 'Today, we learn behind screens, surrounded by information, yet often feeling alone.',
+  'about.story.p3': 'CeBan is the AI-era learning companion. By your side, quietly guarding, always responsive, never intrusive.',
+  'about.story.quote': 'Like the companions of old, CeBan makes your learning journey never lonely.',
+  'about.name.side.title': 'Cè (Side) — Just the Right Presence',
+  'about.name.side.desc': 'Not disruptive, not spotlight-seeking. Beside you, always available but never intrusive. Present yet giving you space.',
+  'about.name.buddy.title': 'Bàn (Companion) — Guard & Walk Along',
+  'about.name.buddy.desc': 'Companionship, support, walking together. Long-term loyalty, warm responses to every learning need.',
+
+  // Architecture
+  'architecture.title': 'Product Architecture',
+  'architecture.subtitle': 'Website, Web App, Mobile, Backend — a complete product ecosystem',
+
+  // Use Cases
+  'usecases.title': 'Use Cases',
+  'usecases.subtitle': 'Whether you are a student, teacher, enterprise manager, or content creator, CeBan serves you',
+
+  // CTA
+  'cta.title': 'Start Your AI Learning Journey',
+  'cta.subtitle': 'New users get 200 Tokens + 500 Points',
+  'cta.primary': 'Sign Up Free',
+  'cta.secondary': 'Learn More',
+
+  // Stats
+  'stats.endpoints': 'API Endpoints',
+  'stats.tables': 'Database Tables',
+  'stats.pages': 'Frontend Pages',
+  'stats.features': 'Core Features',
 };

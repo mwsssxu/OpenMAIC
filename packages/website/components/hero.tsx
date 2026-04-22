@@ -36,23 +36,29 @@ export default function Hero({ locale, t }: HeroProps) {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-8 max-w-lg mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl mx-auto">
           <div className="text-center">
-            <div className="text-2xl font-bold text-primary">200+</div>
+            <div className="text-2xl font-bold text-primary">231</div>
             <div className="text-sm text-gray-500">
-              {locale === 'zh' ? '新用户Token' : 'New User Tokens'}
+              {locale === 'zh' ? 'API 端点' : 'API Endpoints'}
             </div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-accent">6+</div>
+            <div className="text-2xl font-bold text-accent">62</div>
+            <div className="text-sm text-gray-500">
+              {locale === 'zh' ? '数据库表' : 'Database Tables'}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-success">67</div>
+            <div className="text-sm text-gray-500">
+              {locale === 'zh' ? '前端页面' : 'Frontend Pages'}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">6+</div>
             <div className="text-sm text-gray-500">
               {locale === 'zh' ? '核心功能' : 'Core Features'}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-success">3+</div>
-            <div className="text-sm text-gray-500">
-              {locale === 'zh' ? '学习搭子类型' : 'Buddy Types'}
             </div>
           </div>
         </div>
