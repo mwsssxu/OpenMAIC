@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## OpenMAIC Business Releases
 
+### [v0.23.1] - 2026-04-22 — Mobile & Persona Fixes ✅
+
+**Bug fixes and improvements for mobile app and AI Personas.**
+
+#### Mobile (feat/mobile branch)
+- Fixed persona chat API routing (`/personas/chat` endpoint)
+- Fixed agent ID mapping between frontend and backend (confucius/socrates/da_vinci)
+- Added PersonaChatResponse missing fields (elapsed_seconds, fallback)
+- Improved slide display UI with card layout and styled elements
+- Removed debug console.log statements from production code
+
+#### Backend Security & Reliability
+- Security: User content logging changed to DEBUG level with truncation (100 chars)
+- Added database transaction wrapper for classroom creation (data consistency)
+- Enhanced LLM logging with prompt/response details for debugging
+
+---
+
 ### [v0.23.0] - 2026-04-17 — Production Ready ✅
 
 **Final release with all phases complete.**
