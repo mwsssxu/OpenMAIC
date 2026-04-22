@@ -197,157 +197,157 @@ async def create_full_classroom(
 
     logger.info(f"[Create] 开始创建课程 - name={name}, outlines={len(outlines)}")
 
-    # 1. 创建课程
-    agent_ids_json = json.dumps(agent_ids) if agent_ids else None
+    # 使用事务确保数据一致性
+    async with db.transaction():
+        # 1. 创建课程
+        agent_ids_json = json.dumps(agent_ids) if agent_ids else None
 
-    await db.execute(
-        """
-        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        """,
-        stage_id,
-        uuid.UUID(current_user_id),
-        name,
-        description,
-        language,
-        None,
-        agent_ids_json,
-        now,
-        now
-    )
+        await db.execute(
+            """
+            INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            """,
+            stage_id,
+            user_uuid,
+            name,
+            description,
+            language,
+            None,
+            agent_ids_json,
+            now,
+            now
+        )
 
-    # 2. 根据大纲生成幻灯片内容
-    scenes = []
-    for i, outline in enumerate(outlines):
-        scene_start = time.time()
-        try:
-            scene_id = uuid.uuid4()
+        # 2. 根据大纲生成幻灯片内容
+        scenes = []
+        for i, outline in enumerate(outlines):
+            scene_start = time.time()
+            try:
+                scene_id = uuid.uuid4()
 
-            scene_type = outline.get("type", "slide")
-            scene_title = outline.get("title", f"场景 {i+1}")
-            scene_desc = outline.get("description", "")
-            key_points = outline.get("key_points", [])
+                scene_type = outline.get("type", "slide")
+                scene_title = outline.get("title", f"场景 {i+1}")
+                scene_desc = outline.get("description", "")
+                key_points = outline.get("key_points", [])
 
-            # 如果没有 key_points，根据标题生成上下文相关要点
-            if not key_points:
-                # 使用场景标题和描述生成相关要点
-                base_topic = scene_title.replace("课程", "").replace("学习", "").strip()
-                if scene_type == "quiz":
-                    key_points = [f"{base_topic}基础测试", f"{base_topic}进阶挑战", "学习效果评估"]
-                elif scene_type == "interactive":
-                    key_points = [f"{base_topic}互动讨论", f"{base_topic}案例分析", "答疑解惑"]
-                elif scene_type == "pbl":
-                    key_points = [f"{base_topic}项目任务", f"{base_topic}实践操作", "成果展示"]
-                else:  # slide
-                    key_points = [f"{base_topic}概述", f"{base_topic}核心内容", f"{base_topic}要点总结"]
+                # 如果没有 key_points，根据标题生成上下文相关要点
+                if not key_points:
+                    base_topic = scene_title.replace("课程", "").replace("学习", "").strip()
+                    if scene_type == "quiz":
+                        key_points = [f"{base_topic}基础测试", f"{base_topic}进阶挑战", "学习效果评估"]
+                    elif scene_type == "interactive":
+                        key_points = [f"{base_topic}互动讨论", f"{base_topic}案例分析", "答疑解惑"]
+                    elif scene_type == "pbl":
+                        key_points = [f"{base_topic}项目任务", f"{base_topic}实践操作", "成果展示"]
+                    else:
+                        key_points = [f"{base_topic}概述", f"{base_topic}核心内容", f"{base_topic}要点总结"]
 
-            # 构建幻灯片内容
-            content = {
-                "type": scene_type,
-                "canvas": {
-                    "width": 1000,
-                    "height": 562,
-                    "background": "#ffffff",
-                    "elements": [
-                        {
-                            "id": "title",
-                            "type": "text",
-                            "content": scene_title,
-                            "position": {"left": 50, "top": 30, "width": 900, "height": 60},
-                            "style": {"fontSize": 36, "fontWeight": "bold", "color": "#333333"}
-                        },
-                        {
-                            "id": "desc",
-                            "type": "text",
-                            "content": scene_desc,
-                            "position": {"left": 50, "top": 100, "width": 900, "height": 80},
-                            "style": {"fontSize": 18, "color": "#666666"}
-                        }
-                    ]
+                # 构建幻灯片内容
+                content = {
+                    "type": scene_type,
+                    "canvas": {
+                        "width": 1000,
+                        "height": 562,
+                        "background": "#ffffff",
+                        "elements": [
+                            {
+                                "id": "title",
+                                "type": "text",
+                                "content": scene_title,
+                                "position": {"left": 50, "top": 30, "width": 900, "height": 60},
+                                "style": {"fontSize": 36, "fontWeight": "bold", "color": "#333333"}
+                            },
+                            {
+                                "id": "desc",
+                                "type": "text",
+                                "content": scene_desc,
+                                "position": {"left": 50, "top": 100, "width": 900, "height": 80},
+                                "style": {"fontSize": 18, "color": "#666666"}
+                            }
+                        ]
+                    }
                 }
-            }
 
-            # 添加要点元素
-            for j, point in enumerate(key_points[:5]):
-                content["canvas"]["elements"].append({
-                    "id": f"point_{j}",
-                    "type": "text",
-                    "content": f"• {point}",
-                    "position": {"left": 50, "top": 200 + j * 50, "width": 900, "height": 40},
-                    "style": {"fontSize": 16, "color": "#444444"}
+                # 添加要点元素
+                for j, point in enumerate(key_points[:5]):
+                    content["canvas"]["elements"].append({
+                        "id": f"point_{j}",
+                        "type": "text",
+                        "content": f"• {point}",
+                        "position": {"left": 50, "top": 200 + j * 50, "width": 900, "height": 40},
+                        "style": {"fontSize": 16, "color": "#444444"}
+                    })
+
+                # 讲解行为
+                actions = [
+                    {
+                        "id": "action_1",
+                        "type": "speech",
+                        "data": {"text": f"现在我们来学习{scene_title}。{scene_desc}"}
+                    }
+                ]
+
+                content_json = json.dumps(content)
+                actions_json = json.dumps(actions)
+
+                await db.execute(
+                    """
+                    INSERT INTO scenes (id, stage_id, user_id, type, title, order_index, content, actions, whiteboards)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                    scene_id,
+                    stage_id,
+                    user_uuid,
+                    scene_type,
+                    scene_title,
+                    i + 1,
+                    content_json,
+                    actions_json,
+                    None
+                )
+
+                scene_elapsed = time.time() - scene_start
+                logger.info(f"[Create] 幻灯片 #{i+1}: {scene_title} (耗时: {scene_elapsed:.2f}s)")
+
+                scenes.append({
+                    "id": str(scene_id),
+                    "type": scene_type,
+                    "title": scene_title,
+                    "order_index": i + 1,
+                    "content": content,
+                    "actions": actions,
                 })
 
-            # 讲解行为
-            actions = [
-                {
-                    "id": "action_1",
-                    "type": "speech",
-                    "data": {"text": f"现在我们来学习{scene_title}。{scene_desc}"}
-                }
-            ]
+            except Exception as e:
+                logger.warning(f"[Create] 幻灯片 #{i+1} 失败: {e}")
+                scene_id = uuid.uuid4()
+                content_json = json.dumps({"type": "slide", "canvas": {"elements": []}})
+                actions_json = json.dumps([])
 
-            content_json = json.dumps(content)
-            actions_json = json.dumps(actions)
+                await db.execute(
+                    """
+                    INSERT INTO scenes (id, stage_id, user_id, type, title, order_index, content, actions, whiteboards)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                    scene_id,
+                    stage_id,
+                    user_uuid,
+                    outline.get("type", "slide"),
+                    outline.get("title", f"场景 {i+1}"),
+                    i + 1,
+                    content_json,
+                    actions_json,
+                    None
+                )
 
-            await db.execute(
-                """
-                INSERT INTO scenes (id, stage_id, user_id, type, title, order_index, content, actions, whiteboards)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                """,
-                scene_id,
-                stage_id,
-                user_uuid,
-                scene_type,
-                scene_title,
-                i + 1,
-                content_json,
-                actions_json,
-                None
-            )
-
-            scene_elapsed = time.time() - scene_start
-            logger.info(f"[Create] 幻灯片 #{i+1}: {scene_title} (耗时: {scene_elapsed:.2f}s)")
-
-            scenes.append({
-                "id": str(scene_id),
-                "type": scene_type,
-                "title": scene_title,
-                "order_index": i + 1,
-                "content": content,
-                "actions": actions,
-            })
-
-        except Exception as e:
-            logger.warning(f"[Create] 幻灯片 #{i+1} 失败: {e}")
-            # 失败时创建空白幻灯片
-            scene_id = uuid.uuid4()
-            content_json = json.dumps({"type": "slide", "canvas": {"elements": []}})
-            actions_json = json.dumps([])
-
-            await db.execute(
-                """
-                INSERT INTO scenes (id, stage_id, user_id, type, title, order_index, content, actions, whiteboards)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                """,
-                scene_id,
-                stage_id,
-                user_uuid,
-                outline.get("type", "slide"),
-                outline.get("title", f"场景 {i+1}"),
-                i + 1,
-                content_json,
-                actions_json,
-                None
-            )
-
-            scenes.append({
-                "id": str(scene_id),
-                "type": outline.get("type", "slide"),
-                "title": outline.get("title", f"场景 {i+1}"),
-                "order_index": i + 1,
-                "content": {"type": "slide", "canvas": {"elements": []}},
-                "actions": [],
-            })
+                scenes.append({
+                    "id": str(scene_id),
+                    "type": outline.get("type", "slide"),
+                    "title": outline.get("title", f"场景 {i+1}"),
+                    "order_index": i + 1,
+                    "content": {"type": "slide", "canvas": {"elements": []}},
+                    "actions": [],
+                })
 
     total_elapsed = time.time() - start_time
     logger.info(f"[Create] 课程创建完成 - {len(scenes)} 个幻灯片 (总耗时: {total_elapsed:.2f}s)")

@@ -66,7 +66,6 @@ export default function ClassroomScreen() {
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string }>>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [personaSessionId, setPersonaSessionId] = useState<string | null>(null);
 
   // 场景切换动画
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -103,28 +102,17 @@ export default function ClassroomScreen() {
 
     try {
       const classroomData = await apiClient.getClassroom(id);
-      console.log('=== Classroom API Response ===');
-      console.log('Stage:', classroomData.stage?.name);
-      console.log('Scenes count:', classroomData.scenes?.length);
-      if (classroomData.scenes?.length > 0) {
-        const firstScene = classroomData.scenes[0];
-        console.log('First scene:', firstScene.title);
-        console.log('First scene content type:', typeof firstScene.content);
-        console.log('First scene content:', JSON.stringify(firstScene.content, null, 2).slice(0, 300));
-        console.log('Has canvas?', firstScene.content?.canvas ? 'YES' : 'NO');
-        console.log('Canvas elements?', firstScene.content?.canvas?.elements?.length || 0);
-      }
       setData(classroomData);
 
       // 加载智能体配置
       if (classroomData.stage?.generatedAgentConfigs?.length > 0) {
         setAgents(classroomData.stage.generatedAgentConfigs);
       } else {
-        // 默认智能体
+        // 默认智能体 - 使用后端预定义的 persona ID
         setAgents([
-          { id: 'teacher', name: '老师', role: 'teacher', color: '#5b9bd5', persona: '专业教师' },
-          { id: 'assistant', name: '助教', role: 'assistant', color: '#10b981', persona: '辅助讲解' },
-          { id: 'curious', name: '好奇同学', role: 'student', color: '#f59e0b', persona: '提问互动' },
+          { id: 'confucius', name: '孔子', role: 'teacher', color: '#5b9bd5', persona: '中国哲学、学习方法' },
+          { id: 'socrates', name: '苏格拉底', role: 'assistant', color: '#10b981', persona: '批判性思维、辩证法' },
+          { id: 'da_vinci', name: '达芬奇', role: 'student', color: '#f59e0b', persona: '跨学科创新' },
         ]);
       }
     } catch (err) {
@@ -178,26 +166,22 @@ export default function ClassroomScreen() {
     setChatHistory(prev => [...prev, { agent: '我', message: userMessage }]);
 
     try {
-      // 如果没有session，先创建一个
-      let sessionId = personaSessionId;
-      if (!sessionId) {
-        const session = await apiClient.startPersonaSession(selectedAgent.id);
-        sessionId = session.session_id || session.id;
-        setPersonaSessionId(sessionId);
-      }
+      // 直接调用 chatWithPersona
+      const response = await apiClient.chatWithPersona(
+        selectedAgent.id,
+        userMessage,
+        currentScene?.title,
+        'teaching'
+      );
 
-      // 发送消息（sessionId 已确保不为 null）
-      if (sessionId) {
-        const response = await apiClient.sendPersonaMessage(sessionId, userMessage);
-        const agentResponse = response.response || response.message || '收到你的问题了，让我思考一下...';
+      const agentResponse = response.response || '收到你的问题了，让我思考一下...';
 
-        setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
-      }
-    } catch (err) {
-      // 模拟回复
+      setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
+    } catch (err: any) {
+      // 降级回复
       setChatHistory(prev => [...prev, {
         agent: selectedAgent.name,
-        message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！' : '我也有同样的疑问...'}`
+        message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！让我来为你讲解...' : '我也有同样的疑问，让我们一起探讨...'}`
       }]);
     } finally {
       setSendingMessage(false);

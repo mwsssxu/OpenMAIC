@@ -1,31 +1,27 @@
 """AI Personas - Historical figures as learning companions
 
 Create differentiated AI personas with unique knowledge, style, and teaching methods.
-
-Personas:
-1. Confucius (孔子) - Chinese philosophy, ethics, learning methods
-2. Socrates (苏格拉底) - Western philosophy, critical thinking, questioning
-3. Leonardo da Vinci (达芬奇) - Renaissance polymath, creativity, interdisciplinary
-
-Each persona has:
-- Unique conversation style
-- Domain-specific knowledge
-- Teaching philosophy
-- Personality traits
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List
 from datetime import datetime
 from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import json
+import logging
+import time
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id
+from app.services.llm import call_llm
 
 router = APIRouter(prefix="/personas", tags=["ai-personas"])
+logger = logging.getLogger(__name__)
+
+# 日志截断长度常量
+LOG_TRUNCATION_LENGTH = 100
 
 
 # ============ Persona Definitions ============
@@ -124,6 +120,8 @@ class PersonaChatResponse(BaseModel):
     style_used: str
     quotes_used: List[str]
     suggestions: List[str]
+    elapsed_seconds: Optional[float] = None
+    fallback: Optional[bool] = None
 
 
 class PersonaSession(BaseModel):
@@ -146,11 +144,16 @@ async def generate_persona_response(
     db: asyncpg.Connection
 ) -> dict:
     """Generate persona response using AI."""
+    start_time = time.time()
     persona = PERSONAS.get(persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
 
-    # Get user context (learning history, preferences)
+    logger.info(f"[Persona] 开始生成响应 - persona={persona['name']}, mode={mode}")
+    logger.debug(f"[Persona] 用户消息: {user_message[:LOG_TRUNCATION_LENGTH]}...")
+    logger.debug(f"[Persona] 上下文: {context or '无'}")
+
+    # 获取用户信息
     user_info = await db.fetchrow(
         """
         SELECT nickname, league_tier, point_balance
@@ -158,44 +161,93 @@ async def generate_persona_response(
         """,
         uuid.UUID(user_id)
     )
+    user_name = user_info["nickname"] or "学员"
 
-    # Build persona prompt
+    # 构建智能体提示词
     style = persona["style"]
     quotes = style["quotes"]
-    keywords = style["keywords"]
 
-    # In production, call Claude/OpenAI with persona-specific prompt
-    # For now, generate mock response based on persona style
+    system_prompt = f"""你是{persona['name']}（{persona['name_en']}），{persona['era']}的历史人物。
 
-    # Simulate persona response based on mode
-    if mode == "teaching":
-        response = f"{persona['name']}：{user_message[:30]}...这个问题很有趣。{style['quotes'][0]}。让我为你讲解..."
-        suggestions = ["深入学习这个概念", "尝试实际应用", "思考相关原理"]
-    elif mode == "discussion":
-        response = f"{persona['name']}：你说得很好。但我有不同的看法，{style['quotes'][len(style['quotes'])-1]}。你怎么看？"
-        suggestions = ["进一步讨论", "查阅相关资料", "实践验证"]
-    elif mode == "questioning":
-        response = f"{persona['name']}：{style['quotes'][0]}。那么你认为这个概念的本质是什么？"
-        suggestions = ["重新思考定义", "找出反例", "构建论证"]
-    else:
-        response = f"{persona['name']}：很高兴和你讨论。{style['approach']}。"
-        suggestions = []
+## 你的身份特征
+- 专业领域：{persona['specialty']}
+- 教学风格：{style['tone']}，{style['approach']}
+- 核心思想：{', '.join(style['keywords'][:3])}
 
-    # Add persona-specific elements
-    if persona_id == "confucius":
-        response += "正所谓\"温故而知新\"，你已经有了很好的基础。"
-    elif persona_id == "socrates":
-        response += "让我们通过问答来探索这个问题的本质。"
-    elif persona_id == "da_vinci":
-        response += "我建议你从不同角度观察这个问题，就像观察自然一样。"
+## 你的经典名言
+{chr(10).join([f'- "{q}"' for q in quotes])}
 
-    return {
-        "persona_id": persona_id,
-        "response": response,
-        "style_used": style["tone"],
-        "quotes_used": quotes[:2],
-        "suggestions": suggestions
-    }
+## 教学方法
+{chr(10).join([f'- {m}' for m in persona['teaching_methods']])}
+
+## 回答要求
+1. 以{persona['name']}的身份和风格回答
+2. 适当引用你的经典名言
+3. 使用{style['tone']}的语气
+4. 结合学生的问题给出有启发性的回答
+5. 如果是{mode}模式：
+   - teaching: 详细讲解概念，给出例子
+   - discussion: 引导讨论，提出追问
+   - questioning: 用苏格拉底式提问引导学生思考
+
+当前对话者：{user_name}"""
+
+    user_prompt = f"""学生问题：{user_message}
+
+请以{persona['name']}的身份回答这个问题。"""
+
+    logger.info(f"[Persona] 系统提示词长度: {len(system_prompt)}")
+    logger.debug(f"[Persona] 用户提示词(截断): {user_prompt[:LOG_TRUNCATION_LENGTH]}...")
+
+    try:
+        # 调用 LLM
+        llm_start = time.time()
+        response = await call_llm(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.8,  # 更高的温度让回答更有个性
+            max_tokens=1024,
+        )
+        llm_elapsed = time.time() - llm_start
+
+        logger.info(f"[Persona] LLM响应完成 (耗时: {llm_elapsed:.1f}s, 长度: {len(response)})")
+        logger.debug(f"[Persona] LLM响应内容(截断): {response[:LOG_TRUNCATION_LENGTH]}...")
+
+        total_elapsed = time.time() - start_time
+        logger.info(f"[Persona] 生成完成 (总耗时: {total_elapsed:.1f}s)")
+
+        return {
+            "persona_id": persona_id,
+            "response": response,
+            "style_used": style["tone"],
+            "quotes_used": quotes[:2],
+            "suggestions": ["继续深入探讨", "尝试实际应用", "思考相关原理"],
+            "elapsed_seconds": round(total_elapsed, 2)
+        }
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[Persona] LLM调用失败 (耗时: {elapsed:.1f}s): {e}")
+
+        # 降级到模拟响应
+        if mode == "teaching":
+            response = f"{persona['name']}：{user_message[:30]}...这个问题很有趣。{style['quotes'][0]}。让我为你讲解..."
+        elif mode == "discussion":
+            response = f"{persona['name']}：你说得很好。但我有不同的看法，{style['quotes'][-1]}。你怎么看？"
+        else:
+            response = f"{persona['name']}：{style['quotes'][0]}。那么你认为这个概念的本质是什么？"
+
+        logger.info(f"[Persona] 使用降级响应: {response[:100]}...")
+
+        return {
+            "persona_id": persona_id,
+            "response": response,
+            "style_used": style["tone"],
+            "quotes_used": quotes[:2],
+            "suggestions": [],
+            "elapsed_seconds": round(elapsed, 2),
+            "fallback": True
+        }
 
 
 # ============ Routes ============
@@ -242,21 +294,13 @@ async def chat_with_persona(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Chat with a persona."""
+    start_time = time.time()
+    logger.info(f"[Chat] 开始聊天请求 - persona={request.persona_id}, mode={request.mode}")
+    logger.info(f"[Chat] 用户消息: {request.message}")
+    logger.info(f"[Chat] 上下文: {request.context or '无'}")
+
     if len(request.message) < 3:
         raise HTTPException(status_code=400, detail="Message too short")
-
-    # Get or create session
-    session_id = await db.fetchval(
-        """
-        INSERT INTO persona_sessions (user_id, persona_id, started_at, topic)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-        """,
-        uuid.UUID(user_id),
-        request.persona_id,
-        utcnow(),
-        request.context
-    )
 
     # Generate response
     response_data = await generate_persona_response(
@@ -268,26 +312,45 @@ async def chat_with_persona(
         db
     )
 
-    # Store message
-    await db.execute(
-        """
-        INSERT INTO persona_messages
-        (session_id, user_message, persona_response, created_at)
-        VALUES ($1, $2, $3, $4)
-        """,
-        session_id,
-        request.message,
-        response_data["response"],
-        utcnow()
-    )
+    # Store message in session
+    try:
+        session_id = await db.fetchval(
+            """
+            INSERT INTO persona_sessions (user_id, persona_id, started_at, topic)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+            """,
+            uuid.UUID(user_id),
+            request.persona_id,
+            utcnow(),
+            request.context
+        )
 
-    # Update session message count
-    await db.execute(
-        """
-        UPDATE persona_sessions SET message_count = message_count + 1 WHERE id = $1
-        """,
-        session_id
-    )
+        await db.execute(
+            """
+            INSERT INTO persona_messages
+            (session_id, user_message, persona_response, created_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_id,
+            request.message,
+            response_data["response"],
+            utcnow()
+        )
+
+        await db.execute(
+            """
+            UPDATE persona_sessions SET message_count = message_count + 1 WHERE id = $1
+            """,
+            session_id
+        )
+
+        logger.info(f"[Chat] 会话已保存 - session_id={session_id}")
+    except Exception as e:
+        logger.warning(f"[Chat] 保存会话失败: {e}")
+
+    total_elapsed = time.time() - start_time
+    logger.info(f"[Chat] 请求完成 (总耗时: {total_elapsed:.1f}s)")
 
     return PersonaChatResponse(**response_data)
 

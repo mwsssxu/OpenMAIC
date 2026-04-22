@@ -1040,35 +1040,73 @@ class ApiClient {
   // ==================== AI Personas ====================
 
   async getAvailablePersonas() {
-    const { data } = await this.client.get('/personas');
+    const { data } = await this.client.get('/personas/list');
     return data;
   }
 
   async startPersonaSession(personaId: string, topic?: string, mode?: string) {
-    const { data } = await this.client.post('/personas/session', {
+    // 使用 /personas/chat 接口创建会话并发送初始消息
+    const { data } = await this.client.post('/personas/chat', {
       persona_id: personaId,
-      topic,
+      message: topic || '开始学习',
+      context: topic,
+      mode: mode || 'teaching',
+    });
+    // 返回响应数据，模拟 session 概念
+    return {
+      session_id: Date.now().toString(), // 临时 session ID
+      persona_id: personaId,
+      response: data.response,
+      ...data,
+    };
+  }
+
+  async getPersonaSession(sessionId: string) {
+    // 后端没有单次 session 查询，返回会话列表
+    const { data } = await this.client.get('/personas/sessions');
+    const session = data.sessions?.find((s: any) => s.session_id === sessionId);
+    return session || { session_id: sessionId };
+  }
+
+  async sendPersonaMessage(sessionId: string, message: string) {
+    // 直接调用 /personas/chat，sessionId 仅用于前端状态管理
+    const { data } = await this.client.post('/personas/chat', {
+      persona_id: sessionId.split('-')[0] || 'confucius', // 从 sessionId 提取 persona_id
+      message,
+      mode: 'teaching',
+    });
+    return data;
+  }
+
+  async chatWithPersona(personaId: string, message: string, context?: string, mode?: string) {
+    // 直接聊天接口
+    const { data } = await this.client.post('/personas/chat', {
+      persona_id: personaId,
+      message,
+      context,
       mode: mode || 'teaching',
     });
     return data;
   }
 
-  async getPersonaSession(sessionId: string) {
-    const { data } = await this.client.get(`/personas/session/${sessionId}`);
-    return data;
-  }
-
-  async sendPersonaMessage(sessionId: string, message: string) {
-    const { data } = await this.client.post(`/personas/session/${sessionId}/message`, {
-      user_message: message,
+  async endPersonaSession(sessionId: string, rating?: number, feedback?: string) {
+    const { data } = await this.client.post(`/personas/sessions/${sessionId}/feedback`, {
+      rating,
+      feedback,
     });
     return data;
   }
 
-  async endPersonaSession(sessionId: string, rating?: number, feedback?: string) {
-    const { data } = await this.client.post(`/personas/session/${sessionId}/end`, {
-      rating,
-      feedback,
+  async getPersonaSessions(personaId?: string) {
+    const { data } = await this.client.get('/personas/sessions', {
+      params: { persona_id: personaId },
+    });
+    return data;
+  }
+
+  async recommendPersona(topic: string) {
+    const { data } = await this.client.get('/personas/recommend', {
+      params: { topic },
     });
     return data;
   }
