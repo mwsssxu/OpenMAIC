@@ -42,11 +42,43 @@ pnpm expo build
 
 ## 配置
 
-创建或修改 `lib/api-client/index.ts` 配置后端 URL：
+### 后端 URL 配置
+
+创建 `.env` 文件配置后端地址：
+
+```bash
+# 本地开发
+EXPO_PUBLIC_API_URL=http://localhost:8000
+
+# 真机调试（使用 WiFi IP）
+EXPO_PUBLIC_API_URL=http://192.168.1.110:8000
+
+# 生产环境
+EXPO_PUBLIC_API_URL=https://api.yourdomain.com
+```
+
+代码中通过环境变量读取（`lib/api-client/index.ts`）：
 
 ```typescript
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 ```
+
+### 真机调试注意事项
+
+Expo 默认使用网卡 IP，手机扫码可能无法连接。解决方法：
+
+```bash
+# 方法一：使用 WiFi IP 启动
+REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.110 npx expo start
+
+# 方法二：使用 tunnel 模式（无需同 WiFi）
+npx expo start --tunnel
+
+# 方法三：使用启动脚本
+./start-expo.sh
+```
+
+> **注意：** 此配置仅影响开发阶段，生产部署不受影响。
 
 ## 目录结构
 

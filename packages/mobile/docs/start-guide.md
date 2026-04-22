@@ -103,26 +103,86 @@ pnpm expo start --web
 
 ## 三、配置 Backend URL
 
-修改 `lib/api-client/index.ts`：
+### 环境变量配置（推荐）
 
-```typescript
-// 开发环境（本地）
-const API_BASE_URL = 'http://localhost:8000';
-
-// 生产环境
-const API_BASE_URL = 'https://api.yourdomain.com';
-```
-
-或使用环境变量：
+创建 `.env` 文件：
 
 ```bash
-# 创建 .env 文件
+# 本地开发（模拟器/Web）
 EXPO_PUBLIC_API_URL=http://localhost:8000
+
+# 真机调试（使用 WiFi IP）
+EXPO_PUBLIC_API_URL=http://192.168.1.110:8000
+
+# 生产环境
+EXPO_PUBLIC_API_URL=https://api.yourdomain.com
+```
+
+### 代码配置
+
+`lib/api-client/index.ts` 中通过环境变量读取：
+
+```typescript
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 ```
 
 ---
 
-## 四、项目结构
+## 四、真机调试配置
+
+### WiFi IP 问题
+
+Expo 默认显示网卡 IP，手机扫码可能无法连接。解决方法：
+
+**方法一：指定 WiFi IP 启动（推荐）**
+
+```bash
+REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.110 npx expo start
+```
+
+**方法二：使用 tunnel 模式**
+
+```bash
+npx expo start --tunnel
+```
+
+通过 ngrok 创建公网隧道，无需手机和电脑在同一 WiFi。
+
+**方法三：使用启动脚本**
+
+```bash
+./start-expo.sh
+```
+
+> **注意：** WiFi IP 配置仅影响开发阶段，生产部署构建独立 APK/IPA 或 Web 应用，不依赖开发服务器。
+
+---
+
+## 五、Web 端跨域配置
+
+Web 版本运行时有跨域限制，需在后端配置 CORS。
+
+### 后端 CORS 配置
+
+`packages/server-python/app/main.py` 已配置开发模式 CORS：
+
+```python
+cors_origins = [
+    "http://localhost:8081",
+    "http://192.168.1.110:8081",  # 局域网 IP
+    # ...其他端口
+]
+```
+
+如需添加新地址，修改后重启后端：
+
+```bash
+docker compose restart python-server
+```
+
+---
+
+## 六、项目结构
 
 ```
 packages/mobile/
@@ -166,7 +226,7 @@ packages/mobile/
 
 ---
 
-## 五、功能页面
+## 七、功能页面
 
 | 页面 | 路径 | 功能 |
 |------|------|------|
@@ -189,7 +249,7 @@ packages/mobile/
 
 ---
 
-## 六、API 客户端
+## 八、API 客户端
 
 移动端 API 客户端 (`lib/api-client/index.ts`) 包含：
 
@@ -229,7 +289,7 @@ packages/mobile/
 
 ---
 
-## 七、开发调试
+## 九、开发调试
 
 ### 清除缓存
 
@@ -259,7 +319,7 @@ pnpm lint
 
 ---
 
-## 八、构建发布
+## 十、构建发布
 
 ### 构建 Preview
 
@@ -298,7 +358,7 @@ eas build --platform ios --profile preview
 
 ---
 
-## 九、常见问题
+## 十一、常见问题
 
 ### Q1: 无法连接 Backend
 
@@ -345,18 +405,33 @@ pnpm ios
 pnpm android
 ```
 
-### Q4: Expo Go无法连接
+### Q4: Expo Go 无法连接
 
-**问题:** 真机无法连接开发服务器
+**问题:** 真机无法连接开发服务器，二维码显示网卡 IP 而不是 WiFi IP
 
 **解决:**
+
 ```bash
-# 使用隧道模式
+# 方法一：使用 WiFi IP 启动（推荐）
+REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.110 npx expo start
+
+# 方法二：使用 tunnel 模式（无需同 WiFi）
 pnpm expo start --tunnel
 
-# 或使用局域网模式
+# 方法三：使用局域网模式
 pnpm expo start --lan
+
+# 方法四：使用启动脚本
+./start-expo.sh
 ```
+
+同时确保 `.env` 配置了正确的后端地址：
+
+```bash
+EXPO_PUBLIC_API_URL=http://192.168.1.110:8000
+```
+
+> **注意：** 此配置仅影响开发阶段，生产部署不受影响。构建独立 APK/IPA 后，应用直接连接配置的后端 API 地址。
 
 ### Q5: 依赖安装失败
 
@@ -407,7 +482,7 @@ npx expo start
 
 ---
 
-## 十、开发流程
+## 十二、开发流程
 
 ### 1. 启动Backend
 
@@ -446,7 +521,8 @@ pnpm start
 - [Expo 官方文档](https://docs.expo.dev/)
 - [React Native 文档](https://reactnative.dev/)
 - [项目 README](./README.md)
+- [问题记录](./troubleshooting.md) - 开发过程中遇到的问题和解决方案
 
 ---
 
-**最后更新:** 2026-04-18
+**最后更新:** 2026-04-21

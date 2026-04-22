@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.110:8000';
 
 // Web端使用localStorage，Mobile端使用SecureStore
 const storage = {
@@ -108,6 +108,30 @@ class ApiClient {
     this.token = token;
   }
 
+  async refreshToken(): Promise<string | null> {
+    try {
+      const refreshToken = await storage.getItem('refresh_token');
+      if (!refreshToken) {
+        return null;
+      }
+
+      const response = await axios.post(`${this.getBaseUrl()}/auth/refresh`, {
+        refresh_token: refreshToken,
+      });
+
+      const newToken = response.data.access_token;
+      this.setToken(newToken);
+      await storage.setItem('auth_token', newToken);
+      return newToken;
+    } catch (error) {
+      // 刷新失败，清除登录状态
+      this.setToken(null);
+      await storage.deleteItem('auth_token');
+      await storage.deleteItem('refresh_token');
+      return null;
+    }
+  }
+
   // ==================== Auth ====================
 
   async login(email: string, password: string) {
@@ -174,6 +198,24 @@ class ApiClient {
     return data;
   }
 
+  // 创建完整课程（包含大纲生成幻灯片内容）
+  async createFullClassroom(
+    name: string,
+    description?: string,
+    outlines?: any[],
+    agentIds?: string[],
+    language?: string
+  ) {
+    const { data } = await this.client.post('/classrooms/create-full', {
+      name,
+      description,
+      outlines,
+      agent_ids: agentIds,
+      language: language || 'zh-CN',
+    });
+    return data;
+  }
+
   async updateClassroom(id: string, name?: string, description?: string) {
     const { data } = await this.client.put(`/classrooms/${id}`, { name, description });
     return data;
@@ -186,23 +228,133 @@ class ApiClient {
 
   // ==================== Generation ====================
 
-  async generateOutlines(requirement: string, options?: Record<string, any>) {
-    const { data } = await this.client.post('/generate/outlines', {
-      requirement,
-      ...options,
-    });
-    return data;
-  }
-
-  // 流式生成大纲（返回完整结果，内部处理流式）
+  // SSE 流式生成大纲（真正的流式实现）
   async generateOutlinesStream(
     requirement: string,
     language: string = 'zh-CN',
     agents?: Array<{ id: string; name: string; role: string; persona: string }>,
-    webSearch?: boolean
+    webSearch?: boolean,
+    onOutline?: (outline: any) => void,
+    onComplete?: (count: number) => void,
+    onError?: (error: string) => void,
+  ): Promise<void> {
+    const url = `${this.getBaseUrl()}/generate/outlines-stream`;
+    const token = this.token;
+
+    // 验证 token
+    if (!token) {
+      if (onError) {
+        onError('请先登录');
+      }
+      return Promise.reject(new Error('未登录'));
+    }
+
+    // React Native 需要使用 XMLHttpRequest 处理 SSE
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+      xhr.setRequestHeader('Cache-Control', 'no-cache');
+
+      let outlineCount = 0;
+      let lastProcessedLength = 0;
+      let currentEvent = '';
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState >= 3) {
+          // 处理响应（readyState 3 = 正在接收，4 = 完成）
+          const fullText = xhr.responseText;
+
+          // 检查 HTTP 状态码
+          if (xhr.readyState === 4 && xhr.status === 401) {
+            // Token 过期，尝试刷新
+            this.refreshToken().then(newToken => {
+              // 用新 token 重试（只重试一次）
+              if (newToken && onError) {
+                onError('Token已刷新，请重新尝试');
+              }
+            }).catch(() => {
+              if (onError) {
+                onError('登录已过期，请重新登录');
+              }
+            });
+            reject(new Error('Token过期'));
+            return;
+          }
+
+          // 只处理新增的部分
+          const newText = fullText.slice(lastProcessedLength);
+          lastProcessedLength = fullText.length;
+
+          // 解析新的 SSE 数据
+          const lines = newText.split('\n');
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith('event:')) {
+              currentEvent = trimmedLine.slice(6).trim();
+            } else if (trimmedLine.startsWith('data:')) {
+              const dataStr = trimmedLine.slice(5).trim();
+              if (!dataStr) continue;
+              try {
+                const data = JSON.parse(dataStr);
+
+                if (currentEvent === 'outline' && onOutline) {
+                  outlineCount++;
+                  onOutline(data);
+                } else if (currentEvent === 'done') {
+                  if (onComplete) {
+                    onComplete(data.count || outlineCount);
+                  }
+                  resolve();
+                } else if (currentEvent === 'error') {
+                  if (onError) {
+                    onError(data.error || '生成失败');
+                  }
+                  reject(new Error(data.error));
+                }
+              } catch (e) {
+                // JSON 解析失败，跳过（可能是不完整的数据）
+              }
+            }
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        if (onError) {
+          onError('网络请求失败');
+        }
+        reject(new Error('网络请求失败'));
+      };
+
+      xhr.ontimeout = () => {
+        if (onError) {
+          onError('请求超时');
+        }
+        reject(new Error('请求超时'));
+      };
+
+      xhr.timeout = 120000; // 2分钟超时
+
+      // 发送请求
+      xhr.send(JSON.stringify({
+        requirement,
+        language,
+        agent_ids: agents?.map(a => a.id),
+        web_search: webSearch,
+      }));
+    });
+  }
+
+  // 非流式生成大纲（作为备用）
+  async generateOutlines(
+    requirement: string,
+    language: string = 'zh-CN',
+    agents?: Array<{ id: string; name: string; role: string; persona: string }>,
+    webSearch?: boolean,
   ) {
-    // 由于移动端不支持SSE，这里调用普通API但返回相同格式
-    // 服务端可以后续优化为真正的流式
     const { data } = await this.client.post('/generate/outlines', {
       requirement,
       language,

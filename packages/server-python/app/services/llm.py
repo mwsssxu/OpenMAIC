@@ -3,20 +3,17 @@ LLM 统一接口 - 支持 OpenAI 兼容 API
 """
 
 import asyncio
-import urllib.request
-import urllib.error
+import httpx
 import json
-import os
-
-# 强制禁用所有代理
-for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']:
-    if key in os.environ:
-        del os.environ[key]
-os.environ['NO_PROXY'] = '*'
-os.environ['no_proxy'] = '*'
+import logging
+import time
 
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+# 禁用 httpx 详细日志，避免泄露敏感信息
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # 提供商映射
 PROVIDER_MODEL_MAP = {
@@ -33,10 +30,14 @@ async def call_llm(
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
     stream: bool = False,
+    max_retries: int = 3,
 ) -> str:
     """
-    调用 LLM（使用 urllib.request）
+    调用 LLM（使用 httpx，支持重试）
     """
+    import time
+    start_time = time.time()
+
     model_str = model or settings.DEFAULT_MODEL
     # 移除 openai/ 前缀
     if model_str.startswith("openai/"):
@@ -58,29 +59,72 @@ async def call_llm(
     if max_tokens:
         payload["max_tokens"] = max_tokens
 
-    def _sync_call():
-        url = f"{api_base}/chat/completions"
-        data = json.dumps(payload).encode('utf-8')
+    url = f"{api_base}/chat/completions"
 
-        # 创建不使用代理的请求
-        handler = urllib.request.ProxyHandler({})
-        opener = urllib.request.build_opener(handler)
+    logger.info(f"[LLM] 开始调用 - model={model_str}, api_base={api_base}, max_tokens={max_tokens}")
+    logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
 
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-        )
+    # 使用 httpx 异步客户端，增加超时时间（GLM-5 推理模型需要更长时间）
+    timeout = httpx.Timeout(180.0, connect=30.0)  # 总超时180秒，连接超时30秒
 
-        response = opener.open(req, timeout=60)
-        result = json.loads(response.read().decode('utf-8'))
-        return result
+    for attempt in range(max_retries):
+        attempt_start = time.time()
+        try:
+            logger.info(f"[LLM] 尝试 #{attempt + 1}/{max_retries}")
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                result = response.json()
+                content = result["choices"][0]["message"]["content"]
 
-    result = await asyncio.to_thread(_sync_call)
-    return result["choices"][0]["message"]["content"]
+                elapsed = time.time() - attempt_start
+                total_elapsed = time.time() - start_time
+                logger.info(f"[LLM] 调用成功 (本次耗时: {elapsed:.1f}s, 总耗时: {total_elapsed:.1f}s)")
+                logger.debug(f"[LLM] 响应长度: {len(content)}")
+
+                return content
+
+        except httpx.TimeoutException as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 超时 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)  # 等待后重试
+            else:
+                total_elapsed = time.time() - start_time
+                logger.error(f"[LLM] 最终超时 (总耗时: {total_elapsed:.1f}s)")
+                raise Exception(f"LLM API timeout after {max_retries} retries: {e}")
+
+        except httpx.RemoteProtocolError as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 连接关闭 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)  # 等待后重试
+            else:
+                total_elapsed = time.time() - start_time
+                logger.error(f"[LLM] 最终连接关闭 (总耗时: {total_elapsed:.1f}s)")
+                raise Exception(f"LLM API connection closed after {max_retries} retries: {e}")
+
+        except httpx.HTTPStatusError as e:
+            elapsed = time.time() - attempt_start
+            logger.error(f"[LLM] HTTP错误 (耗时: {elapsed:.1f}s): {e.response.status_code} - {e.response.text}")
+            raise Exception(f"LLM API error: {e.response.status_code}")
+
+        except Exception as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 未预期错误 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {type(e).__name__}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                total_elapsed = time.time() - start_time
+                logger.error(f"[LLM] 最终失败 (总耗时: {total_elapsed:.1f}s): {e}")
+                raise
 
 
 async def stream_llm(
@@ -89,12 +133,96 @@ async def stream_llm(
     model: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
+    max_retries: int = 3,
 ):
     """
-    流式调用 LLM（暂不支持，使用非流式）
+    流式调用 LLM（真正的流式，逐块返回）
     """
-    result = await call_llm(prompt, system_prompt, model, temperature, max_tokens)
-    yield result
+    model_str = model or settings.DEFAULT_MODEL
+    if model_str.startswith("openai/"):
+        model_str = model_str[7:]
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
+    api_key = settings.OPENAI_API_KEY
+
+    payload = {
+        "model": model_str,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,  # 启用流式输出
+    }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
+
+    url = f"{api_base}/chat/completions"
+    timeout = httpx.Timeout(300.0, connect=30.0)  # 流式需要更长超时
+
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST",
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                ) as response:
+                    response.raise_for_status()
+
+                    buffer = ""
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                content = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if content:
+                                    buffer += content
+                                    yield content
+                            except json.JSONDecodeError:
+                                continue
+
+                    # 如果没有流式内容，返回整个 buffer
+                    if not buffer:
+                        yield buffer
+
+                    return
+
+        except httpx.TimeoutException as e:
+            logger.warning(f"LLM stream timeout (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise Exception(f"LLM stream timeout after {max_retries} retries: {e}")
+
+        except httpx.RemoteProtocolError as e:
+            logger.warning(f"LLM stream connection closed (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
+            else:
+                raise Exception(f"LLM stream connection closed after {max_retries} retries: {e}")
+
+        except Exception as e:
+            logger.warning(f"LLM stream error (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                # 最后一次失败，使用非流式作为备用
+                logger.warning("Stream failed, falling back to non-stream")
+                result = await call_llm(prompt, system_prompt, model, temperature, max_tokens, max_retries=1)
+                yield result
+                return
 
 
 async def call_llm_with_vision(
@@ -102,6 +230,7 @@ async def call_llm_with_vision(
     images: List[Dict[str, str]],
     system_prompt: Optional[str] = None,
     model: Optional[str] = None,
+    max_retries: int = 3,
 ) -> str:
     """
     调用视觉模型（多模态）
@@ -125,27 +254,50 @@ async def call_llm_with_vision(
     api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
     api_key = settings.OPENAI_API_KEY
 
-    def _sync_call():
-        url = f"{api_base}/chat/completions"
-        data = json.dumps({
-            "model": model_str,
-            "messages": messages,
-        }).encode('utf-8')
+    url = f"{api_base}/chat/completions"
+    payload = {
+        "model": model_str,
+        "messages": messages,
+    }
 
-        handler = urllib.request.ProxyHandler({})
-        opener = urllib.request.build_opener(handler)
+    timeout = httpx.Timeout(120.0, connect=30.0)
 
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-        )
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
 
-        response = opener.open(req, timeout=60)
-        return json.loads(response.read().decode('utf-8'))
+        except httpx.TimeoutException as e:
+            logger.warning(f"Vision API timeout (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise Exception(f"Vision API timeout after {max_retries} retries: {e}")
 
-    result = await asyncio.to_thread(_sync_call)
-    return result["choices"][0]["message"]["content"]
+        except httpx.RemoteProtocolError as e:
+            logger.warning(f"Vision API connection closed (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
+            else:
+                raise Exception(f"Vision API connection closed after {max_retries} retries: {e}")
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Vision API HTTP error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Vision API error: {e.response.status_code}")
+
+        except Exception as e:
+            logger.warning(f"Vision API unexpected error (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise

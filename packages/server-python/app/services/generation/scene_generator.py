@@ -78,23 +78,7 @@ SLIDE_USER_PROMPT_TEMPLATE = """
 4. 内容与大纲描述一致
 
 输出格式：
-{
-  "type": "slide",
-  "canvas": {
-    "width": 1000,
-    "height": 562,
-    "background": "#ffffff",
-    "elements": [
-      {
-        "id": "element_1",
-        "type": "text",
-        "content": "标题内容",
-        "position": {"left": 50, "top": 50, "width": 900, "height": 100},
-        "style": {"fontSize": 48, "color": "#333333"}
-      }
-    ]
-  }
-}
+{{"type": "slide", "canvas": {{'width': 1000, 'height': 562, 'background': '#ffffff', 'elements': [{{'id': 'element_1', 'type': 'text', 'content': '标题内容', 'position': {{'left': 50, 'top': 50, 'width': 900, 'height': 100}}, 'style': {{'fontSize': 48, 'color': '#333333'}}}}]}}}}
 """
 
 QUIZ_USER_PROMPT_TEMPLATE = """
@@ -113,22 +97,7 @@ QUIZ_USER_PROMPT_TEMPLATE = """
 3. 提供正确答案和解析
 
 输出格式：
-{
-  "type": "quiz",
-  "questions": [
-    {
-      "id": "q_1",
-      "type": "single",
-      "question": "问题文本",
-      "options": [
-        {"label": "选项A", "value": "A"},
-        {"label": "选项B", "value": "B"}
-      ],
-      "answer": ["A"],
-      "analysis": "解析文本"
-    }
-  ]
-}
+{{"type": "quiz", "questions": [{{'id': 'q_1', 'type': 'single', 'question': '问题文本', 'options': [{{'label': '选项A', 'value': 'A'}}], 'answer': ['A'], 'analysis': '解析文本'}}]}}
 """
 
 
@@ -173,17 +142,40 @@ async def generate_scene_content(
         max_tokens=4096,
     )
 
-    # 解析 JSON
+    # 解析 JSON（改进清理逻辑）
     try:
         cleaned = response.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        if cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
+        # 移除 markdown 代码块标记
+        if "```" in cleaned:
+            # 找到第一个 ``` 后的内容
+            start_idx = cleaned.find("```")
+            if start_idx != -1:
+                # 跳过 ```json 或 ```
+                rest = cleaned[start_idx:]
+                if rest.startswith("```json"):
+                    cleaned = rest[7:]
+                elif rest.startswith("```"):
+                    cleaned = rest[3:]
+                # 移除结尾的 ```
+                end_idx = cleaned.find("```")
+                if end_idx != -1:
+                    cleaned = cleaned[:end_idx]
+
+        cleaned = cleaned.strip()
+        # 尝试找到 JSON 对象的起始位置
+        start_brace = cleaned.find("{")
+        if start_brace != -1:
+            cleaned = cleaned[start_brace:]
+
+        # 找到最后一个 }
+        end_brace = cleaned.rfind("}")
+        if end_brace != -1:
+            cleaned = cleaned[:end_brace + 1]
+
         return json.loads(cleaned.strip())
-    except:
+    except Exception as e:
+        import logging
+        logging.warning(f"JSON 解析失败: {e}, response: {response[:200]}")
         return {"type": outline.type, "content": {}}
 
 
@@ -223,24 +215,7 @@ async def generate_scene_actions(
 4. wb_draw_shape - 白板绘制形状（可选）
 
 输出格式：
-[
-  {
-    "id": "action_1",
-    "type": "speech",
-    "data": {
-      "text": "讲解文本内容",
-      "elementId": "element_1"
-    }
-  },
-  {
-    "id": "action_2",
-    "type": "spotlight",
-    "data": {
-      "elementId": "element_1",
-      "dimOpacity": 0.5
-    }
-  }
-]
+[{{'id': 'action_1', 'type': 'speech', 'data': {{'text': '讲解文本内容', 'elementId': 'element_1'}}}}, {{'id': 'action_2', 'type': 'spotlight', 'data': {{'elementId': 'element_1', 'dimOpacity': 0.5}}}}]
 
 只输出 JSON 数组。
 """
@@ -261,10 +236,30 @@ async def generate_scene_actions(
 
     try:
         cleaned = response.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
+        # 移除 markdown 代码块标记
+        if "```" in cleaned:
+            start_idx = cleaned.find("```")
+            if start_idx != -1:
+                rest = cleaned[start_idx:]
+                if rest.startswith("```json"):
+                    cleaned = rest[7:]
+                elif rest.startswith("```"):
+                    cleaned = rest[3:]
+                end_idx = cleaned.find("```")
+                if end_idx != -1:
+                    cleaned = cleaned[:end_idx]
+
+        cleaned = cleaned.strip()
+        # 找到 JSON 数组的起始位置
+        start_bracket = cleaned.find("[")
+        if start_bracket != -1:
+            cleaned = cleaned[start_bracket:]
+
+        # 找到最后一个 ]
+        end_bracket = cleaned.rfind("]")
+        if end_bracket != -1:
+            cleaned = cleaned[:end_bracket + 1]
+
         actions_data = json.loads(cleaned.strip())
 
         return [

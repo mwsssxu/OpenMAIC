@@ -14,8 +14,11 @@ import asyncpg
 import uuid
 import json
 import asyncio
+import logging
+import time
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/outlines")
@@ -55,25 +58,68 @@ async def generate_outlines_stream_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """生成大纲（SSE 流式）"""
+    """生成大纲（SSE 流式，快速返回标题列表）"""
+    # 参数验证
     requirement = body.get("requirement", "")
-    pdf_content = body.get("pdf_content")
+    if not requirement.strip():
+        raise HTTPException(status_code=400, detail="课程需求不能为空")
+
+    total_count = body.get("total_count", 5)
+    if total_count < 1 or total_count > 20:
+        raise HTTPException(status_code=400, detail="大纲数量必须在1-20之间")
+
+    start_time = time.time()
     language = body.get("language", "zh-CN")
     model = body.get("model", settings.DEFAULT_MODEL)
+    agent_ids = body.get("agent_ids", [])
+
+    logger.info(f"[SSE] 开始生成大纲 - 用户: {current_user_id}, 数量: {total_count}")
 
     async def event_stream():
-        index = 0
-        for outline in await stream_outlines(
-            requirement=requirement,
-            pdf_content=pdf_content,
-            language=language,
-            model=model,
-        ):
-            index += 1
-            yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
-            await asyncio.sleep(0.1)
+        try:
+            # 快速生成大纲标题列表（一次性LLM调用）
+            from app.services.generation.outline_generator import generate_outline_titles, SceneOutline
+            import uuid
 
-        yield f"event: done\ndata: {json.dumps({'count': index})}\n\n"
+            logger.info(f"[SSE] 步骤1: 生成大纲标题列表")
+            outline_titles = await generate_outline_titles(
+                requirement, language, model, total_count
+            )
+
+            elapsed = time.time() - start_time
+            logger.info(f"[SSE] 标题列表完成 - {len(outline_titles)} 个 (耗时: {elapsed:.1f}s)")
+
+            # 直接返回标题列表作为大纲（快速响应）
+            index = 0
+            for i, outline_info in enumerate(outline_titles):
+                index += 1
+                # 创建大纲对象（标题、类型、描述）
+                outline = SceneOutline(
+                    id=str(uuid.uuid4()),
+                    title=outline_info.get("title", f"场景 {i+1}"),
+                    type=outline_info.get("type", "slide"),
+                    description=outline_info.get("description", ""),
+                    order=i + 1,
+                    key_points=[],  # 详细内容在创建幻灯片时生成
+                )
+
+                logger.info(f"[SSE] 发送大纲 #{index}: {outline.title}")
+                yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
+                await asyncio.sleep(0.05)  # 短暂延迟确保客户端接收
+
+            total_elapsed = time.time() - start_time
+            logger.info(f"[SSE] 完成 - 共 {index} 个大纲 (总耗时: {total_elapsed:.1f}s)")
+            yield f"event: done\ndata: {json.dumps({'count': index})}\n\n"
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"[SSE] 生成失败 (耗时: {elapsed:.1f}s): {e}")
+            # 失败时返回默认大纲
+            from app.services.generation.outline_generator import SceneOutline, generate_smart_default_outlines
+            default_outlines = generate_smart_default_outlines(requirement, language, agent_ids)
+            for outline in default_outlines:
+                yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
+            yield f"event: done\ndata: {json.dumps({'count': len(default_outlines)})}\n\n"
 
     return StreamingResponse(
         event_stream(),

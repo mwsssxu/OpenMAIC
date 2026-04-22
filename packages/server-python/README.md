@@ -27,6 +27,9 @@ alembic upgrade head
 # 启动开发服务器
 uvicorn app.main:app --reload --port 8000
 
+docker服务，根目录执行：
+更新升级：docker compose build python-server --no-cache
+
 # 生产启动
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```

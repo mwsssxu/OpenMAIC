@@ -76,6 +76,11 @@ if settings.TESTING_MODE or settings.DEBUG:
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3003",
         "http://127.0.0.1:3030",
+        # 局域网 IP（用于手机/Web 端访问）
+        "http://192.168.1.110:8081",
+        "http://192.168.1.110:8082",
+        "http://192.168.1.110:19000",
+        "http://192.168.1.110:19006",
     ]
 logger.info(f"CORS origins configured: {cors_origins}, TESTING_MODE={settings.TESTING_MODE}, DEBUG={settings.DEBUG}")
 for i, origin in enumerate(cors_origins):

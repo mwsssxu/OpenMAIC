@@ -7,6 +7,10 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from app.services.llm import call_llm, stream_llm
 import uuid
+import logging
+import time
+
+logger = logging.getLogger(__name__)
 
 class SceneOutline(BaseModel):
     """场景大纲"""
@@ -84,13 +88,13 @@ async def generate_outlines(
         web_search_context=web_search_context,
     )
 
-    # 调用 LLM
+    # 调用 LLM（减少 max_tokens 避免超时）
     response = await call_llm(
         prompt=user_prompt,
         system_prompt=OUTLINE_SYSTEM_PROMPT,
         model=model,
         temperature=0.7,
-        max_tokens=4096,
+        max_tokens=2048,  # 从4096减少，避免GLM-5推理时间过长
     )
 
     # 解析 JSON
@@ -132,37 +136,245 @@ async def stream_outlines(
     pdf_content: Optional[str] = None,
     language: str = "zh-CN",
     model: Optional[str] = None,
+    agent_ids: Optional[List[str]] = None,
+    web_search: bool = False,
+    total_count: int = 5,  # 默认生成5个大纲
 ):
     """
-    流式生成大纲（用于 SSE）
+    流式生成大纲（逐个生成，每个大纲单独调用 LLM）
 
     Yields:
         解析出的场景大纲（逐个返回）
     """
-    user_prompt = OUTLINE_USER_PROMPT_TEMPLATE.format(
-        requirement=requirement,
-        pdf_content=pdf_content or "无",
-        language=language,
-        available_images="无",
-    )
+    start_time = time.time()
+    logger.info(f"[Outline] 开始流式生成 - requirement={requirement[:50]}..., count={total_count}")
 
-    buffer = ""
-    parsed_count = 0
+    # 先生成大纲列表框架（标题和类型）
+    logger.info(f"[Outline] 步骤1: 生成大纲标题列表")
+    try:
+        outline_titles = await generate_outline_titles(
+            requirement, language, model, total_count
+        )
+        elapsed = time.time() - start_time
+        logger.info(f"[Outline] 标题列表生成完成 - {len(outline_titles)} 个标题 (耗时: {elapsed:.1f}s)")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[Outline] 标题列表生成失败 (耗时: {elapsed:.1f}s): {e}")
+        # 使用默认标题
+        if language == "zh-CN":
+            outline_titles = [
+                {"title": "课程简介", "type": "slide", "description": "介绍课程主题和学习目标"},
+                {"title": "核心内容", "type": "slide", "description": "讲解核心知识点"},
+                {"title": "深入讲解", "type": "slide", "description": "深入探讨重点内容"},
+                {"title": "知识检测", "type": "quiz", "description": "检验学习效果"},
+                {"title": "总结回顾", "type": "slide", "description": "回顾课程要点"},
+            ]
+        else:
+            outline_titles = [
+                {"title": "Introduction", "type": "slide", "description": "Course overview and objectives"},
+                {"title": "Core Content", "type": "slide", "description": "Key concepts explanation"},
+                {"title": "Deep Dive", "type": "slide", "description": "Detailed discussion"},
+                {"title": "Quiz", "type": "quiz", "description": "Knowledge check"},
+                {"title": "Summary", "type": "slide", "description": "Key takeaways"},
+            ]
+        logger.info(f"[Outline] 使用默认标题列表 - {len(outline_titles)} 个")
 
-    for chunk in await stream_llm(
-        prompt=user_prompt,
-        system_prompt=OUTLINE_SYSTEM_PROMPT,
-        model=model,
-        temperature=0.7,
-        max_tokens=4096,
-    ):
-        buffer += chunk
-
-        # 尝试解析完整的大纲对象
-        outlines = extract_outlines_from_buffer(buffer, parsed_count)
-        for outline in outlines:
-            parsed_count += 1
+    # 然后逐个生成每个大纲的详细内容
+    logger.info(f"[Outline] 步骤2: 逐个生成大纲详情")
+    for i, outline_info in enumerate(outline_titles):
+        outline_start = time.time()
+        try:
+            logger.info(f"[Outline] 生成大纲 #{i+1}: {outline_info.get('title', '')}")
+            outline = await generate_single_outline(
+                requirement=requirement,
+                outline_info=outline_info,
+                order=i + 1,
+                language=language,
+                model=model,
+            )
+            outline_elapsed = time.time() - outline_start
+            logger.info(f"[Outline] 大纲 #{i+1} 完成 - {outline.title} (耗时: {outline_elapsed:.1f}s)")
             yield outline
+        except Exception as e:
+            outline_elapsed = time.time() - outline_start
+            logger.warning(f"[Outline] 大纲 #{i+1} 生成失败 (耗时: {outline_elapsed:.1f}s): {e}")
+            # 失败时使用默认内容
+            yield SceneOutline(
+                id=str(uuid.uuid4()),
+                title=outline_info.get("title", f"场景 {i+1}"),
+                type=outline_info.get("type", "slide"),
+                description=outline_info.get("description", ""),
+                order=i + 1,
+                key_points=["内容要点"],
+            )
+
+    total_elapsed = time.time() - start_time
+    logger.info(f"[Outline] 流式生成完成 - 总耗时: {total_elapsed:.1f}s")
+
+
+async def generate_outline_titles(
+    requirement: str,
+    language: str,
+    model: Optional[str],
+    total_count: int,
+) -> List[Dict]:
+    """
+    生成大纲标题列表（快速，只确定标题和类型）
+    """
+    start_time = time.time()
+    logger.info(f"[Titles] 开始生成标题列表 - count={total_count}")
+
+    system_prompt = """你是课程设计专家。根据需求快速生成课程大纲的标题列表。
+
+输出格式：JSON数组，每个元素包含 title, type, description
+- type: slide/quiz/interactive/pbl
+- description: 简短的一句话描述
+- 只输出JSON，无其他内容
+
+示例：
+[{"title":"课程简介","type":"slide","description":"介绍课程主题和学习目标"}]
+"""
+
+    user_prompt = f"""需求：{requirement}
+语言：{language}
+请生成 {total_count} 个课程大纲的标题列表。"""
+
+    # 使用更多重试次数
+    logger.info(f"[Titles] 调用LLM - model={model}")
+    try:
+        response = await call_llm(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            model=model,
+            temperature=0.7,
+            max_tokens=1024,
+            max_retries=5,  # 增加重试次数
+        )
+        elapsed = time.time() - start_time
+        logger.info(f"[Titles] LLM响应完成 (耗时: {elapsed:.1f}s), 响应长度: {len(response)}")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[Titles] LLM调用失败 (耗时: {elapsed:.1f}s): {e}")
+        raise
+
+    # 解析 JSON
+    try:
+        cleaned = response.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        titles = json.loads(cleaned)
+        logger.info(f"[Titles] JSON解析成功 - {len(titles)} 个标题")
+        return titles if isinstance(titles, list) else []
+    except json.JSONDecodeError as e:
+        logger.warning(f"[Titles] JSON解析失败: {e}, 使用默认标题")
+        # 解析失败，返回默认标题
+        if language == "zh-CN":
+            return [
+                {"title": "课程简介", "type": "slide", "description": "介绍课程主题和学习目标"},
+                {"title": "核心内容", "type": "slide", "description": "讲解核心知识点"},
+                {"title": "深入讲解", "type": "slide", "description": "深入探讨重点内容"},
+                {"title": "知识检测", "type": "quiz", "description": "检验学习效果"},
+                {"title": "总结回顾", "type": "slide", "description": "回顾课程要点"},
+            ]
+        else:
+            return [
+                {"title": "Introduction", "type": "slide", "description": "Course overview and objectives"},
+                {"title": "Core Content", "type": "slide", "description": "Key concepts explanation"},
+                {"title": "Deep Dive", "type": "slide", "description": "Detailed discussion"},
+                {"title": "Quiz", "type": "quiz", "description": "Knowledge check"},
+                {"title": "Summary", "type": "slide", "description": "Key takeaways"},
+            ]
+
+
+async def generate_single_outline(
+    requirement: str,
+    outline_info: Dict,
+    order: int,
+    language: str,
+    model: Optional[str],
+) -> SceneOutline:
+    """
+    生成单个大纲的详细内容
+    """
+    start_time = time.time()
+    title = outline_info.get('title', '')
+    logger.info(f"[Single] 开始生成大纲 #{order}: {title}")
+
+    system_prompt = """你是课程设计专家。根据标题生成单个课程大纲的详细内容。
+
+输出格式：JSON对象，包含 id, title, type, description, order, key_points
+- key_points: 3-5个核心要点列表
+- 只输出JSON，无其他内容
+
+示例：
+{"id":"scene_1","title":"课程简介","type":"slide","description":"介绍课程主题","order":1,"key_points":["概述","目标","安排"]}
+"""
+
+    user_prompt = f"""需求：{requirement}
+大纲标题：{outline_info.get('title', '')}
+大纲类型：{outline_info.get('type', 'slide')}
+简述：{outline_info.get('description', '')}
+序号：{order}
+语言：{language}
+
+请生成这个大纲的详细内容，包含 key_points。"""
+
+    logger.info(f"[Single] 调用LLM - model={model}")
+    try:
+        response = await call_llm(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            model=model,
+            temperature=0.7,
+            max_tokens=512,
+            max_retries=5,  # 增加重试次数
+        )
+        elapsed = time.time() - start_time
+        logger.info(f"[Single] LLM响应完成 (耗时: {elapsed:.1f}s), 响应长度: {len(response)}")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[Single] LLM调用失败 (耗时: {elapsed:.1f}s): {e}")
+        raise
+
+    # 解析 JSON
+    try:
+        cleaned = response.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        data = json.loads(cleaned)
+        logger.info(f"[Single] JSON解析成功 - title={data.get('title', title)}")
+
+        return SceneOutline(
+            id=data.get("id") or str(uuid.uuid4()),
+            title=data.get("title") or outline_info.get("title", f"场景 {order}"),
+            type=data.get("type") or outline_info.get("type", "slide"),
+            description=data.get("description") or outline_info.get("description", ""),
+            order=data.get("order") or order,
+            key_points=data.get("key_points", []),
+        )
+    except json.JSONDecodeError as e:
+        logger.warning(f"[Single] JSON解析失败: {e}, 使用基本信息")
+        # 解析失败，返回基本信息
+        return SceneOutline(
+            id=str(uuid.uuid4()),
+            title=outline_info.get("title", f"场景 {order}"),
+            type=outline_info.get("type", "slide"),
+            description=outline_info.get("description", ""),
+            order=order,
+            key_points=["内容要点"],
+        )
 
 
 def extract_outlines_from_buffer(buffer: str, already_parsed: int) -> List[Dict]:

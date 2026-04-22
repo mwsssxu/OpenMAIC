@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  Platform,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,7 +57,6 @@ export default function ClassroomScreen() {
   // 教学工具状态
   const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [showPointer, setShowPointer] = useState(false);
-  const [pointerMode, setPointerMode] = useState<'laser' | 'spotlight'>('laser');
   const [showThumbnailNav, setShowThumbnailNav] = useState(false);
 
   // 智能体互动
@@ -67,12 +66,12 @@ export default function ClassroomScreen() {
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string }>>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [personaSessionId, setPersonaSessionId] = useState<string | null>(null);
 
   // 场景切换动画
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const screenWidth = Dimensions.get('window').width - 40;
-  const screenHeight = screenWidth * 0.5625;
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && id) {
@@ -104,6 +103,17 @@ export default function ClassroomScreen() {
 
     try {
       const classroomData = await apiClient.getClassroom(id);
+      console.log('=== Classroom API Response ===');
+      console.log('Stage:', classroomData.stage?.name);
+      console.log('Scenes count:', classroomData.scenes?.length);
+      if (classroomData.scenes?.length > 0) {
+        const firstScene = classroomData.scenes[0];
+        console.log('First scene:', firstScene.title);
+        console.log('First scene content type:', typeof firstScene.content);
+        console.log('First scene content:', JSON.stringify(firstScene.content, null, 2).slice(0, 300));
+        console.log('Has canvas?', firstScene.content?.canvas ? 'YES' : 'NO');
+        console.log('Canvas elements?', firstScene.content?.canvas?.elements?.length || 0);
+      }
       setData(classroomData);
 
       // 加载智能体配置
@@ -157,7 +167,6 @@ export default function ClassroomScreen() {
     }
   }
 
-  // 发送消息给智能体
   async function sendMessage() {
     if (!chatMessage.trim() || !selectedAgent) return;
 
@@ -169,11 +178,21 @@ export default function ClassroomScreen() {
     setChatHistory(prev => [...prev, { agent: '我', message: userMessage }]);
 
     try {
-      // 调用聊天API
-      const response = await apiClient.sendPersonaSession(selectedAgent.id, userMessage);
-      const agentResponse = response.response || '收到你的问题了，让我思考一下...';
+      // 如果没有session，先创建一个
+      let sessionId = personaSessionId;
+      if (!sessionId) {
+        const session = await apiClient.startPersonaSession(selectedAgent.id);
+        sessionId = session.session_id || session.id;
+        setPersonaSessionId(sessionId);
+      }
 
-      setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
+      // 发送消息（sessionId 已确保不为 null）
+      if (sessionId) {
+        const response = await apiClient.sendPersonaMessage(sessionId, userMessage);
+        const agentResponse = response.response || response.message || '收到你的问题了，让我思考一下...';
+
+        setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
+      }
     } catch (err) {
       // 模拟回复
       setChatHistory(prev => [...prev, {
@@ -254,25 +273,146 @@ export default function ClassroomScreen() {
         style={[styles.content, { transform: [{ translateX: slideAnim }] }]}
       >
         {currentScene?.type === 'slide' && (
-          <View style={styles.slideContainer}>
-            <Text style={styles.sceneTitle}>{currentScene.title}</Text>
-            {currentScene.content?.text && (
-              <Text style={styles.sceneText}>{currentScene.content.text}</Text>
-            )}
-          </View>
+          <ScrollView style={styles.slideScroll}>
+            <View style={styles.slideContainer}>
+              {/* 幻灯片卡片容器 */}
+              <View style={styles.slideCard}>
+                {/* 渲染 canvas elements */}
+                {currentScene.content?.canvas?.elements?.map((element: any, index: number) => (
+                  <View key={element.id || index} style={[
+                    styles.elementContainer,
+                    element.position && {
+                      marginTop: element.position.top ? element.position.top / 3 : 8,
+                    }
+                  ]}>
+                    {element.type === 'text' && (
+                      <Text style={[
+                        styles.elementText,
+                        element.style?.fontSize && { fontSize: Math.min(element.style.fontSize / 1.5, 28) },
+                        element.style?.color && { color: element.style.color },
+                        element.style?.fontWeight === 'bold' && { fontWeight: 'bold' },
+                        element.style?.textAlign === 'center' && { textAlign: 'center' },
+                        index === 0 && styles.firstElement,
+                      ]}>
+                        {element.content}
+                      </Text>
+                    )}
+                    {element.type === 'image' && element.src && (
+                      <Image
+                        source={{ uri: element.src }}
+                        style={[
+                          styles.slideImage,
+                          element.position?.width && { width: element.position.width / 2 },
+                          element.position?.height && { height: element.position.height / 2 },
+                        ]}
+                        resizeMode="contain"
+                      />
+                    )}
+                    {element.type === 'shape' && element.shapeType === 'line' && (
+                      <View style={styles.lineElement} />
+                    )}
+                  </View>
+                ))}
+
+                {/* 兼容旧格式 content.text */}
+                {currentScene.content?.text && !currentScene.content?.canvas && (
+                  <Text style={styles.sceneText}>{currentScene.content.text}</Text>
+                )}
+
+                {/* 如果没有内容，显示占位提示 */}
+                {(!currentScene.content?.canvas?.elements || currentScene.content?.canvas?.elements?.length === 0) && (
+                  <View style={styles.emptySlide}>
+                    <Ionicons name="document-text-outline" size={48} color="#ccc" />
+                    <Text style={styles.emptyText}>幻灯片内容正在生成中...</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </ScrollView>
         )}
 
         {currentScene?.type === 'quiz' && (
           <View style={styles.quizContainer}>
-            <Text style={styles.quizTitle}>{currentScene.title}</Text>
-            <Text style={styles.quizHint}>测验场景 - 回答问题检验学习效果</Text>
+            <View style={styles.quizCard}>
+              <View style={styles.quizHeader}>
+                <Ionicons name="help-circle" size={32} color="#f59e0b" />
+                <Text style={styles.quizTitle}>{currentScene.title}</Text>
+              </View>
+              {/* 渲染测验问题 */}
+              {currentScene.content?.questions?.map((q: any, idx: number) => (
+                <View key={q.id || idx} style={styles.questionContainer}>
+                  <Text style={styles.questionText}>{q.question}</Text>
+                  {q.options?.map((opt: any, optIdx: number) => (
+                    <TouchableOpacity key={opt.value} style={styles.optionButton}>
+                      <Text style={styles.optionLabel}>{String.fromCharCode(65 + optIdx)}.</Text>
+                      <Text style={styles.optionText}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ))}
+              {currentScene.content?.canvas?.elements && (
+                <View style={styles.quizHintContainer}>
+                  {currentScene.content?.canvas?.elements?.slice(2).map((el: any, idx: number) => (
+                    <Text key={idx} style={styles.quizHintText}>{el.content?.replace('• ', '')}</Text>
+                  ))}
+                </View>
+              )}
+              {!currentScene.content?.questions && !currentScene.content?.canvas?.elements && (
+                <View style={styles.emptyQuiz}>
+                  <Text style={styles.quizHint}>测验场景 - 回答问题检验学习效果</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {currentScene?.type === 'interactive' && (
+          <View style={styles.interactiveContainer}>
+            <View style={styles.interactiveCard}>
+              <View style={styles.interactiveHeader}>
+                <Ionicons name="people" size={32} color="#10b981" />
+                <Text style={styles.interactiveTitle}>{currentScene.title}</Text>
+              </View>
+              {currentScene.content?.canvas?.elements?.slice(2).map((el: any, idx: number) => (
+                <View key={idx} style={styles.interactivePoint}>
+                  <Ionicons name="chatbubble-outline" size={16} color="#10b981" />
+                  <Text style={styles.interactiveDesc}>{el.content?.replace('• ', '')}</Text>
+                </View>
+              ))}
+              {currentScene.content?.description && (
+                <Text style={styles.interactiveDesc}>{currentScene.content.description}</Text>
+              )}
+              {!currentScene.content?.canvas?.elements && !currentScene.content?.description && (
+                <Text style={styles.interactiveHint}>互动场景 - 参与互动学习</Text>
+              )}
+              <TouchableOpacity style={styles.startInteractiveBtn}>
+                <Ionicons name="play-circle" size={20} color="white" />
+                <Text style={styles.startInteractiveText}>开始互动</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
         {currentScene?.type === 'pbl' && (
           <View style={styles.pblContainer}>
-            <Text style={styles.pblTitle}>{currentScene.title}</Text>
-            <Text style={styles.pblHint}>PBL 项目学习模式</Text>
+            <View style={styles.pblCard}>
+              <View style={styles.pblHeader}>
+                <Ionicons name="bulb" size={32} color="#8b5cf6" />
+                <Text style={styles.pblTitle}>{currentScene.title}</Text>
+              </View>
+              {currentScene.content?.canvas?.elements?.slice(2).map((el: any, idx: number) => (
+                <View key={idx} style={styles.pblPoint}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#8b5cf6" />
+                  <Text style={styles.pblDesc}>{el.content?.replace('• ', '')}</Text>
+                </View>
+              ))}
+              {currentScene.content?.description && (
+                <Text style={styles.pblDesc}>{currentScene.content.description}</Text>
+              )}
+              {!currentScene.content?.canvas?.elements && !currentScene.content?.description && (
+                <Text style={styles.pblHint}>PBL 项目学习模式</Text>
+              )}
+            </View>
           </View>
         )}
       </Animated.View>
@@ -465,16 +605,147 @@ const styles = StyleSheet.create({
   progress: { fontSize: 14, color: '#666' },
 
   // 内容
-  content: { flex: 1, padding: 20 },
-  slideContainer: { alignItems: 'center' },
-  sceneTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 15 },
-  sceneText: { fontSize: 16, color: '#666', textAlign: 'center' },
-  quizContainer: { alignItems: 'center', justifyContent: 'center' },
-  quizTitle: { fontSize: 20, fontWeight: 'bold' },
-  quizHint: { fontSize: 14, color: '#666', marginTop: 10 },
-  pblContainer: { alignItems: 'center', justifyContent: 'center' },
-  pblTitle: { fontSize: 20, fontWeight: 'bold' },
-  pblHint: { fontSize: 14, color: '#666', marginTop: 10 },
+  content: { flex: 1, padding: 15 },
+  slideScroll: { flex: 1 },
+  slideContainer: { flex: 1, alignItems: 'center' },
+  slideCard: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 25,
+    width: '100%',
+    // 使用 boxShadow 替代旧的 shadow 属性
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 4,
+    minHeight: 400,
+  },
+  elementContainer: { marginVertical: 6 },
+  firstElement: {
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingBottom: 15,
+  },
+  elementText: { fontSize: 16, color: '#444', lineHeight: 24 },
+  lineElement: {
+    height: 2,
+    backgroundColor: '#e5e7eb',
+    width: '100%',
+    marginVertical: 10,
+  },
+  slideImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 8,
+    marginVertical: 10,
+  },
+  sceneText: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 24 },
+  emptySlide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: { color: '#999', marginTop: 15, fontSize: 14 },
+
+  // Quiz
+  quizContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 15 },
+  quizCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 25,
+    width: '100%',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 4,
+  },
+  quizHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f59e0b20',
+    paddingBottom: 15,
+  },
+  quizTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: 10, color: '#333' },
+  questionContainer: { marginVertical: 15 },
+  questionText: { fontSize: 16, color: '#333', marginBottom: 12, fontWeight: '500' },
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f7fa',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  optionLabel: { fontSize: 14, fontWeight: 'bold', color: '#5b9bd5', marginRight: 10 },
+  optionText: { fontSize: 14, color: '#666' },
+  quizHintContainer: { marginTop: 20 },
+  quizHintText: { fontSize: 14, color: '#666', marginVertical: 5 },
+  quizHint: { fontSize: 14, color: '#666', textAlign: 'center' },
+  emptyQuiz: { alignItems: 'center', paddingVertical: 40 },
+
+  // Interactive
+  interactiveContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 15 },
+  interactiveCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 25,
+    width: '100%',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 4,
+  },
+  interactiveHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#10b98120',
+    paddingBottom: 15,
+  },
+  interactiveTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: 10, color: '#333' },
+  interactivePoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  interactiveDesc: { fontSize: 14, color: '#666', marginLeft: 10, flex: 1 },
+  interactiveHint: { fontSize: 14, color: '#666', textAlign: 'center' },
+  startInteractiveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  startInteractiveText: { color: 'white', fontSize: 16, fontWeight: '600', marginLeft: 8 },
+
+  // PBL
+  pblContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 15 },
+  pblCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 25,
+    width: '100%',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 4,
+  },
+  pblHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#8b5cf620',
+    paddingBottom: 15,
+  },
+  pblTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: 10, color: '#333' },
+  pblPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  pblDesc: { fontSize: 14, color: '#666', marginLeft: 10, flex: 1 },
+  pblHint: { fontSize: 14, color: '#666', textAlign: 'center' },
 
   // 缩略图导航
   thumbnailToggle: {

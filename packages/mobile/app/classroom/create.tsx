@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
-  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +18,17 @@ import { useAuth } from '@/lib/auth/auth-context';
 // 步骤定义 - 按照原逻辑：需求输入 → 智能体生成 → 大纲生成 → 确认创建
 const STEPS = ['需求输入', '智能体生成', '大纲生成', '确认创建'];
 
+interface AgentProfile {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  avatar?: string;
+  color?: string;
+  priority?: number;
+  enabled: boolean;
+}
+
 interface SceneOutline {
   id: string;
   type: 'slide' | 'quiz' | 'interactive' | 'pbl';
@@ -26,17 +36,6 @@ interface SceneOutline {
   description: string;
   key_points: string[];
   order: number;
-}
-
-interface AgentProfile {
-  id: string;
-  name: string;
-  role: string;
-  persona: string;
-  avatar: string;
-  color: string;
-  priority: number;
-  enabled: boolean;
 }
 
 export default function CreateClassroomScreen() {
@@ -60,7 +59,7 @@ export default function CreateClassroomScreen() {
   // 步骤3: 大纲（SSE流式生成）
   const [outlines, setOutlines] = useState<SceneOutline[]>([]);
   const [generatingOutlines, setGeneratingOutlines] = useState(false);
-  const outlineAnimValue = useRef(new Animated.Value(0)).current;
+  const outlinesRef = useRef<SceneOutline[]>([]); // 用于在回调中获取实时状态
 
   // 步骤4: 创建结果
   const [createdClassroomId, setCreatedClassroomId] = useState<string | null>(null);
@@ -106,13 +105,13 @@ export default function CreateClassroomScreen() {
         language
       );
       const generatedAgents = result.agents || [];
-      setAgents(generatedAgents.map(a => ({ ...a, enabled: true })));
+      setAgents(generatedAgents.map((a: AgentProfile) => ({ ...a, enabled: true })));
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || '智能体生成失败');
       // 失败时获取默认配置
       try {
         const defaultResult = await apiClient.getDefaultAgents(language);
-        setAgents((defaultResult.agents || []).map(a => ({ ...a, enabled: true })));
+        setAgents((defaultResult.agents || []).map((a: AgentProfile) => ({ ...a, enabled: true })));
       } catch {
         setAgents([]);
       }
@@ -127,45 +126,53 @@ export default function CreateClassroomScreen() {
     await generateOutlines();
   };
 
-  // 生成大纲（流式生成）
+  // 生成大纲（真正的流式生成）
   const generateOutlines = async () => {
     setGeneratingOutlines(true);
     setError(null);
     setOutlines([]);
+    outlinesRef.current = []; // 重置 ref
 
     try {
-      // 使用流式生成大纲
-      const result = await apiClient.generateOutlinesStream(
+      // 使用真正的 SSE 流式生成
+      await apiClient.generateOutlinesStream(
         requirement,
         language,
         agents.filter(a => a.enabled),
-        webSearchEnabled
+        webSearchEnabled,
+        // 每个大纲生成时的回调
+        (outline) => {
+          outlinesRef.current = [...outlinesRef.current, outline];
+          setOutlines(outlinesRef.current);
+        },
+        // 完成时的回调
+        (count) => {
+          setGeneratingOutlines(false);
+          // 成功完成后清除错误
+          if (count > 0) {
+            setError(null);
+          }
+        },
+        // 错误时的回调（只有在真正失败时才显示）
+        (errorMsg) => {
+          // 如果没有任何大纲生成，说明完全失败
+          if (outlinesRef.current.length === 0) {
+            setError(errorMsg);
+            // 失败时使用默认大纲
+            const defaultOutlines: SceneOutline[] = [
+              { id: '1', type: 'slide', title: '课程介绍', description: '介绍课程主题和学习目标', key_points: ['主题概述', '学习目标', '课程安排'], order: 1 },
+              { id: '2', type: 'slide', title: '核心内容', description: '讲解核心知识点', key_points: ['概念定义', '原理说明', '示例演示'], order: 2 },
+              { id: '3', type: 'quiz', title: '知识检测', description: '检验学习效果', key_points: ['基础题目', '进阶题目'], order: 3 },
+              { id: '4', type: 'slide', title: '总结回顾', description: '回顾课程要点', key_points: ['要点总结', '延伸思考', '课后作业'], order: 4 },
+            ];
+            outlinesRef.current = defaultOutlines;
+            setOutlines(defaultOutlines);
+          }
+          setGeneratingOutlines(false);
+        }
       );
-
-      // 模拟流式效果：逐个显示大纲
-      const outlinesData = result.outlines || [];
-      for (let i = 0; i < outlinesData.length; i++) {
-        Animated.timing(outlineAnimValue, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }).start();
-
-        setOutlines(prev => [...prev, outlinesData[i]]);
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        outlineAnimValue.setValue(0);
-      }
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '大纲生成失败');
-      // 失败时使用默认大纲
-      setOutlines([
-        { id: '1', type: 'slide', title: '课程介绍', description: '介绍课程主题和学习目标', key_points: ['主题概述', '学习目标', '课程安排'], order: 1 },
-        { id: '2', type: 'slide', title: '核心内容', description: '讲解核心知识点', key_points: ['概念定义', '原理说明', '示例演示'], order: 2 },
-        { id: '3', type: 'quiz', title: '知识检测', description: '检验学习效果', key_points: ['基础题目', '进阶题目'], order: 3 },
-        { id: '4', type: 'slide', title: '总结回顾', description: '回顾课程要点', key_points: ['要点总结', '延伸思考', '课后作业'], order: 4 },
-      ]);
-    } finally {
+      // 错误已在回调中处理
       setGeneratingOutlines(false);
     }
   };
@@ -175,23 +182,27 @@ export default function CreateClassroomScreen() {
     setCurrentStep(3);
   };
 
-  // 步骤4: 开始创建课程
+  // 步骤4: 开始创建课程（包含幻灯片生成）
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const result = await apiClient.createClassroom(
+      // 使用完整课程创建接口（包含大纲生成幻灯片）
+      const result = await apiClient.createFullClassroom(
         requirement.slice(0, 50),
-        requirement
+        requirement,
+        outlines,
+        agents.filter(a => a.enabled).map(a => a.id),
+        language
       );
 
       setCreatedClassroomId(result.id);
 
       if (Platform.OS === 'web') {
-        window.alert('课程创建成功！');
+        window.alert(`课程创建成功！已生成 ${result.scenes_count} 个幻灯片`);
       } else {
-        Alert.alert('成功', '课程创建成功！', [
+        Alert.alert('成功', `课程创建成功！已生成 ${result.scenes_count} 个幻灯片`, [
           { text: '查看课程', onPress: () => router.replace(`/classroom/${result.id}`) }
         ]);
       }
@@ -379,12 +390,9 @@ export default function CreateClassroomScreen() {
       ) : (
         <ScrollView style={styles.outlineList}>
           {outlines.map((outline, index) => (
-            <Animated.View
+            <View
               key={outline.id}
-              style={[
-                styles.outlineCard,
-                { opacity: outlineAnimValue }
-              ]}
+              style={styles.outlineCard}
             >
               <View style={styles.outlineHeader}>
                 <View style={[styles.outlineTypeBadge,
@@ -410,7 +418,7 @@ export default function CreateClassroomScreen() {
                   ))}
                 </View>
               )}
-            </Animated.View>
+            </View>
           ))}
           {generatingOutlines && (
             <View style={styles.loadingMore}>
