@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 
@@ -67,6 +68,10 @@ export default function ClassroomScreen() {
   const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string }>>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
 
+  // 语音教学
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
+
   // 场景切换动画
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -105,14 +110,39 @@ export default function ClassroomScreen() {
       setData(classroomData);
 
       // 加载智能体配置
-      if (classroomData.stage?.generatedAgentConfigs?.length > 0) {
-        setAgents(classroomData.stage.generatedAgentConfigs);
+      const agentIds = classroomData.stage?.agent_ids || [];
+
+      if (agentIds.length > 0) {
+        // 如果有 agent_ids，尝试获取完整的 agent 配置
+        try {
+          const result = await apiClient.generateAgentProfiles(
+            classroomData.stage.name,
+            classroomData.stage.description || classroomData.stage.name,
+            classroomData.scenes?.slice(0, 3) || [],
+            'zh-CN'
+          );
+          if (result.agents && result.agents.length > 0) {
+            setAgents(result.agents.map((a: any) => ({
+              id: a.id,
+              name: a.name,
+              role: a.role,
+              color: a.color || '#5b9bd5',
+              persona: a.persona
+            })));
+          } else {
+            // 使用默认配置映射 agent_ids
+            setAgents(getDefaultAgentsFromIds(agentIds));
+          }
+        } catch {
+          // 如果获取失败，使用默认配置映射 agent_ids
+          setAgents(getDefaultAgentsFromIds(agentIds));
+        }
       } else {
-        // 默认智能体 - 使用后端预定义的 persona ID
+        // 没有 agent_ids，使用默认智能体
         setAgents([
-          { id: 'confucius', name: '孔子', role: 'teacher', color: '#5b9bd5', persona: '中国哲学、学习方法' },
-          { id: 'socrates', name: '苏格拉底', role: 'assistant', color: '#10b981', persona: '批判性思维、辩证法' },
-          { id: 'da_vinci', name: '达芬奇', role: 'student', color: '#f59e0b', persona: '跨学科创新' },
+          { id: 'teacher', name: '老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师' },
+          { id: 'assistant', name: '助教', role: 'assistant', color: '#10b981', persona: '辅助讲解' },
+          { id: 'student', name: '学生', role: 'student', color: '#f59e0b', persona: '课堂互动' },
         ]);
       }
     } catch (err) {
@@ -121,6 +151,68 @@ export default function ClassroomScreen() {
       setLoading(false);
     }
   }
+
+  // 根据 agent_ids 获取默认配置
+  function getDefaultAgentsFromIds(agentIds: string[]): Agent[] {
+    const defaultConfig: Record<string, Agent> = {
+      'teacher': { id: 'teacher', name: '老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师' },
+      'assistant': { id: 'assistant', name: '助教', role: 'assistant', color: '#10b981', persona: '辅助讲解' },
+      'student': { id: 'student', name: '学生', role: 'student', color: '#f59e0b', persona: '课堂互动' },
+      'chief_analyst': { id: 'chief_analyst', name: '首席分析师', role: 'teacher', color: '#5b9bd5', persona: '商业策略分析' },
+      'market_expert': { id: 'market_expert', name: '市场专家', role: 'assistant', color: '#10b981', persona: '市场趋势分析' },
+      'competition_expert': { id: 'competition_expert', name: '竞争专家', role: 'assistant', color: '#8b5cf6', persona: '竞争格局分析' },
+      'finance_risk_expert': { id: 'finance_risk_expert', name: '财务风险专家', role: 'assistant', color: '#f59e0b', persona: '财务风险评估' },
+    };
+
+    return agentIds
+      .map(id => defaultConfig[id] || { id, name: id, role: 'assistant', color: '#666', persona: '' })
+      .filter(Boolean);
+  }
+
+  // 语音朗读当前场景
+  async function speakScene(scene: Scene) {
+    if (!autoPlayEnabled || isSpeaking) return;
+
+    // 提取场景中的文本内容
+    let textToSpeak = '';
+
+    if (scene.content?.canvas?.elements) {
+      // 从 canvas elements 中提取文本
+      const textElements = scene.content.canvas.elements
+        .filter((el: any) => el.type === 'text' && el.content)
+        .map((el: any) => el.content);
+      textToSpeak = textElements.join('\n');
+    } else if (scene.content?.text) {
+      textToSpeak = scene.content.text;
+    }
+
+    if (textToSpeak && textToSpeak.length > 10) {
+      setIsSpeaking(true);
+      try {
+        await Speech.speak(textToSpeak, {
+          language: 'zh-CN',
+          rate: 0.9,
+          onDone: () => setIsSpeaking(false),
+          onError: () => setIsSpeaking(false),
+        });
+      } catch {
+        setIsSpeaking(false);
+      }
+    }
+  }
+
+  // 停止语音
+  function stopSpeaking() {
+    Speech.stop();
+    setIsSpeaking(false);
+  }
+
+  // 场景切换时自动朗读
+  useEffect(() => {
+    if (data && data.scenes[currentSceneIndex] && autoPlayEnabled) {
+      speakScene(data.scenes[currentSceneIndex]);
+    }
+  }, [currentSceneIndex, data, autoPlayEnabled]);
 
   function goToNextScene() {
     if (data && currentSceneIndex < data.scenes.length - 1) {
@@ -482,6 +574,28 @@ export default function ClassroomScreen() {
           disabled={currentSceneIndex === data.scenes.length - 1}
         >
           <Ionicons name="chevron-forward" size={20} color={currentSceneIndex === data.scenes.length - 1 ? '#ccc' : '#5b9bd5'} />
+        </TouchableOpacity>
+
+        {/* 语音播放/暂停 */}
+        <TouchableOpacity
+          style={[styles.toolBtn, isSpeaking && styles.toolBtnActive]}
+          onPress={() => {
+            if (isSpeaking) {
+              stopSpeaking();
+            } else {
+              speakScene(currentScene);
+            }
+          }}
+        >
+          <Ionicons name={isSpeaking ? "stop" : "volume-high"} size={20} color={isSpeaking ? 'white' : '#666'} />
+        </TouchableOpacity>
+
+        {/* 自动播放开关 */}
+        <TouchableOpacity
+          style={[styles.toolBtn, autoPlayEnabled && styles.toolBtnActive]}
+          onPress={() => setAutoPlayEnabled(!autoPlayEnabled)}
+        >
+          <Ionicons name={autoPlayEnabled ? "play" : "play-outline"} size={20} color={autoPlayEnabled ? 'white' : '#666'} />
         </TouchableOpacity>
 
         <TouchableOpacity
