@@ -9,6 +9,13 @@ from app.db.database import get_db
 from app.services.generation.outline_generator import generate_outlines, stream_outlines
 from app.services.generation.scene_generator import generate_full_scene
 from app.services.generation.agent_generator import generate_agent_profiles, get_default_agents
+from app.services.scene_service import (
+    validate_language,
+    validate_scene_count,
+    SUPPORTED_LANGUAGES,
+    MAX_TTS_TEXT_LENGTH,
+    MAX_SCENES_PER_REQUEST,
+)
 from app.core.config import settings
 import asyncpg
 import uuid
@@ -19,6 +26,27 @@ import time
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# TTS 配额限制（每个用户每天最多 TTS 请求次数）
+TTS_DAILY_LIMIT = 100
+TTS_MONTHLY_LIMIT = 1000
+
+
+def validate_tts_quota(user_id: str, db: asyncpg.Connection) -> bool:
+    """
+    验证用户 TTS 配额（预留接口，实际实现需要配额表）
+
+    Args:
+        user_id: 用户 ID
+        db: 数据库连接
+
+    Returns:
+        是否有配额
+    """
+    # TODO: 实现基于数据库的配额检查
+    # 目前简单返回 True，后续可添加 usage_tracking 表
+    return True
 
 
 @router.post("/outlines")
@@ -240,3 +268,154 @@ async def get_generation_job(
         "result": row["result"],
         "error": row["error"]
     }
+
+
+@router.post("/tts")
+async def generate_tts_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    生成 TTS 音频（返回 base64）
+
+    参数:
+    - text: 要转换的文本（必填，最大 4000 字符）
+    - audio_id: 音频 ID（必填）
+    - provider: TTS 提供商 (openai, minimax)
+    - voice: 语音 ID
+    - speed: 语速 (0.25-4.0)
+    - model: TTS 模型
+    """
+    from app.services.tts_service import generate_tts, encode_audio_base64
+
+    text = body.get("text", "")
+    audio_id = body.get("audio_id", "")
+    provider = body.get("provider", "openai")
+    voice = body.get("voice", "alloy")
+    speed = body.get("speed", 1.0)
+    model = body.get("model", "tts-1")
+
+    # 必填参数验证
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    if not audio_id:
+        raise HTTPException(status_code=400, detail="audio_id is required")
+
+    # 文本长度限制（防止滥用和过高成本）
+    if len(text) > MAX_TTS_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Text too long. Maximum {MAX_TTS_TEXT_LENGTH} characters allowed."
+        )
+
+    # TTS 提供商白名单验证
+    supported_providers = ["openai", "minimax"]
+    if provider not in supported_providers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported TTS provider. Supported: {supported_providers}"
+        )
+
+    # 配额检查
+    if not validate_tts_quota(current_user_id, db):
+        raise HTTPException(
+            status_code=429,
+            detail="TTS quota exceeded. Please try again later."
+        )
+
+    logger.info(f"[TTS] Generating audio: id={audio_id}, provider={provider}, voice={voice}, len={len(text)}")
+
+    try:
+        result = await generate_tts(
+            text=text,
+            provider=provider,
+            voice=voice,
+            speed=speed,
+            model=model,
+        )
+
+        base64_audio = encode_audio_base64(result["audio"])
+
+        logger.info(f"[TTS] Generated successfully: id={audio_id}, format={result['format']}")
+
+        return {
+            "audio_id": audio_id,
+            "base64": base64_audio,
+            "format": result["format"],
+        }
+    except Exception as e:
+        logger.error(f"[TTS] Generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scene-with-actions")
+async def generate_scene_with_actions_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """生成完整场景（内容 + Actions + TTS）"""
+    from app.services.generation.scene_generator import (
+        generate_scene_content,
+        generate_scene_actions,
+        Action,
+    )
+    from app.services.tts_service import generate_tts, encode_audio_base64
+
+    outline = body.get("outline")
+    agents = body.get("agents", [])
+    language = body.get("language", "zh-CN")
+    model = body.get("model", settings.DEFAULT_MODEL)
+    generate_tts_audio = body.get("generate_tts", True)  # 是否预生成 TTS
+    tts_provider = body.get("tts_provider", "openai")
+    tts_voice = body.get("tts_voice", "alloy")
+
+    if not outline:
+        raise HTTPException(status_code=400, detail="outline is required")
+
+    logger.info(f"[Scene] Generating scene with actions: {outline.get('title', 'unknown')}")
+
+    # 1. 生成场景内容
+    content = await generate_scene_content(outline, language, model)
+
+    # 2. 生成 Actions
+    actions = await generate_scene_actions(outline, content, language, model)
+
+    # 3. 为 speech 动作预生成 TTS（可选）
+    actions_data = []
+    for action in actions:
+        action_dict = action.model_dump()
+
+        if action.type == "speech" and generate_tts_audio:
+            text = action.data.get("text", "")
+            audio_id = f"tts_{action.id}"
+
+            try:
+                tts_result = await generate_tts(
+                    text=text,
+                    provider=tts_provider,
+                    voice=tts_voice,
+                )
+                action_dict["data"]["audio_id"] = audio_id
+                action_dict["data"]["audio_base64"] = encode_audio_base64(tts_result["audio"])
+                action_dict["data"]["audio_format"] = tts_result["format"]
+
+                logger.info(f"[Scene] TTS generated for action {action.id}")
+            except Exception as e:
+                logger.warning(f"[Scene] TTS generation failed for action {action.id}: {e}")
+                # TTS 失败不影响场景生成，继续处理
+
+        actions_data.append(action_dict)
+
+    scene = {
+        "id": str(uuid.uuid4()),
+        "type": outline.get("type", "slide"),
+        "title": outline.get("title", ""),
+        "order": outline.get("order", 1),
+        "content": content,
+        "actions": actions_data,
+    }
+
+    logger.info(f"[Scene] Generated successfully: {len(actions_data)} actions")
+
+    return {"scene": scene}

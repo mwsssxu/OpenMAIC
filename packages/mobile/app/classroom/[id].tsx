@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { PlaybackEngine, EngineMode } from '@/lib/playback/engine';
 
 interface Scene {
   id: string;
@@ -40,7 +40,7 @@ interface ClassroomData {
     id: string;
     name: string;
     description?: string;
-    agentIds?: string[];
+    agent_ids?: string[];
     generatedAgentConfigs?: Agent[];
   };
   scenes: Scene[];
@@ -69,8 +69,9 @@ export default function ClassroomScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
 
   // 语音教学
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState<EngineMode>('idle');
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
+  const playbackEngineRef = useRef<PlaybackEngine | null>(null);
 
   // 场景切换动画
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -83,8 +84,35 @@ export default function ClassroomScreen() {
     }
   }, [id, authLoading, isAuthenticated]);
 
-  // 手势导航
-  const panResponder = useRef(
+  // 场景切换函数 - 使用 useCallback 以便在 PanResponder 中引用
+  const goToNextScene = useCallback(() => {
+    if (data && currentSceneIndex < data.scenes.length - 1) {
+      Animated.timing(slideAnim, {
+        toValue: -screenWidth,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        playbackEngineRef.current?.nextScene();
+        slideAnim.setValue(0);
+      });
+    }
+  }, [data, currentSceneIndex, slideAnim, screenWidth]);
+
+  const goToPrevScene = useCallback(() => {
+    if (currentSceneIndex > 0) {
+      Animated.timing(slideAnim, {
+        toValue: screenWidth,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        playbackEngineRef.current?.prevScene();
+        slideAnim.setValue(0);
+      });
+    }
+  }, [currentSceneIndex, slideAnim, screenWidth]);
+
+  // 手势导航 - 使用 useMemo 创建 PanResponder，避免每次渲染重新创建
+  const panResponder = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -97,8 +125,9 @@ export default function ClassroomScreen() {
           goToNextScene();
         }
       },
-    })
-  ).current;
+    }),
+  [goToPrevScene, goToNextScene]
+  );
 
   async function loadClassroom() {
     if (!id) return;
@@ -109,34 +138,12 @@ export default function ClassroomScreen() {
       const classroomData = await apiClient.getClassroom(id);
       setData(classroomData);
 
-      // 加载智能体配置
+      // 加载智能体配置 - 直接使用 agent_ids 映射到默认配置
       const agentIds = classroomData.stage?.agent_ids || [];
 
       if (agentIds.length > 0) {
-        // 如果有 agent_ids，尝试获取完整的 agent 配置
-        try {
-          const result = await apiClient.generateAgentProfiles(
-            classroomData.stage.name,
-            classroomData.stage.description || classroomData.stage.name,
-            classroomData.scenes?.slice(0, 3) || [],
-            'zh-CN'
-          );
-          if (result.agents && result.agents.length > 0) {
-            setAgents(result.agents.map((a: any) => ({
-              id: a.id,
-              name: a.name,
-              role: a.role,
-              color: a.color || '#5b9bd5',
-              persona: a.persona
-            })));
-          } else {
-            // 使用默认配置映射 agent_ids
-            setAgents(getDefaultAgentsFromIds(agentIds));
-          }
-        } catch {
-          // 如果获取失败，使用默认配置映射 agent_ids
-          setAgents(getDefaultAgentsFromIds(agentIds));
-        }
+        // 使用 agent_ids 映射到默认配置
+        setAgents(getDefaultAgentsFromIds(agentIds));
       } else {
         // 没有 agent_ids，使用默认智能体
         setAgents([
@@ -169,80 +176,56 @@ export default function ClassroomScreen() {
       .filter(Boolean);
   }
 
-  // 语音朗读当前场景
-  async function speakScene(scene: Scene) {
-    if (!autoPlayEnabled || isSpeaking) return;
+  // 初始化播放引擎
+  const initPlaybackEngine = useCallback(() => {
+    if (!data || !data.scenes) return;
 
-    // 提取场景中的文本内容
-    let textToSpeak = '';
-
-    if (scene.content?.canvas?.elements) {
-      // 从 canvas elements 中提取文本
-      const textElements = scene.content.canvas.elements
-        .filter((el: any) => el.type === 'text' && el.content)
-        .map((el: any) => el.content);
-      textToSpeak = textElements.join('\n');
-    } else if (scene.content?.text) {
-      textToSpeak = scene.content.text;
+    // 清理旧引擎
+    if (playbackEngineRef.current) {
+      playbackEngineRef.current.dispose();
     }
 
-    if (textToSpeak && textToSpeak.length > 10) {
-      setIsSpeaking(true);
-      try {
-        await Speech.speak(textToSpeak, {
-          language: 'zh-CN',
-          rate: 0.9,
-          onDone: () => setIsSpeaking(false),
-          onError: () => setIsSpeaking(false),
-        });
-      } catch {
-        setIsSpeaking(false);
-      }
-    }
-  }
+    // 创建新引擎
+    playbackEngineRef.current = new PlaybackEngine(data.scenes, {
+      onSceneChange: (index) => {
+        setCurrentSceneIndex(index);
+      },
+      onModeChange: (mode) => {
+        setPlaybackMode(mode);
+      },
+      onComplete: () => {
+        // 播放完成
+      },
+      onError: (error) => {
+        console.error('[PlaybackEngine]', error);
+      },
+    });
+  }, [data]);
 
-  // 停止语音
-  function stopSpeaking() {
-    Speech.stop();
-    setIsSpeaking(false);
-  }
-
-  // 场景切换时自动朗读
+  // 当数据加载完成后初始化引擎
   useEffect(() => {
-    if (data && data.scenes[currentSceneIndex] && autoPlayEnabled) {
-      speakScene(data.scenes[currentSceneIndex]);
+    if (data && !loading) {
+      initPlaybackEngine();
     }
-  }, [currentSceneIndex, data, autoPlayEnabled]);
+  }, [data, loading, initPlaybackEngine]);
 
-  function goToNextScene() {
-    if (data && currentSceneIndex < data.scenes.length - 1) {
-      Animated.timing(slideAnim, {
-        toValue: -screenWidth,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentSceneIndex(currentSceneIndex + 1);
-        slideAnim.setValue(0);
-      });
+  // 自动播放
+  useEffect(() => {
+    if (playbackEngineRef.current && autoPlayEnabled && playbackMode === 'idle' && data) {
+      playbackEngineRef.current.start();
     }
-  }
+  }, [autoPlayEnabled, playbackMode, data]);
 
-  function goToPrevScene() {
-    if (currentSceneIndex > 0) {
-      Animated.timing(slideAnim, {
-        toValue: screenWidth,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentSceneIndex(currentSceneIndex - 1);
-        slideAnim.setValue(0);
-      });
-    }
-  }
+  // 清理引擎
+  useEffect(() => {
+    return () => {
+      playbackEngineRef.current?.dispose();
+    };
+  }, []);
 
   function goToScene(index: number) {
     if (index !== currentSceneIndex) {
-      setCurrentSceneIndex(index);
+      playbackEngineRef.current?.jumpToScene(index);
       setShowThumbnailNav(false);
     }
   }
@@ -578,16 +561,22 @@ export default function ClassroomScreen() {
 
         {/* 语音播放/暂停 */}
         <TouchableOpacity
-          style={[styles.toolBtn, isSpeaking && styles.toolBtnActive]}
+          style={[styles.toolBtn, playbackMode === 'playing' && styles.toolBtnActive]}
           onPress={() => {
-            if (isSpeaking) {
-              stopSpeaking();
+            if (playbackMode === 'playing') {
+              playbackEngineRef.current?.pause();
+            } else if (playbackMode === 'paused') {
+              playbackEngineRef.current?.resume();
             } else {
-              speakScene(currentScene);
+              playbackEngineRef.current?.start();
             }
           }}
         >
-          <Ionicons name={isSpeaking ? "stop" : "volume-high"} size={20} color={isSpeaking ? 'white' : '#666'} />
+          <Ionicons
+            name={playbackMode === 'playing' ? "pause" : playbackMode === 'paused' ? "play" : "volume-high"}
+            size={20}
+            color={playbackMode === 'playing' ? 'white' : '#666'}
+          />
         </TouchableOpacity>
 
         {/* 自动播放开关 */}

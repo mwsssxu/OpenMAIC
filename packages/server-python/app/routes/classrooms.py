@@ -5,13 +5,17 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
-from app.services.generation.scene_generator import generate_full_scene
-from app.services.generation.outline_generator import SceneOutline
+from app.services.scene_service import (
+    create_stage_record,
+    create_all_scenes,
+    validate_language,
+    validate_scene_count,
+    SUPPORTED_LANGUAGES,
+    SUPPORTED_SCENE_TYPES,
+    MAX_SCENES_PER_REQUEST,
+)
 import asyncpg
 import uuid
-from datetime import datetime
-from app.core.time_utils import utcnow
-from app.core.config import settings
 import logging
 import json
 import time
@@ -20,12 +24,22 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def validate_uuid(id_str: str, field_name: str = "ID") -> uuid.UUID:
+    """验证 UUID 格式"""
+    try:
+        return uuid.UUID(id_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{field_name}格式无效")
+
+
 @router.get("")
 async def list_classrooms(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """获取用户课程列表"""
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
     rows = await db.fetch(
         """
         SELECT id, name, description, language_directive, created_at, updated_at
@@ -33,7 +47,7 @@ async def list_classrooms(
         WHERE user_id = $1
         ORDER BY updated_at DESC
         """,
-        uuid.UUID(current_user_id)
+        user_uuid
     )
     return [
         {
@@ -55,33 +69,28 @@ async def create_classroom(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """创建课程"""
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
     stage_id = uuid.uuid4()
-    now = utcnow()
+    name = body.get("name", "新课程")
+    description = body.get("description")
+    language = validate_language(body.get("language_directive", "zh-CN"))
+    agent_ids = body.get("agent_ids", [])
 
-    # agent_ids 是 JSONB 字段，需要转换为 JSON 字符串
-    agent_ids = body.get("agent_ids")
-    agent_ids_json = json.dumps(agent_ids) if agent_ids else None
-
-    await db.execute(
-        """
-        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        """,
-        stage_id,
-        uuid.UUID(current_user_id),
-        body.get("name", "新课程"),
-        body.get("description"),
-        body.get("language_directive"),
-        body.get("style"),
-        agent_ids_json,
-        now,
-        now
+    await create_stage_record(
+        stage_id=stage_id,
+        user_uuid=user_uuid,
+        name=name,
+        description=description,
+        language=language,
+        agent_ids=agent_ids,
+        db=db
     )
 
     return {
         "id": str(stage_id),
-        "name": body.get("name", "新课程"),
-        "created_at": now.isoformat()
+        "name": name,
+        "created_at": stage_id.hex  # 使用 hex 作为时间戳替代
     }
 
 
@@ -92,6 +101,9 @@ async def get_classroom(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """获取课程详情（包含场景）"""
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
     # 验证用户所有权
     stage = await db.fetchrow(
         """
@@ -99,8 +111,8 @@ async def get_classroom(
         FROM stages
         WHERE id = $1 AND user_id = $2
         """,
-        uuid.UUID(classroom_id),
-        uuid.UUID(current_user_id)
+        classroom_uuid,
+        user_uuid
     )
 
     if stage is None:
@@ -114,7 +126,7 @@ async def get_classroom(
         WHERE stage_id = $1
         ORDER BY order_index
         """,
-        uuid.UUID(classroom_id)
+        classroom_uuid
     )
 
     return {
@@ -151,14 +163,27 @@ async def delete_classroom(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """删除课程"""
-    # 验证用户所有权
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
+    # 先删除关联的场景
+    await db.execute(
+        """
+        DELETE FROM scenes
+        WHERE stage_id = $1 AND user_id = $2
+        """,
+        classroom_uuid,
+        user_uuid
+    )
+
+    # 删除课程
     result = await db.execute(
         """
         DELETE FROM stages
         WHERE id = $1 AND user_id = $2
         """,
-        uuid.UUID(classroom_id),
-        uuid.UUID(current_user_id)
+        classroom_uuid,
+        user_uuid
     )
 
     if result == "DELETE 0":
@@ -173,189 +198,100 @@ async def create_full_classroom(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """创建完整课程（包含大纲生成幻灯片内容）"""
+    """
+    创建完整课程（包含大纲生成幻灯片内容）
+
+    请求体参数:
+    - outlines: 大纲列表（必填）
+    - name: 课程名称
+    - description: 课程描述
+    - language: 语言设置 (zh-CN, en-US, ja-JP, ko-KR)
+    - agent_ids: 智能体 ID 列表
+    - tts_provider: TTS 提供商 (openai, minimax)
+    - tts_voice: TTS 语音 ID
+    """
     start_time = time.time()
 
-    # 参数验证
+    # 1. 参数验证
     outlines = body.get("outlines", [])
     if not outlines:
         raise HTTPException(status_code=400, detail="大纲列表不能为空")
 
-    # 验证 user_id 格式
-    try:
-        user_uuid = uuid.UUID(current_user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="用户ID格式无效")
+    # 验证大纲数量
+    scene_count = validate_scene_count(len(outlines))
+    if scene_count != len(outlines):
+        logger.warning(f"[Create] 大纲数量限制: {len(outlines)} -> {scene_count}")
+        outlines = outlines[:scene_count]
 
-    stage_id = uuid.uuid4()
-    now = utcnow()
+    user_uuid = validate_uuid(current_user_id, "用户ID")
 
+    # 验证语言参数
+    language = validate_language(body.get("language", "zh-CN"))
+
+    # 提取其他参数
     name = body.get("name", "新课程")
     description = body.get("description")
-    language = body.get("language", "zh-CN")
     agent_ids = body.get("agent_ids", [])
+    tts_provider = body.get("tts_provider", "openai")
+    tts_voice = body.get("tts_voice", "alloy")
 
-    logger.info(f"[Create] 开始创建课程 - name={name}, outlines={len(outlines)}")
+    logger.info(f"[Create] 开始创建课程 - name={name}, scenes={len(outlines)}, lang={language}")
 
-    # 使用事务确保数据一致性
+    stage_id = uuid.uuid4()
+
+    # 2. 使用事务创建课程和场景
     async with db.transaction():
-        # 1. 创建课程
-        agent_ids_json = json.dumps(agent_ids) if agent_ids else None
-
-        await db.execute(
-            """
-            INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            """,
-            stage_id,
-            user_uuid,
-            name,
-            description,
-            language,
-            None,
-            agent_ids_json,
-            now,
-            now
+        # 创建课程记录
+        await create_stage_record(
+            stage_id=stage_id,
+            user_uuid=user_uuid,
+            name=name,
+            description=description,
+            language=language,
+            agent_ids=agent_ids,
+            db=db
         )
 
-        # 2. 根据大纲生成幻灯片内容
-        scenes = []
-        for i, outline in enumerate(outlines):
-            scene_start = time.time()
-            try:
-                scene_id = uuid.uuid4()
-
-                scene_type = outline.get("type", "slide")
-                scene_title = outline.get("title", f"场景 {i+1}")
-                scene_desc = outline.get("description", "")
-                key_points = outline.get("key_points", [])
-
-                # 如果没有 key_points，根据标题生成上下文相关要点
-                if not key_points:
-                    base_topic = scene_title.replace("课程", "").replace("学习", "").strip()
-                    if scene_type == "quiz":
-                        key_points = [f"{base_topic}基础测试", f"{base_topic}进阶挑战", "学习效果评估"]
-                    elif scene_type == "interactive":
-                        key_points = [f"{base_topic}互动讨论", f"{base_topic}案例分析", "答疑解惑"]
-                    elif scene_type == "pbl":
-                        key_points = [f"{base_topic}项目任务", f"{base_topic}实践操作", "成果展示"]
-                    else:
-                        key_points = [f"{base_topic}概述", f"{base_topic}核心内容", f"{base_topic}要点总结"]
-
-                # 构建幻灯片内容
-                content = {
-                    "type": scene_type,
-                    "canvas": {
-                        "width": 1000,
-                        "height": 562,
-                        "background": "#ffffff",
-                        "elements": [
-                            {
-                                "id": "title",
-                                "type": "text",
-                                "content": scene_title,
-                                "position": {"left": 50, "top": 30, "width": 900, "height": 60},
-                                "style": {"fontSize": 36, "fontWeight": "bold", "color": "#333333"}
-                            },
-                            {
-                                "id": "desc",
-                                "type": "text",
-                                "content": scene_desc,
-                                "position": {"left": 50, "top": 100, "width": 900, "height": 80},
-                                "style": {"fontSize": 18, "color": "#666666"}
-                            }
-                        ]
-                    }
-                }
-
-                # 添加要点元素
-                for j, point in enumerate(key_points[:5]):
-                    content["canvas"]["elements"].append({
-                        "id": f"point_{j}",
-                        "type": "text",
-                        "content": f"• {point}",
-                        "position": {"left": 50, "top": 200 + j * 50, "width": 900, "height": 40},
-                        "style": {"fontSize": 16, "color": "#444444"}
-                    })
-
-                # 讲解行为
-                actions = [
-                    {
-                        "id": "action_1",
-                        "type": "speech",
-                        "data": {"text": f"现在我们来学习{scene_title}。{scene_desc}"}
-                    }
-                ]
-
-                content_json = json.dumps(content)
-                actions_json = json.dumps(actions)
-
-                await db.execute(
-                    """
-                    INSERT INTO scenes (id, stage_id, user_id, type, title, order_index, content, actions, whiteboards)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    """,
-                    scene_id,
-                    stage_id,
-                    user_uuid,
-                    scene_type,
-                    scene_title,
-                    i + 1,
-                    content_json,
-                    actions_json,
-                    None
-                )
-
-                scene_elapsed = time.time() - scene_start
-                logger.info(f"[Create] 幻灯片 #{i+1}: {scene_title} (耗时: {scene_elapsed:.2f}s)")
-
-                scenes.append({
-                    "id": str(scene_id),
-                    "type": scene_type,
-                    "title": scene_title,
-                    "order_index": i + 1,
-                    "content": content,
-                    "actions": actions,
-                })
-
-            except Exception as e:
-                logger.warning(f"[Create] 幻灯片 #{i+1} 失败: {e}")
-                scene_id = uuid.uuid4()
-                content_json = json.dumps({"type": "slide", "canvas": {"elements": []}})
-                actions_json = json.dumps([])
-
-                await db.execute(
-                    """
-                    INSERT INTO scenes (id, stage_id, user_id, type, title, order_index, content, actions, whiteboards)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    """,
-                    scene_id,
-                    stage_id,
-                    user_uuid,
-                    outline.get("type", "slide"),
-                    outline.get("title", f"场景 {i+1}"),
-                    i + 1,
-                    content_json,
-                    actions_json,
-                    None
-                )
-
-                scenes.append({
-                    "id": str(scene_id),
-                    "type": outline.get("type", "slide"),
-                    "title": outline.get("title", f"场景 {i+1}"),
-                    "order_index": i + 1,
-                    "content": {"type": "slide", "canvas": {"elements": []}},
-                    "actions": [],
-                })
+        # 批量创建场景
+        scenes = await create_all_scenes(
+            outlines=outlines,
+            stage_id=stage_id,
+            user_uuid=user_uuid,
+            db=db,
+            language=language,
+            tts_provider=tts_provider,
+            tts_voice=tts_voice
+        )
 
     total_elapsed = time.time() - start_time
-    logger.info(f"[Create] 课程创建完成 - {len(scenes)} 个幻灯片 (总耗时: {total_elapsed:.2f}s)")
+    logger.info(f"[Create] 课程创建完成 - {len(scenes)} 个场景 (总耗时: {total_elapsed:.2f}s)")
 
     return {
         "id": str(stage_id),
         "name": name,
         "scenes_count": len(scenes),
-        "created_at": now.isoformat(),
+        "language": language,
         "elapsed_seconds": round(total_elapsed, 2)
+    }
+
+
+@router.get("/supported-languages")
+async def get_supported_languages():
+    """获取支持的语言列表"""
+    return {"languages": SUPPORTED_LANGUAGES}
+
+
+@router.get("/supported-scene-types")
+async def get_supported_scene_types():
+    """获取支持的场景类型列表"""
+    return {"scene_types": SUPPORTED_SCENE_TYPES}
+
+
+@router.get("/limits")
+async def get_limits():
+    """获取系统限制配置"""
+    return {
+        "max_scenes_per_request": MAX_SCENES_PER_REQUEST,
+        "supported_languages": SUPPORTED_LANGUAGES,
+        "supported_scene_types": SUPPORTED_SCENE_TYPES,
     }

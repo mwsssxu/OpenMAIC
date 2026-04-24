@@ -446,6 +446,63 @@ class ApiClient {
     return data;
   }
 
+  // ==================== Scene + Actions + TTS ====================
+
+  /**
+   * Generate a complete scene with actions and optional TTS audio
+   *
+   * @param outline - Scene outline (title, type, description, order)
+   * @param agents - Agent configurations
+   * @param language - Language code
+   * @param generateTts - Whether to pre-generate TTS audio
+   * @param ttsProvider - TTS provider (openai, minimax)
+   * @param ttsVoice - Voice ID for TTS
+   */
+  async generateSceneWithActions(
+    outline: { id: string; title: string; type: string; description?: string; order?: number },
+    agents: any[] = [],
+    language: string = 'zh-CN',
+    generateTts: boolean = true,
+    ttsProvider: string = 'openai',
+    ttsVoice: string = 'alloy',
+  ) {
+    const { data } = await this.client.post('/generate/scene-with-actions', {
+      outline,
+      agents,
+      language,
+      generate_tts: generateTts,
+      tts_provider: ttsProvider,
+      tts_voice: ttsVoice,
+    });
+    return data.scene;
+  }
+
+  /**
+   * Generate TTS audio for a text
+   *
+   * @param text - Text to convert to speech
+   * @param audioId - Unique audio ID
+   * @param provider - TTS provider (openai, minimax)
+   * @param voice - Voice ID
+   * @param speed - Speech speed (0.25-4.0)
+   */
+  async generateTTS(
+    text: string,
+    audioId: string,
+    provider: string = 'openai',
+    voice: string = 'alloy',
+    speed: number = 1.0,
+  ) {
+    const { data } = await this.client.post('/generate/tts', {
+      text,
+      audio_id: audioId,
+      provider,
+      voice,
+      speed,
+    });
+    return data; // { audio_id, base64, format }
+  }
+
   // ==================== Chat (SSE) ====================
 
   streamChat(messages: any[], config: any, storeState: any) {
