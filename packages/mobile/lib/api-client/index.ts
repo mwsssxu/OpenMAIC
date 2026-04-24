@@ -364,14 +364,58 @@ class ApiClient {
     return data;
   }
 
-  async generateAgentProfiles(stageName: string, stageDescription?: string, sceneOutlines?: any[], language?: string) {
+  // ==================== Generation ====================
+
+  /**
+   * Generate agent profiles for a course stage
+   *
+   * @param stageInfo - Stage information with name and description
+   * @param language - Language code (zh-CN or en-US)
+   * @param sceneOutlines - Optional scene outlines for context
+   * @param availableAvatars - List of available avatar paths (required by backend)
+   * @param avatarDescriptions - Optional avatar descriptions for smart matching
+   * @param availableVoices - Optional available voices for TTS configuration
+   */
+  async generateAgentProfiles(
+    stageInfo: { name: string; description?: string },
+    language: string = 'zh-CN',
+    sceneOutlines?: { title: string; description?: string }[],
+    availableAvatars?: string[],
+    avatarDescriptions?: Array<{ path: string; desc: string }>,
+    availableVoices?: Array<{ providerId: string; voiceId: string; voiceName: string }>
+  ) {
+    // Use default avatars if not provided
+    const defaultAvatars = [
+      '/avatars/teacher.png',
+      '/avatars/assist.png',
+      '/avatars/curious.png',
+      '/avatars/thinker.png',
+      '/avatars/note-taker.png',
+      '/avatars/teacher-2.png',
+      '/avatars/assist-2.png',
+      '/avatars/curious-2.png',
+      '/avatars/thinker-2.png',
+      '/avatars/note-taker-2.png',
+    ];
+
     const { data } = await this.client.post('/generate/agent-profiles', {
-      stage_name: stageName,
-      stage_description: stageDescription,
-      scene_outlines: sceneOutlines,
-      language: language || 'zh-CN',
+      stageInfo,
+      language,
+      sceneOutlines,
+      availableAvatars: availableAvatars || defaultAvatars,
+      avatarDescriptions,
+      availableVoices,
     });
     return data;
+  }
+
+  // Legacy method for backward compatibility (deprecated)
+  async generateAgentProfilesLegacy(stageName: string, stageDescription?: string, sceneOutlines?: any[], language?: string) {
+    return this.generateAgentProfiles(
+      { name: stageName, description: stageDescription },
+      language || 'zh-CN',
+      sceneOutlines
+    );
   }
 
   async getDefaultAgents(language?: string) {

@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Platform,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -27,6 +26,10 @@ interface AgentProfile {
   color?: string;
   priority?: number;
   enabled: boolean;
+  voiceConfig?: {
+    providerId: string;
+    voiceId: string;
+  };
 }
 
 interface SceneOutline {
@@ -97,12 +100,14 @@ export default function CreateClassroomScreen() {
     setError(null);
 
     try {
-      // 先根据需求标题生成智能体（大纲还未生成）
+      // 使用新的 API 格式传递完整参数
       const result = await apiClient.generateAgentProfiles(
-        requirement.slice(0, 50), // stage_name
-        requirement, // stage_description
-        [], // scene_outlines - 大纲还未生成
-        language
+        { name: requirement.slice(0, 50), description: requirement }, // stageInfo 对象
+        language, // 语言
+        [], // sceneOutlines - 大纲还未生成
+        undefined, // availableAvatars - 使用默认头像
+        undefined, // avatarDescriptions - 可选
+        undefined // availableVoices - 可选
       );
       const generatedAgents = result.agents || [];
       setAgents(generatedAgents.map((a: AgentProfile) => ({ ...a, enabled: true })));
@@ -200,13 +205,10 @@ export default function CreateClassroomScreen() {
 
       setCreatedClassroomId(result.id);
 
-      if (Platform.OS === 'web') {
-        window.alert(`课程创建成功！已生成 ${result.scenes_count} 个幻灯片`);
-      } else {
-        Alert.alert('成功', `课程创建成功！已生成 ${result.scenes_count} 个幻灯片`, [
-          { text: '查看课程', onPress: () => router.replace(`/classroom/${result.id}`) }
-        ]);
-      }
+      // 显示成功消息并跳转
+      Alert.alert('成功', `课程创建成功！已生成 ${result.scenes_count} 个幻灯片`, [
+        { text: '查看课程', onPress: () => router.replace(`/classroom/${result.id}`) }
+      ]);
 
       setTimeout(() => {
         router.replace(`/classroom/${result.id}`);
@@ -326,16 +328,37 @@ export default function CreateClassroomScreen() {
               style={[styles.agentCard, agent.enabled && styles.agentCardActive]}
               onPress={() => toggleAgent(agent.id)}
             >
-              <View style={[styles.agentAvatar, { backgroundColor: agent.color + '20' }]}>
-                <Ionicons name="person" size={24} color={agent.color} />
+              <View style={[styles.agentAvatar, { backgroundColor: agent.color || '#5b9bd5' + '20' }]}>
+                {agent.avatar ? (
+                  <Text style={styles.avatarEmoji}>
+                    {agent.avatar.includes('teacher') ? '👨‍🏫' :
+                     agent.avatar.includes('assist') ? '👨‍💼' :
+                     agent.avatar.includes('curious') ? '🧐' :
+                     agent.avatar.includes('thinker') ? '🤔' :
+                     agent.avatar.includes('note-taker') ? '📝' : '🧑'}
+                  </Text>
+                ) : (
+                  <Ionicons name="person" size={24} color={agent.color || '#5b9bd5'} />
+                )}
               </View>
               <View style={styles.agentInfo}>
                 <Text style={styles.agentName}>{agent.name}</Text>
-                <Text style={styles.agentRoleType}>
-                  {agent.role === 'teacher' ? '主讲老师' :
-                   agent.role === 'assistant' ? '助教' : '学生'}
-                </Text>
+                <View style={styles.agentRoleRow}>
+                  <Text style={styles.agentRoleType}>
+                    {agent.role === 'teacher' ? '主讲老师' :
+                     agent.role === 'assistant' ? '助教' : '学生'}
+                  </Text>
+                  {agent.voiceConfig && (
+                    <View style={styles.voiceBadge}>
+                      <Ionicons name="volume-high" size={12} color="#10b981" />
+                      <Text style={styles.voiceBadgeText}>语音已配置</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.agentPersona} numberOfLines={2}>{agent.persona}</Text>
+                {agent.priority && (
+                  <Text style={styles.agentPriority}>优先级: {agent.priority}</Text>
+                )}
               </View>
               <View style={[styles.agentCheckbox, agent.enabled && styles.agentCheckboxActive]}>
                 {agent.enabled && <Ionicons name="checkmark" size={16} color="white" />}
@@ -617,10 +640,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  avatarEmoji: { fontSize: 20 },
   agentInfo: { flex: 1, marginLeft: 12 },
   agentName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  agentRoleType: { fontSize: 12, color: '#5b9bd5', marginTop: 2 },
+  agentRoleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  agentRoleType: { fontSize: 12, color: '#5b9bd5' },
+  voiceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10b98115',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  voiceBadgeText: { fontSize: 10, color: '#10b981', marginLeft: 2 },
   agentPersona: { fontSize: 13, color: '#666', marginTop: 4 },
+  agentPriority: { fontSize: 11, color: '#888', marginTop: 2 },
   agentCheckbox: {
     width: 24,
     height: 24,
