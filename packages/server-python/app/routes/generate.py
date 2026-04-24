@@ -20,6 +20,8 @@ from app.services.scene_service import (
 from app.services.pdf_service import parse_pdf
 from app.services.web_search_service import web_search_with_provider
 from app.core.config import settings
+from app.core.ssrf_guard import validate_url_for_ssrf
+from app.core.prompts import build_prompt, PROMPT_IDS, AGENT_COLOR_PALETTE
 import asyncpg
 import uuid
 import json
@@ -34,6 +36,43 @@ logger = logging.getLogger(__name__)
 # TTS 配额限制（每个用户每天最多 TTS 请求次数）
 TTS_DAILY_LIMIT = 100
 TTS_MONTHLY_LIMIT = 1000
+
+
+def has_vision_capability(model: str) -> bool:
+    """
+    检测模型是否支持视觉能力
+
+    Args:
+        model: 模型标识（如 "openai/gpt-4o", "gpt-4o-mini", "glm-4v"）
+
+    Returns:
+        是否支持视觉输入
+    """
+    # 提取模型名称（去除前缀）
+    model_name = model.split("/")[-1] if "/" in model else model
+
+    # 检查配置映射
+    capabilities = settings.MODEL_CAPABILITIES.get(
+        model_name, settings.DEFAULT_MODEL_CAPABILITIES
+    )
+    return capabilities.get("vision", False)
+
+
+def get_model_max_tokens(model: str) -> int:
+    """
+    获取模型最大输出 token 数
+
+    Args:
+        model: 模型标识
+
+    Returns:
+        最大输出 token 数
+    """
+    model_name = model.split("/")[-1] if "/" in model else model
+    capabilities = settings.MODEL_CAPABILITIES.get(
+        model_name, settings.DEFAULT_MODEL_CAPABILITIES
+    )
+    return capabilities.get("max_output_tokens", 2048)
 
 
 def validate_tts_quota(user_id: str, db: asyncpg.Connection) -> bool:
@@ -80,6 +119,12 @@ async def parse_pdf_endpoint(
     # 验证文件类型
     if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="File must be a PDF")
+
+    # SSRF 验证 baseUrl
+    if baseUrl:
+        ssrf_error = validate_url_for_ssrf(baseUrl)
+        if ssrf_error:
+            raise HTTPException(status_code=400, detail=ssrf_error)
 
     logger.info(f"[PDF] Parsing: {pdf.filename}, size={len(pdf_bytes)}, provider={providerId}")
 
@@ -192,7 +237,7 @@ async def generate_outlines_stream_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """生成大纲（SSE 流式，快速返回标题列表）"""
+    """生成大纲（SSE 流式，带 heartbeat 和自动重试）"""
     # 参数验证
     requirement = body.get("requirement", "")
     if not requirement.strip():
@@ -209,55 +254,93 @@ async def generate_outlines_stream_endpoint(
 
     logger.info(f"[SSE] 开始生成大纲 - 用户: {current_user_id}, 数量: {total_count}")
 
-    async def event_stream():
+    # Heartbeat 配置
+    HEARTBEAT_INTERVAL_MS = 15000  # 15秒心跳
+    MAX_STREAM_RETRIES = 2  # 最大重试次数
+
+    async def event_stream_with_heartbeat():
+        from app.services.generation.outline_generator import generate_outline_titles, SceneOutline
+        import uuid
+
+        heartbeat_task = None
+        parsed_outlines = []
+        last_error = None
+
+        # 创建 heartbeat 任务
+        async def send_heartbeat():
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_MS / 1000)
+                yield ":heartbeat\n\n"
+
         try:
-            # 快速生成大纲标题列表（一次性LLM调用）
-            from app.services.generation.outline_generator import generate_outline_titles, SceneOutline
-            import uuid
+            # 重试循环
+            for attempt in range(1, MAX_STREAM_RETRIES + 2):
+                try:
+                    logger.info(f"[SSE] 尝试 #{attempt}/{MAX_STREAM_RETRIES + 1}")
+                    outline_titles = await generate_outline_titles(
+                        requirement, language, model, total_count
+                    )
 
-            logger.info(f"[SSE] 步骤1: 生成大纲标题列表")
-            outline_titles = await generate_outline_titles(
-                requirement, language, model, total_count
-            )
+                    if outline_titles and len(outline_titles) > 0:
+                        elapsed = time.time() - start_time
+                        logger.info(f"[SSE] 标题列表完成 - {len(outline_titles)} 个 (耗时: {elapsed:.1f}s)")
 
-            elapsed = time.time() - start_time
-            logger.info(f"[SSE] 标题列表完成 - {len(outline_titles)} 个 (耗时: {elapsed:.1f}s)")
+                        # 发送每个大纲
+                        for i, outline_info in enumerate(outline_titles):
+                            outline = SceneOutline(
+                                id=str(uuid.uuid4()),
+                                title=outline_info.get("title", f"场景 {i+1}"),
+                                type=outline_info.get("type", "slide"),
+                                description=outline_info.get("description", ""),
+                                order=i + 1,
+                                key_points=outline_info.get("key_points", []),
+                            )
+                            parsed_outlines.append(outline)
+                            yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
+                            await asyncio.sleep(0.05)
 
-            # 直接返回标题列表作为大纲（快速响应）
-            index = 0
-            for i, outline_info in enumerate(outline_titles):
-                index += 1
-                # 创建大纲对象（标题、类型、描述）
-                outline = SceneOutline(
-                    id=str(uuid.uuid4()),
-                    title=outline_info.get("title", f"场景 {i+1}"),
-                    type=outline_info.get("type", "slide"),
-                    description=outline_info.get("description", ""),
-                    order=i + 1,
-                    key_points=[],  # 详细内容在创建幻灯片时生成
-                )
+                        # 成功完成
+                        total_elapsed = time.time() - start_time
+                        logger.info(f"[SSE] 完成 - 共 {len(parsed_outlines)} 个大纲 (总耗时: {total_elapsed:.1f}s)")
+                        yield f"event: done\ndata: {json.dumps({'count': len(parsed_outlines), 'outlines': [o.model_dump() for o in parsed_outlines]})}\n\n"
+                        return
 
-                logger.info(f"[SSE] 发送大纲 #{index}: {outline.title}")
-                yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
-                await asyncio.sleep(0.05)  # 短暂延迟确保客户端接收
+                    # 空结果 - 重试
+                    last_error = "LLM returned empty response"
+                    if attempt <= MAX_STREAM_RETRIES:
+                        logger.warning(f"[SSE] 空结果，重试 #{attempt}")
+                        yield f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n"
+                        await asyncio.sleep(2)
+                        continue
 
-            total_elapsed = time.time() - start_time
-            logger.info(f"[SSE] 完成 - 共 {index} 个大纲 (总耗时: {total_elapsed:.1f}s)")
-            yield f"event: done\ndata: {json.dumps({'count': index})}\n\n"
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(f"[SSE] 错误 #{attempt}: {e}")
+                    if attempt <= MAX_STREAM_RETRIES:
+                        yield f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n"
+                        await asyncio.sleep(2)
+                        continue
 
-        except Exception as e:
-            elapsed = time.time() - start_time
-            logger.error(f"[SSE] 生成失败 (耗时: {elapsed:.1f}s): {e}")
-            # 失败时返回默认大纲
-            from app.services.generation.outline_generator import SceneOutline, generate_smart_default_outlines
+            # 所有重试失败，返回默认大纲
+            logger.error(f"[SSE] 所有重试失败: {last_error}")
+            from app.services.generation.outline_generator import generate_smart_default_outlines
             default_outlines = generate_smart_default_outlines(requirement, language, agent_ids)
             for outline in default_outlines:
                 yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
             yield f"event: done\ndata: {json.dumps({'count': len(default_outlines)})}\n\n"
 
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"[SSE] 生成失败 (耗时: {elapsed:.1f}s): {e}")
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
     return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream"
+        event_stream_with_heartbeat(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
     )
 
 
@@ -541,7 +624,15 @@ async def generate_scene_content_endpoint(
     language = validate_language(stage_info.get("language", "zh-CN"))
     model = settings.DEFAULT_MODEL
 
-    logger.info(f"[SceneContent] Generating: {outline.title}")
+    # 检测视觉能力
+    vision_enabled = has_vision_capability(model)
+    pdf_images = body.get("pdfImages", [])
+
+    # 如果模型不支持视觉且有图像，记录警告
+    if pdf_images and not vision_enabled:
+        logger.warning(f"[SceneContent] Model {model} doesn't support vision, {len(pdf_images)} images will be ignored")
+
+    logger.info(f"[SceneContent] Generating: {outline.title}, vision={vision_enabled}")
 
     try:
         content = await generate_scene_content(
@@ -556,6 +647,10 @@ async def generate_scene_content_endpoint(
             "success": True,
             "content": content,
             "effectiveOutline": outline_dict,
+            "modelCapabilities": {
+                "vision": vision_enabled,
+                "maxTokens": get_model_max_tokens(model),
+            },
         }
     except Exception as e:
         logger.error(f"[SceneContent] Failed: {e}")

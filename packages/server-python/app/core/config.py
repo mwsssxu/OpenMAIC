@@ -67,6 +67,22 @@ class Settings(BaseSettings):
     # 搜索配置
     GOOGLE_SEARCH_CX: str = ""  # Google Custom Search CX ID
     SERPER_API_KEY: str = ""    # Serper API Key
+    TAVILY_API_KEY: str = ""    # Tavily API Key
+
+    # Vision 模型配置
+    VISION_MODEL_ID: str = ""  # Vision 模型 ID（如 gpt-4o, glm-4v）
+
+    # 模型能力映射
+    MODEL_CAPABILITIES: dict = {
+        "gpt-4o": {"vision": True, "max_output_tokens": 4096},
+        "gpt-4o-mini": {"vision": True, "max_output_tokens": 16384},
+        "glm-4v": {"vision": True, "max_output_tokens": 4096},
+        "glm-5": {"vision": False, "max_output_tokens": 8192},
+        "gpt-4": {"vision": False, "max_output_tokens": 4096},
+    }
+
+    # 默认模型能力（当模型不在映射表中时使用）
+    DEFAULT_MODEL_CAPABILITIES: dict = {"vision": False, "max_output_tokens": 2048}
 
     class Config:
         env_file = ".env"

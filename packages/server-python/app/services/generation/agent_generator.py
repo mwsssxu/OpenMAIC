@@ -18,6 +18,10 @@ class AgentProfile(BaseModel):
     color: str
     priority: int
     enabled: bool = True
+    # Voice 配置（用于 TTS）
+    voice_provider: Optional[str] = None  # openai, minimax
+    voice_id: Optional[str] = None  # alloy, nova, shimmer, etc.
+    voice_speed: Optional[float] = None  # 0.25-4.0
 
 
 # Agent颜色调色板
@@ -39,6 +43,15 @@ DEFAULT_AVATARS = [
     "student1.png",
     "student2.png",
     "student3.png",
+]
+
+# 默认语音配置
+DEFAULT_VOICE_CONFIGS = [
+    {"provider": "openai", "voice": "alloy", "speed": 1.0},  # teacher
+    {"provider": "openai", "voice": "nova", "speed": 1.0},   # assistant
+    {"provider": "openai", "voice": "shimmer", "speed": 1.1}, # student
+    {"provider": "openai", "voice": "echo", "speed": 1.0},   # student
+    {"provider": "openai", "voice": "fable", "speed": 0.9},  # student
 ]
 
 
@@ -190,6 +203,7 @@ async def generate_agent_profiles(
         # 转换为 AgentProfile
         agents = []
         for i, agent in enumerate(agents_data):
+            voice_config = DEFAULT_VOICE_CONFIGS[i % len(DEFAULT_VOICE_CONFIGS)]
             agents.append(AgentProfile(
                 id=str(uuid.uuid4()),
                 name=agent.get("name", f"Agent {i+1}"),
@@ -199,6 +213,9 @@ async def generate_agent_profiles(
                 color=agent.get("color", AGENT_COLOR_PALETTE[i % len(AGENT_COLOR_PALETTE)]),
                 priority=agent.get("priority", 5),
                 enabled=True,
+                voice_provider=voice_config["provider"],
+                voice_id=voice_config["voice"],
+                voice_speed=voice_config["speed"],
             ))
 
         # 验证必须有teacher
@@ -212,6 +229,9 @@ async def generate_agent_profiles(
                 color="#5b9bd5",
                 priority=10,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="alloy",
+                voice_speed=1.0,
             ))
 
         return agents
@@ -236,6 +256,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#5b9bd5",
                 priority=10,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="alloy",
+                voice_speed=1.0,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -246,6 +269,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#10b981",
                 priority=7,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="nova",
+                voice_speed=1.0,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -256,6 +282,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#f59e0b",
                 priority=5,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="shimmer",
+                voice_speed=1.1,
             ),
         ]
     else:
@@ -269,6 +298,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#5b9bd5",
                 priority=10,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="alloy",
+                voice_speed=1.0,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -279,6 +311,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#10b981",
                 priority=7,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="nova",
+                voice_speed=1.0,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -289,5 +324,8 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#f59e0b",
                 priority=5,
                 enabled=True,
+                voice_provider="openai",
+                voice_id="shimmer",
+                voice_speed=1.1,
             ),
         ]
