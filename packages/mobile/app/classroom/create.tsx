@@ -165,6 +165,7 @@ export default function CreateClassroomScreen() {
               { id: '3', type: 'quiz', title: '知识检测', description: '检验学习效果', key_points: ['基础题目', '进阶题目'], order: 3 },
               { id: '4', type: 'slide', title: '总结回顾', description: '回顾课程要点', key_points: ['要点总结', '延伸思考', '课后作业'], order: 4 },
             ];
+            
             outlinesRef.current = defaultOutlines;
             setOutlines(defaultOutlines);
           }
