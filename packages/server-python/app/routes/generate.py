@@ -1,13 +1,14 @@
 """
-生成路由 - 大纲/场景/异步作业/智能体
+生成路由 - 大纲/场景/异步作业/智能体/PDF解析/网络搜索
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
+from typing import Optional
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.services.generation.outline_generator import generate_outlines, stream_outlines
-from app.services.generation.scene_generator import generate_full_scene
+from app.services.generation.scene_generator import generate_full_scene, generate_scene_content, generate_scene_actions
 from app.services.generation.agent_generator import generate_agent_profiles, get_default_agents
 from app.services.scene_service import (
     validate_language,
@@ -16,6 +17,8 @@ from app.services.scene_service import (
     MAX_TTS_TEXT_LENGTH,
     MAX_SCENES_PER_REQUEST,
 )
+from app.services.pdf_service import parse_pdf
+from app.services.web_search_service import web_search_with_provider
 from app.core.config import settings
 import asyncpg
 import uuid
@@ -49,7 +52,107 @@ def validate_tts_quota(user_id: str, db: asyncpg.Connection) -> bool:
     return True
 
 
-@router.post("/outlines")
+# ==================== PDF 解析 ====================
+
+@router.post("/parse-pdf")
+async def parse_pdf_endpoint(
+    pdf: UploadFile = File(...),
+    providerId: Optional[str] = None,
+    apiKey: Optional[str] = None,
+    baseUrl: Optional[str] = None,
+):
+    """
+    解析 PDF 文件
+
+    参数:
+    - pdf: PDF 文件
+    - providerId: 解析器类型 (pypdf, llm-vision)
+    - apiKey: OCR/Vision API key
+    - baseUrl: API base URL
+    """
+    # 读取 PDF 文件
+    pdf_bytes = await pdf.read()
+
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="PDF file is empty")
+
+    # 验证文件类型
+    if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+
+    logger.info(f"[PDF] Parsing: {pdf.filename}, size={len(pdf_bytes)}, provider={providerId}")
+
+    try:
+        result = await parse_pdf(
+            pdf_bytes=pdf_bytes,
+            provider_id=providerId,
+            api_key=apiKey,
+            base_url=baseUrl,
+        )
+
+        logger.info(f"[PDF] Parsed successfully: text_len={len(result['text'])}, images={len(result['images'])}")
+
+        return {
+            "success": True,
+            "data": {
+                "text": result["text"],
+                "images": result["images"],
+                "metadata": result["metadata"],
+            }
+        }
+    except Exception as e:
+        logger.error(f"[PDF] Parse failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 网络搜索 ====================
+
+@router.post("/web-search")
+async def web_search_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    执行网络搜索
+
+    参数:
+    - query: 搜索查询
+    - pdfText: PDF 文本（用于增强搜索）
+    - apiKey: 搜索 API key
+    - provider: 搜索提供商 (serper, google)
+    """
+    query = body.get("query", "")
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="搜索查询不能为空")
+
+    pdf_text = body.get("pdfText")
+    api_key = body.get("apiKey")
+    provider = body.get("provider", "serper")
+
+    logger.info(f"[WebSearch] Query: {query[:50]}, provider={provider}")
+
+    try:
+        result = await web_search_with_provider(
+            query=query,
+            provider=provider,
+            api_key=api_key,
+            pdf_text=pdf_text,
+        )
+
+        logger.info(f"[WebSearch] Found {len(result['sources'])} sources")
+
+        return {
+            "success": True,
+            "sources": result["sources"],
+            "context": result["context"],
+            "provider": result.get("provider", provider),
+        }
+    except Exception as e:
+        logger.error(f"[WebSearch] Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 大纲生成 ====================
 async def generate_outlines_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
@@ -182,12 +285,42 @@ async def generate_agent_profiles_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """生成智能体配置（根据课程信息和大纲）"""
-    stage_name = body.get("stage_name", "课程")
-    stage_description = body.get("stage_description")
+    """
+    生成智能体配置（根据课程信息和大纲）
+
+    支持两种参数格式：
+    1. Web 版格式:
+       - stageInfo: { name, description }
+       - language
+       - availableAvatars: 头像路径列表
+       - avatarDescriptions: 头像描述列表
+       - availableVoices: 可用语音列表
+
+    2. 移动端格式:
+       - stage_name
+       - stage_description
+       - scene_outlines
+       - language
+       - model
+    """
+    # 兼容 Web 版参数
+    stage_info = body.get("stageInfo")
+    if stage_info:
+        stage_name = stage_info.get("name", "课程")
+        stage_description = stage_info.get("description")
+    else:
+        # 移动端参数
+        stage_name = body.get("stage_name", "课程")
+        stage_description = body.get("stage_description")
+
     scene_outlines = body.get("scene_outlines", [])
-    language = body.get("language", "zh-CN")
+    language = validate_language(body.get("language", "zh-CN"))
     model = body.get("model", settings.DEFAULT_MODEL)
+
+    # Web 版特有参数（头像和语音）
+    available_avatars = body.get("availableAvatars", [])
+    avatar_descriptions = body.get("avatarDescriptions", [])
+    available_voices = body.get("availableVoices", [])
 
     agents = await generate_agent_profiles(
         stage_name=stage_name,
@@ -196,6 +329,23 @@ async def generate_agent_profiles_endpoint(
         language=language,
         model=model,
     )
+
+    # 如果有头像参数，进行匹配
+    if available_avatars and agents:
+        for i, agent in enumerate(agents):
+            if i < len(available_avatars):
+                agent.avatar = available_avatars[i]
+            # 如果有描述，也添加
+            if avatar_descriptions and i < len(avatar_descriptions):
+                desc = avatar_descriptions[i]
+                if isinstance(desc, dict):
+                    agent.avatar_description = desc.get("desc", "")
+            # 如果有语音配置，添加
+            if available_voices and i < len(available_voices):
+                voice = available_voices[i]
+                if isinstance(voice, dict):
+                    agent.voice_provider = voice.get("providerId", "openai")
+                    agent.voice_id = voice.get("voiceId", "alloy")
 
     return {"agents": [a.model_dump() for a in agents]}
 
@@ -349,7 +499,138 @@ async def generate_tts_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/scene-with-actions")
+# ==================== 分步场景生成 ====================
+
+@router.post("/scene-content")
+async def generate_scene_content_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    生成单个场景内容（不含 Actions）
+
+    参数:
+    - outline: 场景大纲 (dict)
+    - allOutlines: 所有大纲（用于上下文）
+    - pdfImages: PDF 图像列表
+    - imageMapping: 图像映射
+    - stageInfo: 课程信息
+    - stageId: 课程 ID
+    - agents: 智能体列表
+    """
+    from app.services.generation.outline_generator import SceneOutline
+
+    outline_dict = body.get("outline")
+    if not outline_dict:
+        raise HTTPException(status_code=400, detail="outline is required")
+
+    # 转换为 SceneOutline 对象
+    outline = SceneOutline(
+        id=outline_dict.get("id", str(uuid.uuid4())),
+        title=outline_dict.get("title", ""),
+        type=outline_dict.get("type", "slide"),
+        description=outline_dict.get("description", ""),
+        order=outline_dict.get("order", 1),
+        key_points=outline_dict.get("key_points", []),
+    )
+
+    stage_info = body.get("stageInfo", {})
+    language = validate_language(stage_info.get("language", "zh-CN"))
+    model = settings.DEFAULT_MODEL
+
+    logger.info(f"[SceneContent] Generating: {outline.title}")
+
+    try:
+        content = await generate_scene_content(
+            outline=outline,
+            language=language,
+            model=model,
+        )
+
+        logger.info(f"[SceneContent] Generated successfully")
+
+        return {
+            "success": True,
+            "content": content,
+            "effectiveOutline": outline_dict,
+        }
+    except Exception as e:
+        logger.error(f"[SceneContent] Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scene-actions")
+async def generate_scene_actions_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    生成场景动作（Speech, Spotlight 等）
+
+    参数:
+    - outline: 场景大纲 (dict)
+    - allOutlines: 所有大纲
+    - content: 场景内容
+    - stageId: 课程 ID
+    - agents: 智能体列表
+    - previousSpeeches: 之前的 speech 文本（用于连贯性）
+    - userProfile: 用户信息（用于个性化）
+    """
+    from app.services.generation.outline_generator import SceneOutline
+
+    outline_dict = body.get("outline")
+    if not outline_dict:
+        raise HTTPException(status_code=400, detail="outline is required")
+
+    content = body.get("content")
+    if not content:
+        raise HTTPException(status_code=400, detail="content is required")
+
+    # 转换为 SceneOutline 对象
+    outline = SceneOutline(
+        id=outline_dict.get("id", str(uuid.uuid4())),
+        title=outline_dict.get("title", ""),
+        type=outline_dict.get("type", "slide"),
+        description=outline_dict.get("description", ""),
+        order=outline_dict.get("order", 1),
+        key_points=outline_dict.get("key_points", []),
+    )
+
+    language = "zh-CN"
+    model = settings.DEFAULT_MODEL
+
+    logger.info(f"[SceneActions] Generating for: {outline.title}")
+
+    try:
+        actions = await generate_scene_actions(
+            outline=outline,
+            content=content,
+            language=language,
+            model=model,
+        )
+
+        # 构建场景数据
+        scene = {
+            "id": str(uuid.uuid4()),
+            "type": outline.type,
+            "title": outline.title,
+            "order": outline.order,
+            "content": content,
+            "actions": [a.model_dump() for a in actions],
+        }
+
+        logger.info(f"[SceneActions] Generated {len(actions)} actions")
+
+        return {
+            "success": True,
+            "scene": scene,
+        }
+    except Exception as e:
+        logger.error(f"[SceneActions] Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 一体化场景生成 ====================
 async def generate_scene_with_actions_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)

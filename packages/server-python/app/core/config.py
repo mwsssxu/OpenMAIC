@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     WECHAT_PAY_API_KEY: str = ""  # 微信支付API密钥
     ALIPAY_PUBLIC_KEY: str = ""   # 支付宝公钥
 
+    # 搜索配置
+    GOOGLE_SEARCH_CX: str = ""  # Google Custom Search CX ID
+    SERPER_API_KEY: str = ""    # Serper API Key
+
     class Config:
         env_file = ".env"
         case_sensitive = True
