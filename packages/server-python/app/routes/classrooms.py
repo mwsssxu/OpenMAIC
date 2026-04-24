@@ -77,6 +77,9 @@ async def create_classroom(
     language = validate_language(body.get("language_directive", "zh-CN"))
     agent_ids = body.get("agent_ids", [])
 
+    from app.core.time_utils import utcnow
+    now = utcnow()
+
     await create_stage_record(
         stage_id=stage_id,
         user_uuid=user_uuid,
@@ -90,7 +93,7 @@ async def create_classroom(
     return {
         "id": str(stage_id),
         "name": name,
-        "created_at": stage_id.hex  # 使用 hex 作为时间戳替代
+        "created_at": now.isoformat()
     }
 
 

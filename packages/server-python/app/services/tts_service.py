@@ -106,12 +106,12 @@ async def _generate_openai_tts(
                 logger.error(f"OpenAI TTS error: {resp.status} - {error_text}")
                 raise Exception(f"OpenAI TTS API error: {resp.status}")
 
-                audio_data = await resp.read()
-
-                return {
-                    "audio": audio_data,
-                    "format": "mp3",
-                }
+            # 成功时读取音频数据
+            audio_data = await resp.read()
+            return {
+                "audio": audio_data,
+                "format": "mp3",
+            }
     except Exception as e:
         logger.error(f"OpenAI TTS failed: {e}")
         raise
@@ -155,19 +155,18 @@ async def _generate_minimax_tts(
                 logger.error(f"MiniMax TTS error: {resp.status} - {error_text}")
                 raise Exception(f"MiniMax TTS API error: {resp.status}")
 
-                # MiniMax 返回 JSON，包含 base64 音频
-                result = await resp.json()
+            # MiniMax 返回 JSON，包含 base64 音频
+            result = await resp.json()
 
-                if "data" in result and "audio" in result["data"]:
-                    audio_base64 = result["data"]["audio"]
-                    audio_data = base64.b64decode(audio_base64)
-
-                    return {
-                        "audio": audio_data,
-                        "format": "mp3",
-                    }
-                else:
-                    raise Exception("MiniMax TTS response format error")
+            if "data" in result and "audio" in result["data"]:
+                audio_base64 = result["data"]["audio"]
+                audio_data = base64.b64decode(audio_base64)
+                return {
+                    "audio": audio_data,
+                    "format": "mp3",
+                }
+            else:
+                raise Exception("MiniMax TTS response format error")
     except Exception as e:
         logger.error(f"MiniMax TTS failed: {e}")
         raise

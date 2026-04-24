@@ -57,6 +57,7 @@ def validate_tts_quota(user_id: str, db: asyncpg.Connection) -> bool:
 @router.post("/parse-pdf")
 async def parse_pdf_endpoint(
     pdf: UploadFile = File(...),
+    current_user_id: str = Depends(get_current_user_id),
     providerId: Optional[str] = None,
     apiKey: Optional[str] = None,
     baseUrl: Optional[str] = None,
@@ -153,6 +154,8 @@ async def web_search_endpoint(
 
 
 # ==================== 大纲生成 ====================
+
+@router.post("/outlines")
 async def generate_outlines_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
@@ -631,6 +634,8 @@ async def generate_scene_actions_endpoint(
 
 
 # ==================== 一体化场景生成 ====================
+
+@router.post("/scene-with-actions")
 async def generate_scene_with_actions_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)

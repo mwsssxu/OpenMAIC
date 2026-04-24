@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Dict, List, Optional, Any
 from app.core.config import settings
+from app.core.time_utils import utcnow
 from app.services.tts_service import generate_tts, encode_audio_base64
 
 logger = logging.getLogger(__name__)
@@ -364,7 +365,6 @@ async def create_stage_record(
         agent_ids: 智能体 ID 列表
         db: 数据库连接
     """
-    from app.core.time_utils import utcnow
     now = utcnow()
 
     agent_ids_json = json.dumps(agent_ids) if agent_ids else None
