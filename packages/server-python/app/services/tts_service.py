@@ -87,9 +87,9 @@ async def _generate_qwen_tts(
     if not api_key:
         raise ValueError("TTS API key not configured")
 
-    # DashScope TTS endpoint
-    base_url = settings.TTS_API_BASE or "https://dashscope.aliyuncs.com/api/v1"
-    url = f"{base_url}/services/aigc/multimodal-generation/generation"
+    # DashScope TTS endpoint (不是 OpenAI 兼容模式)
+    # TTS 使用专用 endpoint，不是 /compatible-mode/v1
+    url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
     # Qwen TTS rate 参数范围: -500 到 500
     # speed 1.0 = rate 0, speed 2.0 = rate 500, speed 0.5 = rate -250
