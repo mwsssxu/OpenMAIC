@@ -152,21 +152,17 @@ async def generate_scene_actions_with_tts(
     scene_title: str,
     scene_desc: str,
     language: str = "zh-CN",
-    tts_provider: str = "openai",
-    tts_voice: str = "alloy"
 ) -> List[Dict[str, Any]]:
     """
-    生成场景讲解动作（包含 TTS 音频）
+    生成场景讲解动作（仅包含文本，音频由客户端按需生成）
 
     Args:
         scene_title: 场景标题
         scene_desc: 场景描述
         language: 语言设置
-        tts_provider: TTS 提供商
-        tts_voice: TTS 语音
 
     Returns:
-        Actions 列表
+        Actions 列表（speech action，不含预生成的音频）
     """
     # 根据语言生成讲解文本
     if language == "en-US":
@@ -182,30 +178,13 @@ async def generate_scene_actions_with_tts(
         logger.warning(f"[TTS] Text truncated to {MAX_TTS_TEXT_LENGTH} characters")
 
     action_id = str(uuid.uuid4())
-    audio_id = f"tts_{action_id}"
 
+    # 只存储文本，不预生成音频（客户端按需请求 TTS API）
     action_data = {
         "id": action_id,
         "type": "speech",
         "data": {"text": speech_text}
     }
-
-    # 尝试预生成 TTS 音频
-    try:
-        tts_result = await generate_tts(
-            text=speech_text,
-            provider=tts_provider,
-            voice=tts_voice,
-            speed=1.0,
-            model="tts-1"
-        )
-        action_data["data"]["audio_id"] = audio_id
-        action_data["data"]["audio_base64"] = encode_audio_base64(tts_result["audio"])
-        action_data["data"]["audio_format"] = tts_result["format"]
-        logger.info(f"[TTS] Audio generated: {audio_id}")
-    except Exception as e:
-        logger.warning(f"[TTS] Generation failed: {e}")
-        # TTS 失败不影响场景创建，PlaybackEngine 会使用 fallback
 
     return [action_data]
 
@@ -217,8 +196,6 @@ async def create_single_scene(
     order_index: int,
     db: Any,
     language: str = "zh-CN",
-    tts_provider: str = "openai",
-    tts_voice: str = "alloy"
 ) -> Dict[str, Any]:
     """
     创建单个场景
@@ -230,8 +207,6 @@ async def create_single_scene(
         order_index: 场景顺序
         db: 数据库连接
         language: 语言设置
-        tts_provider: TTS 提供商
-        tts_voice: TTS 语音
 
     Returns:
         场景数据字典
@@ -253,9 +228,9 @@ async def create_single_scene(
     # 构建内容
     content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
 
-    # 生成讲解动作
+    # 生成讲解动作（仅文本，不预生成音频）
     actions = await generate_scene_actions_with_tts(
-        scene_title, scene_desc, language, tts_provider, tts_voice
+        scene_title, scene_desc, language
     )
 
     # 存储到数据库
@@ -392,8 +367,6 @@ async def create_all_scenes(
     user_uuid: uuid.UUID,
     db: Any,
     language: str = "zh-CN",
-    tts_provider: str = "openai",
-    tts_voice: str = "alloy"
 ) -> List[Dict[str, Any]]:
     """
     批量创建所有场景
@@ -404,8 +377,6 @@ async def create_all_scenes(
         user_uuid: 用户 UUID
         db: 数据库连接
         language: 语言设置
-        tts_provider: TTS 提供商
-        tts_voice: TTS 语音
 
     Returns:
         场景列表
@@ -421,8 +392,6 @@ async def create_all_scenes(
                 order_index=i + 1,
                 db=db,
                 language=language,
-                tts_provider=tts_provider,
-                tts_voice=tts_voice
             )
             scenes.append(scene)
         except Exception as e:

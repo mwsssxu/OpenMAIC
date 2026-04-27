@@ -478,29 +478,40 @@ class ApiClient {
   }
 
   /**
-   * Generate TTS audio for a text
+   * Generate TTS audio for a text (on-demand)
    *
    * @param text - Text to convert to speech
-   * @param audioId - Unique audio ID
-   * @param provider - TTS provider (openai, minimax)
-   * @param voice - Voice ID
-   * @param speed - Speech speed (0.25-4.0)
+   * @param audioId - Unique audio ID (optional)
+   * @param provider - TTS provider (qwen, openai, minimax)
+   * @param voice - Voice ID (Cherry, Ethan, alloy, etc.)
+   * @param speed - Speech speed (0.5-2.0)
+   * @param model - TTS model (qwen3-tts-flash, tts-1, etc.)
    */
   async generateTTS(
     text: string,
-    audioId: string,
-    provider: string = 'openai',
-    voice: string = 'alloy',
+    audioId?: string,
+    provider: string = 'qwen',
+    voice: string = 'Cherry',
     speed: number = 1.0,
+    model?: string,
   ) {
-    const { data } = await this.client.post('/generate/tts', {
+    const { data } = await this.client.post('/tts', {
       text,
-      audio_id: audioId,
+      audioId,
       provider,
       voice,
       speed,
+      model: model || (provider === 'qwen' ? 'qwen3-tts-flash' : 'tts-1'),
     });
-    return data; // { audio_id, base64, format }
+    return data; // { success, audioId, base64, format }
+  }
+
+  /**
+   * Get available TTS voices
+   */
+  async getTTSVoices() {
+    const { data } = await this.client.get('/tts/voices');
+    return data.voices; // { qwen: [...], openai: [...], minimax: [...] }
   }
 
   // ==================== Chat (SSE) ====================

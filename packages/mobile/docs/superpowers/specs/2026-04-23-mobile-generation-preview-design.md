@@ -19,7 +19,7 @@
 ### 1.2 技术约束
 - 使用React Native + Expo技术栈
 - 动画使用`react-native-reanimated`
-- PDF解析通过调用web端`/api/parse-pdf` API
+- PDF解析通过调用Python后端`/parse-pdf` API（generate.py:96）
 - 状态管理使用zustand + MMKV持久化
 - 路由使用expo-router
 
@@ -674,7 +674,7 @@ export async function parsePdfFile(
 ): Promise<PdfParseResult> {
   // 使用expo-file-system上传文件
   const uploadResult = await FileSystem.uploadAsync(
-    `${API_BASE_URL}/api/parse-pdf`,
+    `${API_BASE_URL}/parse-pdf`,
     pdfFile.uri,
     {
       httpMethod: 'POST',

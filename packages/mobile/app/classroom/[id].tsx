@@ -17,7 +17,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
-import { PlaybackEngine, EngineMode } from '@/lib/playback/engine';
+import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
 
 interface Scene {
   id: string;
@@ -33,6 +33,7 @@ interface Agent {
   role: string;
   color: string;
   persona?: string;
+  avatar?: string;
 }
 
 interface ClassroomData {
@@ -44,6 +45,7 @@ interface ClassroomData {
     generatedAgentConfigs?: Agent[];
   };
   scenes: Scene[];
+  agents?: Agent[];  // API 可能返回预配置的 agents
 }
 
 export default function ClassroomScreen() {
@@ -70,8 +72,18 @@ export default function ClassroomScreen() {
 
   // 语音教学
   const [playbackMode, setPlaybackMode] = useState<EngineMode>('idle');
-  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
+  const [autoPlayEnabled, setAutoPlayEnabled] = useState(false); // 默认关闭自动播放
   const playbackEngineRef = useRef<PlaybackEngine | null>(null);
+
+  // TTS 配置
+  const [ttsConfig, setTtsConfig] = useState<TTSConfig>({
+    provider: 'qwen',
+    voice: 'Cherry',
+    speed: 1.0,
+    model: 'qwen3-tts-flash',
+  });
+  const [showTtsSettings, setShowTtsSettings] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<Record<string, Array<{ id: string; name: string }>>>({});
 
   // 场景切换动画
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -138,20 +150,8 @@ export default function ClassroomScreen() {
       const classroomData = await apiClient.getClassroom(id);
       setData(classroomData);
 
-      // 加载智能体配置 - 直接使用 agent_ids 映射到默认配置
-      const agentIds = classroomData.stage?.agent_ids || [];
-
-      if (agentIds.length > 0) {
-        // 使用 agent_ids 映射到默认配置
-        setAgents(getDefaultAgentsFromIds(agentIds));
-      } else {
-        // 没有 agent_ids，使用默认智能体
-        setAgents([
-          { id: 'teacher', name: '老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师' },
-          { id: 'assistant', name: '助教', role: 'assistant', color: '#10b981', persona: '辅助讲解' },
-          { id: 'student', name: '学生', role: 'student', color: '#f59e0b', persona: '课堂互动' },
-        ]);
-      }
+      // 加载智能体配置 - 从 API 获取完整配置
+      await loadAgents(classroomData);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
@@ -159,21 +159,45 @@ export default function ClassroomScreen() {
     }
   }
 
-  // 根据 agent_ids 获取默认配置
-  function getDefaultAgentsFromIds(agentIds: string[]): Agent[] {
-    const defaultConfig: Record<string, Agent> = {
-      'teacher': { id: 'teacher', name: '老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师' },
-      'assistant': { id: 'assistant', name: '助教', role: 'assistant', color: '#10b981', persona: '辅助讲解' },
-      'student': { id: 'student', name: '学生', role: 'student', color: '#f59e0b', persona: '课堂互动' },
-      'chief_analyst': { id: 'chief_analyst', name: '首席分析师', role: 'teacher', color: '#5b9bd5', persona: '商业策略分析' },
-      'market_expert': { id: 'market_expert', name: '市场专家', role: 'assistant', color: '#10b981', persona: '市场趋势分析' },
-      'competition_expert': { id: 'competition_expert', name: '竞争专家', role: 'assistant', color: '#8b5cf6', persona: '竞争格局分析' },
-      'finance_risk_expert': { id: 'finance_risk_expert', name: '财务风险专家', role: 'assistant', color: '#f59e0b', persona: '财务风险评估' },
-    };
+  async function loadAgents(classroomData: ClassroomData) {
+    try {
+      // 优先使用 API 返回的 agents（如果有）
+      if (classroomData.agents && classroomData.agents.length > 0) {
+        setAgents(classroomData.agents);
+        return;
+      }
 
-    return agentIds
-      .map(id => defaultConfig[id] || { id, name: id, role: 'assistant', color: '#666', persona: '' })
-      .filter(Boolean);
+      // 如果有 agent_ids，使用默认 agents API 获取配置
+      // 注意：不调用 generate API（避免重复生成）
+      const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
+      if (defaultAgents.agents && defaultAgents.agents.length > 0) {
+        // 根据 agent_ids 过滤或映射
+        if (classroomData.stage?.agent_ids && classroomData.stage.agent_ids.length > 0) {
+          // 使用默认配置中的前几个 agent
+          const count = Math.min(classroomData.stage.agent_ids.length, defaultAgents.agents.length);
+          setAgents(defaultAgents.agents.slice(0, count));
+        } else {
+          setAgents(defaultAgents.agents);
+        }
+        return;
+      }
+
+      // API 失败，使用内置默认配置
+      setAgents([
+        { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师，讲解清晰有条理', avatar: 'teacher.png' },
+        { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解，答疑解惑', avatar: 'assistant.png' },
+        { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '好奇心强，喜欢提问', avatar: 'student1.png' },
+        { id: 'student2', name: '学霸小红', role: 'student', color: '#8b5cf6', persona: '学霸型，理解能力强', avatar: 'student2.png' },
+      ]);
+    } catch (err) {
+      console.warn('Agent加载失败，使用默认:', err);
+      // 降级到内置默认配置
+      setAgents([
+        { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师', avatar: 'teacher.png' },
+        { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解', avatar: 'assistant.png' },
+        { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '课堂互动', avatar: 'student1.png' },
+      ]);
+    }
   }
 
   // 初始化播放引擎
@@ -185,22 +209,45 @@ export default function ClassroomScreen() {
       playbackEngineRef.current.dispose();
     }
 
-    // 创建新引擎
-    playbackEngineRef.current = new PlaybackEngine(data.scenes, {
-      onSceneChange: (index) => {
-        setCurrentSceneIndex(index);
+    // 创建新引擎（带 TTS 配置）
+    playbackEngineRef.current = new PlaybackEngine(
+      data.scenes,
+      {
+        onSceneChange: (index) => {
+          setCurrentSceneIndex(index);
+        },
+        onModeChange: (mode) => {
+          setPlaybackMode(mode);
+        },
+        onComplete: () => {
+          // 播放完成
+        },
+        onError: (error) => {
+          console.error('[PlaybackEngine]', error);
+        },
+        onTTSGenerate: (audioId) => {
+          console.log('[TTS] Generating...', audioId);
+        },
+        onTTSReady: (audioId) => {
+          console.log('[TTS] Ready', audioId);
+        },
       },
-      onModeChange: (mode) => {
-        setPlaybackMode(mode);
-      },
-      onComplete: () => {
-        // 播放完成
-      },
-      onError: (error) => {
-        console.error('[PlaybackEngine]', error);
-      },
-    });
-  }, [data]);
+      ttsConfig
+    );
+  }, [data, ttsConfig]);
+
+  // 加载可用语音列表
+  useEffect(() => {
+    async function loadVoices() {
+      try {
+        const voices = await apiClient.getTTSVoices();
+        setAvailableVoices(voices);
+      } catch (err) {
+        console.warn('[TTS] Failed to load voices:', err);
+      }
+    }
+    loadVoices();
+  }, []);
 
   // 当数据加载完成后初始化引擎
   useEffect(() => {
@@ -212,7 +259,7 @@ export default function ClassroomScreen() {
   // 自动播放
   useEffect(() => {
     if (playbackEngineRef.current && autoPlayEnabled && playbackMode === 'idle' && data) {
-      playbackEngineRef.current.start();
+      playbackEngineRef.current.playCurrentScene();
     }
   }, [autoPlayEnabled, playbackMode, data]);
 
@@ -528,8 +575,23 @@ export default function ClassroomScreen() {
             style={[styles.agentAvatarBtn, { backgroundColor: agent.color + '20' }]}
             onPress={() => openAgentChat(agent)}
           >
-            <Ionicons name="person" size={24} color={agent.color} />
-            <Text style={[styles.agentName, { color: agent.color }]}>{agent.name}</Text>
+            {/* 头像显示 */}
+            {agent.avatar ? (
+              <View style={[styles.agentAvatar, { backgroundColor: agent.color }]}>
+                <Text style={styles.agentAvatarEmoji}>
+                  {agent.avatar === 'teacher.png' ? '👨‍🏫' :
+                   agent.avatar === 'assistant.png' ? '👨‍💼' :
+                   agent.avatar.startsWith('student') ? '👨' : '👤'}
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.agentAvatar, { backgroundColor: agent.color }]}>
+                <Text style={styles.agentAvatarText}>{agent.name[0]}</Text>
+              </View>
+            )}
+            <Text style={[styles.agentName, { color: agent.color }]} numberOfLines={1}>
+              {agent.name.length > 4 ? agent.name.slice(0, 4) : agent.name}
+            </Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity
@@ -568,7 +630,7 @@ export default function ClassroomScreen() {
             } else if (playbackMode === 'paused') {
               playbackEngineRef.current?.resume();
             } else {
-              playbackEngineRef.current?.start();
+              playbackEngineRef.current?.playCurrentScene();
             }
           }}
         >
@@ -585,6 +647,14 @@ export default function ClassroomScreen() {
           onPress={() => setAutoPlayEnabled(!autoPlayEnabled)}
         >
           <Ionicons name={autoPlayEnabled ? "play" : "play-outline"} size={20} color={autoPlayEnabled ? 'white' : '#666'} />
+        </TouchableOpacity>
+
+        {/* TTS 设置 */}
+        <TouchableOpacity
+          style={styles.toolBtn}
+          onPress={() => setShowTtsSettings(true)}
+        >
+          <Ionicons name="settings-outline" size={20} color="#666" />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -666,6 +736,93 @@ export default function ClassroomScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* TTS 设置模态框 */}
+      <Modal
+        visible={showTtsSettings}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTtsSettings(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="settings" size={24} color="#5b9bd5" />
+              <Text style={styles.modalTitle}>语音设置</Text>
+              <TouchableOpacity onPress={() => setShowTtsSettings(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.ttsSettingsContent}>
+              {/* Provider 选择 */}
+              <Text style={styles.ttsSettingLabel}>语音服务商</Text>
+              <View style={styles.ttsOptionsRow}>
+                {['qwen', 'openai', 'minimax'].map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.ttsOptionBtn, ttsConfig.provider === p && styles.ttsOptionActive]}
+                    onPress={() => {
+                      const defaultVoices: Record<string, string> = {
+                        qwen: 'Cherry',
+                        openai: 'alloy',
+                        minimax: 'female-yujie',
+                      };
+                      setTtsConfig({ ...ttsConfig, provider: p as any, voice: defaultVoices[p] });
+                    }}
+                  >
+                    <Text style={[styles.ttsOptionText, ttsConfig.provider === p && styles.ttsOptionTextActive]}>
+                      {p === 'qwen' ? '阿里云' : p === 'openai' ? 'OpenAI' : 'MiniMax'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Voice 选择 */}
+              <Text style={styles.ttsSettingLabel}>语音角色</Text>
+              <ScrollView horizontal style={styles.voiceScroll} showsHorizontalScrollIndicator={false}>
+                {(availableVoices[ttsConfig.provider] || []).map((v) => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[styles.voiceBtn, ttsConfig.voice === v.id && styles.voiceBtnActive]}
+                    onPress={() => setTtsConfig({ ...ttsConfig, voice: v.id })}
+                  >
+                    <Text style={[styles.voiceText, ttsConfig.voice === v.id && styles.voiceTextActive]}>
+                      {v.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Speed 选择 */}
+              <Text style={styles.ttsSettingLabel}>语速: {ttsConfig.speed.toFixed(1)}x</Text>
+              <View style={styles.speedSlider}>
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.speedBtn, ttsConfig.speed === s && styles.speedBtnActive]}
+                    onPress={() => setTtsConfig({ ...ttsConfig, speed: s })}
+                  >
+                    <Text style={[styles.speedText, ttsConfig.speed === s && styles.speedTextActive]}>
+                      {s}x
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.ttsSaveBtn}
+              onPress={() => {
+                playbackEngineRef.current?.setTTSConfig(ttsConfig);
+                setShowTtsSettings(false);
+              }}
+            >
+              <Text style={styles.ttsSaveBtnText}>应用设置</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -876,14 +1033,29 @@ const styles = StyleSheet.create({
     borderTopColor: '#eee',
   },
   agentAvatarBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 55,
+    height: 55,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
-  agentName: { fontSize: 10, marginTop: 2 },
+  agentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  agentAvatarEmoji: {
+    fontSize: 16,
+  },
+  agentAvatarText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  agentName: { fontSize: 10, marginTop: 2, maxWidth: 50 },
   chatBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -980,4 +1152,46 @@ const styles = StyleSheet.create({
   loginButtonText: { color: 'white', fontSize: 16 },
   retryButton: { backgroundColor: '#5b9bd5', padding: 15, borderRadius: 8 },
   retryButtonText: { color: 'white', fontSize: 16 },
+
+  // TTS 设置模态框
+  ttsSettingsContent: { flex: 1, paddingVertical: 15 },
+  ttsSettingLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 10 },
+  ttsOptionsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  ttsOptionBtn: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f5f7fa',
+  },
+  ttsOptionActive: { backgroundColor: '#5b9bd5' },
+  ttsOptionText: { fontSize: 14, color: '#666' },
+  ttsOptionTextActive: { color: 'white', fontWeight: '600' },
+  voiceScroll: { marginBottom: 20 },
+  voiceBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#f5f7fa',
+    marginRight: 8,
+  },
+  voiceBtnActive: { backgroundColor: '#e8f4fd', borderWidth: 1, borderColor: '#5b9bd5' },
+  voiceText: { fontSize: 12, color: '#666' },
+  voiceTextActive: { color: '#5b9bd5', fontWeight: '600' },
+  speedSlider: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  speedBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f5f7fa',
+  },
+  speedBtnActive: { backgroundColor: '#5b9bd5' },
+  speedText: { fontSize: 12, color: '#666' },
+  speedTextActive: { color: 'white' },
+  ttsSaveBtn: {
+    backgroundColor: '#5b9bd5',
+    padding: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  ttsSaveBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
 });

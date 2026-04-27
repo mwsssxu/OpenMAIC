@@ -67,9 +67,10 @@ export class AudioPlayer {
    * 播放音频
    *
    * @param audioId - 音频 ID（已存储的文件名）
+   * @param format - 音频格式 (mp3, wav 等)，默认 mp3
    * @returns 是否成功开始播放
    */
-  async play(audioId: string): Promise<boolean> {
+  async play(audioId: string, format: string = 'mp3'): Promise<boolean> {
     // 确保音频权限和模式已设置
     const ready = await ensureAudioReady();
     if (!ready) {
@@ -77,7 +78,15 @@ export class AudioPlayer {
       return false;
     }
 
-    const path = getAudioPath(audioId);
+    // 尝试多种格式查找音频文件
+    const formatsToTry = [format, 'mp3', 'wav', 'ogg'];
+    let path: string | null = null;
+
+    for (const f of formatsToTry) {
+      path = getAudioPath(audioId, f);
+      if (path) break;
+    }
+
     if (!path) {
       console.warn(`[AudioPlayer] Audio file not found: ${audioId}`);
       return false;

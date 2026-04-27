@@ -3,14 +3,40 @@
  *
  * 执行场景 Actions（speech, spotlight, laser 等）
  * speech 动作播放 TTS 音频，无音频时使用 expo-speech 作为 fallback
+ * 支持按需请求 TTS API 生成音频（与 Web 端对齐）
+ *
+ * 改进：
+ * - 只播放当前场景，不自动切换到下一个
+ * - 支持暂停功能
+ * - 互动/测验场景不播放音频
  */
 
 import { AudioPlayer } from './audio-player';
 import { saveAudioFile } from '../storage/audio-storage';
 import * as Speech from 'expo-speech';
 import { Scene, SceneAction, SpeechActionData } from '../types';
+import { apiClient } from '../api-client';
 
 export type EngineMode = 'idle' | 'playing' | 'paused';
+
+// TTS 配置（可由外部设置）
+export interface TTSConfig {
+  provider: 'qwen' | 'openai' | 'minimax' | 'browser';
+  voice: string;
+  speed: number;
+  model?: string;
+}
+
+// 默认 TTS 配置
+const DEFAULT_TTS_CONFIG: TTSConfig = {
+  provider: 'qwen',
+  voice: 'Cherry',
+  speed: 1.0,
+  model: 'qwen3-tts-flash',
+};
+
+// 不需要播放音频的场景类型
+const NON_SPEECH_SCENE_TYPES = ['quiz', 'interactive', 'pbl'];
 
 export type PlaybackEngineCallbacks = {
   onSceneChange?: (index: number, scene: Scene) => void;
@@ -18,6 +44,8 @@ export type PlaybackEngineCallbacks = {
   onComplete?: () => void;
   onModeChange?: (mode: EngineMode) => void;
   onError?: (error: Error) => void;
+  onTTSGenerate?: (audioId: string) => void;
+  onTTSReady?: (audioId: string) => void;
 };
 
 /**
@@ -31,11 +59,18 @@ export class PlaybackEngine {
   private audioPlayer: AudioPlayer;
   private callbacks: PlaybackEngineCallbacks = {};
   private processing: boolean = false;
+  private ttsConfig: TTSConfig = DEFAULT_TTS_CONFIG;
+  private audioCache: Map<string, { base64: string; format: string }> = new Map();
+  // expo-speech 状态跟踪
+  private speechPlaying: boolean = false;
 
-  constructor(scenes: Scene[], callbacks?: PlaybackEngineCallbacks) {
+  constructor(scenes: Scene[], callbacks?: PlaybackEngineCallbacks, ttsConfig?: TTSConfig) {
     this.scenes = scenes;
     if (callbacks) {
       this.callbacks = callbacks;
+    }
+    if (ttsConfig) {
+      this.ttsConfig = ttsConfig;
     }
 
     this.audioPlayer = new AudioPlayer({
@@ -43,15 +78,39 @@ export class PlaybackEngine {
         // 音频开始播放
       },
       onPlayEnd: () => {
-        // 音频播放完成，继续处理下一个 action
-        this.continueProcessing();
+        // 音频播放完成，只有在 playing 状态才继续处理
+        if (this.mode === 'playing') {
+          this.processing = false;
+        }
       },
       onError: (error) => {
         this.callbacks.onError?.(error);
-        // 即使出错也继续处理
-        this.continueProcessing();
+        this.processing = false;
       },
     });
+  }
+
+  /**
+   * 设置 TTS 配置
+   */
+  setTTSConfig(config: Partial<TTSConfig>) {
+    this.ttsConfig = { ...this.ttsConfig, ...config };
+    // 清除缓存，使用新配置重新生成
+    this.audioCache.clear();
+  }
+
+  /**
+   * 获取当前 TTS 配置
+   */
+  getTTSConfig(): TTSConfig {
+    return this.ttsConfig;
+  }
+
+  /**
+   * 清除音频缓存
+   */
+  clearAudioCache() {
+    this.audioCache.clear();
   }
 
   /**
@@ -76,42 +135,131 @@ export class PlaybackEngine {
   }
 
   /**
-   * 开始播放
+   * 播放当前场景（不自动切换到下一个）
    */
-  async start(): Promise<void> {
+  async playCurrentScene(): Promise<void> {
+    const scene = this.getCurrentScene();
+    if (!scene) {
+      return;
+    }
+
+    // 检查场景类型
+    if (NON_SPEECH_SCENE_TYPES.includes(scene.type)) {
+      // 互动/测验/PBL 场景不播放音频
+      console.log(`[PlaybackEngine] Skipping speech for ${scene.type} scene`);
+      return;
+    }
+
+    this.mode = 'playing';
+    this.callbacks.onModeChange?.(this.mode);
+    this.actionIndex = 0;
+
+    await this.processSceneActions(scene);
+  }
+
+  /**
+   * 处理场景的所有 actions
+   */
+  private async processSceneActions(scene: Scene): Promise<void> {
+    const actions = scene.actions || [];
+
+    if (actions.length === 0) {
+      // 没有 actions，从内容中提取文本朗读
+      await this.speakSceneContent(scene);
+      return;
+    }
+
+    // 执行第一个 speech action
+    for (let i = 0; i < actions.length; i++) {
+      if (actions[i].type === 'speech') {
+        await this.executeSpeech(actions[i] as SceneAction<'speech'>);
+        return;
+      }
+    }
+  }
+
+  /**
+   * 开始自动播放所有场景（按用户需求使用）
+   */
+  async startAutoPlay(): Promise<void> {
     if (this.scenes.length === 0) {
       this.callbacks.onComplete?.();
       return;
     }
 
     this.sceneIndex = 0;
-    this.actionIndex = 0;
     this.mode = 'playing';
     this.callbacks.onModeChange?.(this.mode);
-
-    // 通知第一个场景
     this.callbacks.onSceneChange?.(this.sceneIndex, this.getCurrentScene());
 
-    // 开始处理 actions
-    this.processNextAction();
+    await this.playCurrentSceneAuto();
+  }
+
+  /**
+   * 自动播放当前场景并切换到下一个
+   */
+  private async playCurrentSceneAuto(): Promise<void> {
+    if (this.mode !== 'playing') return;
+
+    const scene = this.getCurrentScene();
+    if (!scene) return;
+
+    // 跳过不需要播放的场景
+    if (NON_SPEECH_SCENE_TYPES.includes(scene.type)) {
+      await this.nextScene();
+      return;
+    }
+
+    const actions = scene.actions || [];
+
+    if (actions.length === 0) {
+      await this.speakSceneContentAuto(scene);
+      return;
+    }
+
+    for (let i = 0; i < actions.length; i++) {
+      if (actions[i].type === 'speech') {
+        await this.executeSpeechAuto(actions[i] as SceneAction<'speech'>);
+        return;
+      }
+    }
+
+    // 没有 speech action，切换下一个
+    await this.nextScene();
   }
 
   /**
    * 暂停播放
    */
-  pause(): void {
+  async pause(): Promise<void> {
     this.mode = 'paused';
     this.callbacks.onModeChange?.(this.mode);
-    this.audioPlayer.pause();
+    this.processing = false;
+
+    // 暂停音频播放器
+    await this.audioPlayer.pause();
+
+    // 停止 expo-speech
+    if (this.speechPlaying) {
+      Speech.stop();
+      this.speechPlaying = false;
+    }
   }
 
   /**
    * 继续播放
    */
-  resume(): void {
+  async resume(): Promise<void> {
     this.mode = 'playing';
     this.callbacks.onModeChange?.(this.mode);
-    this.audioPlayer.resume();
+
+    // 继续音频播放
+    await this.audioPlayer.resume();
+
+    // 如果没有音频正在播放，重新开始当前场景
+    if (!this.audioPlayer.isPlaying() && !this.speechPlaying) {
+      await this.playCurrentScene();
+    }
   }
 
   /**
@@ -120,119 +268,61 @@ export class PlaybackEngine {
   async stop(): Promise<void> {
     this.mode = 'idle';
     this.callbacks.onModeChange?.(this.mode);
-    await this.audioPlayer.stop();
-    this.sceneIndex = 0;
-    this.actionIndex = 0;
     this.processing = false;
+
+    await this.audioPlayer.stop();
+    Speech.stop();
+    this.speechPlaying = false;
   }
 
   /**
-   * 切换到下一个场景
+   * 切换到下一个场景（不自动播放）
    */
   async nextScene(): Promise<void> {
+    await this.stop();
+
     if (this.sceneIndex < this.scenes.length - 1) {
-      await this.audioPlayer.stop();
       this.sceneIndex++;
       this.actionIndex = 0;
       this.callbacks.onSceneChange?.(this.sceneIndex, this.getCurrentScene());
-
-      if (this.mode === 'playing') {
-        this.processNextAction();
-      }
     } else {
-      // 已到最后一个场景
-      this.mode = 'idle';
-      this.callbacks.onModeChange?.(this.mode);
       this.callbacks.onComplete?.();
     }
   }
 
   /**
-   * 切换到上一个场景
+   * 切换到上一个场景（不自动播放）
    */
   async prevScene(): Promise<void> {
+    await this.stop();
+
     if (this.sceneIndex > 0) {
-      await this.audioPlayer.stop();
       this.sceneIndex--;
       this.actionIndex = 0;
       this.callbacks.onSceneChange?.(this.sceneIndex, this.getCurrentScene());
-
-      if (this.mode === 'playing') {
-        this.processNextAction();
-      }
     }
   }
 
   /**
-   * 跳转到指定场景
+   * 跳转到指定场景（不自动播放）
    */
   async jumpToScene(index: number): Promise<void> {
+    await this.stop();
+
     if (index >= 0 && index < this.scenes.length) {
-      await this.audioPlayer.stop();
       this.sceneIndex = index;
       this.actionIndex = 0;
       this.callbacks.onSceneChange?.(this.sceneIndex, this.getCurrentScene());
-
-      if (this.mode === 'playing') {
-        this.processNextAction();
-      }
     }
   }
 
   /**
-   * 处理下一个 action
-   */
-  private processNextAction(): void {
-    if (this.processing) return;
-    this.processing = true;
-
-    this.doProcessNext();
-  }
-
-  /**
-   * 实际处理下一个 action
-   */
-  private doProcessNext(): void {
-    if (this.mode !== 'playing') {
-      this.processing = false;
-      return;
-    }
-
-    const scene = this.getCurrentScene();
-    if (!scene) {
-      this.processing = false;
-      return;
-    }
-
-    const actions = scene.actions || [];
-
-    // 如果场景没有 actions，从内容中提取文本并朗读
-    if (actions.length === 0) {
-      this.speakSceneContent(scene);
-      return;
-    }
-
-    if (this.actionIndex >= actions.length) {
-      // 当前场景的 actions 完成，切换下一个场景
-      this.processing = false;
-      this.nextScene();
-      return;
-    }
-
-    const action = actions[this.actionIndex];
-    this.actionIndex++;
-
-    this.executeAction(action);
-  }
-
-  /**
-   * 从场景内容中提取文本并朗读（fallback）
+   * 从场景内容中提取文本并朗读（单场景模式）
    */
   private async speakSceneContent(scene: Scene): Promise<void> {
     let textToSpeak = '';
 
     if (scene.content?.canvas?.elements) {
-      // 从 canvas elements 中提取文本
       const textElements = scene.content.canvas.elements
         .filter((el) => el.type === 'text' && el.content)
         .map((el) => el.content as string);
@@ -242,88 +332,115 @@ export class PlaybackEngine {
     }
 
     if (textToSpeak && textToSpeak.length > 10) {
-      try {
-        await Speech.speak(textToSpeak, {
-          language: 'zh-CN',
-          rate: 0.9,
-          onDone: () => this.moveToNextSceneAfterSpeech(),
-          onError: () => this.moveToNextSceneAfterSpeech(),
-        });
-      } catch {
-        this.moveToNextSceneAfterSpeech();
+      // 使用 TTS API 或 expo-speech
+      await this.speakText(textToSpeak, `scene_${scene.id}`);
+    }
+  }
+
+  /**
+   * 自动播放模式的朗读
+   */
+  private async speakSceneContentAuto(scene: Scene): Promise<void> {
+    await this.speakSceneContent(scene);
+
+    // 朗读完成后切换下一个场景
+    setTimeout(async () => {
+      if (this.mode === 'playing') {
+        await this.nextScene();
+        if (this.mode === 'playing') {
+          await this.playCurrentSceneAuto();
+        }
       }
-    } else {
-      // 没有文本内容，直接切换下一个场景
-      this.moveToNextSceneAfterSpeech();
-    }
+    }, 500);
   }
 
   /**
-   * 朗读完成后切换下一个场景
-   */
-  private moveToNextSceneAfterSpeech(): void {
-    this.processing = false;
-    this.nextScene();
-  }
-
-  /**
-   * 执行单个 action
-   */
-  private async executeAction(action: SceneAction): Promise<void> {
-    this.callbacks.onActionExecute?.(action);
-
-    if (action.type === 'speech') {
-      await this.executeSpeech(action as SceneAction<'speech'>);
-    } else {
-      // 其他 action（spotlight, laser 等）- fire and forget
-      // 立即继续处理下一个
-      this.continueProcessing();
-    }
-  }
-
-  /**
-   * 执行 speech action
+   * 执行 speech action（单场景模式）
    */
   private async executeSpeech(action: SceneAction<'speech'>): Promise<void> {
     const data = action.data as SpeechActionData;
-    const audioId = data.audio_id;
-    const audioBase64 = data.audio_base64;
     const text = data.text;
 
-    if (audioBase64) {
-      // 有 base64 数据，保存并播放
-      const generatedId = audioId || `tts_${action.id}`;
-      saveAudioFile(generatedId, audioBase64, data.audio_format || 'mp3');
-      await this.audioPlayer.play(generatedId);
-    } else if (audioId) {
-      // 直接播放已存储的音频
-      await this.audioPlayer.play(audioId);
-    } else if (text) {
-      // 使用 expo-speech 作为 fallback
-      try {
-        await Speech.speak(text, {
-          language: 'zh-CN',
-          rate: 0.9,
-          onDone: () => this.continueProcessing(),
-          onError: () => this.continueProcessing(),
-        });
-      } catch {
-        console.warn(`[PlaybackEngine] expo-speech failed for action: ${action.id}`);
-        this.continueProcessing();
-      }
-    } else {
-      // 没有 TTS 数据和文本，直接继续
-      console.warn(`[PlaybackEngine] Speech action missing audio data and text: ${action.id}`);
-      this.continueProcessing();
+    if (!text) {
+      console.warn('[PlaybackEngine] Speech action has no text');
+      return;
     }
+
+    await this.speakText(text, `tts_${action.id}`);
   }
 
   /**
-   * 继续处理（在音频播放完成后调用）
+   * 执行 speech action（自动播放模式）
    */
-  private continueProcessing(): void {
-    this.processing = false;
-    this.doProcessNext();
+  private async executeSpeechAuto(action: SceneAction<'speech'>): Promise<void> {
+    await this.executeSpeech(action);
+
+    // 朗读完成后切换下一个场景
+    setTimeout(async () => {
+      if (this.mode === 'playing') {
+        await this.nextScene();
+        if (this.mode === 'playing') {
+          await this.playCurrentSceneAuto();
+        }
+      }
+    }, 500);
+  }
+
+  /**
+   * 播放文本（TTS API 或 expo-speech fallback）
+   */
+  private async speakText(text: string, audioId: string): Promise<void> {
+    // 1. 检查缓存（使用文本长度和更多字符避免碰撞）
+    const cacheKey = `${this.ttsConfig.provider}_${this.ttsConfig.voice}_${text.length}_${text.slice(0, 100)}`;
+    const cached = this.audioCache.get(cacheKey);
+    if (cached) {
+      saveAudioFile(audioId, cached.base64, cached.format);
+      await this.audioPlayer.play(audioId, cached.format);
+      return;
+    }
+
+    // 2. 请求 TTS API
+    if (this.ttsConfig.provider !== 'browser') {
+      try {
+        this.callbacks.onTTSGenerate?.(audioId);
+
+        const result = await apiClient.generateTTS(
+          text,
+          audioId,
+          this.ttsConfig.provider,
+          this.ttsConfig.voice,
+          this.ttsConfig.speed,
+          this.ttsConfig.model,
+        );
+
+        if (result.success && result.base64) {
+          saveAudioFile(result.audioId, result.base64, result.format);
+          this.audioCache.set(cacheKey, { base64: result.base64, format: result.format });
+          this.callbacks.onTTSReady?.(result.audioId);
+          await this.audioPlayer.play(result.audioId, result.format);
+          return;
+        }
+      } catch (err) {
+        console.warn('[PlaybackEngine] TTS API failed:', err);
+      }
+    }
+
+    // 3. expo-speech fallback
+    this.speechPlaying = true;
+    try {
+      await Speech.speak(text, {
+        language: 'zh-CN',
+        rate: this.ttsConfig.speed * 0.9,
+        onDone: () => {
+          this.speechPlaying = false;
+        },
+        onError: () => {
+          this.speechPlaying = false;
+        },
+      });
+    } catch {
+      this.speechPlaying = false;
+    }
   }
 
   /**
@@ -331,7 +448,9 @@ export class PlaybackEngine {
    */
   async dispose(): Promise<void> {
     await this.audioPlayer.dispose();
+    Speech.stop();
     this.mode = 'idle';
     this.processing = false;
+    this.speechPlaying = false;
   }
 }

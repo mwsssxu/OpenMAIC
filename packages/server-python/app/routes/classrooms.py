@@ -210,8 +210,6 @@ async def create_full_classroom(
     - description: 课程描述
     - language: 语言设置 (zh-CN, en-US, ja-JP, ko-KR)
     - agent_ids: 智能体 ID 列表
-    - tts_provider: TTS 提供商 (openai, minimax)
-    - tts_voice: TTS 语音 ID
     """
     start_time = time.time()
 
@@ -235,8 +233,6 @@ async def create_full_classroom(
     name = body.get("name", "新课程")
     description = body.get("description")
     agent_ids = body.get("agent_ids", [])
-    tts_provider = body.get("tts_provider", "openai")
-    tts_voice = body.get("tts_voice", "alloy")
 
     logger.info(f"[Create] 开始创建课程 - name={name}, scenes={len(outlines)}, lang={language}")
 
@@ -262,8 +258,6 @@ async def create_full_classroom(
             user_uuid=user_uuid,
             db=db,
             language=language,
-            tts_provider=tts_provider,
-            tts_voice=tts_voice
         )
 
     total_elapsed = time.time() - start_time

@@ -307,6 +307,17 @@ function GenerationPreviewContent() {
         const wsSettings = useSettingsStore.getState();
         const wsApiKey =
           wsSettings.webSearchProvidersConfig?.[wsSettings.webSearchProviderId]?.apiKey;
+
+        // ========== Web Search API 日志 ==========
+        const webSearchRequest = {
+          query: currentSession.requirements.requirement,
+          pdfText: currentSession.pdfText || undefined,
+          apiKey: wsApiKey ? '(已提供)' : undefined,
+        };
+        log.info('=== [Web Search] 请求开始 ===');
+        log.info('请求参数:', JSON.stringify(webSearchRequest, null, 2));
+        console.log('[Web Search] Request:', webSearchRequest);
+
         const res = await fetch('/api/web-search', {
           method: 'POST',
           headers: getApiHeaders(),
@@ -320,10 +331,22 @@ function GenerationPreviewContent() {
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({ error: 'Web search failed' }));
+          log.error('=== [Web Search] 请求失败 ===');
+          log.error('错误信息:', data.error);
+          console.error('[Web Search] Error:', data);
           throw new Error(data.error || t('generation.webSearchFailed'));
         }
 
         const searchData = await res.json();
+        log.info('=== [Web Search] 请求成功 ===');
+        log.info('响应结果:', JSON.stringify({
+          answer: searchData.answer,
+          sourcesCount: searchData.sources?.length || 0,
+          sources: searchData.sources?.map((s: { title: string; url: string }) => ({ title: s.title, url: s.url })),
+          contextLength: searchData.context?.length || 0,
+        }, null, 2));
+        console.log('[Web Search] Response:', searchData);
+
         const sources = (searchData.sources || []).map((s: { title: string; url: string }) => ({
           title: s.title,
           url: s.url,
@@ -443,6 +466,18 @@ function GenerationPreviewContent() {
           };
 
           // No outlines yet — agent generation uses only stage name + description
+
+          // ========== Agent Generation API 日志 ==========
+          const agentRequest = {
+            stageInfo: { name: stage.name, description: stage.description },
+            language: currentSession.requirements.language || 'zh-CN',
+            availableAvatars: allAvatars.map((a) => a.path),
+            availableVoices: getAvailableVoicesForGeneration(),
+          };
+          log.info('=== [Agent Generation] 请求开始 ===');
+          log.info('请求参数:', JSON.stringify(agentRequest, null, 2));
+          console.log('[Agent Generation] Request:', agentRequest);
+
           const agentResp = await fetch('/api/generate/agent-profiles', {
             method: 'POST',
             headers: getApiHeaders(),
@@ -456,9 +491,25 @@ function GenerationPreviewContent() {
             signal,
           });
 
-          if (!agentResp.ok) throw new Error('Agent generation failed');
+          if (!agentResp.ok) {
+            log.error('=== [Agent Generation] 请求失败 === HTTP ' + agentResp.status);
+            console.error('[Agent Generation] Error: HTTP ' + agentResp.status);
+            throw new Error('Agent generation failed');
+          }
           const agentData = await agentResp.json();
-          if (!agentData.success) throw new Error(agentData.error || 'Agent generation failed');
+          if (!agentData.success) {
+            log.error('=== [Agent Generation] 业务失败 ===');
+            log.error('错误信息:', agentData.error);
+            console.error('[Agent Generation] Error:', agentData);
+            throw new Error(agentData.error || 'Agent generation failed');
+          }
+
+          log.info('=== [Agent Generation] 请求成功 ===');
+          log.info('响应结果:', JSON.stringify({
+            agentsCount: agentData.agents?.length || 0,
+            agents: agentData.agents?.map((a: { id: string; name: string; role: string }) => ({ id: a.id, name: a.name, role: a.role })),
+          }, null, 2));
+          console.log('[Agent Generation] Response:', agentData);
 
           // Save to IndexedDB and registry
           const { saveGeneratedAgents } = await import('@/lib/orchestration/registry/store');
@@ -526,7 +577,17 @@ function GenerationPreviewContent() {
       const outlineStepIdx = activeSteps.findIndex((s) => s.id === 'outline');
       setCurrentStepIndex(outlineStepIdx >= 0 ? outlineStepIdx : 0);
       if (!outlines || outlines.length === 0) {
-        log.debug('=== Generating outlines (SSE) ===');
+        // ========== Outlines Generation API 日志 (SSE) ==========
+        const outlineRequest = {
+          requirements: currentSession.requirements,
+          pdfText: currentSession.pdfText ? `(长度: ${currentSession.pdfText.length})` : undefined,
+          pdfImages: currentSession.pdfImages?.length || 0,
+          researchContext: currentSession.researchContext ? `(长度: ${currentSession.researchContext.length})` : undefined,
+          agentsCount: agents?.length || 0,
+        };        log.info('=== [Outlines Generation SSE] 请求开始 ===');
+        log.info('请求参数:', JSON.stringify(outlineRequest, null, 2));
+        console.log('[Outlines SSE] Request:', outlineRequest);
+
         setStreamingOutlines([]);
 
         outlines = await new Promise<SceneOutline[]>((resolve, reject) => {
@@ -547,7 +608,8 @@ function GenerationPreviewContent() {
           })
             .then((res) => {
               if (!res.ok) {
-                return res.json().then((d) => {
+                log.error('=== [Outlines Generation SSE] 请求失败 === HTTP ' + res.status);
+                console.error('[Outlines SSE] Error: HTTP ' + res.status);                return res.json().then((d) => {
                   reject(new Error(d.error || t('generation.outlineGenerateFailed')));
                 });
               }
@@ -580,10 +642,18 @@ function GenerationPreviewContent() {
                           setStreamingOutlines([]);
                           setStatusMessage(t('generation.outlineRetrying'));
                         } else if (evt.type === 'done') {
+                          log.info('=== [Outlines Generation SSE] 流完成 ===');
+                          log.info('响应结果:', JSON.stringify({
+                            outlinesCount: (evt.outlines || collected).length,
+                            outlines: (evt.outlines || collected).map((o: { title: string; type: string; order: number }) => ({ title: o.title, type: o.type, order: o.order })),
+                          }, null, 2));
+                          console.log('[Outlines SSE] Done:', evt.outlines || collected);
                           resolve(evt.outlines || collected);
                           return;
                         } else if (evt.type === 'error') {
-                          reject(new Error(evt.error));
+                          log.error('=== [Outlines Generation SSE] 流错误 ===');
+                          log.error('错误信息:', evt.error);
+                          console.error('[Outlines SSE] Error:', evt);
                           return;
                         }
                       } catch (e) {
@@ -655,6 +725,19 @@ function GenerationPreviewContent() {
 
       const firstOutline = outlines[0];
 
+      // ========== Scene Content API 日志 ==========
+      const contentRequest = {
+        outline: firstOutline,
+        allOutlinesCount: outlines.length,
+        pdfImagesCount: currentSession.pdfImages?.length || 0,
+        imageMappingKeys: Object.keys(imageMapping),
+        stageInfo,
+        stageId: stage.id,
+        agentsCount: agents?.length || 0,
+      };      log.info('=== [Scene Content] 请求开始 ===');
+      log.info('请求参数:', JSON.stringify(contentRequest, null, 2));
+      console.log('[Scene Content] Request:', contentRequest);
+
       // Step 2: Generate content (currentStepIndex is already 2)
       const contentResp = await fetch('/api/generate/scene-content', {
         method: 'POST',
@@ -673,17 +756,42 @@ function GenerationPreviewContent() {
 
       if (!contentResp.ok) {
         const errorData = await contentResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
+        log.error('=== [Scene Content] 请求失败 ===');
+        log.error('错误信息:', errorData.error);
+        console.error('[Scene Content] Error:', errorData);        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
       }
 
       const contentData = await contentResp.json();
       if (!contentData.success || !contentData.content) {
-        throw new Error(contentData.error || t('generation.sceneGenerateFailed'));
+        log.error('=== [Scene Content] 业务失败 ===');
+        log.error('错误信息:', contentData.error);
+        console.error('[Scene Content] Error:', contentData);        throw new Error(contentData.error || t('generation.sceneGenerateFailed'));
       }
+
+      log.info('=== [Scene Content] 请求成功 ===');
+      log.info('响应结果:', JSON.stringify({
+        success: contentData.success,
+        contentType: contentData.content?.type,
+        contentTitle: contentData.content?.title,
+        effectiveOutline: contentData.effectiveOutline,
+      }, null, 2));
+      console.log('[Scene Content] Response:', contentData);
 
       // Generate actions (activate actions step indicator)
       const actionsStepIdx = activeSteps.findIndex((s) => s.id === 'actions');
       setCurrentStepIndex(actionsStepIdx >= 0 ? actionsStepIdx : currentStepIndex + 1);
+
+      // ========== Scene Actions API 日志 ==========
+      const actionsRequest = {
+        outline: contentData.effectiveOutline || firstOutline,
+        allOutlinesCount: outlines.length,
+        contentType: contentData.content?.type,
+        stageId: stage.id,
+        agentsCount: agents?.length || 0,
+        userProfile,
+      };      log.info('=== [Scene Actions] 请求开始 ===');
+      log.info('请求参数:', JSON.stringify(actionsRequest, null, 2));
+      console.log('[Scene Actions] Request:', actionsRequest);
 
       const actionsResp = await fetch('/api/generate/scene-actions', {
         method: 'POST',
@@ -702,13 +810,27 @@ function GenerationPreviewContent() {
 
       if (!actionsResp.ok) {
         const errorData = await actionsResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
+        log.error('=== [Scene Actions] 请求失败 ===');
+        log.error('错误信息:', errorData.error);
+        console.error('[Scene Actions] Error:', errorData);        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
       }
 
       const data = await actionsResp.json();
       if (!data.success || !data.scene) {
-        throw new Error(data.error || t('generation.sceneGenerateFailed'));
+        log.error('=== [Scene Actions] 业务失败 ===');
+        log.error('错误信息:', data.error);
+        console.error('[Scene Actions] Error:', data);        throw new Error(data.error || t('generation.sceneGenerateFailed'));
       }
+
+      log.info('=== [Scene Actions] 请求成功 ===');
+      log.info('响应结果:', JSON.stringify({
+        success: data.success,
+        sceneId: data.scene?.id,
+        sceneTitle: data.scene?.title,
+        actionsCount: data.scene?.actions?.length || 0,
+        actionTypes: data.scene?.actions?.map((a: { type: string }) => a.type),
+      }, null, 2));
+      console.log('[Scene Actions] Response:', data);
 
       // Generate TTS for first scene (part of actions step — blocking)
       if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
@@ -717,11 +839,24 @@ function GenerationPreviewContent() {
           (a: { type: string; text?: string }) => a.type === 'speech' && a.text,
         );
 
+        // ========== TTS Generation API 日志 ==========
+        log.info('=== [TTS Generation] 开始 ===');
+        log.info('请求参数:', JSON.stringify({
+          speechActionsCount: speechActions.length,
+          ttsProviderId: settings.ttsProviderId,
+          ttsVoice: settings.ttsVoice,
+          ttsSpeed: settings.ttsSpeed,
+        }, null, 2));
+        console.log('[TTS] Starting for', speechActions.length, 'speech actions');
+
         let ttsFailCount = 0;
         for (const action of speechActions) {
           const audioId = `tts_${action.id}`;
           action.audioId = audioId;
           try {
+            log.debug(`[TTS] Generating audio for action ${action.id}`);
+            console.log(`[TTS] Request for action ${action.id}:`, { text: action.text?.substring(0, 50) + '...' });
+
             const resp = await fetch('/api/generate/tts', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -738,14 +873,20 @@ function GenerationPreviewContent() {
               signal,
             });
             if (!resp.ok) {
+              log.warn(`[TTS] HTTP error for action ${action.id}: ${resp.status}`);
+              console.warn(`[TTS] Error for action ${action.id}: HTTP ${resp.status}`);
               ttsFailCount++;
               continue;
             }
             const ttsData = await resp.json();
             if (!ttsData.success) {
+              log.warn(`[TTS] Business error for action ${action.id}: ${ttsData.error}`);
+              console.warn(`[TTS] Error for action ${action.id}:`, ttsData);
               ttsFailCount++;
               continue;
             }
+            log.info(`[TTS] Success for action ${action.id}: format=${ttsData.format}`);
+            console.log(`[TTS] Success for action ${action.id}:`, { format: ttsData.format, size: ttsData.base64?.length });
             const binary = atob(ttsData.base64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -761,6 +902,10 @@ function GenerationPreviewContent() {
             ttsFailCount++;
           }
         }
+
+        // ========== TTS Generation 完成日志 ==========        log.info('=== [TTS Generation] 完成 ===');
+        log.info(`结果: 成功 ${speechActions.length - ttsFailCount}/${speechActions.length}, 失败 ${ttsFailCount}`);
+        console.log('[TTS] Completed:', { success: speechActions.length - ttsFailCount, failed: ttsFailCount, total: speechActions.length });
 
         if (ttsFailCount > 0 && speechActions.length > 0) {
           throw new Error(t('generation.speechFailed'));

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # LLM 提供商
     OPENAI_API_KEY: str = ""
     OPENAI_API_BASE: str = ""  # 自定义 API endpoint (如阿里云百炼)
+    # TTS 专用配置（可与 LLM 不同）
+    TTS_API_KEY: str = ""  # TTS API key（如不配置则使用 OPENAI_API_KEY）
+    TTS_API_BASE: str = ""  # TTS endpoint（如不配置则使用 OPENAI_API_BASE）
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""

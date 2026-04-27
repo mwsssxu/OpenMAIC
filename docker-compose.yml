@@ -19,6 +19,10 @@ services:
       # LLM 提供商 - 阿里云百炼
       - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-sp-359fa096d7144a5da564f9af9c73abaf}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-https://coding.dashscope.aliyuncs.com/v1}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai/qwen3.6-plus}
+      # TTS - 阿里云百炼 (DashScope compatible-mode)
+      - TTS_API_KEY=${TTS_API_KEY:-sk-0ad9501ce2d748549007958344430681}
+      - TTS_API_BASE=${TTS_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
