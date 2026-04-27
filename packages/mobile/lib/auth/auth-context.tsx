@@ -107,6 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    try {
+      // 调用后端退出登录接口（可选，主要是清除本地状态）
+      await apiClient.logout();
+    } catch (error) {
+      console.error('Logout API error:', error);
+    }
+
+    // 清除本地存储的认证数据
     await storage.deleteItem(TOKEN_KEY);
     await storage.deleteItem(REFRESH_TOKEN_KEY);
     await storage.deleteItem(USER_KEY);

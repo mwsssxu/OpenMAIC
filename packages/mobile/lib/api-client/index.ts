@@ -149,6 +149,11 @@ class ApiClient {
     return data;
   }
 
+  async logout() {
+    const { data } = await this.client.post('/auth/logout');
+    return data;
+  }
+
   async updateUser(nickname?: string, avatar_url?: string) {
     const { data } = await this.client.put('/auth/me', { nickname, avatar_url });
     return data;

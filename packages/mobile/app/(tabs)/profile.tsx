@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -10,6 +10,17 @@ interface BalanceState {
   isLoading: boolean;
 }
 
+interface AlertState {
+  visible: boolean;
+  message: string;
+}
+
+interface ConfirmState {
+  visible: boolean;
+  message: string;
+  onConfirm: (() => Promise<void>) | null;
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -17,6 +28,15 @@ export default function ProfileScreen() {
     tokenBalance: 0,
     pointsBalance: 0,
     isLoading: true,
+  });
+  const [alertState, setAlertState] = useState<AlertState>({
+    visible: false,
+    message: '',
+  });
+  const [confirmState, setConfirmState] = useState<ConfirmState>({
+    visible: false,
+    message: '',
+    onConfirm: null,
   });
 
   useEffect(() => {
@@ -40,43 +60,62 @@ export default function ProfileScreen() {
     }
   }
 
-  const handleLogout = async () => {
-    Alert.alert('退出登录', '确定要退出吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '确定',
-        onPress: async () => {
-          await logout();
-          router.replace('/auth/login');
-        },
-      },
-    ]);
+  const showAlert = (message: string) => {
+    setAlertState({ visible: true, message });
   };
 
-  const handleExchange = async () => {
+  const hideAlert = () => {
+    setAlertState({ visible: false, message: '' });
+  };
+
+  const showConfirm = (message: string, onConfirm: () => Promise<void>) => {
+    setConfirmState({ visible: true, message, onConfirm });
+  };
+
+  const hideConfirm = () => {
+    setConfirmState({ visible: false, message: '', onConfirm: null });
+  };
+
+  const handleConfirmYes = async () => {
+    hideConfirm();
+    if (confirmState.onConfirm) {
+      try {
+        await confirmState.onConfirm();
+      } catch (error) {
+        console.error('Confirm action error:', error);
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    showConfirm('确定要退出登录吗？', async () => {
+      console.log('开始退出登录...');
+      await logout();
+      console.log('退出登录成功');
+      router.replace('/auth/login');
+    });
+  };
+
+  const handleExchange = () => {
     if (balance.pointsBalance < 100) {
-      Alert.alert('积分不足', '需要至少100积分才能兑换');
+      showAlert('需要至少100积分才能兑换');
       return;
     }
-    Alert.alert('兑换Token', `将100积分兑换为10Token?`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '确定',
-        onPress: async () => {
-          try {
-            await apiClient.exchangeTokens(100);
-            loadBalance();
-            Alert.alert('成功', '兑换成功');
-          } catch (error) {
-            Alert.alert('失败', '兑换失败，请稍后重试');
-          }
-        },
-      },
-    ]);
+
+    showConfirm('将100积分兑换为10Token？', async () => {
+      try {
+        await apiClient.exchangeTokens(100);
+        loadBalance();
+        showAlert('兑换成功');
+      } catch (error) {
+        showAlert('兑换失败，请稍后重试');
+      }
+    });
   };
 
   return (
     <View style={styles.container}>
+      {/* 用户信息 */}
       <View style={styles.header}>
         <Text style={styles.nickname}>{user?.nickname || '用户'}</Text>
         <Text style={styles.email}>{user?.email}</Text>
@@ -95,10 +134,12 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* 兑换按钮 */}
       <TouchableOpacity style={styles.exchangeButton} onPress={handleExchange}>
         <Text style={styles.exchangeButtonText}>积分兑换Token</Text>
       </TouchableOpacity>
 
+      {/* 菜单列表 */}
       <View style={styles.section}>
         <TouchableOpacity style={styles.item} onPress={() => router.push('/wallet')}>
           <Text style={styles.itemText}>钱包详情</Text>
@@ -113,6 +154,45 @@ export default function ProfileScreen() {
           <Text style={[styles.itemText, styles.logoutText]}>退出登录</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 确认弹窗 */}
+      <Modal
+        visible={confirmState.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideConfirm}
+      >
+        <Pressable style={styles.modalOverlay} onPress={hideConfirm}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalMessage}>{confirmState.message}</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButtonCancel} onPress={hideConfirm}>
+                <Text style={styles.modalButtonCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalButtonConfirm} onPress={handleConfirmYes}>
+                <Text style={styles.modalButtonConfirmText}>确定</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* 提示弹窗 */}
+      <Modal
+        visible={alertState.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideAlert}
+      >
+        <Pressable style={styles.modalOverlay} onPress={hideAlert}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalMessage}>{alertState.message}</Text>
+            <TouchableOpacity style={styles.modalButtonSingle} onPress={hideAlert}>
+              <Text style={styles.modalButtonConfirmText}>知道了</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -148,4 +228,55 @@ const styles = StyleSheet.create({
   item: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   itemText: { fontSize: 16 },
   logoutText: { color: 'red' },
+
+  // Modal 样式
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    minWidth: 280,
+    alignItems: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  modalButtonCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  modalButtonCancelText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  modalButtonConfirm: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#5b9bd5',
+  },
+  modalButtonConfirmText: {
+    fontSize: 16,
+    color: 'white',
+  },
+  modalButtonSingle: {
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    backgroundColor: '#5b9bd5',
+  },
 });

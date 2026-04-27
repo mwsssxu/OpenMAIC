@@ -106,19 +106,19 @@ async def login(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            detail="邮箱不存在"
         )
 
     if not verify_password(body.password, row["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            detail="密码错误"
         )
 
     if not row["is_active"]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User is inactive"
+            detail="账号已被禁用"
         )
 
     # 返回 token
@@ -135,6 +135,16 @@ async def login(
             "avatar_url": row["avatar_url"]
         }
     )
+
+
+@router.post("/logout")
+async def logout():
+    """退出登录
+
+    前端清除本地存储的 token 即可，JWT 本身有过期时间
+    无需后端黑名单（基于 user_id 的黑名单会影响新登录）
+    """
+    return {"message": "退出登录成功"}
 
 
 @router.post("/refresh", response_model=TokenResponse)
