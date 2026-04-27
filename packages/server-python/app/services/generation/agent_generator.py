@@ -4,7 +4,7 @@ Agent Profiles 生成器 - 根据课程信息生成智能体配置
 
 import json
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.services.llm import call_llm
 import uuid
 
@@ -22,6 +22,13 @@ class AgentProfile(BaseModel):
     voice_provider: Optional[str] = None  # openai, minimax
     voice_id: Optional[str] = None  # alloy, nova, shimmer, etc.
     voice_speed: Optional[float] = None  # 0.25-4.0
+
+    @field_validator('voice_speed')
+    @classmethod
+    def validate_speed(cls, v):
+        if v is not None and not (0.25 <= v <= 4.0):
+            raise ValueError('voice_speed must be between 0.25 and 4.0')
+        return v
 
 
 # Agent颜色调色板

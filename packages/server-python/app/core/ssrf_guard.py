@@ -5,6 +5,7 @@ SSRF 安全验证 - 验证客户端传递的 URL
 import re
 import logging
 from typing import Optional
+from urllib.parse import urlparse, unquote
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ BLOCKED_IP_PATTERNS = [
     r"^::1",
     r"^fc00:",
     r"^fe80:",
+    r"^::ffff:",  # IPv4-mapped IPv6 addresses bypass
 ]
 
 BLOCKED_HOSTS = [
@@ -69,6 +71,9 @@ def validate_url_for_ssrf(url: str) -> Optional[str]:
             return f"Invalid URL scheme: {parsed.scheme}. Only http and https are allowed."
 
         host = parsed.hostname or parsed.netloc.split(":")[0]
+
+        # URL 解码 hostname（防止编码绕过）
+        host = unquote(host)
 
         # 验证禁止的主机名
         for blocked_host in BLOCKED_HOSTS:
