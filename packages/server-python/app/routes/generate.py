@@ -7,8 +7,19 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
-from app.services.generation.outline_generator import generate_outlines, stream_outlines
-from app.services.generation.scene_generator import generate_full_scene, generate_scene_content, generate_scene_actions
+from app.services.generation.outline_generator import (
+    generate_outlines,
+    stream_outlines,
+    generate_outline_titles,
+    generate_smart_default_outlines,
+    SceneOutline,
+)
+from app.services.generation.scene_generator import (
+    generate_full_scene,
+    generate_scene_content,
+    generate_scene_actions,
+    Action,
+)
 from app.services.generation.agent_generator import generate_agent_profiles, get_default_agents
 from app.services.scene_service import (
     validate_language,
@@ -19,9 +30,9 @@ from app.services.scene_service import (
 )
 from app.services.pdf_service import parse_pdf
 from app.services.web_search_service import web_search_with_provider
+from app.services.tts_service import generate_tts, encode_audio_base64
 from app.core.config import settings
 from app.core.ssrf_guard import validate_url_for_ssrf
-from app.core.prompts import build_prompt, PROMPT_IDS, AGENT_COLOR_PALETTE
 import asyncpg
 import uuid
 import json
@@ -225,9 +236,7 @@ async def generate_outlines_endpoint(
         return {"outlines": [o.model_dump() for o in outlines]}
     except Exception as e:
         # LLM调用失败，返回智能默认大纲
-        import logging
-        logging.warning(f"大纲生成失败: {e}")
-        from app.services.generation.outline_generator import SceneOutline, generate_smart_default_outlines
+        logger.warning(f"大纲生成失败: {e}")
         default_outlines = generate_smart_default_outlines(requirement, language, agent_ids)
         return {"outlines": [o.model_dump() for o in default_outlines]}
 
@@ -259,80 +268,93 @@ async def generate_outlines_stream_endpoint(
     MAX_STREAM_RETRIES = 2  # 最大重试次数
 
     async def event_stream_with_heartbeat():
-        from app.services.generation.outline_generator import generate_outline_titles, SceneOutline
-        import uuid
-
-        heartbeat_task = None
+        queue = asyncio.Queue()
+        stop_signal = object()
         parsed_outlines = []
-        last_error = None
 
-        # 创建 heartbeat 任务
-        async def send_heartbeat():
+        # Heartbeat producer
+        async def heartbeat_producer():
             while True:
                 await asyncio.sleep(HEARTBEAT_INTERVAL_MS / 1000)
-                yield ":heartbeat\n\n"
-
-        try:
-            # 重试循环
-            for attempt in range(1, MAX_STREAM_RETRIES + 2):
                 try:
-                    logger.info(f"[SSE] 尝试 #{attempt}/{MAX_STREAM_RETRIES + 1}")
-                    outline_titles = await generate_outline_titles(
-                        requirement, language, model, total_count
-                    )
+                    await queue.put(":heartbeat\n\n")
+                except asyncio.QueueFull:
+                    pass
 
-                    if outline_titles and len(outline_titles) > 0:
-                        elapsed = time.time() - start_time
-                        logger.info(f"[SSE] 标题列表完成 - {len(outline_titles)} 个 (耗时: {elapsed:.1f}s)")
+        # Outline producer
+        async def outline_producer():
+            last_error = None
+            try:
+                for attempt in range(1, MAX_STREAM_RETRIES + 2):
+                    try:
+                        logger.info(f"[SSE] 尝试 #{attempt}/{MAX_STREAM_RETRIES + 1}")
+                        outline_titles = await generate_outline_titles(
+                            requirement, language, model, total_count
+                        )
 
-                        # 发送每个大纲
-                        for i, outline_info in enumerate(outline_titles):
-                            outline = SceneOutline(
-                                id=str(uuid.uuid4()),
-                                title=outline_info.get("title", f"场景 {i+1}"),
-                                type=outline_info.get("type", "slide"),
-                                description=outline_info.get("description", ""),
-                                order=i + 1,
-                                key_points=outline_info.get("key_points", []),
-                            )
-                            parsed_outlines.append(outline)
-                            yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
-                            await asyncio.sleep(0.05)
+                        if outline_titles and len(outline_titles) > 0:
+                            elapsed = time.time() - start_time
+                            logger.info(f"[SSE] 标题列表完成 - {len(outline_titles)} 个 (耗时: {elapsed:.1f}s)")
 
-                        # 成功完成
-                        total_elapsed = time.time() - start_time
-                        logger.info(f"[SSE] 完成 - 共 {len(parsed_outlines)} 个大纲 (总耗时: {total_elapsed:.1f}s)")
-                        yield f"event: done\ndata: {json.dumps({'count': len(parsed_outlines), 'outlines': [o.model_dump() for o in parsed_outlines]})}\n\n"
-                        return
+                            for i, outline_info in enumerate(outline_titles):
+                                outline = SceneOutline(
+                                    id=str(uuid.uuid4()),
+                                    title=outline_info.get("title", f"场景 {i+1}"),
+                                    type=outline_info.get("type", "slide"),
+                                    description=outline_info.get("description", ""),
+                                    order=i + 1,
+                                    key_points=outline_info.get("key_points", []),
+                                )
+                                parsed_outlines.append(outline)
+                                await queue.put(f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n")
 
-                    # 空结果 - 重试
-                    last_error = "LLM returned empty response"
-                    if attempt <= MAX_STREAM_RETRIES:
-                        logger.warning(f"[SSE] 空结果，重试 #{attempt}")
-                        yield f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n"
-                        await asyncio.sleep(2)
-                        continue
+                            total_elapsed = time.time() - start_time
+                            logger.info(f"[SSE] 完成 - 共 {len(parsed_outlines)} 个大纲 (总耗时: {total_elapsed:.1f}s)")
+                            await queue.put(f"event: done\ndata: {json.dumps({'count': len(parsed_outlines), 'outlines': [o.model_dump() for o in parsed_outlines]})}\n\n")
+                            await queue.put(stop_signal)
+                            return
 
-                except Exception as e:
-                    last_error = str(e)
-                    logger.warning(f"[SSE] 错误 #{attempt}: {e}")
-                    if attempt <= MAX_STREAM_RETRIES:
-                        yield f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n"
-                        await asyncio.sleep(2)
-                        continue
+                        last_error = "LLM returned empty response"
+                        if attempt <= MAX_STREAM_RETRIES:
+                            logger.warning(f"[SSE] 空结果，重试 #{attempt}")
+                            await queue.put(f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n")
+                            await asyncio.sleep(2)
 
-            # 所有重试失败，返回默认大纲
-            logger.error(f"[SSE] 所有重试失败: {last_error}")
-            from app.services.generation.outline_generator import generate_smart_default_outlines
-            default_outlines = generate_smart_default_outlines(requirement, language, agent_ids)
-            for outline in default_outlines:
-                yield f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n"
-            yield f"event: done\ndata: {json.dumps({'count': len(default_outlines)})}\n\n"
+                    except Exception as e:
+                        last_error = str(e)
+                        logger.warning(f"[SSE] 错误 #{attempt}: {e}")
+                        if attempt <= MAX_STREAM_RETRIES:
+                            await queue.put(f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n")
+                            await asyncio.sleep(2)
 
-        except Exception as e:
-            elapsed = time.time() - start_time
-            logger.error(f"[SSE] 生成失败 (耗时: {elapsed:.1f}s): {e}")
-            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+                # 所有重试失败，返回默认大纲
+                logger.error(f"[SSE] 所有重试失败: {last_error}")
+                default_outlines = generate_smart_default_outlines(requirement, language, agent_ids)
+                for outline in default_outlines:
+                    await queue.put(f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n")
+                await queue.put(f"event: done\ndata: {json.dumps({'count': len(default_outlines)})}\n\n")
+                await queue.put(stop_signal)
+
+            except Exception as e:
+                elapsed = time.time() - start_time
+                logger.error(f"[SSE] 生成失败 (耗时: {elapsed:.1f}s): {e}")
+                await queue.put(f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n")
+                await queue.put(stop_signal)
+
+        # 启动 producer 任务
+        heartbeat_task = asyncio.create_task(heartbeat_producer())
+        outline_task = asyncio.create_task(outline_producer())
+
+        # 从 queue 消费并 yield
+        try:
+            while True:
+                item = await queue.get()
+                if item is stop_signal:
+                    break
+                yield item
+        finally:
+            heartbeat_task.cancel()
+            outline_task.cancel()
 
     return StreamingResponse(
         event_stream_with_heartbeat(),
@@ -523,8 +545,6 @@ async def generate_tts_endpoint(
     - speed: 语速 (0.25-4.0)
     - model: TTS 模型
     """
-    from app.services.tts_service import generate_tts, encode_audio_base64
-
     text = body.get("text", "")
     audio_id = body.get("audio_id", "")
     provider = body.get("provider", "openai")
@@ -604,8 +624,6 @@ async def generate_scene_content_endpoint(
     - stageId: 课程 ID
     - agents: 智能体列表
     """
-    from app.services.generation.outline_generator import SceneOutline
-
     outline_dict = body.get("outline")
     if not outline_dict:
         raise HTTPException(status_code=400, detail="outline is required")
@@ -674,8 +692,6 @@ async def generate_scene_actions_endpoint(
     - previousSpeeches: 之前的 speech 文本（用于连贯性）
     - userProfile: 用户信息（用于个性化）
     """
-    from app.services.generation.outline_generator import SceneOutline
-
     outline_dict = body.get("outline")
     if not outline_dict:
         raise HTTPException(status_code=400, detail="outline is required")
@@ -736,13 +752,6 @@ async def generate_scene_with_actions_endpoint(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """生成完整场景（内容 + Actions + TTS）"""
-    from app.services.generation.scene_generator import (
-        generate_scene_content,
-        generate_scene_actions,
-        Action,
-    )
-    from app.services.tts_service import generate_tts, encode_audio_base64
-
     outline = body.get("outline")
     agents = body.get("agents", [])
     language = body.get("language", "zh-CN")
