@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
+import { useI18n } from '@/lib/i18n';
 
 interface Classroom {
   id: string;
@@ -26,9 +27,14 @@ interface Classroom {
 
 export default function CoursesScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 搜索状态
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // 删除确认模态框
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -43,6 +49,17 @@ export default function CoursesScreen() {
   useEffect(() => {
     loadClassrooms();
   }, []);
+
+  // 搜索过滤
+  const filteredClassrooms = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return classrooms;
+    return classrooms.filter((c) => {
+      const name = c.name?.toLowerCase() ?? '';
+      const desc = c.description?.toLowerCase() ?? '';
+      return name.includes(q) || desc.includes(q);
+    });
+  }, [classrooms, searchQuery]);
 
   const loadClassrooms = async () => {
     setLoading(true);
@@ -204,29 +221,71 @@ export default function CoursesScreen() {
     <View style={styles.container}>
       {/* 头部 */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>我的课程</Text>
-        <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
-          <Ionicons name="add-circle" size={24} color="white" />
-          <Text style={styles.createBtnText}>新建</Text>
-        </TouchableOpacity>
+        {searchOpen ? (
+          // 搜索模式
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={t('classroom.searchPlaceholder') || '搜索课程...'}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={styles.searchCloseBtn}
+              onPress={() => {
+                setSearchOpen(false);
+                setSearchQuery('');
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color="#999" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          // 正常模式
+          <>
+            <Text style={styles.headerTitle}>{t('classroom.title') || '我的课程'}</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.searchToggleBtn}
+                onPress={() => setSearchOpen(true)}
+              >
+                <Ionicons name="search-outline" size={22} color="#666" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
+                <Ionicons name="add-circle" size={24} color="white" />
+                <Text style={styles.createBtnText}>{t('classroom.create') || '新建'}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
 
       {/* 课程列表 */}
       <FlatList
-        data={classrooms}
+        data={filteredClassrooms}
         keyExtractor={(item) => item.id}
         renderItem={renderClassroom}
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="folder-open-outline" size={48} color="#999" />
-            <Text style={styles.emptyTitle}>暂无课程</Text>
-            <Text style={styles.emptyHint}>点击右上角按钮创建您的第一个课程</Text>
-            <TouchableOpacity style={styles.emptyCreateBtn} onPress={handleCreate}>
-              <Text style={styles.emptyCreateText}>创建课程</Text>
-            </TouchableOpacity>
-          </View>
+          searchQuery.trim() ? (
+            <View style={styles.empty}>
+              <Ionicons name="search-outline" size={48} color="#999" />
+              <Text style={styles.emptyTitle}>{t('classroom.noResults') || '未找到匹配的课程'}</Text>
+              <Text style={styles.emptyHint}>{t('classroom.searchHint') || '尝试其他关键词'}</Text>
+            </View>
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name="folder-open-outline" size={48} color="#999" />
+              <Text style={styles.emptyTitle}>{t('classroom.noClassrooms') || '暂无课程'}</Text>
+              <Text style={styles.emptyHint}>点击右上角按钮创建您的第一个课程</Text>
+              <TouchableOpacity style={styles.emptyCreateBtn} onPress={handleCreate}>
+                <Text style={styles.emptyCreateText}>{t('classroom.create') || '创建课程'}</Text>
+              </TouchableOpacity>
+            </View>
+          )
         }
         refreshing={loading}
         onRefresh={loadClassrooms}
@@ -319,6 +378,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchToggleBtn: {
+    padding: 8,
+  },
   createBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -328,6 +395,24 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   createBtnText: { color: 'white', marginLeft: 5, fontWeight: '600' },
+
+  // 搜索栏
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f7fa',
+    borderRadius: 25,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+  },
+  searchCloseBtn: { padding: 4 },
 
   // 列表
   listContent: { padding: 15 },

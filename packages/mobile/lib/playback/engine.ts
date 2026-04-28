@@ -22,10 +22,13 @@ export type EngineMode = 'idle' | 'playing' | 'paused';
 
 // TTS 配置（可由外部设置）
 export interface TTSConfig {
-  provider: 'qwen' | 'openai' | 'minimax' | 'browser';
+  provider: 'qwen' | 'openai' | 'minimax' | 'browser' | 'voxcpm';
   voice: string;
   speed: number;
   model?: string;
+  // VoxCPM 特有配置
+  backend?: 'vllm-omni' | 'python-api' | 'nano-vllm';
+  voicePrompt?: string;
 }
 
 // 默认 TTS 配置

@@ -46,6 +46,9 @@ const translations = {
       loadingScene: '加载场景...',
       sceneProgress: '场景 {current} / {total}',
       generating: '生成中...',
+      searchPlaceholder: '搜索课程...',
+      noResults: '未找到匹配的课程',
+      searchHint: '尝试其他关键词',
     },
     // 白板
     whiteboard: {
@@ -119,6 +122,22 @@ const translations = {
       progress: '进度',
       points: '积分',
       newAchievement: '恭喜获得新成就！',
+    },
+    // 课程完成
+    classroomComplete: {
+      title: '课程完成',
+      trailLabels: {
+        slide: '页',
+        quiz: '小测',
+        interactive: '互动',
+        pbl: '项目',
+      },
+      quizScoreLabel: '答对 {{correct}} / {{total}}',
+      encouragement: {
+        high: '太棒了，完美发挥！',
+        mid: '表现不错，继续加油！',
+        low: '万事开头难，回去再练练吧。',
+      },
     },
     // 打卡
     checkin: {
@@ -199,6 +218,9 @@ const translations = {
       loadingScene: 'Loading scene...',
       sceneProgress: 'Scene {current} / {total}',
       generating: 'Generating...',
+      searchPlaceholder: 'Search classrooms...',
+      noResults: 'No matching classrooms',
+      searchHint: 'Try different keywords',
     },
     whiteboard: {
       title: 'Interactive Whiteboard',
@@ -265,6 +287,21 @@ const translations = {
       progress: 'Progress',
       points: 'Points',
       newAchievement: 'New achievement unlocked!',
+    },
+    classroomComplete: {
+      title: 'Course Complete',
+      trailLabels: {
+        slide: 'Slides',
+        quiz: 'Quizzes',
+        interactive: 'Interactive',
+        pbl: 'Projects',
+      },
+      quizScoreLabel: '{{correct}} / {{total}} correct',
+      encouragement: {
+        high: 'Excellent, perfect score!',
+        mid: 'Good job, keep it up!',
+        low: 'Keep practicing, you\'ll get better!',
+      },
     },
     checkin: {
       today: 'Today\'s Check-in',

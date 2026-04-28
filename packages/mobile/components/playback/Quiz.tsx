@@ -1,8 +1,9 @@
 /**
  * 移动端测验组件 - 支持单选、多选、简答题
+ * 支持持久化，断点续答
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,9 +11,16 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Dimensions,
 } from 'react-native';
 import { useI18n } from '@/lib/i18n';
+import {
+  readDraft,
+  writeDraft,
+  writeSubmittedAnswers,
+  writeSubmittedResults,
+  clearSubmitted,
+  readSubmittedState,
+} from '@/lib/quiz/persistence';
 
 interface QuizQuestion {
   id: string;
@@ -26,17 +34,53 @@ interface QuizQuestion {
 
 interface QuizProps {
   questions: QuizQuestion[];
+  sceneId: string; // 用于持久化
   onSubmit?: (answers: Record<string, string | string[]>) => void;
   onComplete?: (score: number) => void;
 }
 
-export function Quiz({ questions, onSubmit, onComplete }: QuizProps) {
+export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
   const { t } = useI18n();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [submitted, setSubmitted] = useState(false);
   const [grading, setGrading] = useState(false);
   const [score, setScore] = useState(0);
+  const [initialized, setInitialized] = useState(false);
+
+  // 加载持久化状态
+  useEffect(() => {
+    const loadState = async () => {
+      const state = await readSubmittedState(sceneId);
+      if (state) {
+        setAnswers(state.answers);
+        if (state.kind === 'reviewing') {
+          setSubmitted(true);
+          // 计算分数
+          const correctCount = state.results.filter(r => r.correct === true).length;
+          setScore(Math.round((correctCount / questions.length) * 100));
+        }
+      } else {
+        // 加载草稿
+        const draft = await readDraft(sceneId);
+        if (Object.keys(draft).length > 0) {
+          setAnswers(draft);
+        }
+      }
+      setInitialized(true);
+    };
+    loadState();
+  }, [sceneId, questions.length]);
+
+  // 保存草稿 (debounced)
+  useEffect(() => {
+    if (!initialized || submitted) return;
+    const saveDraft = async () => {
+      await writeDraft(sceneId, answers);
+    };
+    // 简化版本：每次变化都保存
+    saveDraft();
+  }, [answers, sceneId, initialized, submitted]);
 
   const currentQuestion = questions[currentIndex];
   const isLastQuestion = currentIndex === questions.length - 1;
@@ -86,31 +130,50 @@ export function Quiz({ questions, onSubmit, onComplete }: QuizProps) {
 
     // 计算得分（简化版）
     let correctCount = 0;
+    const results: Array<{ questionId: string; correct: boolean; feedback?: string }> = [];
+
     for (const q of questions) {
       const userAns = answers[q.id];
+      let isCorrect = false;
+
       if (q.type === 'single' && userAns === q.correctAnswer) {
         correctCount++;
+        isCorrect = true;
       } else if (q.type === 'multiple') {
         const correct = (q.correctAnswer as string[]) || [];
         const user = (userAns as string[]) || [];
         if (correct.length === user.length && correct.every((c) => user.includes(c))) {
           correctCount++;
+          isCorrect = true;
         }
       }
+
+      results.push({
+        questionId: q.id,
+        correct: isCorrect,
+        feedback: isCorrect ? t('quiz.correct') : t('quiz.incorrect'),
+      });
     }
 
     const finalScore = Math.round((correctCount / questions.length) * 100);
     setScore(finalScore);
     setGrading(false);
     setSubmitted(true);
+
+    // 持久化提交结果
+    await writeSubmittedAnswers(sceneId, answers);
+    await writeSubmittedResults(sceneId, results);
+
     onComplete?.(finalScore);
   };
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
     setAnswers({});
     setSubmitted(false);
     setScore(0);
     setCurrentIndex(0);
+    // 清除持久化状态
+    await clearSubmitted(sceneId);
   };
 
   const isOptionSelected = (questionId: string, option: string): boolean => {

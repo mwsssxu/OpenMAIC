@@ -487,10 +487,11 @@ class ApiClient {
    *
    * @param text - Text to convert to speech
    * @param audioId - Unique audio ID (optional)
-   * @param provider - TTS provider (qwen, openai, minimax)
-   * @param voice - Voice ID (Cherry, Ethan, alloy, etc.)
+   * @param provider - TTS provider (qwen, openai, minimax, voxcpm)
+   * @param voice - Voice ID (Cherry, Ethan, alloy, voxcpm:auto, etc.)
    * @param speed - Speech speed (0.5-2.0)
-   * @param model - TTS model (qwen3-tts-flash, tts-1, etc.)
+   * @param model - TTS model (qwen3-tts-flash, tts-1, VoxCPM2, etc.)
+   * @param options - Provider-specific options (VoxCPM backend, voicePrompt, etc.)
    */
   async generateTTS(
     text: string,
@@ -499,6 +500,11 @@ class ApiClient {
     voice: string = 'Cherry',
     speed: number = 1.0,
     model?: string,
+    options?: {
+      backend?: 'vllm-omni' | 'python-api' | 'nano-vllm';
+      voicePrompt?: string;
+      referenceAudioBase64?: string;
+    },
   ) {
     const { data } = await this.client.post('/tts', {
       text,
@@ -507,6 +513,10 @@ class ApiClient {
       voice,
       speed,
       model: model || (provider === 'qwen' ? 'qwen3-tts-flash' : 'tts-1'),
+      // VoxCPM2 特有参数
+      backend: options?.backend,
+      voicePrompt: options?.voicePrompt,
+      referenceAudioBase64: options?.referenceAudioBase64,
     });
     return data; // { success, audioId, base64, format }
   }
