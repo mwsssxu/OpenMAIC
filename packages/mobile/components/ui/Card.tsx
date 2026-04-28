@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, StyleSheet, ViewStyle, Platform } from 'react-native';
+import { View, ViewStyle, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
