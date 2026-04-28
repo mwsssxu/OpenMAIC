@@ -38,7 +38,7 @@ interface ButtonProps {
   hapticStyle?: 'light' | 'medium' | 'heavy';
 }
 
-const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity) as any;
 
 export function Button({
   variant = 'primary',
