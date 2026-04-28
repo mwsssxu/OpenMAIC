@@ -11,13 +11,13 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
+import { ScreenCanvas } from '@/components/slide';
 
 interface Scene {
   id: string;
@@ -379,62 +379,11 @@ export default function ClassroomScreen() {
         style={[styles.content, { transform: [{ translateX: slideAnim }] }]}
       >
         {currentScene?.type === 'slide' && (
-          <ScrollView style={styles.slideScroll}>
-            <View style={styles.slideContainer}>
-              {/* 幻灯片卡片容器 */}
-              <View style={styles.slideCard}>
-                {/* 渲染 canvas elements */}
-                {currentScene.content?.canvas?.elements?.map((element: any, index: number) => (
-                  <View key={element.id || index} style={[
-                    styles.elementContainer,
-                    element.position && {
-                      marginTop: element.position.top ? element.position.top / 3 : 8,
-                    }
-                  ]}>
-                    {element.type === 'text' && (
-                      <Text style={[
-                        styles.elementText,
-                        element.style?.fontSize && { fontSize: Math.min(element.style.fontSize / 1.5, 28) },
-                        element.style?.color && { color: element.style.color },
-                        element.style?.fontWeight === 'bold' && { fontWeight: 'bold' },
-                        element.style?.textAlign === 'center' && { textAlign: 'center' },
-                        index === 0 && styles.firstElement,
-                      ]}>
-                        {element.content}
-                      </Text>
-                    )}
-                    {element.type === 'image' && element.src && (
-                      <Image
-                        source={{ uri: element.src }}
-                        style={[
-                          styles.slideImage,
-                          element.position?.width && { width: element.position.width / 2 },
-                          element.position?.height && { height: element.position.height / 2 },
-                        ]}
-                        resizeMode="contain"
-                      />
-                    )}
-                    {element.type === 'shape' && element.shapeType === 'line' && (
-                      <View style={styles.lineElement} />
-                    )}
-                  </View>
-                ))}
-
-                {/* 兼容旧格式 content.text */}
-                {currentScene.content?.text && !currentScene.content?.canvas && (
-                  <Text style={styles.sceneText}>{currentScene.content.text}</Text>
-                )}
-
-                {/* 如果没有内容，显示占位提示 */}
-                {(!currentScene.content?.canvas?.elements || currentScene.content?.canvas?.elements?.length === 0) && (
-                  <View style={styles.emptySlide}>
-                    <Ionicons name="document-text-outline" size={48} color="#ccc" />
-                    <Text style={styles.emptyText}>幻灯片内容正在生成中...</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </ScrollView>
+          <ScreenCanvas
+            elements={currentScene.content?.canvas?.elements || []}
+            background={currentScene.content?.canvas?.background}
+            theme={currentScene.content?.canvas?.theme}
+          />
         )}
 
         {currentScene?.type === 'quiz' && (

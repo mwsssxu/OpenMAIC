@@ -13,6 +13,7 @@
 
 import { AudioPlayer } from './audio-player';
 import { saveAudioFile } from '../storage/audio-storage';
+import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
 import { Scene, SceneAction, SpeechActionData } from '../types';
 import { apiClient } from '../api-client';
@@ -394,7 +395,12 @@ export class PlaybackEngine {
     const cacheKey = `${this.ttsConfig.provider}_${this.ttsConfig.voice}_${text.length}_${text.slice(0, 100)}`;
     const cached = this.audioCache.get(cacheKey);
     if (cached) {
-      saveAudioFile(audioId, cached.base64, cached.format);
+      // Web 环境：直接缓存到 AudioPlayer
+      if (Platform.OS === 'web') {
+        this.audioPlayer.cacheAudio(audioId, cached.base64, cached.format);
+      } else {
+        saveAudioFile(audioId, cached.base64, cached.format);
+      }
       await this.audioPlayer.play(audioId, cached.format);
       return;
     }
@@ -414,8 +420,17 @@ export class PlaybackEngine {
         );
 
         if (result.success && result.base64) {
-          saveAudioFile(result.audioId, result.base64, result.format);
+          // 缓存音频数据
           this.audioCache.set(cacheKey, { base64: result.base64, format: result.format });
+
+          // Web 环境：直接缓存 base64 到 AudioPlayer，无需文件存储
+          if (Platform.OS === 'web') {
+            this.audioPlayer.cacheAudio(result.audioId, result.base64, result.format);
+          } else {
+            // Native 环境：保存到文件系统
+            saveAudioFile(result.audioId, result.base64, result.format);
+          }
+
           this.callbacks.onTTSReady?.(result.audioId);
           await this.audioPlayer.play(result.audioId, result.format);
           return;
