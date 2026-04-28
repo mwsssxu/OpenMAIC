@@ -6,14 +6,21 @@ import {
   Dimensions,
   TouchableOpacity,
   ScrollView,
-  PanResponder,
-  Animated,
   ActivityIndicator,
   Modal,
   TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
@@ -85,8 +92,10 @@ export default function ClassroomScreen() {
   const [showTtsSettings, setShowTtsSettings] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<Record<string, Array<{ id: string; name: string }>>>({});
 
-  // 场景切换动画
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  // 场景切换动画 - 使用 Reanimated
+  const translateX = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
 
   const screenWidth = Dimensions.get('window').width - 40;
 
@@ -96,50 +105,71 @@ export default function ClassroomScreen() {
     }
   }, [id, authLoading, isAuthenticated]);
 
-  // 场景切换函数 - 使用 useCallback 以便在 PanResponder 中引用
+  // 场景切换函数 - 添加触觉反馈
   const goToNextScene = useCallback(() => {
     if (data && currentSceneIndex < data.scenes.length - 1) {
-      Animated.timing(slideAnim, {
-        toValue: -screenWidth,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        playbackEngineRef.current?.nextScene();
-        slideAnim.setValue(0);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      translateX.value = withTiming(-screenWidth, { duration: 200 }, (finished) => {
+        if (finished) {
+          playbackEngineRef.current?.nextScene();
+          translateX.value = 0;
+        }
       });
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-  }, [data, currentSceneIndex, slideAnim, screenWidth]);
+  }, [data, currentSceneIndex, screenWidth]);
 
   const goToPrevScene = useCallback(() => {
     if (currentSceneIndex > 0) {
-      Animated.timing(slideAnim, {
-        toValue: screenWidth,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        playbackEngineRef.current?.prevScene();
-        slideAnim.setValue(0);
-      });
-    }
-  }, [currentSceneIndex, slideAnim, screenWidth]);
-
-  // 手势导航 - 使用 useMemo 创建 PanResponder，避免每次渲染重新创建
-  const panResponder = useMemo(() =>
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 30;
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx > 50) {
-          goToPrevScene();
-        } else if (gestureState.dx < -50) {
-          goToNextScene();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      translateX.value = withTiming(screenWidth, { duration: 200 }, (finished) => {
+        if (finished) {
+          playbackEngineRef.current?.prevScene();
+          translateX.value = 0;
         }
-      },
-    }),
-  [goToPrevScene, goToNextScene]
-  );
+      });
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  }, [currentSceneIndex, screenWidth]);
+
+  // 手势导航 - 使用 Gesture Handler
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-30, 30])
+    .onEnd((event) => {
+      if (event.translationX > 50) {
+        runOnJS(goToPrevScene)();
+      } else if (event.translationX < -50) {
+        runOnJS(goToNextScene)();
+      }
+    });
+
+  // 缩放手势 - 用于查看幻灯片细节
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event) => {
+      scale.value = savedScale.value * event.scale;
+    })
+    .onEnd(() => {
+      if (scale.value < 1) {
+        scale.value = withSpring(1);
+      } else if (scale.value > 3) {
+        scale.value = withSpring(3);
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      savedScale.value = scale.value;
+    });
+
+  // 组合手势
+  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
+
+  // 动画样式
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { scale: scale.value },
+    ],
+  }));
 
   async function loadClassroom() {
     if (!id) return;
@@ -361,23 +391,22 @@ export default function ClassroomScreen() {
   const currentScene = data.scenes[currentSceneIndex];
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
-      {/* 头部：标题 + 返回按钮 */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#5b9bd5" />
-          <Text style={styles.backText}>返回</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{data.stage.name}</Text>
-        <Text style={styles.progress}>
-          {currentSceneIndex + 1} / {data.scenes.length}
-        </Text>
-      </View>
+    <GestureDetector gesture={composedGesture}>
+      <View style={styles.container}>
+        {/* 头部：标题 + 返回按钮 */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color="#5b9bd5" />
+            <Text style={styles.backText}>返回</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>{data.stage.name}</Text>
+          <Text style={styles.progress}>
+            {currentSceneIndex + 1} / {data.scenes.length}
+          </Text>
+        </View>
 
-      {/* 场景内容 */}
-      <Animated.View
-        style={[styles.content, { transform: [{ translateX: slideAnim }] }]}
-      >
+        {/* 场景内容 */}
+        <Animated.View style={[styles.content, animatedStyle]}>
         {currentScene?.type === 'slide' && (
           <ScreenCanvas
             elements={currentScene.content?.canvas?.elements || []}
@@ -775,7 +804,8 @@ export default function ClassroomScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </GestureDetector>
   );
 }
 
