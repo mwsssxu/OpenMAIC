@@ -22,8 +22,6 @@ import Animated, {
   withSequence,
   withRepeat,
   Easing,
-  interpolate,
-  runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -151,8 +149,8 @@ function TrophyIcon({ size = 120 }: { size?: number }) {
   );
 }
 
-// 闪光动画组件
-function Sparkle({ delay }: { delay: number }) {
+// 闪光动画组件（带位置）
+function Sparkle({ delay, top, left }: { delay: number; top: number; left: number }) {
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
@@ -183,7 +181,7 @@ function Sparkle({ delay }: { delay: number }) {
         true
       )
     );
-  }, []);
+  }, [delay]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -191,48 +189,33 @@ function Sparkle({ delay }: { delay: number }) {
   }));
 
   return (
-    <Animated.View style={[styles.sparkle, animatedStyle]}>
+    <Animated.View style={[styles.sparkle, { top, left }, animatedStyle]}>
       <Ionicons name="star" size={14} color="#fbbf24" />
     </Animated.View>
   );
 }
 
-// 数字动画计数器
-function AnimatedCounter({ value, delay = 0 }: { value: number; delay?: number }) {
-  const [display, setDisplay] = useState(0);
-  const counter = useSharedValue(0);
-
-  useEffect(() => {
-    counter.value = withDelay(
-      delay,
-      withTiming(value, { duration: 900, easing: Easing.out(Easing.cubic) })
-    );
-  }, [value, delay]);
-
-  useEffect(() => {
-    const updateDisplay = (v: number) => setDisplay(Math.round(v));
-    // 使用动画值更新显示
-    const interval = setInterval(() => {
-      // 简化版本：直接显示最终值
-    }, 50);
-    return () => clearInterval(interval);
-  }, []);
-
+// 数字动画计数器（简化版：直接显示值）
+function AnimatedCounter({ value }: { value: number }) {
   return <Text style={styles.statNumber}>{value}</Text>;
 }
 
-// Quiz 进度环
+// Quiz 进度条（带动画）
 function QuizRing({ pct, delay = 0 }: { pct: number; delay?: number }) {
-  const progress = useSharedValue(0);
+  const progressWidth = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withDelay(delay, withTiming(pct, { duration: 1100 }));
+    progressWidth.value = withDelay(delay, withTiming(pct, { duration: 1100 }));
   }, [pct, delay]);
+
+  const progressStyle = useAnimatedStyle(() => ({
+    width: `${progressWidth.value}%`,
+  }));
 
   return (
     <View style={styles.quizRing}>
       <View style={styles.quizRingOuter}>
-        <View style={[styles.quizRingProgress, { width: `${pct}%` }]} />
+        <Animated.View style={[styles.quizRingProgress, progressStyle]} />
       </View>
       <Text style={styles.quizRingText}>
         {pct}%
@@ -363,9 +346,9 @@ export function ClassroomCompletePage({
             <TrophyIcon size={100} />
           </Animated.View>
           {/* Sparkles */}
-          <Sparkle delay={800} />
-          <Sparkle delay={1100} />
-          <Sparkle delay={1350} />
+          <Sparkle delay={800} top={10} left={20} />
+          <Sparkle delay={1100} top={30} left={170} />
+          <Sparkle delay={1350} top={150} left={60} />
         </View>
 
         {/* 标题徽章 */}
@@ -432,7 +415,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'linear-gradient(to bottom right, #fef3c7, #fff, #fed7aa)',
+    backgroundColor: '#fef3c7', // 使用纯色替代 gradient
   },
   radialGlow: {
     position: 'absolute',

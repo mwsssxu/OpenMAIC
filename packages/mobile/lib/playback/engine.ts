@@ -420,6 +420,11 @@ export class PlaybackEngine {
           this.ttsConfig.voice,
           this.ttsConfig.speed,
           this.ttsConfig.model,
+          // VoxCPM 特有配置
+          this.ttsConfig.provider === 'voxcpm' ? {
+            backend: this.ttsConfig.backend,
+            voicePrompt: this.ttsConfig.voicePrompt,
+          } : undefined,
         );
 
         if (result.success && result.base64) {

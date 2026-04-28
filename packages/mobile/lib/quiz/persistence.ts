@@ -42,8 +42,8 @@ export async function readDraft(sceneId: string): Promise<QuizAnswers> {
     if (raw) {
       return JSON.parse(raw) as QuizAnswers;
     }
-  } catch {
-    // ignore
+  } catch (error) {
+    console.warn(`[persistence] readDraft failed for ${sceneId}:`, error);
   }
   return {};
 }
@@ -52,8 +52,8 @@ export async function readDraft(sceneId: string): Promise<QuizAnswers> {
 export async function writeDraft(sceneId: string, answers: QuizAnswers): Promise<void> {
   try {
     await AsyncStorage.setItem(draftKey(sceneId), JSON.stringify(answers));
-  } catch {
-    // ignore quota / disabled storage
+  } catch (error) {
+    console.warn(`[persistence] writeDraft failed for ${sceneId}:`, error);
   }
 }
 

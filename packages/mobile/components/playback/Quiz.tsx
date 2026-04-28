@@ -72,14 +72,15 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
     loadState();
   }, [sceneId, questions.length]);
 
-  // 保存草稿 (debounced)
+  // 保存草稿 (debounced 500ms)
   useEffect(() => {
     if (!initialized || submitted) return;
-    const saveDraft = async () => {
-      await writeDraft(sceneId, answers);
-    };
-    // 简化版本：每次变化都保存
-    saveDraft();
+
+    const timeoutId = setTimeout(() => {
+      writeDraft(sceneId, answers);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
   }, [answers, sceneId, initialized, submitted]);
 
   const currentQuestion = questions[currentIndex];

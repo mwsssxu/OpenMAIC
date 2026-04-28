@@ -9,9 +9,15 @@ export interface CompleteSummary {
   quiz: { correct: number; total: number; pct: number } | null;
 }
 
+export interface QuizQuestion {
+  id: string;
+  correctAnswer?: string | string[];
+}
+
 export function summarizeScenes(
   scenes: Scene[],
   quizAnswers?: Record<string, Record<string, string | string[]>>,
+  quizResults?: Record<string, Array<{ questionId: string; correct: boolean | null }>>,
 ): CompleteSummary {
   const countsByType: Partial<Record<SceneType, number>> = {};
 
@@ -24,8 +30,9 @@ export function summarizeScenes(
 
   for (const scene of scenes) {
     if (scene.type !== 'quiz') continue;
-    const questions = scene.content?.questions ?? [];
+    const questions = (scene.content?.questions ?? []) as QuizQuestion[];
     const answers = quizAnswers?.[scene.id] ?? {};
+    const results = quizResults?.[scene.id];
 
     for (const q of questions) {
       total += 1;
@@ -33,10 +40,33 @@ export function summarizeScenes(
 
       if (!userAnswer) continue;
 
-      // 单选题：检查是否匹配正确答案
-      if (q.options?.length === 1) {
-        // 暂时假设所有选项都可能是正确答案，需要从后端获取
-        // 这里简化处理，用户选择了答案就视为已作答
+      // 优先使用已批改的结果
+      if (results) {
+        const result = results.find(r => r.questionId === q.id);
+        if (result?.correct === true) {
+          correct++;
+        }
+        continue;
+      }
+
+      // 否则检查答案是否匹配
+      const correctAnswer = q.correctAnswer;
+      if (correctAnswer === undefined) continue;
+
+      // 单选题：字符串匹配
+      if (typeof correctAnswer === 'string' && typeof userAnswer === 'string') {
+        if (userAnswer === correctAnswer) {
+          correct++;
+        }
+      }
+      // 多选题：数组匹配
+      else if (Array.isArray(correctAnswer) && Array.isArray(userAnswer)) {
+        if (
+          correctAnswer.length === userAnswer.length &&
+          correctAnswer.every(c => userAnswer.includes(c))
+        ) {
+          correct++;
+        }
       }
     }
   }
