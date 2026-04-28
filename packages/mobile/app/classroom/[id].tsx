@@ -25,6 +25,8 @@ import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
 import { ScreenCanvas } from '@/components/slide';
+import { Colors, getShadowColor } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Scene {
   id: string;
@@ -400,9 +402,11 @@ export default function ClassroomScreen() {
             <Text style={styles.backText}>返回</Text>
           </TouchableOpacity>
           <Text style={styles.title}>{data.stage.name}</Text>
-          <Text style={styles.progress}>
-            {currentSceneIndex + 1} / {data.scenes.length}
-          </Text>
+          <View style={styles.progressBadge}>
+            <Text style={styles.progressText}>
+              {currentSceneIndex + 1} / {data.scenes.length}
+            </Text>
+          </View>
         </View>
 
         {/* 场景内容 */}
@@ -810,22 +814,34 @@ export default function ClassroomScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f7fa' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // 头部
   header: {
-    padding: 15,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.backgroundAlt,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: Colors.neutral.border,
   },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backText: { color: '#5b9bd5', fontSize: 16 },
-  title: { flex: 1, fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
-  progress: { fontSize: 14, color: '#666' },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary.transparent,
+    padding: 8,
+    borderRadius: 16,
+  },
+  backText: { color: Colors.primary.main, fontSize: 14, fontWeight: '500' },
+  title: { flex: 1, fontSize: 18, fontWeight: '600', textAlign: 'center', color: Colors.neutral.textPrimary },
+  progressBadge: {
+    backgroundColor: Colors.primary.main,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  progressText: { color: Colors.neutral.white, fontSize: 12, fontWeight: '500' },
 
   // 内容
   content: { flex: 1, padding: 15 },
