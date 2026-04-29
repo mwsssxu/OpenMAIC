@@ -46,7 +46,7 @@ interface SceneOutline {
 export default function CreateClassroomScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { onPress, onSuccess, onError } = useFeedback();
+  const { onSuccess, onError } = useFeedback();
 
   // 步骤状态
   const [currentStep, setCurrentStep] = useState(0);
@@ -207,6 +207,7 @@ export default function CreateClassroomScreen() {
       );
 
       setCreatedClassroomId(result.id);
+      onSuccess();
 
       // 显示成功消息并跳转
       Alert.alert('成功', `课程创建成功！已生成 ${result.scenes_count} 个幻灯片`, [
@@ -218,6 +219,7 @@ export default function CreateClassroomScreen() {
       }, 1000);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || '创建失败');
+      onError();
     } finally {
       setLoading(false);
     }

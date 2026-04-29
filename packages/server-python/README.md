@@ -16,7 +16,10 @@
 - Redis 缓存优化
 
 ## 开发
-
+```
+docker compose build python-server --no-cache 
+docker compose up -d python-server
+```
 ```bash
 # 安装依赖
 pip install -r requirements.txt

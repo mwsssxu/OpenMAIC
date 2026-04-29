@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,14 +19,12 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withSpring,
-  runOnJS,
 } from 'react-native-reanimated';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
 import { ScreenCanvas } from '@/components/slide';
-import { Colors, getShadowColor } from '@/lib/constants/theme';
-import { useFeedback } from '@/lib/hooks/use-feedback';
+import { Colors } from '@/lib/constants/theme';
 
 interface Scene {
   id: string;
@@ -55,6 +53,19 @@ interface ClassroomData {
   };
   scenes: Scene[];
   agents?: Agent[];  // API 可能返回预配置的 agents
+}
+
+// 验证 hex 颜色格式
+function isValidHexColor(color: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(color);
+}
+
+// 安全的颜色处理：验证并添加 alpha
+function safeColorWithAlpha(color: string, alpha: string = '20'): string {
+  if (isValidHexColor(color)) {
+    return color + alpha;
+  }
+  return '#888888' + alpha;
 }
 
 export default function ClassroomScreen() {
@@ -141,9 +152,9 @@ export default function ClassroomScreen() {
     .activeOffsetX([-30, 30])
     .onEnd((event) => {
       if (event.translationX > 50) {
-        runOnJS(goToPrevScene)();
+        goToPrevScene();
       } else if (event.translationX < -50) {
-        runOnJS(goToNextScene)();
+        goToNextScene();
       }
     });
 
@@ -157,7 +168,7 @@ export default function ClassroomScreen() {
         scale.value = withSpring(1);
       } else if (scale.value > 3) {
         scale.value = withSpring(3);
-        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       savedScale.value = scale.value;
     });
@@ -192,43 +203,60 @@ export default function ClassroomScreen() {
   }
 
   async function loadAgents(classroomData: ClassroomData) {
+    // 定义统一的默认 fallback agents（4个）
+    const defaultFallbackAgents: Agent[] = [
+      { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师，讲解清晰有条理', avatar: 'teacher.png' },
+      { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解，答疑解惑', avatar: 'assistant.png' },
+      { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '好奇心强，喜欢提问', avatar: 'student1.png' },
+      { id: 'student2', name: '学霸小红', role: 'student', color: '#8b5cf6', persona: '学霸型，理解能力强', avatar: 'student2.png' },
+    ];
+
+    // 验证 agent 数据结构的辅助函数
+    const validateAgent = (a: any): a is Agent => {
+      return a && typeof a.id === 'string' && typeof a.name === 'string' && typeof a.color === 'string';
+    };
+
+    // 规范化 agent 颜色（确保格式正确）
+    const normalizeAgentColor = (a: Agent): Agent => {
+      const validColor = isValidHexColor(a.color) ? a.color : '#888888';
+      return { ...a, color: validColor };
+    };
+
     try {
-      // 优先使用 API 返回的 agents（如果有）
-      if (classroomData.agents && classroomData.agents.length > 0) {
-        setAgents(classroomData.agents);
-        return;
+      // 优先使用 stage.generatedAgentConfigs（生成时保存的配置）
+      if (classroomData.stage?.generatedAgentConfigs && classroomData.stage.generatedAgentConfigs.length > 0) {
+        const validAgents = classroomData.stage.generatedAgentConfigs.filter(validateAgent).map(normalizeAgentColor);
+        if (validAgents.length > 0) {
+          setAgents(validAgents);
+          return;
+        }
       }
 
-      // 如果有 agent_ids，使用默认 agents API 获取配置
-      // 注意：不调用 generate API（避免重复生成）
+      // 其次使用 API 返回的 agents（如果有）
+      if (classroomData.agents && classroomData.agents.length > 0) {
+        const validAgents = classroomData.agents.filter(validateAgent).map(normalizeAgentColor);
+        if (validAgents.length > 0) {
+          setAgents(validAgents);
+          return;
+        }
+      }
+
+      // 如果有 agent_ids，从默认 agents API 获取并按数量截取
+      // 注意：agent_ids 是生成时指定的数量，而非具体 ID 列表
       const defaultAgents = await apiClient.getDefaultAgents('zh-CN');
       if (defaultAgents.agents && defaultAgents.agents.length > 0) {
-        // 根据 agent_ids 过滤或映射
-        if (classroomData.stage?.agent_ids && classroomData.stage.agent_ids.length > 0) {
-          // 使用默认配置中的前几个 agent
-          const count = Math.min(classroomData.stage.agent_ids.length, defaultAgents.agents.length);
-          setAgents(defaultAgents.agents.slice(0, count));
-        } else {
-          setAgents(defaultAgents.agents);
-        }
+        const validDefaultAgents = defaultAgents.agents.filter(validateAgent).map(normalizeAgentColor);
+        const count = classroomData.stage?.agent_ids?.length ?? validDefaultAgents.length;
+        setAgents(validDefaultAgents.slice(0, Math.min(count, validDefaultAgents.length)));
         return;
       }
 
       // API 失败，使用内置默认配置
-      setAgents([
-        { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师，讲解清晰有条理', avatar: 'teacher.png' },
-        { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解，答疑解惑', avatar: 'assistant.png' },
-        { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '好奇心强，喜欢提问', avatar: 'student1.png' },
-        { id: 'student2', name: '学霸小红', role: 'student', color: '#8b5cf6', persona: '学霸型，理解能力强', avatar: 'student2.png' },
-      ]);
+      setAgents(defaultFallbackAgents);
     } catch (err) {
       console.warn('Agent加载失败，使用默认:', err);
-      // 降级到内置默认配置
-      setAgents([
-        { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师', avatar: 'teacher.png' },
-        { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解', avatar: 'assistant.png' },
-        { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '课堂互动', avatar: 'student1.png' },
-      ]);
+      // 降级到内置默认配置（保持一致的4个）
+      setAgents(defaultFallbackAgents);
     }
   }
 
@@ -411,96 +439,62 @@ export default function ClassroomScreen() {
 
         {/* 场景内容 */}
         <Animated.View style={[styles.content, animatedStyle]}>
-        {currentScene?.type === 'slide' && (
+        {/* 所有场景类型如果有 canvas 元素，优先使用 ScreenCanvas 渲染 */}
+        {currentScene?.content?.canvas?.elements?.length > 0 ? (
           <ScreenCanvas
             elements={currentScene.content?.canvas?.elements || []}
             background={currentScene.content?.canvas?.background}
             theme={currentScene.content?.canvas?.theme}
           />
-        )}
-
-        {currentScene?.type === 'quiz' && (
-          <View style={styles.quizContainer}>
-            <View style={styles.quizCard}>
-              <View style={styles.quizHeader}>
-                <Ionicons name="help-circle" size={32} color="#f59e0b" />
-                <Text style={styles.quizTitle}>{currentScene.title}</Text>
-              </View>
-              {/* 渲染测验问题 */}
-              {currentScene.content?.questions?.map((q: any, idx: number) => (
-                <View key={q.id || idx} style={styles.questionContainer}>
-                  <Text style={styles.questionText}>{q.question}</Text>
-                  {q.options?.map((opt: any, optIdx: number) => (
-                    <TouchableOpacity key={opt.value} style={styles.optionButton}>
-                      <Text style={styles.optionLabel}>{String.fromCharCode(65 + optIdx)}.</Text>
-                      <Text style={styles.optionText}>{opt.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ))}
-              {currentScene.content?.canvas?.elements && (
-                <View style={styles.quizHintContainer}>
-                  {currentScene.content?.canvas?.elements?.slice(2).map((el: any, idx: number) => (
-                    <Text key={idx} style={styles.quizHintText}>{el.content?.replace('• ', '')}</Text>
-                  ))}
-                </View>
-              )}
-              {!currentScene.content?.questions && !currentScene.content?.canvas?.elements && (
-                <View style={styles.emptyQuiz}>
-                  <Text style={styles.quizHint}>测验场景 - 回答问题检验学习效果</Text>
-                </View>
-              )}
+        ) : (
+          /* 没有 canvas 内容时的降级显示 */
+          <View style={styles.emptySceneContainer}>
+            <View style={styles.emptySceneCard}>
+              <Ionicons
+                name={
+                  currentScene?.type === 'slide' ? 'document-text' :
+                  currentScene?.type === 'quiz' ? 'help-circle' :
+                  currentScene?.type === 'interactive' ? 'people' : 'bulb'
+                }
+                size={48}
+                color={
+                  currentScene?.type === 'slide' ? '#5b9bd5' :
+                  currentScene?.type === 'quiz' ? '#f59e0b' :
+                  currentScene?.type === 'interactive' ? '#10b981' : '#8b5cf6'
+                }
+              />
+              <Text style={styles.emptySceneTitle}>{currentScene?.title}</Text>
+              <Text style={styles.emptySceneHint}>
+                {currentScene?.type === 'slide' ? '幻灯片内容' :
+                 currentScene?.type === 'quiz' ? '测验场景' :
+                 currentScene?.type === 'interactive' ? '互动场景' : '项目学习'}
+              </Text>
             </View>
           </View>
         )}
 
-        {currentScene?.type === 'interactive' && (
-          <View style={styles.interactiveContainer}>
-            <View style={styles.interactiveCard}>
-              <View style={styles.interactiveHeader}>
-                <Ionicons name="people" size={32} color="#10b981" />
-                <Text style={styles.interactiveTitle}>{currentScene.title}</Text>
-              </View>
-              {currentScene.content?.canvas?.elements?.slice(2).map((el: any, idx: number) => (
-                <View key={idx} style={styles.interactivePoint}>
-                  <Ionicons name="chatbubble-outline" size={16} color="#10b981" />
-                  <Text style={styles.interactiveDesc}>{el.content?.replace('• ', '')}</Text>
+        {/* Quiz 类型：额外显示测验问题 */}
+        {currentScene?.type === 'quiz' && currentScene.content?.questions && (
+          <View style={styles.quizOverlay}>
+            <ScrollView style={styles.quizScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              <View style={styles.quizCard}>
+                <View style={styles.quizHeader}>
+                  <Ionicons name="help-circle" size={24} color="#f59e0b" />
+                  <Text style={styles.quizTitle}>测验</Text>
                 </View>
-              ))}
-              {currentScene.content?.description && (
-                <Text style={styles.interactiveDesc}>{currentScene.content.description}</Text>
-              )}
-              {!currentScene.content?.canvas?.elements && !currentScene.content?.description && (
-                <Text style={styles.interactiveHint}>互动场景 - 参与互动学习</Text>
-              )}
-              <TouchableOpacity style={styles.startInteractiveBtn}>
-                <Ionicons name="play-circle" size={20} color="white" />
-                <Text style={styles.startInteractiveText}>开始互动</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {currentScene?.type === 'pbl' && (
-          <View style={styles.pblContainer}>
-            <View style={styles.pblCard}>
-              <View style={styles.pblHeader}>
-                <Ionicons name="bulb" size={32} color="#8b5cf6" />
-                <Text style={styles.pblTitle}>{currentScene.title}</Text>
+                {currentScene.content.questions.map((q: any, idx: number) => (
+                  <View key={q.id || idx} style={styles.questionContainer}>
+                    <Text style={styles.questionText}>{q.question}</Text>
+                    {q.options?.map((opt: any, optIdx: number) => (
+                      <TouchableOpacity key={opt.value ?? optIdx} style={styles.optionButton}>
+                        <Text style={styles.optionLabel}>{String.fromCharCode(65 + optIdx)}.</Text>
+                        <Text style={styles.optionText}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
               </View>
-              {currentScene.content?.canvas?.elements?.slice(2).map((el: any, idx: number) => (
-                <View key={idx} style={styles.pblPoint}>
-                  <Ionicons name="checkmark-circle-outline" size={16} color="#8b5cf6" />
-                  <Text style={styles.pblDesc}>{el.content?.replace('• ', '')}</Text>
-                </View>
-              ))}
-              {currentScene.content?.description && (
-                <Text style={styles.pblDesc}>{currentScene.content.description}</Text>
-              )}
-              {!currentScene.content?.canvas?.elements && !currentScene.content?.description && (
-                <Text style={styles.pblHint}>PBL 项目学习模式</Text>
-              )}
-            </View>
+            </ScrollView>
           </View>
         )}
       </Animated.View>
@@ -554,7 +548,7 @@ export default function ClassroomScreen() {
         {agents.map(agent => (
           <TouchableOpacity
             key={agent.id}
-            style={[styles.agentAvatarBtn, { backgroundColor: agent.color + '20' }]}
+            style={[styles.agentAvatarBtn, { backgroundColor: safeColorWithAlpha(agent.color, '20') }]}
             onPress={() => openAgentChat(agent)}
           >
             {/* 头像显示 */}
@@ -844,7 +838,12 @@ const styles = StyleSheet.create({
   progressText: { color: Colors.neutral.white, fontSize: 12, fontWeight: '500' },
 
   // 内容
-  content: { flex: 1, padding: 15 },
+  content: {
+    flex: 1,
+    padding: 15,
+    maxWidth: '100%',
+    overflow: 'hidden',
+  },
   slideScroll: { flex: 1 },
   slideContainer: { flex: 1, alignItems: 'center' },
   slideCard: {
@@ -886,8 +885,38 @@ const styles = StyleSheet.create({
   },
   emptyText: { color: '#999', marginTop: 15, fontSize: 14 },
 
-  // Quiz
-  quizContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 15 },
+  // Empty scene fallback
+  emptySceneContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+  },
+  emptySceneCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 400,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 4,
+  },
+  emptySceneTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, color: '#333' },
+  emptySceneHint: { fontSize: 14, color: '#666', marginTop: 8 },
+
+  // Quiz overlay (shown above slide when quiz questions exist)
+  quizOverlay: {
+    position: 'absolute',
+    bottom: 20,
+    left: 15,
+    right: 15,
+    maxHeight: 300,
+  },
+  quizScroll: {
+    maxHeight: 280,
+  },
   quizCard: {
     backgroundColor: 'white',
     borderRadius: 16,
