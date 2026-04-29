@@ -403,6 +403,7 @@ class ApiClient {
       '/avatars/note-taker-2.png',
     ];
 
+    // LLM 调用需要更长时间，设置 120 秒超时
     const { data } = await this.client.post('/generate/agent-profiles', {
       stageInfo,
       language,
@@ -410,6 +411,8 @@ class ApiClient {
       availableAvatars: availableAvatars || defaultAvatars,
       avatarDescriptions,
       availableVoices,
+    }, {
+      timeout: 120000, // 120 秒
     });
     return data;
   }
@@ -431,9 +434,12 @@ class ApiClient {
   }
 
   async generateScenes(outlines: any[], options?: Record<string, any>) {
+    // LLM 调用需要更长时间
     const { data } = await this.client.post('/generate/scenes', {
       outlines,
       ...options,
+    }, {
+      timeout: 180000, // 180 秒（可能生成多个场景）
     });
     return data;
   }
@@ -442,6 +448,8 @@ class ApiClient {
     const { data } = await this.client.post('/generate/classroom', {
       requirement,
       ...options,
+    }, {
+      timeout: 30000, // 只是启动任务，不需要长超时
     });
     return data;
   }
@@ -471,6 +479,7 @@ class ApiClient {
     ttsProvider: string = 'openai',
     ttsVoice: string = 'alloy',
   ) {
+    // LLM + TTS 生成需要更长时间
     const { data } = await this.client.post('/generate/scene-with-actions', {
       outline,
       agents,
@@ -478,6 +487,8 @@ class ApiClient {
       generate_tts: generateTts,
       tts_provider: ttsProvider,
       tts_voice: ttsVoice,
+    }, {
+      timeout: 120000, // 120 秒
     });
     return data.scene;
   }
