@@ -1,9 +1,12 @@
 import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth/auth-context';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { onPress } = useFeedback();
 
   // 加载中显示空白
   if (isLoading) {
@@ -18,36 +21,69 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#5b9bd5',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: Colors.primary.main,
+        tabBarInactiveTintColor: Colors.neutral.textSecondary,
         headerShown: true,
+        tabBarStyle: {
+          backgroundColor: Colors.neutral.backgroundAlt,
+          borderTopWidth: 1,
+          borderTopColor: Colors.neutral.border,
+          paddingTop: 8,
+          paddingBottom: 8,
+          height: 60,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: '工作台',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'grid' : 'grid-outline'}
+              size={size}
+              color={color}
+            />
           ),
+        }}
+        listeners={{
+          tabPress: () => onPress(),
         }}
       />
       <Tabs.Screen
         name="discover"
         options={{
           title: '发现',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'search' : 'search-outline'}
+              size={size}
+              color={color}
+            />
           ),
+        }}
+        listeners={{
+          tabPress: () => onPress(),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: '我的',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              size={size}
+              color={color}
+            />
           ),
+        }}
+        listeners={{
+          tabPress: () => onPress(),
         }}
       />
       {/* 隐藏其他tab页面，通过工作台入口访问 */}
