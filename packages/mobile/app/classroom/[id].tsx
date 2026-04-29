@@ -213,7 +213,11 @@ export default function ClassroomScreen() {
 
     // 验证 agent 数据结构的辅助函数
     const validateAgent = (a: any): a is Agent => {
-      return a && typeof a.id === 'string' && typeof a.name === 'string' && typeof a.color === 'string';
+      return a &&
+        typeof a.id === 'string' &&
+        typeof a.name === 'string' &&
+        typeof a.role === 'string' &&
+        typeof a.color === 'string';
     };
 
     // 规范化 agent 颜色（确保格式正确）
@@ -660,7 +664,7 @@ export default function ClassroomScreen() {
             {/* 模态框头部 */}
             <View style={styles.modalHeader}>
               {selectedAgent && (
-                <View style={[styles.modalAgentAvatar, { backgroundColor: selectedAgent.color + '20' }]}>
+                <View style={[styles.modalAgentAvatar, { backgroundColor: safeColorWithAlpha(selectedAgent.color, '20') }]}>
                   <Ionicons name="person" size={32} color={selectedAgent.color} />
                 </View>
               )}
