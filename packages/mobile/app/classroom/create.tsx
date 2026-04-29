@@ -13,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 // 步骤定义 - 按照原逻辑：需求输入 → 智能体生成 → 大纲生成 → 确认创建
 const STEPS = ['需求输入', '智能体生成', '大纲生成', '确认创建'];
@@ -44,6 +46,7 @@ interface SceneOutline {
 export default function CreateClassroomScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { onPress, onSuccess, onError } = useFeedback();
 
   // 步骤状态
   const [currentStep, setCurrentStep] = useState(0);
@@ -77,7 +80,7 @@ export default function CreateClassroomScreen() {
   if (authLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#5b9bd5" />
+        <ActivityIndicator size="large" color={Colors.secondary.info} />
       </View>
     );
   }
@@ -317,7 +320,7 @@ export default function CreateClassroomScreen() {
 
       {generatingAgents ? (
         <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color="#5b9bd5" />
+          <ActivityIndicator size="large" color={Colors.secondary.info} />
           <Text style={styles.generatingText}>正在生成智能体配置...</Text>
         </View>
       ) : agents.length > 0 ? (
@@ -328,7 +331,7 @@ export default function CreateClassroomScreen() {
               style={[styles.agentCard, agent.enabled && styles.agentCardActive]}
               onPress={() => toggleAgent(agent.id)}
             >
-              <View style={[styles.agentAvatar, { backgroundColor: agent.color || '#5b9bd5' + '20' }]}>
+              <View style={[styles.agentAvatar, { backgroundColor: agent.color ? agent.color + '20' : Colors.secondary.info + '20' }]}>
                 {agent.avatar ? (
                   <Text style={styles.avatarEmoji}>
                     {agent.avatar.includes('teacher') ? '👨‍🏫' :
@@ -338,7 +341,7 @@ export default function CreateClassroomScreen() {
                      agent.avatar.includes('note-taker') ? '📝' : '🧑'}
                   </Text>
                 ) : (
-                  <Ionicons name="person" size={24} color={agent.color || '#5b9bd5'} />
+                  <Ionicons name="person" size={24} color={agent.color || Colors.secondary.info} />
                 )}
               </View>
               <View style={styles.agentInfo}>
@@ -350,7 +353,7 @@ export default function CreateClassroomScreen() {
                   </Text>
                   {agent.voiceConfig && (
                     <View style={styles.voiceBadge}>
-                      <Ionicons name="volume-high" size={12} color="#10b981" />
+                      <Ionicons name="volume-high" size={12} color={Colors.secondary.success} />
                       <Text style={styles.voiceBadgeText}>语音已配置</Text>
                     </View>
                   )}
@@ -408,7 +411,7 @@ export default function CreateClassroomScreen() {
 
       {generatingOutlines && outlines.length === 0 ? (
         <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color="#5b9bd5" />
+          <ActivityIndicator size="large" color={Colors.secondary.info} />
           <Text style={styles.generatingText}>正在规划课程结构...</Text>
         </View>
       ) : (
@@ -511,7 +514,7 @@ export default function CreateClassroomScreen() {
 
       {createdClassroomId && (
         <View style={styles.successBox}>
-          <Ionicons name="checkmark-circle" size={48} color="#10b981" />
+          <Ionicons name="checkmark-circle" size={48} color={Colors.secondary.success} />
           <Text style={styles.successText}>课程创建成功！</Text>
           <Text style={styles.successId}>ID: {createdClassroomId}</Text>
         </View>
@@ -551,7 +554,7 @@ export default function CreateClassroomScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f7fa' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   centerContent: { alignItems: 'center', paddingVertical: 40 },
 
@@ -572,13 +575,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  stepCircleActive: { backgroundColor: '#5b9bd5' },
+  stepCircleActive: { backgroundColor: Colors.secondary.info },
   stepNumber: { color: '#666', fontSize: 14, fontWeight: '600' },
   stepNumberActive: { color: 'white' },
   stepLabel: { fontSize: 12, color: '#666', marginTop: 5 },
-  stepLabelActive: { color: '#5b9bd5', fontWeight: '600' },
+  stepLabelActive: { color: Colors.secondary.info, fontWeight: '600' },
   stepLine: { width: 30, height: 2, backgroundColor: '#ddd', marginHorizontal: 5 },
-  stepLineActive: { backgroundColor: '#5b9bd5' },
+  stepLineActive: { backgroundColor: Colors.secondary.info },
 
   // 步骤内容
   stepContent: { padding: 20 },
@@ -587,7 +590,7 @@ const styles = StyleSheet.create({
 
   // 步骤1 - 需求输入
   requirementInput: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     borderRadius: 12,
     padding: 15,
     fontSize: 16,
@@ -604,7 +607,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#e5e7eb',
   },
-  langBtnActive: { backgroundColor: '#5b9bd5' },
+  langBtnActive: { backgroundColor: Colors.secondary.info },
   langText: { fontSize: 14, color: '#666' },
   langTextActive: { color: 'white', fontWeight: '600' },
   webSearchOption: { flexDirection: 'row', alignItems: 'center', marginTop: 15 },
@@ -617,7 +620,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkboxActive: { backgroundColor: '#5b9bd5', borderColor: '#5b9bd5' },
+  checkboxActive: { backgroundColor: Colors.secondary.info, borderColor: Colors.secondary.info },
   webSearchLabel: { fontSize: 14, color: '#666', marginLeft: 10 },
 
   // 步骤2 - 智能体
@@ -625,14 +628,14 @@ const styles = StyleSheet.create({
   agentCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 15,
     borderRadius: 10,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#ddd',
   },
-  agentCardActive: { borderColor: '#5b9bd5', backgroundColor: '#f0f7ff' },
+  agentCardActive: { borderColor: Colors.secondary.info, backgroundColor: Colors.secondary.infoLight },
   agentAvatar: {
     width: 40,
     height: 40,
@@ -644,17 +647,17 @@ const styles = StyleSheet.create({
   agentInfo: { flex: 1, marginLeft: 12 },
   agentName: { fontSize: 16, fontWeight: '600', color: '#333' },
   agentRoleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-  agentRoleType: { fontSize: 12, color: '#5b9bd5' },
+  agentRoleType: { fontSize: 12, color: Colors.secondary.info },
   voiceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#10b98115',
+    backgroundColor: Colors.secondary.success + '15',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     marginLeft: 8,
   },
-  voiceBadgeText: { fontSize: 10, color: '#10b981', marginLeft: 2 },
+  voiceBadgeText: { fontSize: 10, color: Colors.secondary.success, marginLeft: 2 },
   agentPersona: { fontSize: 13, color: '#666', marginTop: 4 },
   agentPriority: { fontSize: 11, color: '#888', marginTop: 2 },
   agentCheckbox: {
@@ -666,25 +669,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  agentCheckboxActive: { backgroundColor: '#5b9bd5', borderColor: '#5b9bd5' },
-  selectedCount: { fontSize: 14, color: '#5b9bd5', textAlign: 'center', marginTop: 10 },
-  retryBtn: { marginTop: 15, padding: 15, backgroundColor: '#5b9bd5', borderRadius: 8 },
+  agentCheckboxActive: { backgroundColor: Colors.secondary.info, borderColor: Colors.secondary.info },
+  selectedCount: { fontSize: 14, color: Colors.secondary.info, textAlign: 'center', marginTop: 10 },
+  retryBtn: { marginTop: 15, padding: 15, backgroundColor: Colors.secondary.info, borderRadius: 8 },
   retryText: { color: 'white', fontSize: 14 },
 
   // 步骤3 - 大纲流式生成
   outlineList: { maxHeight: 400 },
   outlineCard: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 15,
     borderRadius: 10,
     marginBottom: 10,
   },
   outlineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   outlineTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
-  badgeSlide: { backgroundColor: '#5b9bd5' },
-  badgeQuiz: { backgroundColor: '#f59e0b' },
-  badgeInteractive: { backgroundColor: '#10b981' },
-  badgePbl: { backgroundColor: '#8b5cf6' },
+  badgeSlide: { backgroundColor: Colors.secondary.info },
+  badgeQuiz: { backgroundColor: Colors.primary.main },
+  badgeInteractive: { backgroundColor: Colors.secondary.success },
+  badgePbl: { backgroundColor: Colors.secondary.wisdom },
   outlineTypeText: { fontSize: 12, color: 'white', fontWeight: '500' },
   outlineOrder: { fontSize: 14, color: '#666' },
   outlineTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
@@ -697,7 +700,7 @@ const styles = StyleSheet.create({
 
   // 步骤4 - 确认创建
   summaryCard: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 20,
     borderRadius: 12,
     marginBottom: 20,
@@ -713,11 +716,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 20,
   },
-  successText: { fontSize: 18, fontWeight: 'bold', color: '#10b981', marginTop: 10 },
+  successText: { fontSize: 18, fontWeight: 'bold', color: Colors.secondary.success, marginTop: 10 },
   successId: { fontSize: 12, color: '#666', marginTop: 5 },
 
   // 按钮
-  errorText: { color: '#ef4444', fontSize: 14, textAlign: 'center', marginBottom: 15 },
+  errorText: { color: Colors.feedback.errorText, fontSize: 14, textAlign: 'center', marginBottom: 15 },
   stepButtons: { flexDirection: 'row', gap: 15, marginTop: 20 },
   backBtn: {
     flex: 1,
@@ -731,7 +734,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 15,
     borderRadius: 8,
-    backgroundColor: '#5b9bd5',
+    backgroundColor: Colors.secondary.info,
     alignItems: 'center',
   },
   nextBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
@@ -739,7 +742,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 15,
     borderRadius: 8,
-    backgroundColor: '#10b981',
+    backgroundColor: Colors.secondary.success,
     alignItems: 'center',
   },
   createBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },

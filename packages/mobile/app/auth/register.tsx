@@ -3,6 +3,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 // Web端使用window.alert，Mobile端使用Alert.alert
 const showAlert = (title: string, message: string, buttons?: any[]) => {
@@ -24,6 +26,7 @@ const showAlert = (title: string, message: string, buttons?: any[]) => {
 export default function RegisterScreen() {
   const router = useRouter();
   const { register, isLoading, isAuthenticated } = useAuth();
+  const { onPress, onError } = useFeedback();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,11 +62,13 @@ export default function RegisterScreen() {
     setRegistering(true);
     try {
       await register(email, password, nickname || undefined);
+      onPress();
       showAlert('注册成功', '欢迎加入 OpenMAIC!', [
         { text: '开始使用', onPress: () => router.replace('/') }
       ]);
     } catch (error) {
       setRegistering(false);
+      onError();
       const message = error instanceof Error ? error.message : '请稍后重试';
       setError(message);
     }
@@ -125,39 +130,51 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
-  form: { marginTop: 40 },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: Colors.neutral.background,
+  },
+  title: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 8, color: Colors.neutral.textPrimary },
+  form: { marginTop: 32 },
   input: {
     height: 50,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    marginBottom: 15,
+    borderColor: Colors.neutral.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
     fontSize: 16,
+    backgroundColor: Colors.neutral.card,
+    color: Colors.neutral.textPrimary,
   },
   errorBox: {
-    backgroundColor: '#fee2e2',
-    borderColor: '#ef4444',
+    backgroundColor: Colors.feedback.errorBg,
+    borderColor: Colors.feedback.errorBorder,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 15,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
   },
   errorText: {
-    color: '#dc2626',
+    color: Colors.feedback.errorText,
     fontSize: 14,
     textAlign: 'center',
   },
   button: {
     height: 50,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: Colors.primary.main,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  buttonDisabled: { backgroundColor: '#ccc' },
-  buttonText: { color: 'white', fontSize: 18, fontWeight: '600' },
-  link: { color: '#007AFF', textAlign: 'center', marginTop: 20, fontSize: 16 },
+  buttonDisabled: { backgroundColor: Colors.neutral.disabled },
+  buttonText: { color: Colors.neutral.white, fontSize: 18, fontWeight: '600' },
+  link: { color: Colors.primary.main, textAlign: 'center', marginTop: 24, fontSize: 16, fontWeight: '500' },
 });
