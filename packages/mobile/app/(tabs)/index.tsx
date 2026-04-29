@@ -5,6 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, SecondaryColorMap, getShadowColor } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
+// 快捷操作配置 - 使用主题色
+const quickActions = [
+  { title: '查看课程', icon: 'book', color: SecondaryColorMap.courses, route: '/courses' },
+  { title: '发布问题', icon: 'help-circle', color: SecondaryColorMap.questions, route: '/questions' },
+  { title: '写笔记', icon: 'create', color: SecondaryColorMap.notes, route: '/notes' },
+];
+
 // 功能入口配置 - 使用 SecondaryColorMap
 const workbenchItems = [
   { key: 'courses', title: '我的课程', icon: 'book', color: SecondaryColorMap.courses, route: '/courses' },
@@ -66,27 +73,16 @@ export default function WorkbenchScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>快捷操作</Text>
         <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.quickBtn}
-            onPress={() => router.push('/courses' as any)}
-          >
-            <Ionicons name="book" size={20} color="#5b9bd5" />
-            <Text style={styles.quickBtnText}>查看课程</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickBtn}
-            onPress={() => router.push('/questions' as any)}
-          >
-            <Ionicons name="help-circle" size={20} color="#f59e0b" />
-            <Text style={styles.quickBtnText}>发布问题</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickBtn}
-            onPress={() => router.push('/notes' as any)}
-          >
-            <Ionicons name="create" size={20} color="#10b981" />
-            <Text style={styles.quickBtnText}>写笔记</Text>
-          </TouchableOpacity>
+          {quickActions.map((action) => (
+            <TouchableOpacity
+              key={action.title}
+              style={[styles.quickBtn, { backgroundColor: action.color }]}
+              onPress={() => router.push(action.route as any)}
+            >
+              <Ionicons name={action.icon as any} size={20} color={Colors.neutral.white} />
+              <Text style={styles.quickBtnText}>{action.title}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
     </ScrollView>
@@ -195,8 +191,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 20,
-    backgroundColor: Colors.primary.main,
-    shadowColor: Colors.primary.main,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
