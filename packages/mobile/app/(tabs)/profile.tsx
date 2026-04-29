@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface BalanceState {
   tokenBalance: number;
@@ -24,6 +26,7 @@ interface ConfirmState {
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { onSuccess, onError } = useFeedback();
   const [balance, setBalance] = useState<BalanceState>({
     tokenBalance: 0,
     pointsBalance: 0,
@@ -105,9 +108,11 @@ export default function ProfileScreen() {
     showConfirm('将100积分兑换为10Token？', async () => {
       try {
         await apiClient.exchangeTokens(100);
+        onSuccess();
         loadBalance();
         showAlert('兑换成功');
       } catch (error) {
+        onError();
         showAlert('兑换失败，请稍后重试');
       }
     });
@@ -198,36 +203,75 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { padding: 20, backgroundColor: 'white', marginBottom: 10 },
-  nickname: { fontSize: 24, fontWeight: 'bold' },
-  email: { fontSize: 14, color: '#666', marginTop: 5 },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
+  header: {
+    padding: 24,
+    backgroundColor: Colors.neutral.card,
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  nickname: { fontSize: 24, fontWeight: 'bold', color: Colors.neutral.textPrimary },
+  email: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 6 },
   balanceCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 10,
-    borderRadius: 12,
+    backgroundColor: Colors.neutral.card,
+    marginHorizontal: 12,
+    borderRadius: 16,
     padding: 20,
-    marginBottom: 10,
+    marginBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-around',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   balanceItem: { alignItems: 'center' },
-  balanceLabel: { fontSize: 14, color: '#666' },
-  balanceValue: { fontSize: 28, fontWeight: 'bold', color: '#5b9bd5' },
-  balanceDivider: { width: 1, height: 50, backgroundColor: '#eee' },
+  balanceLabel: { fontSize: 14, color: Colors.neutral.textSecondary },
+  balanceValue: { fontSize: 28, fontWeight: 'bold', color: Colors.primary.main, marginTop: 8 },
+  balanceDivider: { width: 1, height: 50, backgroundColor: Colors.neutral.border },
   exchangeButton: {
-    backgroundColor: '#5b9bd5',
-    marginHorizontal: 10,
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: Colors.primary.main,
+    marginHorizontal: 12,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 20,
     alignItems: 'center',
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  exchangeButtonText: { color: 'white', fontSize: 16, fontWeight: '500' },
-  section: { backgroundColor: 'white' },
-  item: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  itemText: { fontSize: 16 },
-  logoutText: { color: 'red' },
+  exchangeButtonText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
+  section: {
+    backgroundColor: Colors.neutral.card,
+    borderRadius: 16,
+    marginHorizontal: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  item: {
+    padding: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
+  },
+  itemText: { fontSize: 16, color: Colors.neutral.textPrimary },
+  logoutText: { color: Colors.feedback.errorText },
 
   // Modal 样式
   modalOverlay: {
@@ -237,46 +281,64 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
+    backgroundColor: Colors.neutral.card,
+    borderRadius: 20,
+    padding: 24,
     minWidth: 280,
     alignItems: 'center',
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
   },
   modalMessage: {
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 20,
+    color: Colors.neutral.textPrimary,
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
   },
   modalButtonCancel: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.neutral.disabled,
   },
   modalButtonCancelText: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.neutral.textSecondary,
+    fontWeight: '600',
   },
   modalButtonConfirm: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: '#5b9bd5',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primary.main,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   modalButtonConfirmText: {
     fontSize: 16,
-    color: 'white',
+    color: Colors.neutral.white,
+    fontWeight: '600',
   },
   modalButtonSingle: {
-    paddingVertical: 10,
-    paddingHorizontal: 30,
-    borderRadius: 8,
-    backgroundColor: '#5b9bd5',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    backgroundColor: Colors.primary.main,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
 });
