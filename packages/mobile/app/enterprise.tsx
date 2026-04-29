@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Enterprise {
   has_enterprise: boolean;
@@ -32,6 +34,7 @@ interface Stats {
 }
 
 export default function EnterpriseScreen() {
+  const { onSuccess, onError } = useFeedback();
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,10 +103,12 @@ export default function EnterpriseScreen() {
         name: data.name,
         role: 'admin'
       });
+      onSuccess();
       setShowCreate(false);
       loadMembers(data.enterprise_id);
       loadStats(data.enterprise_id);
     } catch (e: any) {
+      onError();
       Alert.alert('错误', e.message || '创建失败');
     }
   }
@@ -113,11 +118,13 @@ export default function EnterpriseScreen() {
     const emails = inviteEmails.split(',').map(e => e.trim()).filter(e => e);
     try {
       const data = await apiClient.inviteEnterpriseMembers(enterprise.enterprise_id, emails);
+      onSuccess();
       Alert.alert('成功', `已邀请 ${data.total_invited} 人`);
       setShowInvite(false);
       setInviteEmails('');
       loadMembers(enterprise.enterprise_id);
     } catch (e: any) {
+      onError();
       Alert.alert('错误', e.message || '邀请失败');
     }
   }
@@ -253,34 +260,127 @@ export default function EnterpriseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   content: { flex: 1, padding: 16 },
-  header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
-  enterpriseName: { fontSize: 20, fontWeight: 'bold' },
-  enterpriseInfo: { fontSize: 14, color: '#666', marginTop: 4 },
-  inviteButton: { marginTop: 8, padding: 8, backgroundColor: '#3b82f6', borderRadius: 4 },
-  inviteButtonText: { color: '#fff', fontSize: 14 },
-  inviteModal: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  input: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, marginBottom: 12 },
-  label: { fontSize: 14, color: '#666', marginBottom: 8 },
+  header: {
+    padding: 16,
+    backgroundColor: Colors.neutral.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16, color: Colors.neutral.textPrimary },
+  enterpriseName: { fontSize: 20, fontWeight: 'bold', color: Colors.neutral.textPrimary },
+  enterpriseInfo: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 4 },
+  inviteButton: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: Colors.secondary.wisdom,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: Colors.secondary.wisdom,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  inviteButtonText: { color: Colors.neutral.white, fontSize: 14, fontWeight: '600' },
+  inviteModal: {
+    padding: 16,
+    backgroundColor: Colors.neutral.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    color: Colors.neutral.textPrimary,
+    fontSize: 16,
+  },
+  label: { fontSize: 14, color: Colors.neutral.textSecondary, marginBottom: 8 },
   sizeOptions: { flexDirection: 'row', marginBottom: 16 },
-  sizeOption: { padding: 12, backgroundColor: '#f0f0f0', borderRadius: 8, marginRight: 8 },
-  sizeOptionSelected: { backgroundColor: '#3b82f6' },
-  button: { backgroundColor: '#3b82f6', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
-  buttonOutline: { backgroundColor: '#fff', padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#3b82f6' },
-  buttonText: { fontSize: 16, color: '#fff' },
-  buttonOutlineText: { fontSize: 16, color: '#3b82f6' },
-  statsGrid: { flexDirection: 'row', padding: 16, justifyContent: 'space-between' },
-  statCard: { backgroundColor: '#fff', padding: 16, borderRadius: 8, alignItems: 'center', flex: 1, marginHorizontal: 4 },
-  statValue: { fontSize: 24, fontWeight: 'bold', color: '#3b82f6' },
-  statLabel: { fontSize: 12, color: '#666', marginTop: 4 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
-  memberCard: { backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 8 },
-  memberName: { fontSize: 16, fontWeight: 'bold' },
-  memberEmail: { fontSize: 12, color: '#666' },
-  memberRole: { fontSize: 12, color: '#888', marginTop: 4 },
-  noEnterpriseTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
-  noEnterpriseDesc: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 24 },
+  sizeOption: { padding: 12, backgroundColor: Colors.neutral.backgroundAlt, borderRadius: 8, marginRight: 8 },
+  sizeOptionSelected: { backgroundColor: Colors.secondary.wisdom },
+  button: {
+    backgroundColor: Colors.secondary.wisdom,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: Colors.secondary.wisdom,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  buttonOutline: {
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.secondary.wisdom,
+  },
+  buttonText: { fontSize: 16, color: Colors.neutral.white, fontWeight: '600' },
+  buttonOutlineText: { fontSize: 16, color: Colors.secondary.wisdom, fontWeight: '600' },
+  statsGrid: {
+    flexDirection: 'row',
+    padding: 16,
+    justifyContent: 'space-between',
+    backgroundColor: Colors.neutral.card,
+    margin: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statCard: {
+    backgroundColor: Colors.neutral.backgroundAlt,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  statValue: { fontSize: 24, fontWeight: 'bold', color: Colors.secondary.wisdom },
+  statLabel: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: Colors.neutral.textPrimary },
+  memberCard: {
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  memberName: { fontSize: 16, fontWeight: 'bold', color: Colors.neutral.textPrimary },
+  memberEmail: { fontSize: 12, color: Colors.neutral.textSecondary },
+  memberRole: { fontSize: 12, color: Colors.secondary.wisdom, marginTop: 4, fontWeight: '500' },
+  noEnterpriseTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 8, color: Colors.neutral.textPrimary },
+  noEnterpriseDesc: { fontSize: 14, color: Colors.neutral.textSecondary, textAlign: 'center', marginBottom: 24 },
 });

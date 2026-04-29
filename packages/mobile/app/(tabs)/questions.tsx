@@ -1,7 +1,11 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
+import { SecondaryColorMap } from '@/lib/constants/theme';
 
 interface Question {
   id: string;
@@ -18,6 +22,7 @@ interface Question {
 
 export default function QuestionsScreen() {
   const router = useRouter();
+  const { onPress } = useFeedback();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sort, setSort] = useState('recent');
@@ -123,64 +128,83 @@ export default function QuestionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
   sortContainer: {
     flexDirection: 'row',
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
   },
   sortButton: {
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
     marginRight: 10,
+    backgroundColor: Colors.neutral.backgroundAlt,
   },
-  activeSort: { backgroundColor: '#5b9bd5' },
-  sortText: { fontSize: 14, color: '#666' },
-  activeSortText: { color: 'white', fontWeight: '500' },
+  activeSort: {
+    backgroundColor: Colors.secondary.info,
+    shadowColor: Colors.secondary.info,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  sortText: { fontSize: 14, color: Colors.neutral.textSecondary },
+  activeSortText: { color: Colors.neutral.white, fontWeight: '600' },
   listContent: { padding: 10, paddingBottom: 80 },
   questionItem: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 15,
     marginBottom: 10,
-    borderRadius: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   questionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  questionTitle: { fontSize: 16, fontWeight: '600', flex: 1 },
+  questionTitle: { fontSize: 16, fontWeight: '600', flex: 1, color: Colors.neutral.textPrimary },
   bountyBadge: {
-    backgroundColor: '#FFD700',
+    backgroundColor: Colors.feedback.warningBg,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.feedback.warningBorder,
   },
-  bountyText: { fontSize: 12, fontWeight: '600', color: '#333' },
-  questionContent: { fontSize: 14, color: '#666', marginTop: 8 },
+  bountyText: { fontSize: 12, fontWeight: '600', color: Colors.feedback.warningText },
+  questionContent: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 8 },
   questionFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 10,
   },
-  questionMeta: { fontSize: 12, color: '#999' },
-  questionTime: { fontSize: 12, color: '#999' },
+  questionMeta: { fontSize: 12, color: Colors.neutral.textMuted },
+  questionTime: { fontSize: 12, color: Colors.neutral.textMuted },
   empty: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 16 },
+  emptyText: { color: Colors.neutral.textSecondary, fontSize: 16 },
   createButton: {
     position: 'absolute',
     bottom: 20,
     right: 20,
-    backgroundColor: '#5b9bd5',
+    backgroundColor: Colors.secondary.info,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: Colors.secondary.info,
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 5,
   },
-  createButtonText: { color: 'white', fontSize: 16, fontWeight: '500' },
+  createButtonText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
 });

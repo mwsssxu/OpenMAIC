@@ -15,6 +15,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useI18n } from '@/lib/i18n';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 
 interface Classroom {
   id: string;
@@ -28,6 +32,7 @@ interface Classroom {
 export default function CoursesScreen() {
   const router = useRouter();
   const { t } = useI18n();
+  const { onPress, onSuccess, onError } = useFeedback();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +80,7 @@ export default function CoursesScreen() {
   };
 
   const handleCreate = () => {
+    onPress();
     router.push('/classroom/create' as any);
   };
 
@@ -93,12 +99,14 @@ export default function CoursesScreen() {
     try {
       await apiClient.deleteClassroom(pendingDeleteId);
       setClassrooms(prev => prev.filter(c => c.id !== pendingDeleteId));
+      onSuccess();
       if (Platform.OS === 'web') {
         window.alert('课程已删除');
       } else {
         Alert.alert('成功', '课程已删除');
       }
     } catch (err: any) {
+      onError();
       if (Platform.OS === 'web') {
         window.alert('删除失败: ' + err.message);
       } else {
@@ -128,7 +136,9 @@ export default function CoursesScreen() {
       setClassrooms(prev => prev.map(c =>
         c.id === pendingRenameId ? { ...c, name: newName.trim() } : c
       ));
+      onSuccess();
     } catch (err: any) {
+      onError();
       if (Platform.OS === 'web') {
         window.alert('重命名失败: ' + err.message);
       } else {
@@ -162,7 +172,7 @@ export default function CoursesScreen() {
       {/* 缩略图区域 */}
       <View style={styles.thumbnailArea}>
         <View style={styles.thumbnailPlaceholder}>
-          <Ionicons name="document-text-outline" size={32} color="#5b9bd5" />
+          <Ionicons name="document-text-outline" size={32} color={Colors.secondary.info} />
         </View>
         {/* 删除和重命名按钮 */}
         <View style={styles.cardActions}>
@@ -200,7 +210,7 @@ export default function CoursesScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#5b9bd5" />
+        <ActivityIndicator size="large" color={Colors.primary.main} />
       </View>
     );
   }
@@ -208,7 +218,7 @@ export default function CoursesScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+        <Ionicons name="alert-circle-outline" size={48} color={Colors.feedback.errorText} />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={loadClassrooms}>
           <Text style={styles.retryText}>重试</Text>
@@ -301,7 +311,7 @@ export default function CoursesScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <Ionicons name="warning-outline" size={48} color="#ef4444" />
+            <Ionicons name="warning-outline" size={48} color={Colors.feedback.warningText} />
             <Text style={styles.modalTitle}>确认删除</Text>
             <Text style={styles.modalMessage}>
               确定要删除课程 "{pendingDeleteName}" 吗？此操作无法撤销。
@@ -333,7 +343,7 @@ export default function CoursesScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <Ionicons name="pencil-outline" size={48} color="#5b9bd5" />
+            <Ionicons name="pencil-outline" size={48} color={Colors.secondary.info} />
             <Text style={styles.modalTitle}>重命名课程</Text>
             <TextInput
               style={styles.renameInput}
@@ -364,7 +374,7 @@ export default function CoursesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f7fa' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
 
   // 头部
   header: {
@@ -373,11 +383,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: Colors.neutral.border,
   },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.neutral.textPrimary },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -389,19 +399,24 @@ const styles = StyleSheet.create({
   createBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#5b9bd5',
+    backgroundColor: Colors.primary.main,
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  createBtnText: { color: 'white', marginLeft: 5, fontWeight: '600' },
+  createBtnText: { color: Colors.neutral.white, marginLeft: 5, fontWeight: '600' },
 
   // 搜索栏
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f7fa',
+    backgroundColor: Colors.neutral.background,
     borderRadius: 25,
     paddingHorizontal: 12,
     height: 40,
@@ -410,7 +425,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: Colors.neutral.textPrimary,
   },
   searchCloseBtn: { padding: 4 },
 
@@ -421,19 +436,22 @@ const styles = StyleSheet.create({
   // 课程卡片
   classroomCard: {
     width: '48%',
-    backgroundColor: 'white',
-    borderRadius: 12,
+    backgroundColor: Colors.neutral.card,
+    borderRadius: 16,
     marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
   },
   thumbnailArea: {
     height: 100,
-    backgroundColor: '#f5f7fa',
-    borderRadius: 12,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     position: 'relative',
   },
   thumbnailPlaceholder: {
@@ -456,31 +474,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deleteBtn: { backgroundColor: '#ef4444' },
+  deleteBtn: { backgroundColor: Colors.feedback.errorText },
   cardInfo: { padding: 12 },
-  classroomName: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 4 },
-  classroomDesc: { fontSize: 12, color: '#666', marginBottom: 8 },
+  classroomName: { fontSize: 14, fontWeight: '600', color: Colors.neutral.textPrimary, marginBottom: 4 },
+  classroomDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginBottom: 8 },
   cardMeta: { flexDirection: 'row', alignItems: 'center' },
-  classroomMeta: { fontSize: 11, color: '#999', marginLeft: 4 },
+  classroomMeta: { fontSize: 11, color: Colors.neutral.textMuted, marginLeft: 4 },
 
   // 空状态
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { alignItems: 'center', padding: 40 },
-  emptyTitle: { fontSize: 18, color: '#333', marginTop: 15 },
-  emptyHint: { fontSize: 14, color: '#666', marginTop: 8 },
+  emptyTitle: { fontSize: 18, color: Colors.neutral.textPrimary, marginTop: 15 },
+  emptyHint: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 8 },
   emptyCreateBtn: {
     marginTop: 20,
     paddingHorizontal: 30,
     paddingVertical: 12,
-    backgroundColor: '#5b9bd5',
+    backgroundColor: Colors.primary.main,
     borderRadius: 25,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  emptyCreateText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  emptyCreateText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
 
   // 错误
-  errorText: { color: '#ef4444', fontSize: 16, marginTop: 10 },
-  retryBtn: { marginTop: 20, paddingHorizontal: 30, paddingVertical: 12, backgroundColor: '#5b9bd5', borderRadius: 25 },
-  retryText: { color: 'white', fontSize: 16 },
+  errorText: { color: Colors.feedback.errorText, fontSize: 16, marginTop: 10 },
+  retryBtn: {
+    marginTop: 20,
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    backgroundColor: Colors.primary.main,
+    borderRadius: 25,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  retryText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
 
   // 模态框
   modalContainer: {
@@ -490,22 +524,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     borderRadius: 20,
     padding: 25,
     width: '85%',
     alignItems: 'center',
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15 },
-  modalMessage: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 10 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, color: Colors.neutral.textPrimary },
+  modalMessage: { fontSize: 14, color: Colors.neutral.textSecondary, textAlign: 'center', marginTop: 10 },
   renameInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    borderColor: Colors.neutral.border,
+    borderRadius: 12,
     padding: 12,
     marginTop: 15,
     fontSize: 16,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    color: Colors.neutral.textPrimary,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -516,14 +557,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     paddingVertical: 12,
     borderRadius: 25,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: Colors.neutral.disabled,
   },
-  modalCancelText: { color: '#666', fontSize: 16 },
+  modalCancelText: { color: Colors.neutral.textSecondary, fontSize: 16, fontWeight: '600' },
   modalConfirmBtn: {
     paddingHorizontal: 30,
     paddingVertical: 12,
     borderRadius: 25,
-    backgroundColor: '#5b9bd5',
+    backgroundColor: Colors.primary.main,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  modalConfirmText: { color: 'white', fontSize: 16 },
+  modalConfirmText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
 });

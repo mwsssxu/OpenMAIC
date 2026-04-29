@@ -2,6 +2,8 @@ import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Ale
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { CelebrationPopup } from '@/components/common/CelebrationPopup';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface DailyTask {
   id: string;
@@ -43,6 +45,7 @@ interface CelebrationConfig {
 }
 
 export default function GamificationScreen() {
+  const { onSuccess, onError } = useFeedback();
   const [league, setLeague] = useState<LeagueInfo | null>(null);
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [streakInfo, setStreakInfo] = useState<any>(null);
@@ -179,7 +182,7 @@ export default function GamificationScreen() {
                   styles.progressFill,
                   {
                     width: `${item.percentage}%`,
-                    backgroundColor: item.completed ? '#4CAF50' : '#5b9bd5',
+                    backgroundColor: item.completed ? Colors.secondary.success : Colors.primary.main,
                   },
                 ]}
               />
@@ -195,7 +198,7 @@ export default function GamificationScreen() {
           </Text>
           {!item.completed ? (
             <TouchableOpacity
-              style={[styles.taskButton, { backgroundColor: '#5b9bd5' }]}
+              style={[styles.taskButton, { backgroundColor: Colors.primary.main }]}
               onPress={() => completeTask(item.id)}
               activeOpacity={0.7}
             >
@@ -218,7 +221,7 @@ export default function GamificationScreen() {
         styles.milestoneCard,
         {
           transform: [{ scale: pulseAnim }],
-          borderColor: milestone.rarity === 'legendary' ? '#FFD700' : milestone.rarity === 'epic' ? '#9C27B0' : '#2196F3',
+          borderColor: milestone.rarity === 'legendary' ? Colors.primary.main : milestone.rarity === 'epic' ? Colors.secondary.wisdom : Colors.secondary.info,
         },
       ]}
     >
@@ -252,7 +255,7 @@ export default function GamificationScreen() {
 
             {/* 联赛等级 */}
             {league && (
-              <View style={[styles.leagueCard, { backgroundColor: league.tier === 'champion' ? '#FFD70020' : '#667eea' }]}>
+              <View style={[styles.leagueCard, { backgroundColor: league.tier === 'champion' ? Colors.feedback.warningBg : Colors.primary.main }]}>
                 <Text style={styles.leagueIcon}>{league.icon}</Text>
                 <Text style={styles.leagueName}>{league.name}</Text>
                 <Text style={styles.leaguePoints}>
@@ -347,30 +350,42 @@ export default function GamificationScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  listContent: { padding: 10, paddingBottom: 20 },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
+  listContent: { padding: 12, paddingBottom: 20 },
 
   // 激励总览
   motivationCard: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 10,
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
     borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
+    borderLeftColor: Colors.secondary.success,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   motivationMessage: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: Colors.neutral.textPrimary,
   },
 
   // 联赛卡片
   leagueCard: {
     padding: 20,
-    borderRadius: 12,
-    marginBottom: 10,
+    borderRadius: 16,
+    marginBottom: 12,
     alignItems: 'center',
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   leagueIcon: { fontSize: 40 },
   leagueName: { fontSize: 24, fontWeight: 'bold', color: 'white' },
@@ -395,21 +410,28 @@ const styles = StyleSheet.create({
 
   // 打卡卡片
   streakCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   streakHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  streakTitle: { fontSize: 16, fontWeight: '600' },
+  streakTitle: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
   streakFire: { fontSize: 24 },
-  streakDays: { fontSize: 14, color: '#666', marginTop: 5 },
-  streakReward: { fontSize: 14, color: '#5b9bd5', marginTop: 5, fontWeight: '600' },
-  nextReward: { fontSize: 12, color: '#999', marginTop: 5 },
+  streakDays: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 5 },
+  streakReward: { fontSize: 14, color: Colors.primary.main, marginTop: 5, fontWeight: '600' },
+  nextReward: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 5 },
   rewardPreview: {
     flexDirection: 'row',
     marginTop: 10,
@@ -420,26 +442,27 @@ const styles = StyleSheet.create({
   },
   previewDayNum: {
     fontSize: 10,
-    color: '#999',
+    color: Colors.neutral.textMuted,
   },
   previewReward: {
     fontSize: 12,
-    color: '#5b9bd5',
+    color: Colors.primary.main,
   },
   cycleEndReward: {
-    color: '#FFD700',
+    color: Colors.primary.main,
     fontWeight: 'bold',
   },
 
   // 里程碑
   milestoneSection: {
     marginTop: 10,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   milestoneSectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 10,
+    marginBottom: 12,
+    color: Colors.neutral.textPrimary,
   },
   milestoneList: {
     flexDirection: 'row',
@@ -447,16 +470,17 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   milestoneCard: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 15,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 2,
     alignItems: 'center',
     width: 150,
-    shadowColor: '#000',
+    shadowColor: Colors.primary.main,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   milestoneIcon: {
     fontSize: 30,
@@ -465,23 +489,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: 5,
+    color: Colors.neutral.textPrimary,
   },
   milestoneHint: {
     fontSize: 12,
-    color: '#999',
+    color: Colors.neutral.textMuted,
     marginTop: 5,
     textAlign: 'center',
   },
   unlockButton: {
     marginTop: 10,
     paddingHorizontal: 15,
-    paddingVertical: 6,
-    backgroundColor: '#5b9bd5',
+    paddingVertical: 8,
+    backgroundColor: Colors.primary.main,
     borderRadius: 15,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   unlockButtonText: {
-    color: 'white',
+    color: Colors.neutral.white,
     fontSize: 12,
+    fontWeight: '600',
   },
 
   // 任务列表
@@ -493,20 +524,23 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 5,
   },
-  sectionTitle: { fontSize: 18, fontWeight: '600' },
-  taskCount: { fontSize: 14, color: '#666' },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary },
+  taskCount: { fontSize: 14, color: Colors.neutral.textSecondary },
   taskItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 8,
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 10,
     flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  completedTask: { backgroundColor: '#f0f9f0' },
+  completedTask: { backgroundColor: Colors.neutral.backgroundAlt, borderColor: Colors.secondary.success },
   taskLeft: { flex: 1 },
   taskHeader: {
     flexDirection: 'row',
@@ -517,8 +551,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginRight: 8,
   },
-  taskName: { fontSize: 16, fontWeight: '500' },
-  taskDesc: { fontSize: 12, color: '#666', marginTop: 4 },
+  taskName: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
+  taskDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,7 +561,7 @@ const styles = StyleSheet.create({
   progressBar: {
     width: 100,
     height: 8,
-    backgroundColor: '#eee',
+    backgroundColor: Colors.neutral.border,
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -535,26 +569,31 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  progressText: { fontSize: 12, color: '#666', marginLeft: 10 },
+  progressText: { fontSize: 12, color: Colors.neutral.textMuted, marginLeft: 10 },
   taskRight: { alignItems: 'center', paddingLeft: 15 },
-  rewardText: { fontSize: 16, fontWeight: '600', color: '#FFD700' },
-  rewardCompleted: { color: '#4CAF50' },
+  rewardText: { fontSize: 16, fontWeight: '600', color: Colors.feedback.warningText },
+  rewardCompleted: { color: Colors.secondary.success },
   taskButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
     marginTop: 8,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  taskButtonText: { color: 'white', fontSize: 12 },
+  taskButtonText: { color: Colors.neutral.white, fontSize: 12, fontWeight: '600' },
   completedBadge: {
     marginTop: 8,
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#4CAF50',
+    backgroundColor: Colors.secondary.success,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  completedText: { color: 'white', fontWeight: 'bold' },
-  emptyText: { color: '#999', textAlign: 'center', padding: 20 },
+  completedText: { color: Colors.neutral.white, fontWeight: 'bold' },
+  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: 20 },
 });

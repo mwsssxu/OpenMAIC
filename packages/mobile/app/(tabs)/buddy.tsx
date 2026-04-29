@@ -1,6 +1,8 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface BuddyType {
   id: string;
@@ -19,6 +21,7 @@ interface BuddyMessage {
 }
 
 export default function BuddyScreen() {
+  const { onSuccess, onError } = useFeedback();
   const [buddyTypes, setBuddyTypes] = useState<BuddyType[]>([]);
   const [myConfig, setMyConfig] = useState<any>(null);
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
@@ -53,9 +56,11 @@ export default function BuddyScreen() {
   const selectBuddyType = async (buddyType: BuddyType) => {
     try {
       await apiClient.setBuddyConfig(buddyType.id);
+      onSuccess();
       Alert.alert('成功', `已选择「${buddyType.name}」作为你的学习搭子`);
       loadData();
     } catch (error) {
+      onError();
       Alert.alert('失败', '设置失败，请稍后重试');
     }
   };
@@ -128,42 +133,61 @@ export default function BuddyScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
   section: {
-    backgroundColor: 'white',
-    marginBottom: 10,
-    padding: 15,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 10 },
-  currentBuddy: {
-    backgroundColor: '#e8f4fd',
-    padding: 15,
-    borderRadius: 8,
-  },
-  buddyName: { fontSize: 20, fontWeight: 'bold', color: '#5b9bd5' },
-  buddyType: { fontSize: 14, color: '#666', marginTop: 5 },
-  buddyTone: { fontSize: 14, color: '#666' },
-  typeCard: {
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: Colors.neutral.card,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 16,
+    marginHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: Colors.neutral.textPrimary },
+  currentBuddy: {
+    backgroundColor: Colors.neutral.backgroundAlt,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  buddyName: { fontSize: 20, fontWeight: 'bold', color: Colors.primary.main },
+  buddyType: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 6 },
+  buddyTone: { fontSize: 14, color: Colors.neutral.textMuted },
+  typeCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
     marginBottom: 10,
+    backgroundColor: Colors.neutral.backgroundAlt,
   },
   activeTypeCard: {
-    borderColor: '#5b9bd5',
-    backgroundColor: '#e8f4fd',
+    borderColor: Colors.primary.main,
+    backgroundColor: Colors.primary.transparent,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  typeName: { fontSize: 16, fontWeight: '500' },
-  typeDesc: { fontSize: 14, color: '#666', marginTop: 5 },
+  typeName: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
+  typeDesc: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 6 },
   messageItem: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#f9f9f9',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.neutral.backgroundAlt,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
   },
-  unreadMessage: { backgroundColor: '#fff3e0' },
-  messageContent: { fontSize: 14 },
-  messageTime: { fontSize: 12, color: '#999', marginTop: 5 },
-  emptyText: { color: '#999', textAlign: 'center', padding: 20 },
+  unreadMessage: { backgroundColor: Colors.primary.transparent, borderColor: Colors.primary.main },
+  messageContent: { fontSize: 14, color: Colors.neutral.textPrimary },
+  messageTime: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 6 },
+  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: 20 },
 });

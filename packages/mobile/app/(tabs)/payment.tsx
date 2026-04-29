@@ -1,6 +1,8 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Package {
   id: string;
@@ -21,6 +23,7 @@ interface Order {
 }
 
 export default function PaymentScreen() {
+  const { onSuccess, onError } = useFeedback();
   const [packages, setPackages] = useState<Package[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,9 +80,11 @@ export default function PaymentScreen() {
             onPress: async () => {
               try {
                 await apiClient.mockPayment(result.order_id);
+                onSuccess();
                 Alert.alert('成功', 'Token 已充值！');
                 loadData();
               } catch (error) {
+                onError();
                 Alert.alert('失败', '支付失败');
               }
             },
@@ -87,6 +92,7 @@ export default function PaymentScreen() {
         ]
       );
     } catch (error: any) {
+      onError();
       Alert.alert('失败', error.response?.data?.detail || '创建订单失败');
     }
   };
@@ -154,40 +160,54 @@ export default function PaymentScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 15 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 10 },
+  container: { padding: 15, backgroundColor: Colors.neutral.background },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: Colors.neutral.textPrimary },
   packagesList: { marginBottom: 20 },
   packageItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 10,
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#5b9bd5',
+    borderColor: Colors.primary.main,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   packageHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  packageName: { fontSize: 16, fontWeight: '500' },
-  packageTokens: { fontSize: 18, fontWeight: 'bold', color: '#5b9bd5' },
-  packagePrice: { fontSize: 20, fontWeight: 'bold', marginTop: 10 },
-  packageBonus: { fontSize: 12, color: '#4CAF50', marginTop: 5 },
-  packageDesc: { fontSize: 12, color: '#666', marginTop: 5 },
+  packageName: { fontSize: 16, fontWeight: '500', color: Colors.neutral.textPrimary },
+  packageTokens: { fontSize: 18, fontWeight: 'bold', color: Colors.primary.main },
+  packagePrice: { fontSize: 24, fontWeight: 'bold', marginTop: 10, color: Colors.neutral.textPrimary },
+  packageBonus: { fontSize: 12, color: Colors.secondary.success, marginTop: 6, fontWeight: '500' },
+  packageDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 6 },
   orderItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 8,
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  orderAmount: { fontSize: 16, fontWeight: '500' },
+  orderAmount: { fontSize: 16, fontWeight: '500', color: Colors.neutral.textPrimary },
   orderStatus: { fontSize: 14 },
-  paidStatus: { color: '#4CAF50' },
-  pendingStatus: { color: '#FF9800' },
-  orderMeta: { fontSize: 12, color: '#666', marginTop: 5 },
-  emptyText: { color: '#999', textAlign: 'center', padding: 20 },
+  paidStatus: { color: Colors.secondary.success, fontWeight: '600' },
+  pendingStatus: { color: Colors.feedback.warningText, fontWeight: '600' },
+  orderMeta: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 6 },
+  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: 20 },
 });

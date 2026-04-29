@@ -1,6 +1,8 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Match {
   match_id: string;
@@ -23,6 +25,7 @@ interface Partner {
 }
 
 export default function MatchingScreen() {
+  const { onSuccess, onError } = useFeedback();
   const [pendingMatches, setPendingMatches] = useState<Match[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [preferences, setPreferences] = useState<any>(null);
@@ -72,9 +75,11 @@ export default function MatchingScreen() {
   const acceptMatch = async (matchId: string) => {
     try {
       await apiClient.acceptMatch(matchId);
+      onSuccess();
       Alert.alert('成功', '匹配已接受');
       loadData();
     } catch (error) {
+      onError();
       Alert.alert('失败', '操作失败');
     }
   };
@@ -82,8 +87,10 @@ export default function MatchingScreen() {
   const rejectMatch = async (matchId: string) => {
     try {
       await apiClient.rejectMatch(matchId);
+      onSuccess();
       loadData();
     } catch (error) {
+      onError();
       Alert.alert('失败', '操作失败');
     }
   };
@@ -98,8 +105,10 @@ export default function MatchingScreen() {
       );
       setShowPrefsModal(false);
       loadData();
+      onSuccess();
       Alert.alert('成功', '偏好已更新');
     } catch (error) {
+      onError();
       Alert.alert('失败', '保存失败');
     }
   };
@@ -229,7 +238,7 @@ export default function MatchingScreen() {
                   ]}
                   onPress={() => setProgressLevel(level)}
                 >
-                  <Text style={styles.levelText}>{level}</Text>
+                  <Text style={[styles.levelText, progressLevel === level && styles.activeLevelText]}>{level}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -251,61 +260,102 @@ export default function MatchingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  section: { backgroundColor: 'white', marginBottom: 10, padding: 15 },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
+  section: {
+    backgroundColor: Colors.neutral.card,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 16,
+    marginHorizontal: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
   },
-  sectionTitle: { fontSize: 18, fontWeight: '600' },
-  settingsButton: { paddingHorizontal: 10 },
-  settingsText: { color: '#5b9bd5', fontSize: 14 },
-  prefsCard: { backgroundColor: '#f9f9f9', padding: 10, borderRadius: 8 },
-  prefsText: { fontSize: 14, color: '#666' },
-  searchButton: {
-    backgroundColor: '#5b9bd5',
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary },
+  settingsButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  settingsText: { color: Colors.secondary.wisdom, fontSize: 14, fontWeight: '500' },
+  prefsCard: {
+    backgroundColor: Colors.neutral.backgroundAlt,
     padding: 12,
-    borderRadius: 8,
-    marginTop: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  prefsText: { fontSize: 14, color: Colors.neutral.textSecondary },
+  searchButton: {
+    backgroundColor: Colors.secondary.wisdom,
+    padding: 14,
+    borderRadius: 16,
+    marginTop: 12,
     alignItems: 'center',
+    shadowColor: Colors.secondary.wisdom,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  searchButtonText: { color: 'white', fontSize: 16, fontWeight: '500' },
+  searchButtonText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
   matchItem: {
-    padding: 15,
-    borderRadius: 8,
-    backgroundColor: '#fff3e0',
-    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
   },
-  matchInfo: { marginBottom: 10 },
-  matchName: { fontSize: 16, fontWeight: '500' },
-  matchScore: { fontSize: 14, color: '#5b9bd5' },
-  matchTags: { fontSize: 12, color: '#666', marginTop: 4 },
+  matchInfo: { marginBottom: 12 },
+  matchName: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
+  matchScore: { fontSize: 14, color: Colors.secondary.wisdom, marginTop: 4, fontWeight: '600' },
+  matchTags: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
   matchActions: { flexDirection: 'row', justifyContent: 'flex-end' },
   acceptButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
+    backgroundColor: Colors.secondary.success,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
     marginRight: 10,
+    shadowColor: Colors.secondary.success,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  acceptText: { color: 'white', fontSize: 14 },
+  acceptText: { color: Colors.neutral.white, fontSize: 14, fontWeight: '600' },
   rejectButton: {
-    backgroundColor: '#f44336',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
+    backgroundColor: Colors.feedback.errorText,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
-  rejectText: { color: 'white', fontSize: 14 },
+  rejectText: { color: Colors.neutral.white, fontSize: 14, fontWeight: '600' },
   partnerItem: {
-    padding: 15,
-    borderRadius: 8,
-    backgroundColor: '#e8f4fd',
-    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
   },
-  partnerName: { fontSize: 16, fontWeight: '500' },
-  partnerTags: { fontSize: 12, color: '#666', marginTop: 4 },
-  emptyText: { color: '#999', textAlign: 'center', padding: 20 },
+  partnerName: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
+  partnerTags: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
+  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: 20 },
   modalContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -313,42 +363,60 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 20,
     width: '80%',
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  modalTitle: { fontSize: 20, fontWeight: '600', marginBottom: 20 },
-  inputLabel: { fontSize: 14, color: '#666', marginBottom: 5 },
+  modalTitle: { fontSize: 20, fontWeight: '600', marginBottom: 20, color: Colors.neutral.textPrimary },
+  inputLabel: { fontSize: 14, color: Colors.neutral.textSecondary, marginBottom: 8, fontWeight: '500' },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 15,
+    borderColor: Colors.neutral.border,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    color: Colors.neutral.textPrimary,
+    fontSize: 16,
   },
   levelOptions: { flexDirection: 'row', marginBottom: 20 },
   levelButton: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 20,
     marginRight: 10,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: Colors.neutral.border,
+    backgroundColor: Colors.neutral.backgroundAlt,
   },
-  activeLevel: { backgroundColor: '#5b9bd5', borderColor: '#5b9bd5' },
-  levelText: { fontSize: 14 },
+  activeLevel: {
+    backgroundColor: Colors.secondary.wisdom,
+    borderColor: Colors.secondary.wisdom,
+  },
+  levelText: { fontSize: 14, color: Colors.neutral.textSecondary },
+  activeLevelText: { color: Colors.neutral.white },
   saveButton: {
-    backgroundColor: '#5b9bd5',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: Colors.secondary.wisdom,
+    padding: 14,
+    borderRadius: 16,
     alignItems: 'center',
+    shadowColor: Colors.secondary.wisdom,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  saveButtonText: { color: 'white', fontSize: 16 },
+  saveButtonText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
   cancelButton: {
-    padding: 12,
+    padding: 14,
     alignItems: 'center',
     marginTop: 10,
   },
-  cancelButtonText: { color: '#666', fontSize: 16 },
+  cancelButtonText: { color: Colors.neutral.textSecondary, fontSize: 16 },
 });

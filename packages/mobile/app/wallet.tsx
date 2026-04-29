@@ -1,6 +1,8 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
+import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Transaction {
   id: string;
@@ -11,6 +13,7 @@ interface Transaction {
 }
 
 export default function WalletScreen() {
+  const { onPress } = useFeedback();
   const [tokenBalance, setTokenBalance] = useState(0);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [tokenTransactions, setTokenTransactions] = useState<Transaction[]>([]);
@@ -120,20 +123,26 @@ export default function WalletScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: Colors.neutral.background },
   balanceHeader: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     padding: 20,
     flexDirection: 'row',
     justifyContent: 'space-around',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
   },
   balanceBox: { alignItems: 'center' },
-  balanceLabel: { fontSize: 14, color: '#666' },
-  balanceValue: { fontSize: 32, fontWeight: 'bold', color: '#5b9bd5' },
+  balanceLabel: { fontSize: 14, color: Colors.neutral.textSecondary },
+  balanceValue: { fontSize: 32, fontWeight: 'bold', color: Colors.primary.main, marginTop: 8 },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: 'white',
-    marginTop: 10,
+    backgroundColor: Colors.neutral.card,
+    marginTop: 12,
+    marginHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
   },
   tab: {
     flex: 1,
@@ -141,26 +150,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
+    borderRadius: 12,
   },
-  activeTab: { borderBottomColor: '#5b9bd5' },
-  tabText: { fontSize: 16, color: '#666' },
-  activeTabText: { color: '#5b9bd5', fontWeight: '500' },
-  listContent: { padding: 10 },
+  activeTab: {
+    borderBottomColor: Colors.primary.main,
+    backgroundColor: Colors.primary.transparent,
+  },
+  tabText: { fontSize: 16, color: Colors.neutral.textSecondary },
+  activeTabText: { color: Colors.primary.main, fontWeight: '600' },
+  listContent: { padding: 12 },
   transactionItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    marginBottom: 8,
-    borderRadius: 8,
+    backgroundColor: Colors.neutral.card,
+    padding: 16,
+    marginBottom: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   transactionLeft: { flex: 1 },
-  transactionType: { fontSize: 14, fontWeight: '500' },
-  transactionDesc: { fontSize: 12, color: '#666', marginTop: 4 },
-  transactionTime: { fontSize: 12, color: '#999', marginTop: 4 },
+  transactionType: { fontSize: 14, fontWeight: '600', color: Colors.neutral.textPrimary },
+  transactionDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
+  transactionTime: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 6 },
   transactionAmount: { fontSize: 18, fontWeight: 'bold' },
-  positive: { color: '#4CAF50' },
-  negative: { color: '#f44336' },
+  positive: { color: Colors.secondary.success },
+  negative: { color: Colors.feedback.errorText },
   empty: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 16 },
+  emptyText: { color: Colors.neutral.textMuted, fontSize: 16 },
 });
