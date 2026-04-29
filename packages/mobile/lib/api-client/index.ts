@@ -1350,6 +1350,87 @@ class ApiClient {
     const { data } = await this.client.get('/note-reminders/templates');
     return data;
   }
+
+  // ==================== Knowledge Cards ====================
+
+  async getKnowledgeCards(skillCategory?: string) {
+    const { data } = await this.client.get('/knowledge/cards', {
+      params: { skill_category: skillCategory },
+    });
+    return data;
+  }
+
+  async getKnowledgeCard(cardId: string) {
+    const { data } = await this.client.get(`/knowledge/cards/${cardId}`);
+    return data;
+  }
+
+  async createKnowledgeCard(card: {
+    title: string;
+    content: string;
+    skill_category?: string;
+    summary?: string;
+    key_points?: string[];
+    tags?: string;
+    source_type?: string;
+    source_id?: string;
+    scene_id?: string;
+  }) {
+    const { data } = await this.client.post('/knowledge/cards', card);
+    return data;
+  }
+
+  async updateKnowledgeCard(cardId: string, updates: {
+    title?: string;
+    content?: string;
+    skill_category?: string;
+    summary?: string;
+    key_points?: string[];
+    tags?: string;
+    mastery_level?: number;
+  }) {
+    const { data } = await this.client.put(`/knowledge/cards/${cardId}`, updates);
+    return data;
+  }
+
+  async deleteKnowledgeCard(cardId: string) {
+    const { data } = await this.client.delete(`/knowledge/cards/${cardId}`);
+    return data;
+  }
+
+  async searchKnowledgeCards(query: string, skillCategory?: string) {
+    const { data } = await this.client.get('/knowledge/search', {
+      params: { query, skill_category: skillCategory },
+    });
+    return data;
+  }
+
+  async getKnowledgeStats() {
+    const { data } = await this.client.get('/knowledge/stats');
+    return data;
+  }
+
+  async relateKnowledgeCards(fromCardId: string, toCardId: string, relationType?: string) {
+    const { data } = await this.client.post(`/knowledge/cards/${fromCardId}/relate`, {
+      to_card_id: toCardId,
+      relation_type: relationType || 'related',
+    });
+    return data;
+  }
+
+  async getKnowledgeRelations(cardId: string) {
+    const { data } = await this.client.get(`/knowledge/cards/${cardId}/relations`);
+    return data;
+  }
+
+  async extractKnowledgeFromScene(sceneId: string) {
+    const { data } = await this.client.post('/knowledge/extract', {
+      scene_id: sceneId,
+    }, {
+      timeout: 60000, // AI 提取需要时间
+    });
+    return data;
+  }
 }
 
 export const apiClient = new ApiClient();

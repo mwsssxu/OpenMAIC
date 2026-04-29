@@ -86,6 +86,22 @@ export default function TabLayout() {
           tabPress: () => onPress(),
         }}
       />
+      <Tabs.Screen
+        name="knowledge"
+        options={{
+          title: '知识库',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'book' : 'book-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+        listeners={{
+          tabPress: () => onPress(),
+        }}
+      />
       {/* 隐藏其他tab页面，通过工作台入口访问 */}
       <Tabs.Screen
         name="courses"
