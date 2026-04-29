@@ -22,8 +22,10 @@ const workbenchItems = [
 export default function WorkbenchScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { onPress } = useFeedback();
 
   const handlePress = (route: string) => {
+    onPress();
     router.push(route as any);
   };
 
