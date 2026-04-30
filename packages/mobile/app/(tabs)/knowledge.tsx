@@ -78,7 +78,7 @@ export default function KnowledgeScreen() {
     };
   }, [authLoading, isAuthenticated, selectedCategory]);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const skillCategory = selectedCategory === 'all' ? undefined : selectedCategory;
@@ -99,11 +99,11 @@ export default function KnowledgeScreen() {
         setIsLoading(false);
       }
     }
-  }
+  }, [selectedCategory]);
 
   const onRefresh = useCallback(() => {
     loadData();
-  }, [selectedCategory]);
+  }, [loadData]);
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;

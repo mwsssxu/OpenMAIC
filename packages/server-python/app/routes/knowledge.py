@@ -10,7 +10,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from datetime import datetime
 from app.core.time_utils import utcnow
@@ -91,10 +91,12 @@ class KnowledgeRelationCreate(BaseModel):
     to_card_id: str
     relation_type: str = "related"  # prerequisite, related, extends
 
-    def validate_relation_type(self):
-        if self.relation_type not in VALID_RELATION_TYPES:
-            raise ValueError(f"无效的关联类型: {self.relation_type}")
-        return self
+    @field_validator('relation_type')
+    @classmethod
+    def validate_relation_type(cls, v: str) -> str:
+        if v not in VALID_RELATION_TYPES:
+            raise ValueError(f"无效的关联类型: {v}")
+        return v
 
 
 class KnowledgeSearchQuery(BaseModel):
@@ -444,9 +446,6 @@ async def create_knowledge_relation(
     user_uuid = safe_uuid(user_id, "用户ID")
     from_uuid = safe_uuid(card_id, "卡片ID")
     to_uuid = safe_uuid(request.to_card_id, "目标卡片ID")
-
-    if request.relation_type not in VALID_RELATION_TYPES:
-        raise HTTPException(status_code=400, detail=f"无效的关联类型: {request.relation_type}")
 
     # 验证两个卡片都属于用户
     cards = await db.fetch(

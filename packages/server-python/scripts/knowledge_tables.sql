@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS knowledge_cards (
     scene_id UUID REFERENCES scenes(id) ON DELETE SET NULL,
 
     -- 分类标签
-    skill_category VARCHAR(50) DEFAULT 'general',
+    skill_category VARCHAR(50) DEFAULT 'general' CHECK (skill_category IN ('programming', 'data', 'business', 'language', 'design', 'math', 'science', 'general')),
     tags TEXT,  -- 逗号分隔
 
     -- 掌握度
@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS knowledge_relations (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
     -- 防止重复关联
-    UNIQUE(from_card_id, to_card_id)
+    UNIQUE(from_card_id, to_card_id),
+    -- 防止自关联
+    CHECK (from_card_id != to_card_id)
 );
 
 -- 索引
