@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Modal, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
-import { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Modal, TextInput, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
@@ -65,10 +65,17 @@ export default function KnowledgeScreen() {
   const [category, setCategory] = useState('general');
   const [saving, setSaving] = useState(false);
 
+  // 清理标记防止内存泄漏
+  const cancelledRef = useRef(false);
+
   useEffect(() => {
+    cancelledRef.current = false;
     if (!authLoading && isAuthenticated) {
       loadData();
     }
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [authLoading, isAuthenticated, selectedCategory]);
 
   async function loadData() {
@@ -81,12 +88,16 @@ export default function KnowledgeScreen() {
         apiClient.getKnowledgeStats(),
       ]);
 
-      setCards(cardsData.cards || []);
-      setStats(statsData);
+      if (!cancelledRef.current) {
+        setCards(cardsData.cards || []);
+        setStats(statsData);
+      }
     } catch (error) {
       console.error('Load knowledge error:', error);
     } finally {
-      setIsLoading(false);
+      if (!cancelledRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -100,12 +111,16 @@ export default function KnowledgeScreen() {
     setIsLoading(true);
     try {
       const result = await apiClient.searchKnowledgeCards(searchQuery.trim(), selectedCategory === 'all' ? undefined : selectedCategory);
-      setCards(result.results || []);
+      if (!cancelledRef.current) {
+        setCards(result.results || []);
+      }
     } catch (error) {
       console.error('Search error:', error);
     } finally {
-      setIsLoading(false);
-      setShowSearch(false);
+      if (!cancelledRef.current) {
+        setIsLoading(false);
+        setShowSearch(false);
+      }
     }
   }
 
@@ -174,72 +189,48 @@ export default function KnowledgeScreen() {
     </TouchableOpacity>
   );
 
-  const renderStatsCard = () => (
-    <View style={styles.statsCard}>
-      <Text style={styles.statsTitle}>知识掌握度</Text>
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats?.total_cards || 0}</Text>
-          <Text style={styles.statLabel}>知识卡片</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats?.avg_mastery?.toFixed(1) || '1.0'}</Text>
-          <Text style={styles.statLabel}>平均掌握度</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats?.total_reviews || 0}</Text>
-          <Text style={styles.statLabel}>复习次数</Text>
-        </View>
-      </View>
-
-      {/* 雷达图简化显示 */}
-      {stats?.by_category?.length > 0 && (
-        <View style={styles.categoryStats}>
-          {stats.by_category.slice(0, 4).map((cat: SkillStats) => (
-            <View key={cat.category} style={styles.categoryItem}>
-              <Text style={styles.categoryName}>{cat.category_name}</Text>
-              <View style={styles.categoryBar}>
-                <View
-                  style={[
-                    styles.categoryBarFill,
-                    { width: `${cat.avg_mastery * 20}%`, backgroundColor: '#5b9bd5' }
-                  ]}
-                />
-              </View>
-              <Text style={styles.categoryCount}>{cat.card_count}张</Text>
+  const renderHeader = () => (
+    <>
+      {/* 统计卡片 */}
+      {stats && (
+        <View style={styles.statsCard}>
+          <Text style={styles.statsTitle}>知识掌握度</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{stats?.total_cards || 0}</Text>
+              <Text style={styles.statLabel}>知识卡片</Text>
             </View>
-          ))}
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{stats?.avg_mastery?.toFixed(1) || '1.0'}</Text>
+              <Text style={styles.statLabel}>平均掌握度</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{stats?.total_reviews || 0}</Text>
+              <Text style={styles.statLabel}>复习次数</Text>
+            </View>
+          </View>
+
+          {/* 雷达图简化显示 */}
+          {stats?.by_category?.length > 0 && (
+            <View style={styles.categoryStats}>
+              {stats.by_category.slice(0, 4).map((cat: SkillStats) => (
+                <View key={cat.category} style={styles.categoryItem}>
+                  <Text style={styles.categoryName}>{cat.category_name}</Text>
+                  <View style={styles.categoryBar}>
+                    <View
+                      style={[
+                        styles.categoryBarFill,
+                        { width: `${cat.avg_mastery * 20}%`, backgroundColor: '#5b9bd5' }
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.categoryCount}>{cat.card_count}张</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
-    </View>
-  );
-
-  if (authLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.secondary.info} />
-      </View>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>请先登录</Text>
-        <TouchableOpacity style={styles.loginBtn} onPress={() => router.replace('/auth/login')}>
-          <Text style={styles.loginBtnText}>去登录</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
-    >
-      {/* 统计卡片 */}
-      {stats && renderStatsCard()}
 
       {/* 分类筛选 */}
       <View style={styles.categoryFilter}>
@@ -281,26 +272,55 @@ export default function KnowledgeScreen() {
           <Text style={styles.createBtnText}>创建卡片</Text>
         </TouchableOpacity>
       </View>
+    </>
+  );
 
-      {/* 卡片列表 */}
+  const renderEmpty = () => (
+    <View style={styles.emptyState}>
+      <Ionicons name="book-outline" size={48} color="#999" />
+      <Text style={styles.emptyText}>暂无知识卡片</Text>
+      <Text style={styles.emptyHint}>点击上方按钮创建你的第一个知识卡片</Text>
+    </View>
+  );
+
+  if (authLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.secondary.info} />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>请先登录</Text>
+        <TouchableOpacity style={styles.loginBtn} onPress={() => router.replace('/auth/login')}>
+          <Text style={styles.loginBtnText}>去登录</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <>
       <FlatList
+        style={styles.container}
         data={cards}
         renderItem={renderCard}
         keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="book-outline" size={48} color="#999" />
-            <Text style={styles.emptyText}>暂无知识卡片</Text>
-            <Text style={styles.emptyHint}>点击上方按钮创建你的第一个知识卡片</Text>
-          </View>
-        }
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmpty}
         contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
       />
 
       {/* 搜索弹窗 */}
       <Modal visible={showSearch} transparent animationType="slide">
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>搜索知识卡片</Text>
             <TextInput
@@ -317,13 +337,16 @@ export default function KnowledgeScreen() {
               <Text style={styles.cancelBtnText}>取消</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 创建弹窗 */}
       <Modal visible={showCreateModal} transparent animationType="slide">
-        <View style={styles.modalContainer}>
-          <ScrollView style={styles.modalScroll}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>创建知识卡片</Text>
 
@@ -381,9 +404,9 @@ export default function KnowledgeScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
+    </>
   );
 }
 

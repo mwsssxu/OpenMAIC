@@ -44,6 +44,24 @@ LEVEL_NAMES = {
     5: "精通",
 }
 
+# 白名单防止 SQL 注入
+ORDER_BY_OPTIONS = {
+    "recent": "created_at DESC",
+    "mastery": "mastery_level DESC, created_at DESC",
+    "reviewed": "last_reviewed_at DESC NULLS LAST, created_at DESC",
+}
+
+VALID_RELATION_TYPES = {"prerequisite", "related", "extends"}
+VALID_SOURCE_TYPES = {"manual", "course", "note"}
+
+
+def safe_uuid(value: str, field_name: str = "ID") -> uuid.UUID:
+    """安全解析 UUID，无效时抛出 400 错误"""
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"无效的{field_name}格式")
+
 
 # ============ Models ============
 
@@ -73,6 +91,11 @@ class KnowledgeRelationCreate(BaseModel):
     to_card_id: str
     relation_type: str = "related"  # prerequisite, related, extends
 
+    def validate_relation_type(self):
+        if self.relation_type not in VALID_RELATION_TYPES:
+            raise ValueError(f"无效的关联类型: {self.relation_type}")
+        return self
+
 
 class KnowledgeSearchQuery(BaseModel):
     query: str
@@ -96,13 +119,16 @@ async def create_knowledge_card(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """创建知识卡片"""
-    user_uuid = uuid.UUID(user_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
 
     if not request.title.strip():
         raise HTTPException(status_code=400, detail="标题不能为空")
 
     if request.skill_category not in SKILL_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"无效的技能类别: {request.skill_category}")
+
+    if request.source_type and request.source_type not in VALID_SOURCE_TYPES:
+        raise HTTPException(status_code=400, detail=f"无效的来源类型: {request.source_type}")
 
     card_id = uuid.uuid4()
     now = utcnow()
@@ -121,8 +147,8 @@ async def create_knowledge_card(
         """,
         card_id, user_uuid, request.title.strip(), request.content.strip(),
         request.summary, key_points_json, request.source_type,
-        uuid.UUID(request.source_id) if request.source_id else None,
-        uuid.UUID(request.scene_id) if request.scene_id else None,
+        safe_uuid(request.source_id, "来源ID") if request.source_id else None,
+        safe_uuid(request.scene_id, "场景ID") if request.scene_id else None,
         request.skill_category, tags_str, now
     )
 
@@ -148,7 +174,7 @@ async def get_knowledge_cards(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """获取用户知识卡片列表"""
-    user_uuid = uuid.UUID(user_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
     offset = (page - 1) * limit
 
     # 构建查询条件
@@ -168,12 +194,8 @@ async def get_knowledge_cards(
 
     where_clause = "WHERE " + " AND ".join(conditions)
 
-    # 排序
-    order_clause = "ORDER BY created_at DESC"
-    if sort == "mastery":
-        order_clause = "ORDER BY mastery_level DESC, created_at DESC"
-    elif sort == "reviewed":
-        order_clause = "ORDER BY last_reviewed_at DESC NULLS LAST, created_at DESC"
+    # 排序 - 使用白名单防止 SQL 注入
+    order_clause = f"ORDER BY {ORDER_BY_OPTIONS.get(sort, ORDER_BY_OPTIONS['recent'])}"
 
     rows = await db.fetch(
         f"""
@@ -226,8 +248,8 @@ async def get_knowledge_card(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """获取知识卡片详情"""
-    user_uuid = uuid.UUID(user_id)
-    card_uuid = uuid.UUID(card_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    card_uuid = safe_uuid(card_id, "卡片ID")
 
     card = await db.fetchrow(
         """
@@ -294,8 +316,8 @@ async def update_knowledge_card(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """更新知识卡片"""
-    user_uuid = uuid.UUID(user_id)
-    card_uuid = uuid.UUID(card_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    card_uuid = safe_uuid(card_id, "卡片ID")
 
     # 验证所有权
     card = await db.fetchrow(
@@ -378,8 +400,8 @@ async def delete_knowledge_card(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """删除知识卡片"""
-    user_uuid = uuid.UUID(user_id)
-    card_uuid = uuid.UUID(card_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    card_uuid = safe_uuid(card_id, "卡片ID")
 
     # 验证所有权
     card = await db.fetchrow(
@@ -419,9 +441,12 @@ async def create_knowledge_relation(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """创建知识卡片关联"""
-    user_uuid = uuid.UUID(user_id)
-    from_uuid = uuid.UUID(card_id)
-    to_uuid = uuid.UUID(request.to_card_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    from_uuid = safe_uuid(card_id, "卡片ID")
+    to_uuid = safe_uuid(request.to_card_id, "目标卡片ID")
+
+    if request.relation_type not in VALID_RELATION_TYPES:
+        raise HTTPException(status_code=400, detail=f"无效的关联类型: {request.relation_type}")
 
     # 验证两个卡片都属于用户
     cards = await db.fetch(
@@ -447,6 +472,18 @@ async def create_knowledge_relation(
 
     if existing:
         raise HTTPException(status_code=400, detail="已存在关联")
+
+    # 检查反向关联是否存在，防止双向重复
+    reverse = await db.fetchrow(
+        """
+        SELECT id FROM knowledge_relations
+        WHERE from_card_id = $1 AND to_card_id = $2 AND user_id = $3
+        """,
+        to_uuid, from_uuid, user_uuid
+    )
+
+    if reverse:
+        raise HTTPException(status_code=400, detail="反向关联已存在，请勿重复创建")
 
     # 创建关联
     relation_id = uuid.uuid4()
@@ -477,8 +514,8 @@ async def delete_knowledge_relation(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """删除知识卡片关联"""
-    user_uuid = uuid.UUID(user_id)
-    relation_uuid = uuid.UUID(relation_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    relation_uuid = safe_uuid(relation_id, "关联ID")
 
     # 验证关联属于用户
     relation = await db.fetchrow(
@@ -515,7 +552,7 @@ async def search_knowledge_cards(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """搜索知识卡片"""
-    user_uuid = uuid.UUID(user_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
     offset = (page - 1) * limit
 
     if not q.strip():
@@ -568,7 +605,7 @@ async def get_knowledge_stats(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """获取知识掌握度统计"""
-    user_uuid = uuid.UUID(user_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
 
     # 各技能类别的卡片数量和平均掌握度
     stats = await db.fetch(
@@ -638,8 +675,8 @@ async def extract_knowledge_from_scene(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """AI从课程场景提取知识点"""
-    user_uuid = uuid.UUID(user_id)
-    scene_uuid = uuid.UUID(request.scene_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    scene_uuid = safe_uuid(request.scene_id, "场景ID")
 
     # 获取场景内容
     scene = await db.fetchrow(
@@ -665,7 +702,10 @@ async def extract_knowledge_from_scene(
             course_name=scene["course_name"],
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI提取失败: {str(e)}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Knowledge extraction failed for scene {scene_uuid}: {e}")
+        raise HTTPException(status_code=500, detail="AI提取服务暂时不可用，请稍后重试")
 
     # 如果 auto_create=True，自动创建知识卡片
     created_cards = []
@@ -712,8 +752,8 @@ async def mark_card_reviewed(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """标记知识卡片已复习，更新掌握度"""
-    user_uuid = uuid.UUID(user_id)
-    card_uuid = uuid.UUID(card_id)
+    user_uuid = safe_uuid(user_id, "用户ID")
+    card_uuid = safe_uuid(card_id, "卡片ID")
 
     # 验证所有权
     card = await db.fetchrow(

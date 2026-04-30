@@ -1400,7 +1400,7 @@ class ApiClient {
 
   async searchKnowledgeCards(query: string, skillCategory?: string) {
     const { data } = await this.client.get('/knowledge/search', {
-      params: { query, skill_category: skillCategory },
+      params: { q: query, skill_category: skillCategory },
     });
     return data;
   }

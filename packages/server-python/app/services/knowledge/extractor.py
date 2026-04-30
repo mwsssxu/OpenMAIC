@@ -118,6 +118,22 @@ async def extract_knowledge_points(
 
         knowledge_points = json.loads(cleaned)
 
+        # 验证 LLM 返回结构
+        if not isinstance(knowledge_points, list):
+            raise ValueError("LLM 返回的不是数组")
+
+        for kp in knowledge_points:
+            if not isinstance(kp, dict):
+                raise ValueError("知识点必须是字典对象")
+            if not isinstance(kp.get("title"), str) or not kp.get("title"):
+                raise ValueError("知识点必须包含有效的标题")
+            if not isinstance(kp.get("content"), str) or not kp.get("content"):
+                raise ValueError("知识点必须包含有效的内容")
+            # 设置默认值
+            kp.setdefault("summary", kp["title"])
+            kp.setdefault("key_points", [])
+            kp.setdefault("skill_category", "general")
+
         logger.info(f"[KnowledgeExtractor] Extracted {len(knowledge_points)} points from scene '{scene_title}'")
 
         return knowledge_points
