@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
-import { Colors } from '@/lib/constants/theme';
+import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 // Web端使用window.alert，Mobile端使用Alert.alert
@@ -133,18 +133,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: Spacing.md,
     backgroundColor: Colors.neutral.background,
   },
-  title: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 8, color: Colors.neutral.textPrimary },
-  form: { marginTop: 32 },
+  title: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: Spacing.sm, color: Colors.neutral.textPrimary },
+  form: { marginTop: Spacing.xxl },
   input: {
     height: 50,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    borderRadius: Rounded.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
     fontSize: 16,
     backgroundColor: Colors.neutral.card,
     color: Colors.neutral.textPrimary,
@@ -153,9 +153,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.feedback.errorBg,
     borderColor: Colors.feedback.errorBorder,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
+    borderRadius: Rounded.sm,
+    padding: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   errorText: {
     color: Colors.feedback.errorText,
@@ -165,16 +165,11 @@ const styles = StyleSheet.create({
   button: {
     height: 50,
     backgroundColor: Colors.primary.main,
-    borderRadius: 12,
+    borderRadius: Rounded.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
   buttonDisabled: { backgroundColor: Colors.neutral.disabled },
   buttonText: { color: Colors.neutral.white, fontSize: 18, fontWeight: '600' },
-  link: { color: Colors.primary.main, textAlign: 'center', marginTop: 24, fontSize: 16, fontWeight: '500' },
+  link: { color: Colors.primary.main, textAlign: 'center', marginTop: Spacing.md, fontSize: 16, fontWeight: '500' },
 });

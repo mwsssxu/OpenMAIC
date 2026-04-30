@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { Colors } from '@/lib/constants/theme';
+import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Package {
@@ -160,21 +160,16 @@ export default function PaymentScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 15, backgroundColor: Colors.neutral.background },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: Colors.neutral.textPrimary },
-  packagesList: { marginBottom: 20 },
+  container: { padding: Spacing.sm + 3, backgroundColor: Colors.neutral.background },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: Spacing.sm, color: Colors.neutral.textPrimary },
+  packagesList: { marginBottom: Spacing.lg },
   packageItem: {
     backgroundColor: Colors.neutral.card,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
+    padding: Spacing.md,
+    borderRadius: Rounded.lg,
+    marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.primary.main,
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
   },
   packageHeader: {
     flexDirection: 'row',
@@ -183,21 +178,16 @@ const styles = StyleSheet.create({
   },
   packageName: { fontSize: 16, fontWeight: '500', color: Colors.neutral.textPrimary },
   packageTokens: { fontSize: 18, fontWeight: 'bold', color: Colors.primary.main },
-  packagePrice: { fontSize: 24, fontWeight: 'bold', marginTop: 10, color: Colors.neutral.textPrimary },
-  packageBonus: { fontSize: 12, color: Colors.secondary.success, marginTop: 6, fontWeight: '500' },
-  packageDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 6 },
+  packagePrice: { fontSize: 24, fontWeight: 'bold', marginTop: Spacing.sm, color: Colors.neutral.textPrimary },
+  packageBonus: { fontSize: 12, color: Colors.secondary.success, marginTop: Spacing.sm - 2, fontWeight: '500' },
+  packageDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.sm - 2 },
   orderItem: {
     backgroundColor: Colors.neutral.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 10,
+    padding: Spacing.md,
+    borderRadius: Rounded.md,
+    marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -208,6 +198,6 @@ const styles = StyleSheet.create({
   orderStatus: { fontSize: 14 },
   paidStatus: { color: Colors.secondary.success, fontWeight: '600' },
   pendingStatus: { color: Colors.feedback.warningText, fontWeight: '600' },
-  orderMeta: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 6 },
-  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: 20 },
+  orderMeta: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: Spacing.sm - 2 },
+  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: Spacing.lg + 4 },
 });

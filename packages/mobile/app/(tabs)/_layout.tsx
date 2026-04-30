@@ -1,7 +1,7 @@
 import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Colors } from '@/lib/constants/theme';
+import { Colors, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 export default function TabLayout() {
@@ -25,11 +25,11 @@ export default function TabLayout() {
         tabBarInactiveTintColor: Colors.neutral.textSecondary,
         headerShown: true,
         tabBarStyle: {
-          backgroundColor: Colors.neutral.backgroundAlt,
+          backgroundColor: Colors.neutral.card,
           borderTopWidth: 1,
           borderTopColor: Colors.neutral.border,
-          paddingTop: 8,
-          paddingBottom: 8,
+          paddingTop: Spacing.sm,
+          paddingBottom: Spacing.sm,
           height: 60,
         },
         tabBarLabelStyle: {

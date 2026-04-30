@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { Colors } from '@/lib/constants/theme';
+import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 interface Transaction {
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
   balanceHeader: {
     backgroundColor: Colors.neutral.card,
-    padding: 20,
+    padding: Spacing.lg,
     flexDirection: 'row',
     justifyContent: 'space-around',
     borderBottomWidth: 1,
@@ -134,23 +134,23 @@ const styles = StyleSheet.create({
   },
   balanceBox: { alignItems: 'center' },
   balanceLabel: { fontSize: 14, color: Colors.neutral.textSecondary },
-  balanceValue: { fontSize: 32, fontWeight: 'bold', color: Colors.primary.main, marginTop: 8 },
+  balanceValue: { fontSize: 32, fontWeight: 'bold', color: Colors.primary.main, marginTop: Spacing.sm },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: Colors.neutral.card,
-    marginTop: 12,
-    marginHorizontal: 12,
-    borderRadius: 12,
+    marginTop: Spacing.sm,
+    marginHorizontal: Spacing.sm,
+    borderRadius: Rounded.md,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
   },
   tab: {
     flex: 1,
-    padding: 15,
+    padding: Spacing.sm + 7,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
-    borderRadius: 12,
+    borderRadius: Rounded.md,
   },
   activeTab: {
     borderBottomColor: Colors.primary.main,
@@ -158,29 +158,24 @@ const styles = StyleSheet.create({
   },
   tabText: { fontSize: 16, color: Colors.neutral.textSecondary },
   activeTabText: { color: Colors.primary.main, fontWeight: '600' },
-  listContent: { padding: 12 },
+  listContent: { padding: Spacing.sm },
   transactionItem: {
     backgroundColor: Colors.neutral.card,
-    padding: 16,
-    marginBottom: 10,
-    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderRadius: Rounded.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   transactionLeft: { flex: 1 },
   transactionType: { fontSize: 14, fontWeight: '600', color: Colors.neutral.textPrimary },
-  transactionDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
-  transactionTime: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 6 },
+  transactionDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
+  transactionTime: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: Spacing.sm - 2 },
   transactionAmount: { fontSize: 18, fontWeight: 'bold' },
   positive: { color: Colors.secondary.success },
   negative: { color: Colors.feedback.errorText },
-  empty: { padding: 40, alignItems: 'center' },
+  empty: { padding: Spacing.xl + 8, alignItems: 'center' },
   emptyText: { color: Colors.neutral.textMuted, fontSize: 16 },
 });

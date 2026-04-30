@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from '
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, SecondaryColorMap, getShadowColor } from '@/lib/constants/theme';
+import { Colors, SecondaryColorMap, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 // 快捷操作配置 - 使用主题色
@@ -45,7 +45,7 @@ export default function WorkbenchScreen() {
         </View>
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{user?.nickname || user?.email || '用户'}</Text>
-          <Text style={styles.userHint}>欢迎来到个人工作台 ✨</Text>
+          <Text style={styles.userHint}>欢迎来到个人工作台</Text>
         </View>
       </View>
 
@@ -60,7 +60,7 @@ export default function WorkbenchScreen() {
               onPress={() => handlePress(item.route)}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconBox, { backgroundColor: item.color, shadowColor: item.color, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 2 }]}>
+              <View style={[styles.iconBox, { backgroundColor: item.color }]}>
                 <Ionicons name={item.icon as any} size={24} color={Colors.neutral.white} />
               </View>
               <Text style={styles.itemTitle}>{item.title}</Text>
@@ -97,35 +97,25 @@ const styles = StyleSheet.create({
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: Colors.neutral.backgroundAlt,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
+    padding: Spacing.lg,
+    backgroundColor: Colors.neutral.card,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.md,
+    borderRadius: Rounded.md,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: Colors.primary.main,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 4,
   },
   userInfo: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: Spacing.md,
   },
   userName: {
     fontSize: 18,
@@ -135,40 +125,40 @@ const styles = StyleSheet.create({
   userHint: {
     fontSize: 14,
     color: Colors.neutral.textSecondary,
-    marginTop: 4,
+    marginTop: Spacing.xs,
   },
   section: {
-    marginTop: 20,
-    paddingHorizontal: 16,
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.md,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.neutral.textPrimary,
-    marginBottom: 12,
+    marginBottom: Spacing.sm,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    backgroundColor: Colors.neutral.backgroundAlt,
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: Colors.neutral.card,
+    borderRadius: Rounded.md,
+    padding: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
   },
   gridItem: {
     width: '25%',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 8,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xs,
   },
   iconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: Rounded.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: Spacing.sm,
   },
   itemTitle: {
     fontSize: 13,
@@ -179,26 +169,21 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: Colors.neutral.backgroundAlt,
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: Colors.neutral.card,
+    borderRadius: Rounded.md,
+    padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
   },
   quickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Rounded.sm,
   },
   quickBtnText: {
-    marginLeft: 6,
+    marginLeft: Spacing.xs,
     fontSize: 14,
     fontWeight: '500',
     color: Colors.neutral.white,

@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Share } from 'react-native';
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { Colors } from '@/lib/constants/theme';
+import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 export default function InviteScreen() {
@@ -50,7 +50,7 @@ export default function InviteScreen() {
         { text: '取消', style: 'cancel' },
         {
           text: '确定',
-          onPress: async (code) => {
+          onPress: async (code?: string) => {
             if (!code) return;
             try {
               await apiClient.applyInviteCode(code);
@@ -132,89 +132,64 @@ export default function InviteScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.neutral.background, padding: 15 },
+  container: { flex: 1, backgroundColor: Colors.neutral.background, padding: Spacing.sm + 3 },
   codeCard: {
     backgroundColor: Colors.neutral.card,
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 15,
+    padding: Spacing.lg,
+    borderRadius: Rounded.lg,
+    marginBottom: Spacing.sm + 3,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    shadowColor: Colors.secondary.info,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
   },
-  cardTitle: { fontSize: 16, fontWeight: '600', marginBottom: 10, color: Colors.neutral.textSecondary },
+  cardTitle: { fontSize: 16, fontWeight: '600', marginBottom: Spacing.sm, color: Colors.neutral.textSecondary },
   inviteCode: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: Colors.secondary.info,
+    color: Colors.primary.main,
     letterSpacing: 4,
-    marginBottom: 15,
+    marginBottom: Spacing.sm + 3,
   },
   shareButton: {
-    backgroundColor: Colors.secondary.info,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
-    shadowColor: Colors.secondary.info,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: Colors.primary.main,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Rounded.full,
   },
   shareButtonText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
   statsCard: {
     backgroundColor: Colors.neutral.card,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 15,
+    padding: Spacing.md,
+    borderRadius: Rounded.lg,
+    marginBottom: Spacing.sm + 3,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   statItem: { alignItems: 'center' },
-  statValue: { fontSize: 24, fontWeight: 'bold', color: Colors.secondary.info },
-  statLabel: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
+  statValue: { fontSize: 24, fontWeight: 'bold', color: Colors.primary.main },
+  statLabel: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
   rewardCard: {
     backgroundColor: Colors.neutral.card,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 15,
+    padding: Spacing.md,
+    borderRadius: Rounded.lg,
+    marginBottom: Spacing.sm + 3,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
-  rewardItem: { marginBottom: 12, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: Colors.primary.main },
+  rewardItem: { marginBottom: Spacing.sm, paddingLeft: Spacing.sm, borderLeftWidth: 3, borderLeftColor: Colors.primary.main },
   rewardText: { fontSize: 14, fontWeight: '600', color: Colors.neutral.textPrimary },
-  rewardDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: 4 },
+  rewardDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
   applyButton: {
     backgroundColor: Colors.primary.main,
-    padding: 16,
-    borderRadius: 16,
+    padding: Spacing.md,
+    borderRadius: Rounded.lg,
     alignItems: 'center',
-    shadowColor: Colors.primary.main,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
   applyButtonText: { fontSize: 16, fontWeight: '600', color: Colors.neutral.white },
 });
