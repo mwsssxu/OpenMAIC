@@ -326,7 +326,8 @@ async def create_stage_record(
     description: Optional[str],
     language: str,
     agent_ids: List[str],
-    db: Any
+    db: Any,
+    generated_agent_configs: Optional[List[Dict[str, Any]]] = None
 ) -> None:
     """
     创建课程记录
@@ -339,15 +340,17 @@ async def create_stage_record(
         language: 语言设置
         agent_ids: 智能体 ID 列表
         db: 数据库连接
+        generated_agent_configs: 生成的智能体配置列表
     """
     now = utcnow()
 
     agent_ids_json = json.dumps(agent_ids) if agent_ids else None
+    agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs else None
 
     await db.execute(
         """
-        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, generated_agent_configs, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """,
         stage_id,
         user_uuid,
@@ -356,6 +359,7 @@ async def create_stage_record(
         language,
         None,
         agent_ids_json,
+        agent_configs_json,
         now,
         now
     )

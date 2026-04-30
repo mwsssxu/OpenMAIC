@@ -198,12 +198,15 @@ export default function CreateClassroomScreen() {
 
     try {
       // 使用完整课程创建接口（包含大纲生成幻灯片）
+      // 传递完整的智能体配置，而非仅ID
+      const enabledAgents = agents.filter(a => a.enabled);
       const result = await apiClient.createFullClassroom(
         requirement.slice(0, 50),
         requirement,
         outlines,
-        agents.filter(a => a.enabled).map(a => a.id),
-        language
+        enabledAgents.map(a => a.id),
+        language,
+        enabledAgents  // 传递完整的智能体配置对象
       );
 
       setCreatedClassroomId(result.id);

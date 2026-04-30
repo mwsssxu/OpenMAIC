@@ -209,13 +209,15 @@ class ApiClient {
     description?: string,
     outlines?: any[],
     agentIds?: string[],
-    language?: string
+    language?: string,
+    agentConfigs?: any[]  // 完整的智能体配置
   ) {
     const { data } = await this.client.post('/classrooms/create-full', {
       name,
       description,
       outlines,
       agent_ids: agentIds,
+      agent_configs: agentConfigs,  // 传递完整的智能体配置
       language: language || 'zh-CN',
     });
     return data;

@@ -110,7 +110,7 @@ async def get_classroom(
     # 验证用户所有权
     stage = await db.fetchrow(
         """
-        SELECT id, name, description, language_directive, style, agent_ids, created_at, updated_at
+        SELECT id, name, description, language_directive, style, agent_ids, generated_agent_configs, created_at, updated_at
         FROM stages
         WHERE id = $1 AND user_id = $2
         """,
@@ -132,6 +132,14 @@ async def get_classroom(
         classroom_uuid
     )
 
+    # 解析 generated_agent_configs
+    generated_agent_configs = None
+    if stage["generated_agent_configs"]:
+        if isinstance(stage["generated_agent_configs"], str):
+            generated_agent_configs = json.loads(stage["generated_agent_configs"])
+        else:
+            generated_agent_configs = stage["generated_agent_configs"]
+
     return {
         "stage": {
             "id": str(stage["id"]),
@@ -140,6 +148,7 @@ async def get_classroom(
             "language_directive": stage["language_directive"],
             "style": stage["style"],
             "agent_ids": stage["agent_ids"],
+            "generatedAgentConfigs": generated_agent_configs,
             "created_at": stage["created_at"].isoformat(),
             "updated_at": stage["updated_at"].isoformat()
         },
@@ -210,6 +219,7 @@ async def create_full_classroom(
     - description: 课程描述
     - language: 语言设置 (zh-CN, en-US, ja-JP, ko-KR)
     - agent_ids: 智能体 ID 列表
+    - agent_configs: 智能体完整配置列表（可选，包含name/role/color/persona等）
     """
     start_time = time.time()
 
@@ -233,8 +243,9 @@ async def create_full_classroom(
     name = body.get("name", "新课程")
     description = body.get("description")
     agent_ids = body.get("agent_ids", [])
+    agent_configs = body.get("agent_configs")  # 完整的智能体配置
 
-    logger.info(f"[Create] 开始创建课程 - name={name}, scenes={len(outlines)}, lang={language}")
+    logger.info(f"[Create] 开始创建课程 - name={name}, scenes={len(outlines)}, lang={language}, agents={len(agent_configs or agent_ids)}")
 
     stage_id = uuid.uuid4()
 
@@ -248,6 +259,7 @@ async def create_full_classroom(
             description=description,
             language=language,
             agent_ids=agent_ids,
+            generated_agent_configs=agent_configs,
             db=db
         )
 
