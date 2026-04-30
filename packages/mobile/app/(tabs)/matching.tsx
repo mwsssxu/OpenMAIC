@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary },
   settingsButton: {
     paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs + 2,
+    paddingVertical: Spacing.sm,
     backgroundColor: Colors.neutral.backgroundAlt,
     borderRadius: Rounded.md,
     borderWidth: 1,

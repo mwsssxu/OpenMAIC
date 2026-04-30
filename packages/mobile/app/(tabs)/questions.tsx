@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   sortContainer: {
     flexDirection: 'row',
     backgroundColor: Colors.neutral.card,
-    padding: Spacing.sm + 2,
+    padding: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutral.border,
   },

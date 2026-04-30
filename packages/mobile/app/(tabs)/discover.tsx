@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.sm + 2,
+    padding: Spacing.md,
     backgroundColor: Colors.neutral.background,
     borderRadius: Rounded.sm,
     marginBottom: Spacing.xs,

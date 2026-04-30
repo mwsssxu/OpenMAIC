@@ -178,13 +178,13 @@ export default function CoursesScreen() {
             style={styles.cardActionBtn}
             onPress={() => openRename(item)}
           >
-            <Ionicons name="pencil" size={16} color="white" />
+            <Ionicons name="pencil" size={16} color={Colors.neutral.textInverse} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.cardActionBtn, styles.deleteBtn]}
             onPress={() => openDeleteConfirm(item)}
           >
-            <Ionicons name="trash-outline" size={16} color="white" />
+            <Ionicons name="trash-outline" size={16} color={Colors.neutral.textInverse} />
           </TouchableOpacity>
         </View>
       </View>
@@ -196,7 +196,7 @@ export default function CoursesScreen() {
           <Text style={styles.classroomDesc} numberOfLines={1}>{item.description}</Text>
         )}
         <View style={styles.cardMeta}>
-          <Ionicons name="layers-outline" size={12} color="#999" />
+          <Ionicons name="layers-outline" size={12} color={Colors.neutral.textMuted} />
           <Text style={styles.classroomMeta}>
             {item.scene_count || 0} 场景 · {formatDate(item.created_at)}
           </Text>
@@ -232,7 +232,7 @@ export default function CoursesScreen() {
         {searchOpen ? (
           // 搜索模式
           <View style={styles.searchBar}>
-            <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+            <Ionicons name="search-outline" size={20} color={Colors.neutral.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
@@ -247,7 +247,7 @@ export default function CoursesScreen() {
                 setSearchQuery('');
               }}
             >
-              <Ionicons name="close-circle" size={20} color="#999" />
+              <Ionicons name="close-circle" size={20} color={Colors.neutral.textMuted} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -259,10 +259,10 @@ export default function CoursesScreen() {
                 style={styles.searchToggleBtn}
                 onPress={() => setSearchOpen(true)}
               >
-                <Ionicons name="search-outline" size={22} color="#666" />
+                <Ionicons name="search-outline" size={22} color={Colors.neutral.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
-                <Ionicons name="add-circle" size={24} color="white" />
+                <Ionicons name="add-outline" size={24} color={Colors.neutral.textInverse} />
                 <Text style={styles.createBtnText}>{t('classroom.create') || '新建'}</Text>
               </TouchableOpacity>
             </View>
@@ -280,13 +280,13 @@ export default function CoursesScreen() {
         ListEmptyComponent={
           searchQuery.trim() ? (
             <View style={styles.empty}>
-              <Ionicons name="search-outline" size={48} color="#999" />
+              <Ionicons name="search-outline" size={48} color={Colors.neutral.textMuted} />
               <Text style={styles.emptyTitle}>{t('classroom.noResults') || '未找到匹配的课程'}</Text>
               <Text style={styles.emptyHint}>{t('classroom.searchHint') || '尝试其他关键词'}</Text>
             </View>
           ) : (
             <View style={styles.empty}>
-              <Ionicons name="folder-open-outline" size={48} color="#999" />
+              <Ionicons name="folder-open-outline" size={48} color={Colors.neutral.textMuted} />
               <Text style={styles.emptyTitle}>{t('classroom.noClassrooms') || '暂无课程'}</Text>
               <Text style={styles.emptyHint}>点击右上角按钮创建您的第一个课程</Text>
               <TouchableOpacity style={styles.emptyCreateBtn} onPress={handleCreate}>

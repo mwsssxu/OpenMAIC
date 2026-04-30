@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   sortContainer: {
     flexDirection: 'row',
     backgroundColor: Colors.neutral.card,
-    padding: Spacing.sm + 2,
+    padding: Spacing.md,
     marginHorizontal: Spacing.sm,
     marginBottom: Spacing.sm,
     borderRadius: Rounded.md,

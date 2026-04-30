@@ -29,22 +29,24 @@ interface SkillStats {
   avg_mastery: number;
 }
 
+// 使用 Ionicons 替代 emoji，符合扁平化设计规范
 const SKILL_CATEGORIES = [
-  { id: 'all', name: '全部', icon: '📚', color: '#607D8B' },
-  { id: 'programming', name: '编程', icon: '💻', color: '#5b9bd5' },
-  { id: 'data', name: '数据', icon: '📊', color: '#4CAF50' },
-  { id: 'business', name: '商业', icon: '📈', color: '#FF9800' },
-  { id: 'language', name: '语言', icon: '🌐', color: '#9C27B0' },
-  { id: 'math', name: '数学', icon: '🔢', color: '#3F51B5' },
-  { id: 'science', name: '科学', icon: '🔬', color: '#00BCD4' },
+  { id: 'all', name: '全部', iconName: 'book-outline', color: Colors.secondary.slate },
+  { id: 'programming', name: '编程', iconName: 'code-slash', color: Colors.primary.main },
+  { id: 'data', name: '数据', iconName: 'bar-chart-outline', color: Colors.secondary.success },
+  { id: 'business', name: '商业', iconName: 'trending-up-outline', color: Colors.accent.main },
+  { id: 'language', name: '语言', iconName: 'language-outline', color: Colors.primary.light },
+  { id: 'math', name: '数学', iconName: 'calculator-outline', color: Colors.secondary.info },
+  { id: 'science', name: '科学', iconName: 'flask-outline', color: Colors.accent.dark },
 ];
 
+// 使用主题颜色
 const MASTER_COLORS: Record<number, string> = {
-  1: '#ef4444',  // 初学 - 红色
-  2: '#f59e0b',  // 了解 - 橙色
-  3: '#eab308',  // 熟悉 - 黄色
-  4: '#22c55e',  // 掌握 - 绿色
-  5: '#3b82f6',  // 精通 - 蓝色
+  1: Colors.feedback.errorText,
+  2: Colors.accent.main,
+  3: Colors.accent.light,
+  4: Colors.secondary.success,
+  5: Colors.primary.light,
 };
 
 export default function KnowledgeScreen() {
@@ -220,7 +222,7 @@ export default function KnowledgeScreen() {
                     <View
                       style={[
                         styles.categoryBarFill,
-                        { width: `${cat.avg_mastery * 20}%`, backgroundColor: '#5b9bd5' }
+                        { width: `${cat.avg_mastery * 20}%`, backgroundColor: Colors.primary.main }
                       ]}
                     />
                   </View>
@@ -240,11 +242,11 @@ export default function KnowledgeScreen() {
             style={[
               styles.categoryBtn,
               selectedCategory === cat.id && styles.categoryBtnActive,
-              selectedCategory === cat.id && { backgroundColor: cat.color + '20', borderColor: cat.color }
+              selectedCategory === cat.id && { backgroundColor: cat.color + '10', borderColor: cat.color }
             ]}
             onPress={() => setSelectedCategory(cat.id)}
           >
-            <Text style={styles.categoryIcon}>{cat.icon}</Text>
+            <Ionicons name={cat.iconName as any} size={16} color={selectedCategory === cat.id ? cat.color : Colors.neutral.textSecondary} />
             <Text style={[
               styles.categoryText,
               selectedCategory === cat.id && { color: cat.color }
@@ -261,14 +263,14 @@ export default function KnowledgeScreen() {
           style={styles.searchBtn}
           onPress={() => setShowSearch(true)}
         >
-          <Ionicons name="search" size={20} color={Colors.secondary.info} />
+          <Ionicons name="search-outline" size={20} color={Colors.primary.main} />
           <Text style={styles.searchBtnText}>搜索</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.createBtn}
           onPress={() => setShowCreateModal(true)}
         >
-          <Ionicons name="add" size={20} color="white" />
+          <Ionicons name="add-outline" size={20} color={Colors.neutral.textInverse} />
           <Text style={styles.createBtnText}>创建卡片</Text>
         </TouchableOpacity>
       </View>
@@ -277,7 +279,7 @@ export default function KnowledgeScreen() {
 
   const renderEmpty = () => (
     <View style={styles.emptyState}>
-      <Ionicons name="book-outline" size={48} color="#999" />
+      <Ionicons name="book-outline" size={48} color={Colors.neutral.textMuted} />
       <Text style={styles.emptyText}>暂无知识卡片</Text>
       <Text style={styles.emptyHint}>点击上方按钮创建你的第一个知识卡片</Text>
     </View>
@@ -375,11 +377,11 @@ export default function KnowledgeScreen() {
                     key={cat.id}
                     style={[
                       styles.selectBtn,
-                      category === cat.id && { backgroundColor: cat.color + '20', borderColor: cat.color }
+                      category === cat.id && { backgroundColor: cat.color + '10', borderColor: cat.color }
                     ]}
                     onPress={() => setCategory(cat.id)}
                   >
-                    <Text style={styles.selectIcon}>{cat.icon}</Text>
+                    <Ionicons name={cat.iconName as any} size={14} color={category === cat.id ? cat.color : Colors.neutral.textSecondary} />
                     <Text style={[styles.selectText, category === cat.id && { color: cat.color }]}>
                       {cat.name}
                     </Text>
@@ -393,7 +395,7 @@ export default function KnowledgeScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color="white" />
+                  <ActivityIndicator color={Colors.neutral.textInverse} />
                 ) : (
                   <Text style={styles.modalBtnText}>创建</Text>
                 )}
@@ -431,8 +433,8 @@ const styles = StyleSheet.create({
   categoryStats: { marginTop: Spacing.sm },
   categoryItem: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
   categoryName: { fontSize: 14, color: Colors.neutral.textPrimary, width: 80 },
-  categoryBar: { flex: 1, height: Spacing.sm, backgroundColor: '#e5e7eb', borderRadius: Spacing.xs },
-  categoryBarFill: { height: Spacing.sm, borderRadius: Spacing.xs },
+  categoryBar: { flex: 1, height: Spacing.sm, backgroundColor: Colors.neutral.border, borderRadius: Rounded.sm },
+  categoryBarFill: { height: Spacing.sm, borderRadius: Rounded.sm },
   categoryCount: { fontSize: 12, color: Colors.neutral.textSecondary, marginLeft: Spacing.sm, width: 40 },
 
   // 分类筛选
@@ -458,7 +460,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.neutral.border,
   },
   categoryBtnActive: { borderWidth: 1 },
-  categoryIcon: { fontSize: 14, marginRight: Spacing.xs },
   categoryText: { fontSize: 14, color: Colors.neutral.textSecondary },
 
   // 操作按钮
@@ -489,7 +490,7 @@ const styles = StyleSheet.create({
     borderRadius: Rounded.sm,
     backgroundColor: Colors.primary.main,
   },
-  createBtnText: { marginLeft: Spacing.xs, color: 'white', fontWeight: '600' },
+  createBtnText: { marginLeft: Spacing.xs, color: Colors.neutral.textInverse, fontWeight: '600' },
 
   // 卡片列表
   listContent: { padding: Spacing.sm },
@@ -503,7 +504,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   cardTitle: { fontSize: 16, fontWeight: '600', flex: 1, color: Colors.neutral.textPrimary },
-  masteryBadge: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs, borderRadius: Spacing.sm },
+  masteryBadge: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs, borderRadius: Rounded.sm },
   masteryText: { fontSize: 12, fontWeight: '600' },
   cardSummary: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: Spacing.sm, lineHeight: 20 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.sm },
@@ -517,7 +518,7 @@ const styles = StyleSheet.create({
   // 空状态
   emptyState: { alignItems: 'center', padding: Spacing.xxl },
   emptyText: { fontSize: 16, color: Colors.neutral.textSecondary, marginTop: Spacing.sm },
-  emptyHint: { fontSize: 14, color: '#999', marginTop: Spacing.sm },
+  emptyHint: { fontSize: 14, color: Colors.neutral.textMuted, marginTop: Spacing.sm },
 
   // 弹窗
   modalContainer: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -561,7 +562,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.neutral.border,
   },
-  selectIcon: { fontSize: 12, marginRight: Spacing.xs },
   selectText: { fontSize: 12, color: Colors.neutral.textSecondary },
   modalBtn: {
     backgroundColor: Colors.primary.main,

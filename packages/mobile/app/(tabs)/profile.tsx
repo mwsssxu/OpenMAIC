@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.neutral.border,
   },
   nickname: { fontSize: 24, fontWeight: 'bold', color: Colors.neutral.textPrimary },
-  email: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: Spacing.xs + 2 },
+  email: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: Spacing.sm },
   balanceCard: {
     backgroundColor: Colors.neutral.card,
     marginHorizontal: Spacing.sm,
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   item: {
-    padding: Spacing.md + 2,
+    padding: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutral.border,
   },
