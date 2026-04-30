@@ -37,7 +37,7 @@ interface Scene {
 interface Agent {
   id: string;
   name: string;
-  role: string;
+  role: 'teacher' | 'assistant' | 'student';
   color: string;
   persona?: string;
   avatar?: string;
@@ -211,13 +211,22 @@ export default function ClassroomScreen() {
       { id: 'student2', name: '学霸小红', role: 'student', color: '#8b5cf6', persona: '学霸型，理解能力强', avatar: 'student2.png' },
     ];
 
-    // 验证 agent 数据结构的辅助函数
+    // 验证 agent 数据结构的辅助函数（强化验证）
     const validateAgent = (a: any): a is Agent => {
-      return a &&
-        typeof a.id === 'string' &&
-        typeof a.name === 'string' &&
-        typeof a.role === 'string' &&
-        typeof a.color === 'string';
+      if (!a || typeof a !== 'object') return false;
+
+      // 有效的角色类型
+      const validRoles = ['teacher', 'assistant', 'student'];
+
+      // 验证必需字段存在且为非空字符串
+      if (typeof a.id !== 'string' || a.id.length === 0) return false;
+      if (typeof a.name !== 'string' || a.name.length === 0) return false;
+      if (typeof a.role !== 'string' || !validRoles.includes(a.role)) return false;
+
+      // 验证color字段（必须为字符串，格式验证在normalizeAgentColor中处理）
+      if (typeof a.color !== 'string') return false;
+
+      return true;
     };
 
     // 规范化 agent 颜色（确保格式正确）

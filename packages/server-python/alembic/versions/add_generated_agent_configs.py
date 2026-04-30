@@ -1,8 +1,8 @@
 """add generated_agent_configs to stages
 
 Revision ID: add_generated_agent_configs
-Revises: knowledge_cards_schema
-Create Date: 2026-04-29
+Revises: fix_missing_schema
+Create Date: 2026-04-30
 
 """
 from typing import Sequence, Union

@@ -344,6 +344,25 @@ async def create_stage_record(
     """
     now = utcnow()
 
+    # 验证智能体配置结构（如果提供）
+    if generated_agent_configs:
+        # 限制数量（最多10个）
+        if len(generated_agent_configs) > 10:
+            logger.warning(f"[Stage] Agent configs truncated to 10 (was {len(generated_agent_configs)})")
+            generated_agent_configs = generated_agent_configs[:10]
+
+        # 验证每个智能体的必需字段
+        required_fields = ['id', 'name', 'role']
+        valid_roles = ['teacher', 'assistant', 'student']
+        for agent in generated_agent_configs:
+            # 检查必需字段
+            missing = [f for f in required_fields if f not in agent or not agent[f]]
+            if missing:
+                raise ValueError(f"Agent config missing required fields: {missing}")
+            # 验证role类型
+            if agent['role'] not in valid_roles:
+                raise ValueError(f"Agent role must be one of {valid_roles}, got: {agent['role']}")
+
     agent_ids_json = json.dumps(agent_ids) if agent_ids else None
     agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs else None
 

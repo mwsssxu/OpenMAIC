@@ -36,6 +36,20 @@ export interface UserStats {
   total_chat_sessions: number;
 }
 
+export interface AgentConfig {
+  id: string;
+  name: string;
+  role: 'teacher' | 'assistant' | 'student';
+  color?: string;
+  persona?: string;
+  avatar?: string;
+  priority?: number;
+  voiceConfig?: {
+    providerId: string;
+    voiceId: string;
+  };
+}
+
 export interface ExportedData {
   exported_at: string;
   user: {
@@ -210,7 +224,7 @@ class ApiClient {
     outlines?: any[],
     agentIds?: string[],
     language?: string,
-    agentConfigs?: any[]  // 完整的智能体配置
+    agentConfigs?: AgentConfig[]  // 完整的智能体配置
   ) {
     const { data } = await this.client.post('/classrooms/create-full', {
       name,

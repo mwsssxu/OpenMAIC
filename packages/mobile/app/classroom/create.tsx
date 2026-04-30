@@ -22,7 +22,7 @@ const STEPS = ['需求输入', '智能体生成', '大纲生成', '确认创建'
 interface AgentProfile {
   id: string;
   name: string;
-  role: string;
+  role: 'teacher' | 'assistant' | 'student';
   persona: string;
   avatar?: string;
   color?: string;
@@ -198,15 +198,25 @@ export default function CreateClassroomScreen() {
 
     try {
       // 使用完整课程创建接口（包含大纲生成幻灯片）
-      // 传递完整的智能体配置，而非仅ID
+      // 传递完整的智能体配置，而非仅ID（去除UI状态属性）
       const enabledAgents = agents.filter(a => a.enabled);
+      const cleanAgentConfigs = enabledAgents.map(a => ({
+        id: a.id,
+        name: a.name,
+        role: a.role as 'teacher' | 'assistant' | 'student',
+        color: a.color,
+        persona: a.persona,
+        avatar: a.avatar,
+        priority: a.priority,
+        voiceConfig: a.voiceConfig,
+      }));
       const result = await apiClient.createFullClassroom(
         requirement.slice(0, 50),
         requirement,
         outlines,
         enabledAgents.map(a => a.id),
         language,
-        enabledAgents  // 传递完整的智能体配置对象
+        cleanAgentConfigs  // 传递清理后的智能体配置
       );
 
       setCreatedClassroomId(result.id);
