@@ -3,9 +3,12 @@
 CLAUDE.local.md
 .claude
 .superpowers
+.history
+.next
 
 # dependencies
-/node_modules
+**/node_modules
+**/.expo
 /openclaw/node_modules
 /openclaw/package-lock.json
 /.pnp
@@ -71,6 +74,31 @@ next-env.d.ts
 
 # docs
 /docs
+
 # Eval results
 eval/whiteboard-layout/results/
 eval/outline-language/results/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# packages/mobile (Expo 移动端)
+# ─────────────────────────────────────────────────────────────────────────────
+packages/mobile/.env
+packages/mobile/.claude/
+packages/mobile/.expo/
+packages/mobile/expo-env.d.ts
+packages/mobile/ios/.xcode.env.local
+packages/mobile/ios/build/
+packages/mobile/ios/Pods/
+packages/mobile/ios/Podfile.lock
+packages/mobile/android/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# packages/server-python (Python 后端)
+# ─────────────────────────────────────────────────────────────────────────────
+packages/server-python/.env
+packages/server-python/.pytest_cache/
+packages/server-python/.venv/
+packages/server-python/venv/
+packages/server-python/**/__pycache__/
+packages/server-python/**/*.pyc
+packages/server-python/**/*.pyo
