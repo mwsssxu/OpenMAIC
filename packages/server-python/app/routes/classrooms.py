@@ -245,6 +245,12 @@ async def create_full_classroom(
     agent_ids = body.get("agent_ids", [])
     agent_configs = body.get("agent_configs")  # 完整的智能体配置
 
+    # 详细日志记录请求参数
+    logger.info(f"[Create] Request body keys: {list(body.keys())}")
+    logger.info(f"[Create] agent_ids count: {len(agent_ids)}, agent_configs type: {type(agent_configs)}, count: {len(agent_configs) if agent_configs else 0}")
+    if agent_configs:
+        logger.info(f"[Create] First agent config sample: id={agent_configs[0].get('id')}, name={agent_configs[0].get('name')}, role={agent_configs[0].get('role')}")
+
     logger.info(f"[Create] 开始创建课程 - name={name}, scenes={len(outlines)}, lang={language}, agents={len(agent_configs or agent_ids)}")
 
     stage_id = uuid.uuid4()

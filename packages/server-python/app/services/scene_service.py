@@ -346,6 +346,7 @@ async def create_stage_record(
 
     # 验证智能体配置结构（如果提供）
     if generated_agent_configs:
+        logger.info(f"[Stage] Validating {len(generated_agent_configs)} agent configs")
         # 限制数量（最多10个）
         if len(generated_agent_configs) > 10:
             logger.warning(f"[Stage] Agent configs truncated to 10 (was {len(generated_agent_configs)})")
@@ -354,21 +355,27 @@ async def create_stage_record(
         # 验证每个智能体的必需字段
         required_fields = ['id', 'name', 'role']
         valid_roles = ['teacher', 'assistant', 'student']
-        for agent in generated_agent_configs:
+        for i, agent in enumerate(generated_agent_configs):
             # 检查必需字段
             missing = [f for f in required_fields if f not in agent or not agent[f]]
             if missing:
+                logger.error(f"[Stage] Agent #{i} missing required fields: {missing}, agent data: {agent}")
                 raise ValueError(f"Agent config missing required fields: {missing}")
             # 验证role类型
             if agent['role'] not in valid_roles:
+                logger.error(f"[Stage] Agent #{i} invalid role: {agent['role']}")
                 raise ValueError(f"Agent role must be one of {valid_roles}, got: {agent['role']}")
+
+        logger.info(f"[Stage] Agent configs validated successfully, first agent: {generated_agent_configs[0].get('name', 'unknown')}")
+    else:
+        logger.info(f"[Stage] No agent configs provided (generated_agent_configs is None or empty)")
 
     agent_ids_json = json.dumps(agent_ids) if agent_ids else None
     agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs else None
 
     await db.execute(
         """
-        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, generated_agent_configs, created_at, updated_at)
+        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at, generated_agent_configs)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """,
         stage_id,
@@ -378,9 +385,9 @@ async def create_stage_record(
         language,
         None,
         agent_ids_json,
-        agent_configs_json,
         now,
-        now
+        now,
+        agent_configs_json
     )
 
 
