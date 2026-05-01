@@ -8,18 +8,11 @@
  * element positions/dimensions directly instead of using scale transform.
  */
 
-import React, { useRef, useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useRef, useMemo, useCallback, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-  Easing,
-  cancelAnimation,
-} from 'react-native-reanimated';
 import { ScreenElement } from './ScreenElement';
+import { SpotlightOverlay } from './SpotlightOverlay';
+import { LaserOverlay } from './LaserOverlay';
 import type { PPTElement, SlideBackground, SlideTheme, PPTLineElement } from './types';
 import { useSlideBackgroundStyle } from './hooks/useViewportSize';
 
@@ -37,6 +30,8 @@ interface ScreenCanvasProps {
   theme?: SlideTheme;
   /** Spotlight target element ID */
   spotlightElementId?: string | null;
+  /** Spotlight options */
+  spotlightOptions?: { dimness?: number };
   /** Laser target element ID */
   laserElementId?: string | null;
   /** Laser options */
@@ -51,56 +46,19 @@ const VIEWPORT_HEIGHT = VIEWPORT_WIDTH / VIEWPORT_RATIO; // 562.5 for 16:9 wides
  * ScreenCanvas Component
  *
  * Renders a slide with absolute positioned elements and proper scaling
+ * Includes SpotlightOverlay and LaserOverlay for visual effects
  */
 export function ScreenCanvas({
   elements,
   background,
   theme,
   spotlightElementId,
+  spotlightOptions,
   laserElementId,
   laserOptions,
 }: ScreenCanvasProps) {
   const containerRef = useRef<View>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-
-  // Laser animation values
-  const laserOpacity = useSharedValue(1);
-  const laserScale = useSharedValue(1);
-
-  // Start laser animation when laser is active
-  useEffect(() => {
-    if (laserElementId) {
-      // Pulsing animation: scale up/down, opacity fade
-      laserScale.value = withRepeat(
-        withSequence(
-          withTiming(1.5, { duration: 300, easing: Easing.ease }),
-          withTiming(1, { duration: 300, easing: Easing.ease })
-        ),
-        -1, // infinite
-        true // reverse
-      );
-      laserOpacity.value = withRepeat(
-        withSequence(
-          withTiming(0.6, { duration: 400 }),
-          withTiming(1, { duration: 400 })
-        ),
-        -1,
-        true
-      );
-    } else {
-      // Cancel running animations and reset values
-      cancelAnimation(laserScale);
-      cancelAnimation(laserOpacity);
-      laserScale.value = withTiming(1, { duration: 100 });
-      laserOpacity.value = withTiming(1, { duration: 100 });
-    }
-  }, [laserElementId]);
-
-  // Laser animated style
-  const laserAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: laserOpacity.value,
-    transform: [{ scale: laserScale.value }],
-  }));
 
   // Calculate scale to fit viewport in container
   const scale = useMemo(() => {
@@ -160,7 +118,6 @@ export function ScreenCanvas({
       centerY: element.top + height / 2,
       width,
       height,
-      padding: 20, // Extra space around element
     };
   }, [spotlightElementId, elements]);
 
@@ -180,6 +137,10 @@ export function ScreenCanvas({
     };
   }, [laserElementId, elements]);
 
+  // Canvas dimensions for overlays
+  const canvasWidth = VIEWPORT_WIDTH * scale;
+  const canvasHeight = VIEWPORT_HEIGHT * scale;
+
   return (
     <View
       ref={containerRef}
@@ -196,8 +157,8 @@ export function ScreenCanvas({
             position: 'absolute',
             left: canvasPosition.left,
             top: canvasPosition.top,
-            width: VIEWPORT_WIDTH * scale,
-            height: VIEWPORT_HEIGHT * scale,
+            width: canvasWidth,
+            height: canvasHeight,
           },
         ]}
       >
@@ -212,42 +173,27 @@ export function ScreenCanvas({
           />
         ))}
 
-        {/* Spotlight overlay - highlights target element with border */}
+        {/* Spotlight overlay - dimming + highlight effect */}
         {spotlightGeometry && (
-          <View
-            style={[
-              styles.spotlightHighlight,
-              {
-                left: (spotlightGeometry.centerX - spotlightGeometry.width / 2 - spotlightGeometry.padding) * scale,
-                top: (spotlightGeometry.centerY - spotlightGeometry.height / 2 - spotlightGeometry.padding) * scale,
-                width: (spotlightGeometry.width + spotlightGeometry.padding * 2) * scale,
-                height: (spotlightGeometry.height + spotlightGeometry.padding * 2) * scale,
-                borderRadius: 8 * scale,
-              },
-            ]}
+          <SpotlightOverlay
+            geometry={spotlightGeometry}
+            dimness={spotlightOptions?.dimness ?? 0.7}
+            scale={scale}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
           />
         )}
 
-        {/* Laser pointer with pulsing animation */}
+        {/* Laser pointer overlay - fly-in + pulse effect */}
         {laserPosition && (
-          <Animated.View
-            style={[
-              styles.laserDot,
-              laserAnimatedStyle,
-              {
-                left: laserPosition.x * scale - 8,
-                top: laserPosition.y * scale - 8,
-              },
-            ]}
-          >
-            {/* Inner glowing dot */}
-            <View
-              style={[
-                styles.laserInner,
-                { backgroundColor: laserOptions?.color || '#ff3333' },
-              ]}
-            />
-          </Animated.View>
+          <LaserOverlay
+            position={laserPosition}
+            color={laserOptions?.color ?? '#ff3b30'}
+            duration={laserOptions?.duration ?? 500}
+            scale={scale}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
+          />
         )}
       </View>
     </View>
@@ -269,35 +215,5 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     borderRadius: 8,
     overflow: 'hidden',
-  },
-  spotlightHighlight: {
-    position: 'absolute',
-    borderWidth: 3,
-    borderColor: '#5b9bd5',
-    backgroundColor: 'transparent',
-    // Subtle glow effect
-    shadowColor: '#5b9bd5',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-  },
-  laserDot: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 50, 50, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    // Outer glow
-    shadowColor: '#ff3333',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-  },
-  laserInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
 });

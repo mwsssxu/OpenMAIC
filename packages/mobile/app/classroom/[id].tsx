@@ -23,22 +23,12 @@ import Animated, {
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
-import { ScreenCanvas } from '@/components/slide';
+import { Scene, Agent as LibAgent, CanvasElement } from '@/lib/types/scene';
+import { ScreenCanvas, PPTElement, SlideBackground } from '@/components/slide';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 
-interface Scene {
-  id: string;
-  type: string;
-  title: string;
-  content: any;
-  actions: any[];
-}
-
-interface Agent {
-  id: string;
-  name: string;
-  role: 'teacher' | 'assistant' | 'student';
-  color: string;
+// 本地 Agent 类型（扩展自 lib/types）
+interface Agent extends LibAgent {
   persona?: string;
   avatar?: string;
 }
@@ -52,7 +42,84 @@ interface ClassroomData {
     generatedAgentConfigs?: Agent[];
   };
   scenes: Scene[];
-  agents?: Agent[];  // API 可能返回预配置的 agents
+  agents?: Agent[];
+}
+
+/**
+ * 将 CanvasElement 转换为 PPTElement
+ * 用于 ScreenCanvas 渲染
+ */
+function convertToPPTElement(el: CanvasElement): PPTElement {
+  const position = el.position || { left: 0, top: 0, width: 100, height: 50 };
+  const style = el.style || {};
+
+  // 基础元素属性
+  const baseElement = {
+    id: el.id,
+    left: position.left || 0,
+    top: position.top || 0,
+    width: position.width || 100,
+    height: position.height || 50,
+    rotate: 0,
+  };
+
+  // 根据 type 创建具体元素类型
+  switch (el.type) {
+    case 'text':
+      return {
+        ...baseElement,
+        type: 'text',
+        content: el.content || '',
+        defaultFontName: 'System',
+        defaultColor: style.color || '#333333',
+        fill: 'transparent',
+        lineHeight: 1.5,
+        opacity: 1,
+      } as PPTElement;
+    case 'image':
+      return {
+        ...baseElement,
+        type: 'image',
+        src: el.src || '',
+        fixedRatio: false,
+      } as PPTElement;
+    case 'shape':
+      return {
+        ...baseElement,
+        type: 'shape',
+        viewBox: [100, 100] as [number, number],
+        path: '',
+        fixedRatio: false,
+        fill: style.color || '#5b9bd5',
+      } as PPTElement;
+    case 'video':
+      return {
+        ...baseElement,
+        type: 'video',
+        src: el.src || '',
+        autoplay: false,
+      } as PPTElement;
+    default:
+      // 默认返回文本元素
+      return {
+        ...baseElement,
+        type: 'text',
+        content: el.content || '',
+        defaultFontName: 'System',
+        defaultColor: style.color || '#333333',
+      } as PPTElement;
+  }
+}
+
+/**
+ * 将 background string 转换为 SlideBackground
+ */
+function convertToSlideBackground(bg?: string): SlideBackground | undefined {
+  if (!bg) return undefined;
+  return {
+    type: 'solid',
+    color: bg,
+  };
 }
 
 // 验证 hex 颜色格式
@@ -94,6 +161,11 @@ export default function ClassroomScreen() {
   const [playbackMode, setPlaybackMode] = useState<EngineMode>('idle');
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false); // 默认关闭自动播放
   const playbackEngineRef = useRef<PlaybackEngine | null>(null);
+
+  // 视觉效果（spotlight/laser）
+  const [spotlightElementId, setSpotlightElementId] = useState<string | null>(null);
+  const [laserElementId, setLaserElementId] = useState<string | null>(null);
+  const [laserOptions, setLaserOptions] = useState<{ color?: string }>({});
 
   // TTS 配置
   const [ttsConfig, setTtsConfig] = useState<TTSConfig>({
@@ -282,12 +354,15 @@ export default function ClassroomScreen() {
       playbackEngineRef.current.dispose();
     }
 
-    // 创建新引擎（带 TTS 配置）
+    // 创建新引擎（带 TTS 配置和视觉效果回调）
     playbackEngineRef.current = new PlaybackEngine(
       data.scenes,
       {
         onSceneChange: (index) => {
           setCurrentSceneIndex(index);
+          // 切换场景时清除视觉效果
+          setSpotlightElementId(null);
+          setLaserElementId(null);
         },
         onModeChange: (mode) => {
           setPlaybackMode(mode);
@@ -303,6 +378,19 @@ export default function ClassroomScreen() {
         },
         onTTSReady: (audioId) => {
           console.log('[TTS] Ready', audioId);
+        },
+        // 视觉效果回调
+        onSpotlight: (elementId, dimness) => {
+          setSpotlightElementId(elementId);
+          setLaserElementId(null); // 清除激光笔
+        },
+        onLaser: (elementId, color) => {
+          setLaserElementId(elementId);
+          setLaserOptions({ color: color || '#ff3b30' });
+        },
+        onClearEffects: () => {
+          setSpotlightElementId(null);
+          setLaserElementId(null);
         },
       },
       ttsConfig
@@ -455,9 +543,12 @@ export default function ClassroomScreen() {
         {/* 所有场景类型如果有 canvas 元素，优先使用 ScreenCanvas 渲染 */}
         {currentScene?.content?.canvas?.elements?.length > 0 ? (
           <ScreenCanvas
-            elements={currentScene.content?.canvas?.elements || []}
-            background={currentScene.content?.canvas?.background}
-            theme={currentScene.content?.canvas?.theme}
+            elements={(currentScene.content?.canvas?.elements || []).map(convertToPPTElement)}
+            background={convertToSlideBackground(currentScene.content?.canvas?.background)}
+            theme={undefined}
+            spotlightElementId={spotlightElementId}
+            laserElementId={laserElementId}
+            laserOptions={laserOptions}
           />
         ) : (
           /* 没有 canvas 内容时的降级显示 */

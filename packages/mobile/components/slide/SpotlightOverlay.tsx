@@ -1,0 +1,200 @@
+/**
+ * SpotlightOverlay - Spotlight effect for Mobile
+ *
+ * Implements spotlight focus effect using semi-transparent dimming layers
+ * arranged around the highlighted element to create a "cutout" appearance.
+ *
+ * Adapted from Web's SpotlightOverlay.tsx (SVG mask approach)
+ * React Native doesn't support SVG mask, so we use 4 positioned dimming Views:
+ * - Top dimming layer (above target)
+ * - Bottom dimming layer (below target)
+ * - Left dimming layer (left of target)
+ * - Right dimming layer (right of target)
+ *
+ * This creates the visual effect of a dark overlay with a clear cutout.
+ */
+
+import React, { useEffect } from 'react';
+import { View, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+  cancelAnimation,
+} from 'react-native-reanimated';
+
+interface SpotlightOverlayProps {
+  /** Target element geometry (in viewport coordinates 0-1000) */
+  geometry: {
+    centerX: number;
+    centerY: number;
+    width: number;
+    height: number;
+  };
+  /** Background dimming opacity (0-1, default 0.7) */
+  dimness?: number;
+  /** Scale factor for positioning */
+  scale: number;
+  /** Canvas dimensions for overlay positioning */
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+/**
+ * SpotlightOverlay Component
+ *
+ * Creates a spotlight effect by:
+ * 1. 4 semi-transparent dark layers around the target (top, bottom, left, right)
+ * 2. White border around the highlighted area
+ * 3. Animation: contraction from larger area to precise position
+ */
+export function SpotlightOverlay({
+  geometry,
+  dimness = 0.7,
+  scale,
+  canvasWidth,
+  canvasHeight,
+}: SpotlightOverlayProps) {
+  // Animation values for contraction effect
+  const paddingAnim = useSharedValue(40); // Start with larger padding
+  const borderRadiusAnim = useSharedValue(12); // Start with larger radius
+
+  // Trigger contraction animation on mount
+  useEffect(() => {
+    paddingAnim.value = withTiming(8, {
+      duration: 600,
+      easing: Easing.out(Easing.exp),
+    });
+    borderRadiusAnim.value = withTiming(4, {
+      duration: 600,
+      easing: Easing.out(Easing.exp),
+    });
+
+    // Cleanup on unmount
+    return () => {
+      cancelAnimation(paddingAnim);
+      cancelAnimation(borderRadiusAnim);
+    };
+  }, []);
+
+  // Calculate the cutout area dimensions
+  const cutoutX = geometry.centerX - geometry.width / 2;
+  const cutoutY = geometry.centerY - geometry.height / 2;
+  const cutoutW = geometry.width;
+  const cutoutH = geometry.height;
+
+  // Animated border style
+  const borderAnimatedStyle = useAnimatedStyle(() => {
+    const padding = paddingAnim.value;
+    const borderWidth = 1.5 * scale;
+    const left = (cutoutX - padding) * scale - borderWidth;
+    const top = (cutoutY - padding) * scale - borderWidth;
+    const width = (cutoutW + padding * 2) * scale + borderWidth * 2;
+    const height = (cutoutH + padding * 2) * scale + borderWidth * 2;
+
+    return {
+      left,
+      top,
+      width,
+      height,
+      borderRadius: borderRadiusAnim.value * scale,
+    };
+  });
+
+  // Animated dimming layers positions
+  // Top layer: from top of canvas to top of cutout
+  const topDimStyle = useAnimatedStyle(() => {
+    const padding = paddingAnim.value;
+    const cutoutTop = (cutoutY - padding) * scale;
+    return {
+      height: cutoutTop,
+    };
+  });
+
+  // Bottom layer: from bottom of cutout to bottom of canvas
+  const bottomDimStyle = useAnimatedStyle(() => {
+    const padding = paddingAnim.value;
+    const cutoutBottom = (cutoutY + cutoutH + padding) * scale;
+    return {
+      top: cutoutBottom,
+    };
+  });
+
+  // Left layer: between top and bottom, left of cutout
+  const leftDimStyle = useAnimatedStyle(() => {
+    const padding = paddingAnim.value;
+    const cutoutLeft = (cutoutX - padding) * scale;
+    const cutoutTop = (cutoutY - padding) * scale;
+    const cutoutHeight = (cutoutH + padding * 2) * scale;
+    return {
+      left: 0,
+      top: cutoutTop,
+      width: cutoutLeft,
+      height: cutoutHeight,
+    };
+  });
+
+  // Right layer: between top and bottom, right of cutout
+  const rightDimStyle = useAnimatedStyle(() => {
+    const padding = paddingAnim.value;
+    const cutoutRight = (cutoutX + cutoutW + padding) * scale;
+    const cutoutTop = (cutoutY - padding) * scale;
+    const cutoutHeight = (cutoutH + padding * 2) * scale;
+    return {
+      left: cutoutRight,
+      top: cutoutTop,
+      width: canvasWidth - cutoutRight,
+      height: cutoutHeight,
+    };
+  });
+
+  const dimColor = `rgba(0,0,0,${dimness})`;
+
+  return (
+    <View style={[styles.overlayContainer, { width: canvasWidth, height: canvasHeight }]}>
+      {/* Top dimming layer */}
+      <Animated.View style={[styles.dimLayer, topDimStyle, { backgroundColor: dimColor }]} />
+
+      {/* Bottom dimming layer */}
+      <Animated.View style={[styles.dimLayer, styles.bottomLayer, bottomDimStyle, { backgroundColor: dimColor, height: canvasHeight }]} />
+
+      {/* Left dimming layer */}
+      <Animated.View style={[styles.dimLayer, leftDimStyle, { backgroundColor: dimColor }]} />
+
+      {/* Right dimming layer */}
+      <Animated.View style={[styles.dimLayer, rightDimStyle, { backgroundColor: dimColor }]} />
+
+      {/* White border highlight */}
+      <Animated.View
+        style={[
+          styles.borderHighlight,
+          borderAnimatedStyle,
+        ]}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    overflow: 'hidden',
+  },
+  dimLayer: {
+    position: 'absolute',
+    left: 0,
+    width: '100%',
+  },
+  bottomLayer: {
+    bottom: 0,
+  },
+  borderHighlight: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'transparent',
+  },
+});

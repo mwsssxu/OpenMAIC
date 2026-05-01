@@ -15,7 +15,7 @@ import { AudioPlayer } from './audio-player';
 import { saveAudioFile } from '../storage/audio-storage';
 import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
-import { Scene, SceneAction, SpeechActionData } from '../types';
+import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData } from '../types';
 import { apiClient } from '../api-client';
 
 export type EngineMode = 'idle' | 'playing' | 'paused';
@@ -50,6 +50,10 @@ export type PlaybackEngineCallbacks = {
   onError?: (error: Error) => void;
   onTTSGenerate?: (audioId: string) => void;
   onTTSReady?: (audioId: string) => void;
+  // Spotlight/Laser visual effects
+  onSpotlight?: (elementId: string, dimness?: number) => void;
+  onLaser?: (elementId: string, color?: string) => void;
+  onClearEffects?: () => void;
 };
 
 /**
@@ -173,10 +177,23 @@ export class PlaybackEngine {
       return;
     }
 
-    // 执行第一个 speech action
-    for (let i = 0; i < actions.length; i++) {
-      if (actions[i].type === 'speech') {
-        await this.executeSpeech(actions[i] as SceneAction<'speech'>);
+    // 先清除之前的视觉效果
+    this.callbacks.onClearEffects?.();
+
+    // 处理所有 actions
+    // spotlight/laser 是非阻塞的，speech 是阻塞的
+    for (const action of actions) {
+      this.callbacks.onActionExecute?.(action);
+
+      if (action.type === 'spotlight') {
+        this.executeSpotlight(action);
+        // 非阻塞，立即继续
+      } else if (action.type === 'laser') {
+        this.executeLaser(action);
+        // 非阻塞，立即继续
+      } else if (action.type === 'speech') {
+        // speech 是阻塞的，等待完成
+        await this.executeSpeech(action as SceneAction<'speech'>);
         return;
       }
     }
@@ -221,9 +238,17 @@ export class PlaybackEngine {
       return;
     }
 
-    for (let i = 0; i < actions.length; i++) {
-      if (actions[i].type === 'speech') {
-        await this.executeSpeechAuto(actions[i] as SceneAction<'speech'>);
+    // 先清除之前的视觉效果
+    this.callbacks.onClearEffects?.();
+
+    // 处理所有 actions（spotlight/laser 非阻塞）
+    for (const action of actions) {
+      if (action.type === 'spotlight') {
+        this.executeSpotlight(action);
+      } else if (action.type === 'laser') {
+        this.executeLaser(action);
+      } else if (action.type === 'speech') {
+        await this.executeSpeechAuto(action as SceneAction<'speech'>);
         return;
       }
     }
@@ -388,6 +413,41 @@ export class PlaybackEngine {
         }
       }
     }, 500);
+  }
+
+  /**
+   * 执行 spotlight action（非阻塞）
+   * 触发视觉聚焦效果
+   */
+  private executeSpotlight(action: SceneAction): void {
+    const data = action.data as SpotlightActionData;
+    const elementId = data.target_element_id;
+    const dimness = data.dim_opacity ?? 0.7; // 默认变暗程度
+
+    if (!elementId) {
+      console.warn('[PlaybackEngine] Spotlight action has no target_element_id');
+      return;
+    }
+
+    this.callbacks.onSpotlight?.(elementId, dimness);
+  }
+
+  /**
+   * 执行 laser action（非阻塞）
+   * 触发激光笔动画
+   */
+  private executeLaser(action: SceneAction): void {
+    const data = action.data as LaserActionData;
+    // 使用 target_element_id（如果存在）或从 end_position 推断
+    const elementId = data.target_element_id || action.id;
+    const color = data.color || '#ff3b30';
+
+    if (!elementId) {
+      console.warn('[PlaybackEngine] Laser action has no target');
+      return;
+    }
+
+    this.callbacks.onLaser?.(elementId, color);
   }
 
   /**

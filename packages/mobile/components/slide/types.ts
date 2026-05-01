@@ -145,11 +145,26 @@ export interface SlideCanvas {
 }
 
 /**
+ * Spotlight target options
+ */
+export interface SpotlightOptions {
+  dimness?: number; // 0-1, default 0.7
+}
+
+/**
  * Spotlight target
  */
 export interface SpotlightTarget {
   elementId: string;
-  radius?: number;
+  options?: SpotlightOptions;
+}
+
+/**
+ * Laser pointer target options
+ */
+export interface LaserOptions {
+  color?: string; // default '#ff3b30'
+  duration?: number; // fly-in duration in ms, default 500
 }
 
 /**
@@ -157,6 +172,5 @@ export interface SpotlightTarget {
  */
 export interface LaserTarget {
   elementId: string;
-  color?: string;
-  duration?: number;
+  options?: LaserOptions;
 }

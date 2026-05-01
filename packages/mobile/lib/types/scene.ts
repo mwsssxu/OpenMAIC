@@ -14,12 +14,15 @@ export interface SpeechActionData {
 
 export interface SpotlightActionData {
   target_element_id: string;
+  dim_opacity?: number;  // 0-1, dimming intensity
   duration_ms?: number;
 }
 
 export interface LaserActionData {
-  start_position: { x: number; y: number };
-  end_position: { x: number; y: number };
+  target_element_id?: string;  // 目标元素 ID
+  start_position?: { x: number; y: number };
+  end_position?: { x: number; y: number };
+  color?: string;  // laser color, default '#ff3b30'
   duration_ms?: number;
 }
 
