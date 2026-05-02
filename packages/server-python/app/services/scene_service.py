@@ -370,8 +370,8 @@ async def create_stage_record(
     else:
         logger.info(f"[Stage] No agent configs provided (generated_agent_configs is None or empty)")
 
-    agent_ids_json = json.dumps(agent_ids) if agent_ids else None
-    agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs else None
+    agent_ids_json = json.dumps(agent_ids) if agent_ids is not None else None
+    agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs is not None else None
 
     await db.execute(
         """
