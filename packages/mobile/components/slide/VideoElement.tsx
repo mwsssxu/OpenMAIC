@@ -8,8 +8,10 @@ import type { PPTVideoElement } from './types';
 
 interface VideoElementProps {
   element: PPTVideoElement;
-  /** Scale factor for positioning */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
 }
 
 /**
@@ -18,27 +20,28 @@ interface VideoElementProps {
  * Simplified: Shows poster image with play button overlay
  * Actual video playback would require expo-av Video component
  */
-export function VideoElement({ element, scale }: VideoElementProps) {
-  // Container style with absolute positioning - scaled
+export function VideoElement({ element, scaleX, scaleY }: VideoElementProps) {
+  // Container style with absolute positioning - dual-axis scaled
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
-    top: element.top * scale,
-    left: element.left * scale,
-    width: element.width * scale,
-    height: element.height * scale,
+    top: element.top * scaleY,
+    left: element.left * scaleX,
+    width: element.width * scaleX,
+    height: element.height * scaleY,
     transform: [{ rotate: `${element.rotate || 0}deg` }],
     zIndex: 1,
-  }), [element, scale]);
+  }), [element, scaleX, scaleY]);
 
   // Poster image style - scaled
   const posterStyle = useMemo(() => ({
-    width: element.width * scale,
-    height: element.height * scale,
+    width: element.width * scaleX,
+    height: element.height * scaleY,
     resizeMode: 'cover' as const,
-  }), [element, scale]);
+  }), [element, scaleX, scaleY]);
 
-  // Play icon size scaled
-  const playIconSize = 40 * scale;
+  // Play icon size scaled - use average for visual consistency
+  const avgScale = (scaleX + scaleY) / 2;
+  const playIconSize = 40 * avgScale;
 
   return (
     <View style={containerStyle}>
@@ -48,10 +51,10 @@ export function VideoElement({ element, scale }: VideoElementProps) {
         <View style={[posterStyle, styles.placeholder]}>
           <View style={[styles.playIcon, { width: playIconSize, height: playIconSize, borderRadius: playIconSize / 2 }]}>
             <View style={[styles.playTriangle, {
-              borderLeftWidth: 12 * scale,
-              borderTopWidth: 8 * scale,
-              borderBottomWidth: 8 * scale,
-              marginLeft: 4 * scale,
+              borderLeftWidth: 12 * avgScale,
+              borderTopWidth: 8 * avgScale,
+              borderBottomWidth: 8 * avgScale,
+              marginLeft: 4 * avgScale,
             }]} />
           </View>
         </View>

@@ -34,8 +34,10 @@ interface SpotlightOverlayProps {
   };
   /** Background dimming opacity (0-1, default 0.7) */
   dimness?: number;
-  /** Scale factor for positioning */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
   /** Canvas dimensions for overlay positioning */
   canvasWidth: number;
   canvasHeight: number;
@@ -52,7 +54,8 @@ interface SpotlightOverlayProps {
 export function SpotlightOverlay({
   geometry,
   dimness = 0.7,
-  scale,
+  scaleX,
+  scaleY,
   canvasWidth,
   canvasHeight,
 }: SpotlightOverlayProps) {
@@ -84,21 +87,21 @@ export function SpotlightOverlay({
   const cutoutW = geometry.width;
   const cutoutH = geometry.height;
 
-  // Animated border style
+  // Animated border style - use dual-axis scaling
   const borderAnimatedStyle = useAnimatedStyle(() => {
     const padding = paddingAnim.value;
-    const borderWidth = 1.5 * scale;
-    const left = (cutoutX - padding) * scale - borderWidth;
-    const top = (cutoutY - padding) * scale - borderWidth;
-    const width = (cutoutW + padding * 2) * scale + borderWidth * 2;
-    const height = (cutoutH + padding * 2) * scale + borderWidth * 2;
+    const borderWidth = 1.5 * Math.min(scaleX, scaleY);
+    const left = (cutoutX - padding) * scaleX - borderWidth;
+    const top = (cutoutY - padding) * scaleY - borderWidth;
+    const width = (cutoutW + padding * 2) * scaleX + borderWidth * 2;
+    const height = (cutoutH + padding * 2) * scaleY + borderWidth * 2;
 
     return {
       left,
       top,
       width,
       height,
-      borderRadius: borderRadiusAnim.value * scale,
+      borderRadius: borderRadiusAnim.value * Math.min(scaleX, scaleY),
     };
   });
 
@@ -106,7 +109,7 @@ export function SpotlightOverlay({
   // Top layer: from top of canvas to top of cutout
   const topDimStyle = useAnimatedStyle(() => {
     const padding = paddingAnim.value;
-    const cutoutTop = (cutoutY - padding) * scale;
+    const cutoutTop = (cutoutY - padding) * scaleY;
     return {
       height: cutoutTop,
     };
@@ -115,7 +118,7 @@ export function SpotlightOverlay({
   // Bottom layer: from bottom of cutout to bottom of canvas
   const bottomDimStyle = useAnimatedStyle(() => {
     const padding = paddingAnim.value;
-    const cutoutBottom = (cutoutY + cutoutH + padding) * scale;
+    const cutoutBottom = (cutoutY + cutoutH + padding) * scaleY;
     return {
       top: cutoutBottom,
     };
@@ -124,9 +127,9 @@ export function SpotlightOverlay({
   // Left layer: between top and bottom, left of cutout
   const leftDimStyle = useAnimatedStyle(() => {
     const padding = paddingAnim.value;
-    const cutoutLeft = (cutoutX - padding) * scale;
-    const cutoutTop = (cutoutY - padding) * scale;
-    const cutoutHeight = (cutoutH + padding * 2) * scale;
+    const cutoutLeft = (cutoutX - padding) * scaleX;
+    const cutoutTop = (cutoutY - padding) * scaleY;
+    const cutoutHeight = (cutoutH + padding * 2) * scaleY;
     return {
       left: 0,
       top: cutoutTop,
@@ -138,9 +141,9 @@ export function SpotlightOverlay({
   // Right layer: between top and bottom, right of cutout
   const rightDimStyle = useAnimatedStyle(() => {
     const padding = paddingAnim.value;
-    const cutoutRight = (cutoutX + cutoutW + padding) * scale;
-    const cutoutTop = (cutoutY - padding) * scale;
-    const cutoutHeight = (cutoutH + padding * 2) * scale;
+    const cutoutRight = (cutoutX + cutoutW + padding) * scaleX;
+    const cutoutTop = (cutoutY - padding) * scaleY;
+    const cutoutHeight = (cutoutH + padding * 2) * scaleY;
     return {
       left: cutoutRight,
       top: cutoutTop,

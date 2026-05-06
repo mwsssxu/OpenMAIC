@@ -24,8 +24,8 @@ import Animated, {
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
-import { Scene, Agent as LibAgent, CanvasElement } from '@/lib/types/scene';
-import { ScreenCanvas, PPTElement, SlideBackground } from '@/components/slide';
+import { Scene, Agent as LibAgent } from '@/lib/types/scene';
+import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 
 // 本地 Agent 类型（扩展自 lib/types）
@@ -47,79 +47,15 @@ interface ClassroomData {
 }
 
 /**
- * 将 CanvasElement 转换为 PPTElement
- * 用于 ScreenCanvas 渲染
+ * 将 background 转换为 SlideBackground
+ * 后端返回的数据格式：{ type: 'solid', color: '#xxx' }
  */
-function convertToPPTElement(el: CanvasElement): PPTElement {
-  const position = el.position || { left: 0, top: 0, width: 100, height: 50 };
-  const style = el.style || {};
-
-  // 基础元素属性
-  const baseElement = {
-    id: el.id,
-    left: position.left || 0,
-    top: position.top || 0,
-    width: position.width || 100,
-    height: position.height || 50,
-    rotate: 0,
-  };
-
-  // 根据 type 创建具体元素类型
-  switch (el.type) {
-    case 'text':
-      return {
-        ...baseElement,
-        type: 'text',
-        content: el.content || '',
-        defaultFontName: 'System',
-        defaultColor: style.color || '#333333',
-        fill: 'transparent',
-        lineHeight: 1.5,
-        opacity: 1,
-      } as PPTElement;
-    case 'image':
-      return {
-        ...baseElement,
-        type: 'image',
-        src: el.src || '',
-        fixedRatio: false,
-      } as PPTElement;
-    case 'shape':
-      return {
-        ...baseElement,
-        type: 'shape',
-        viewBox: [100, 100] as [number, number],
-        path: '',
-        fixedRatio: false,
-        fill: style.color || '#5b9bd5',
-      } as PPTElement;
-    case 'video':
-      return {
-        ...baseElement,
-        type: 'video',
-        src: el.src || '',
-        autoplay: false,
-      } as PPTElement;
-    default:
-      // 默认返回文本元素
-      return {
-        ...baseElement,
-        type: 'text',
-        content: el.content || '',
-        defaultFontName: 'System',
-        defaultColor: style.color || '#333333',
-      } as PPTElement;
-  }
-}
-
-/**
- * 将 background string 转换为 SlideBackground
- */
-function convertToSlideBackground(bg?: string): SlideBackground | undefined {
+function convertToSlideBackground(bg?: { type?: string; color?: string }): SlideBackground | undefined {
   if (!bg) return undefined;
+  console.log('[convertToSlideBackground]', bg);
   return {
-    type: 'solid',
-    color: bg,
+    type: (bg.type || 'solid') as 'solid',
+    color: bg.color || '#ffffff',
   };
 }
 
@@ -567,11 +503,11 @@ export default function ClassroomScreen() {
 
         {/* 场景内容 */}
         <Animated.View style={[styles.content, animatedStyle]}>
-        {/* 所有场景类型如果有 canvas 元素，优先使用 ScreenCanvas 渲染 */}
-        {currentScene?.content?.canvas?.elements?.length > 0 ? (
+        {/* Slide类型：使用 ScreenCanvas 渲染 */}
+        {currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (
           <ScreenCanvas
-            elements={(currentScene.content?.canvas?.elements || []).map(convertToPPTElement)}
-            background={convertToSlideBackground(currentScene.content?.canvas?.background)}
+            elements={(currentScene.content as any)?.canvas?.elements || []}
+            background={convertToSlideBackground((currentScene.content as any)?.canvas?.background)}
             theme={undefined}
             spotlightElementId={spotlightElementId}
             laserElementId={laserElementId}
@@ -605,7 +541,7 @@ export default function ClassroomScreen() {
         )}
 
         {/* Quiz 类型：额外显示测验问题 */}
-        {currentScene?.type === 'quiz' && currentScene.content?.questions && (
+        {currentScene?.type === 'quiz' && (currentScene.content as any)?.questions && (
           <View style={styles.quizOverlay}>
             <ScrollView style={styles.quizScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
               <View style={styles.quizCard}>
@@ -613,7 +549,7 @@ export default function ClassroomScreen() {
                   <Ionicons name="help-circle" size={24} color="#f59e0b" />
                   <Text style={styles.quizTitle}>测验</Text>
                 </View>
-                {currentScene.content.questions.map((q: any, idx: number) => (
+                {(currentScene.content as any)?.questions?.map((q: any, idx: number) => (
                   <View key={q.id || idx} style={styles.questionContainer}>
                     <Text style={styles.questionText}>{q.question}</Text>
                     {q.options?.map((opt: any, optIdx: number) => (
@@ -676,26 +612,24 @@ export default function ClassroomScreen() {
 
       {/* 智能体头像栏 */}
       <View style={styles.agentBar}>
+        {agents.length === 0 && (
+          <Text style={{ color: '#999', fontSize: 12 }}>加载智能体...</Text>
+        )}
         {agents.map(agent => (
           <TouchableOpacity
             key={agent.id}
             style={[styles.agentAvatarBtn, { backgroundColor: safeColorWithAlpha(agent.color, '20') }]}
             onPress={() => openAgentChat(agent)}
           >
-            {/* 头像显示 */}
-            {agent.avatar ? (
-              <View style={[styles.agentAvatar, { backgroundColor: agent.color }]}>
-                <Text style={styles.agentAvatarEmoji}>
-                  {agent.avatar === 'teacher.png' ? '👨‍🏫' :
-                   agent.avatar === 'assistant.png' ? '👨‍💼' :
-                   agent.avatar.startsWith('student') ? '👨' : '👤'}
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.agentAvatar, { backgroundColor: agent.color }]}>
-                <Text style={styles.agentAvatarText}>{agent.name[0]}</Text>
-              </View>
-            )}
+            {/* 头像显示 - 使用 emoji 或首字母 */}
+            <View style={[styles.agentAvatarCircle, { backgroundColor: agent.color }]}>
+              <Text style={styles.agentAvatarInner}>
+                {agent.avatar === 'teacher.png' ? '👨‍🏫' :
+                 agent.avatar === 'assistant.png' ? '👨‍💼' :
+                 agent.avatar?.startsWith('student') ? '👨' :
+                 agent.avatar ? '👤' : agent.name[0]}
+              </Text>
+            </View>
             <Text style={[styles.agentName, { color: agent.color }]} numberOfLines={1}>
               {agent.name.length > 4 ? agent.name.slice(0, 4) : agent.name}
             </Text>
@@ -703,7 +637,11 @@ export default function ClassroomScreen() {
         ))}
         <TouchableOpacity
           style={styles.chatBtn}
-          onPress={() => selectedAgent && openAgentChat(selectedAgent)}
+          onPress={() => {
+            if (agents.length > 0) {
+              openAgentChat(agents[0]);
+            }
+          }}
         >
           <Ionicons name="chatbubble-outline" size={20} color="#5b9bd5" />
           <Text style={styles.chatBtnText}>提问</Text>
@@ -1240,29 +1178,29 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.neutral.border,
   },
   agentAvatarBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: Rounded.lg + 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
   },
-  agentAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: Rounded.lg + 8,
+  agentAvatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  agentAvatarEmoji: {
-    fontSize: 20,
-  },
-  agentAvatarText: {
+  agentAvatarInner: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: Colors.neutral.white,
   },
-  agentName: { fontSize: 11, marginTop: Spacing.xs, maxWidth: 48, textAlign: 'center' },
+  agentName: {
+    fontSize: 10,
+    marginTop: 2,
+    maxWidth: 40,
+    textAlign: 'center',
+  },
   chatBtn: {
     flexDirection: 'row',
     alignItems: 'center',

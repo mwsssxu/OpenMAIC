@@ -32,8 +32,10 @@ interface LaserOverlayProps {
   color?: string;
   /** Fly-in animation duration (ms, default 500) */
   duration?: number;
-  /** Scale factor for positioning */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
   /** Canvas dimensions for calculating fly-in start position */
   canvasWidth: number;
   canvasHeight: number;
@@ -51,7 +53,8 @@ export function LaserOverlay({
   position,
   color = '#ff3b30',
   duration = 500,
-  scale,
+  scaleX,
+  scaleY,
   canvasWidth,
   canvasHeight,
 }: LaserOverlayProps) {
@@ -59,15 +62,16 @@ export function LaserOverlay({
   const startPos = useMemo(() => {
     // If target is on right side, fly in from left
     // If target is on left side, fly in from right
-    const viewportWidth = canvasWidth / scale;
+    const viewportWidth = canvasWidth / scaleX;
+    const viewportHeight = canvasHeight / scaleY;
     const isRightSide = position.x > viewportWidth / 2;
-    const isBottomSide = position.y > (canvasHeight / scale) / 2;
+    const isBottomSide = position.y > viewportHeight / 2;
 
     return {
       x: isRightSide ? -20 : viewportWidth + 20,
-      y: isBottomSide ? -20 : (canvasHeight / scale) + 20,
+      y: isBottomSide ? -20 : viewportHeight + 20,
     };
-  }, [position, canvasWidth, canvasHeight, scale]);
+  }, [position, canvasWidth, canvasHeight, scaleX, scaleY]);
 
   // Animation values
   const laserX = useSharedValue(startPos.x);
@@ -116,24 +120,27 @@ export function LaserOverlay({
     };
   }, []);
 
-  // Core dot animated style (position)
+  // Average scale for visual consistency
+  const avgScale = (scaleX + scaleY) / 2;
+
+  // Core dot animated style (position) - use dual-axis scaling
   const coreAnimatedStyle = useAnimatedStyle(() => ({
-    left: laserX.value * scale - 5 * scale,
-    top: laserY.value * scale - 5 * scale,
+    left: laserX.value * scaleX - 5 * avgScale,
+    top: laserY.value * scaleY - 5 * avgScale,
     opacity: laserOpacity.value,
   }));
 
   // Pulse ring animated style
   const pulseAnimatedStyle = useAnimatedStyle(() => ({
-    left: laserX.value * scale - 15 * scale,
-    top: laserY.value * scale - 15 * scale,
+    left: laserX.value * scaleX - 15 * avgScale,
+    top: laserY.value * scaleY - 15 * avgScale,
     transform: [{ scale: pulseScale.value }],
     opacity: pulseOpacity.value,
   }));
 
-  // Dot size based on scale
-  const dotSize = 10 * scale;
-  const pulseSize = 30 * scale;
+  // Dot size based on average scale
+  const dotSize = 10 * avgScale;
+  const pulseSize = 30 * avgScale;
 
   return (
     <>

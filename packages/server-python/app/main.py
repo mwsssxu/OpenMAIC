@@ -83,10 +83,10 @@ if settings.TESTING_MODE or settings.DEBUG:
         "http://192.168.1.110:8082",
         "http://192.168.1.110:19000",
         "http://192.168.1.110:19006",
-        "http://192.168.1.107:8081",
-        "http://192.168.1.107:8082",
-        "http://192.168.1.107:19000",
-        "http://192.168.1.107:19006",
+        "http://192.168.1.114:8081",
+        "http://192.168.1.114:8082",
+        "http://192.168.1.114:19000",
+        "http://192.168.1.114:19006",
     ]
 logger.info(f"CORS origins configured: {cors_origins}, TESTING_MODE={settings.TESTING_MODE}, DEBUG={settings.DEBUG}")
 for i, origin in enumerate(cors_origins):

@@ -1,36 +1,50 @@
 /**
  * TextElement - Text element renderer for Mobile
  *
- * Renders text content with absolute positioning and styling
- * Supports both direct position properties and nested position object
+ * Renders text content with positioning matching Web's BaseTextElement
+ *
+ * Web端定位（BaseTextElement.tsx）：
+ * - 元素使用原始坐标：left, top（基于viewportSize=1000）
+ * - 容器尺寸：width, height（原始值）
+ * - 内部padding：10px（固定值，不缩放）
+ *
+ * Mobile端适配：
+ * - 元素坐标乘以scale：left * scale, top * scale
+ * - 容器尺寸乘以scale：width * scale, height * scale
+ * - 内部padding保持相对比例
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import type { PPTTextElement, SlideTheme } from './types';
-import { parseHtmlToText, extractFontSizeFromHtml } from './hooks/useViewportSize';
 
 interface TextElementProps {
   element: PPTTextElement;
   theme: SlideTheme;
-  /** Scale factor for positioning */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
 }
 
 /**
- * Extract position from element (supports both formats)
+ * Extract position from element
+ * 支持两种格式：
+ * 1. 直接属性：element.left, element.top（PPTElement格式）
+ * 2. 嵌套对象：element.position.left, element.position.top（Web端返回格式）
  */
-function getPosition(element: any): { top: number; left: number; width: number; height: number } {
-  // New format: position object
-  if (element.position) {
+function getPosition(element: PPTTextElement): { top: number; left: number; width: number; height: number } {
+  // Web端返回嵌套的position对象
+  const el = element as any;
+  if (el.position) {
     return {
-      top: element.position.top || 0,
-      left: element.position.left || 0,
-      width: element.position.width || 100,
-      height: element.position.height || 50,
+      top: el.position.top || 0,
+      left: el.position.left || 0,
+      width: el.position.width || 100,
+      height: el.position.height || 50,
     };
   }
-  // Old format: direct properties
+  // PPTElement直接使用left/top属性
   return {
     top: element.top || 0,
     left: element.left || 0,
@@ -40,105 +54,118 @@ function getPosition(element: any): { top: number; left: number; width: number; 
 }
 
 /**
- * Extract style from element (supports both formats)
- */
-function getStyle(element: any): { fontSize: number; color: string; fontWeight?: string } {
-  // New format: style object
-  if (element.style) {
-    return {
-      fontSize: element.style.fontSize || 16,
-      color: element.style.color || '#333333',
-      fontWeight: element.style.fontWeight,
-    };
-  }
-  // Old format: direct properties
-  return {
-    fontSize: element.fontSize || 16,
-    color: element.defaultColor || '#333333',
-    fontWeight: element.fontWeight,
-  };
-}
-
-/**
  * TextElement Component
  */
-export function TextElement({ element, theme, scale }: TextElementProps) {
-  // Get position (supports both formats)
+export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps) {
+  // Get position
   const position = useMemo(() => getPosition(element), [element]);
 
-  // Get style (supports both formats)
-  const elementStyle = useMemo(() => getStyle(element), [element]);
-
   // Parse HTML content to plain text
-  const textContent = useMemo(() => parseHtmlToText(element.content), [element.content]);
+  const textContent = useMemo(() => {
+    // 移除HTML标签
+    const text = element.content?.replace(/<[^>]+>/g, '') || '';
+    return text;
+  }, [element.content]);
 
   // Calculate font size
+  // 使用scaleY计算（垂直方向填充更多），字体相应放大
   const fontSize = useMemo(() => {
-    // Use style.fontSize if available
-    if (elementStyle.fontSize > 0) {
-      return elementStyle.fontSize * scale;
+    // 优先从style对象获取fontSize（Web端格式）
+    if ((element as any).style?.fontSize) {
+      const styleFontSize = (element as any).style.fontSize;
+      return Math.max(16, styleFontSize * scaleY);
     }
 
-    // Extract from HTML content
-    const htmlFontSize = extractFontSizeFromHtml(element.content, 0);
-    if (htmlFontSize > 0) {
-      return htmlFontSize * scale;
+    // 从HTML提取fontSize
+    const htmlFontSizeMatch = element.content?.match(/font-size:\s*(\d+)px/i);
+    if (htmlFontSizeMatch) {
+      const htmlFontSize = parseInt(htmlFontSizeMatch[1], 10);
+      return Math.max(16, htmlFontSize * scaleY);
     }
 
-    // Compute based on element height
-    const lineHeightRatio = element.lineHeight || 1.5;
-    const estimatedLines = Math.max(1, Math.floor(position.height / (16 * lineHeightRatio)));
-    if (estimatedLines <= 2) {
-      return Math.min(position.height * 0.6, 48) * scale;
+    // 根据元素类型计算
+    let baseFontSize;
+    if (position.height >= 60) {
+      baseFontSize = 36; // 标题
+    } else if (position.height >= 50) {
+      baseFontSize = 24; // 描述
     } else {
-      return Math.min(position.height / (estimatedLines * lineHeightRatio), 24) * scale;
+      baseFontSize = 18; // 内容
     }
-  }, [elementStyle.fontSize, element.content, position.height, element.lineHeight, scale]);
 
-  // Calculate text style
+    return Math.max(14, baseFontSize * scaleY);
+  }, [element, position.height, scaleY]);
+
+  // Get color from style or defaultColor
+  const textColor = useMemo(() => {
+    // 优先从style对象获取（Web端格式）
+    if ((element as any).style?.color) {
+      return (element as any).style.color;
+    }
+    return element.defaultColor || theme.fontColor;
+  }, [element, theme]);
+
+  // Get fontWeight from style
+  const fontWeight = useMemo(() => {
+    if ((element as any).style?.fontWeight) {
+      return (element as any).style.fontWeight as any;
+    }
+    return '400' as any;
+  }, [element]);
+
+  // Container style - 使用双轴缩放
+  // 水平：scaleX，垂直：scaleY（更大）
+  const containerStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    left: position.left * scaleX,
+    top: position.top * scaleY,
+    width: position.width * scaleX,
+    height: position.height * scaleY,
+    transform: [{ rotate: `${element.rotate || 0}deg` }],
+    zIndex: 1,
+  }), [position, element.rotate, scaleX, scaleY]);
+
+  // Text wrapper style - 与Web端element-content一致
+  // 根据元素ID自动添加背景色装饰（因为后端数据没有fill属性）
+  const backgroundColor = useMemo(() => {
+    // 如果数据自带fill属性，使用它
+    if (element.fill) return element.fill;
+
+    // 否则根据元素ID自动分配背景色
+    const el = element as any;
+    if (el.id?.startsWith('title')) {
+      return '#e8f4fd'; // 标题：浅蓝色
+    } else if (el.id?.startsWith('desc')) {
+      return '#f0f9e8'; // 描述：浅绿色
+    } else if (el.id?.startsWith('point')) {
+      return '#f5f5f5'; // 要点：浅灰色
+    }
+    return 'transparent';
+  }, [element]);
+
+  const textWrapperStyle = useMemo(() => ({
+    flex: 1,
+    padding: 10 * Math.min(scaleX, scaleY), // padding使用较小的scale保持比例
+    justifyContent: 'flex-start' as const,
+    backgroundColor,
+    opacity: element.opacity || 1,
+    borderRadius: 8 * Math.min(scaleX, scaleY), // 添加圆角
+  }), [scaleX, scaleY, backgroundColor, element.opacity]);
+
+  // Text style
   const textStyle = useMemo(() => ({
-    color: elementStyle.color || theme.fontColor,
+    color: textColor,
     fontFamily: element.defaultFontName || theme.fontName,
     fontSize,
     lineHeight: fontSize * (element.lineHeight || 1.5),
-    letterSpacing: (element.wordSpace || 0) * scale,
+    letterSpacing: (element.wordSpace || 0) * scaleX,
     textAlign: 'left' as const,
-    opacity: element.opacity || 1,
-    fontWeight: elementStyle.fontWeight as any,
-  }), [elementStyle, theme, fontSize, element, scale]);
-
-  // Container style with absolute positioning - scaled positions/dimensions
-  const containerStyle = useMemo(() => ({
-    position: 'absolute' as const,
-    top: position.top * scale,
-    left: position.left * scale,
-    width: position.width * scale,
-    height: position.height * scale,
-    transform: [{ rotate: `${element.rotate || 0}deg` }],
-    backgroundColor: element.fill,
-    zIndex: 1,
-  }), [position, element, scale]);
-
-  // Vertical text support
-  const textWrapperStyle = useMemo(() => {
-    if (element.vertical) {
-      return {
-        flex: 1,
-        padding: 10 * scale,
-        writingDirection: 'rtl' as const,
-        alignItems: 'flex-start' as const,
-      };
-    }
-    return {
-      flex: 1,
-      padding: 10 * scale,
-      justifyContent: 'flex-start' as const,
-    };
-  }, [element.vertical, scale]);
+    fontWeight,
+  }), [element, theme, fontSize, scaleX, textColor, fontWeight]);
 
   return (
     <View style={containerStyle}>
-      <View style={[styles.textWrapper, textWrapperStyle]}>
+      <View style={textWrapperStyle}>
         <Text style={textStyle}>
           {textContent}
         </Text>
@@ -146,11 +173,3 @@ export function TextElement({ element, theme, scale }: TextElementProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  textWrapper: {
-    flex: 1,
-    padding: 10,
-    justifyContent: 'flex-start',
-  },
-});

@@ -12,8 +12,10 @@ import { parseHtmlToText } from './hooks/useViewportSize';
 interface ShapeElementProps {
   element: PPTShapeElement;
   theme: SlideTheme;
-  /** Scale factor for positioning */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
 }
 
 /**
@@ -21,20 +23,20 @@ interface ShapeElementProps {
  *
  * Simplified rendering - uses View with background color instead of SVG
  */
-export function ShapeElement({ element, theme, scale }: ShapeElementProps) {
-  // Container style with absolute positioning - scaled
+export function ShapeElement({ element, theme, scaleX, scaleY }: ShapeElementProps) {
+  // Container style with absolute positioning - dual-axis scaled
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
-    top: element.top * scale,
-    left: element.left * scale,
-    width: element.width * scale,
-    height: element.height * scale,
+    top: element.top * scaleY,
+    left: element.left * scaleX,
+    width: element.width * scaleX,
+    height: element.height * scaleY,
     transform: [{ rotate: `${element.rotate || 0}deg` }],
     backgroundColor: element.fill,
-    borderRadius: element.path?.includes('round') ? 8 * scale : 0,
+    borderRadius: element.path?.includes('round') ? 8 * Math.min(scaleX, scaleY) : 0,
     opacity: element.opacity || 1,
     zIndex: 1,
-  }), [element, scale]);
+  }), [element, scaleX, scaleY]);
 
   // Handle flip transforms
   const flipTransform = useMemo(() => {
@@ -54,9 +56,9 @@ export function ShapeElement({ element, theme, scale }: ShapeElementProps) {
   const textStyle = useMemo(() => ({
     color: element.text?.defaultColor || theme.fontColor,
     fontFamily: element.text?.defaultFontName || theme.fontName,
-    fontSize: 14 * scale,
+    fontSize: 14 * scaleY,
     textAlign: 'center' as const,
-  }), [element, theme, scale]);
+  }), [element, theme, scaleY]);
 
   // Text container alignment
   const textContainerStyle = useMemo(() => {
@@ -66,9 +68,9 @@ export function ShapeElement({ element, theme, scale }: ShapeElementProps) {
       flex: 1,
       justifyContent: justifyContent as 'flex-start' | 'flex-end' | 'center',
       alignItems: 'center' as const,
-      padding: 8 * scale,
+      padding: 8 * Math.min(scaleX, scaleY),
     };
-  }, [element, scale]);
+  }, [element, scaleX, scaleY]);
 
   return (
     <View style={[containerStyle, flipTransform.length > 0 && { transform: flipTransform }]}>

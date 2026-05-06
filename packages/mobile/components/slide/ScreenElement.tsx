@@ -14,10 +14,11 @@ import type { PPTElement, SlideTheme } from './types';
 
 interface ScreenElementProps {
   element: PPTElement;
-  index: number;
   theme: SlideTheme;
-  /** Scale factor for positioning (React Native doesn't support transformOrigin) */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
 }
 
 /**
@@ -25,23 +26,23 @@ interface ScreenElementProps {
  *
  * Renders the appropriate element component based on element type
  */
-export function ScreenElement({ element, index, theme, scale }: ScreenElementProps) {
+export function ScreenElement({ element, theme, scaleX, scaleY }: ScreenElementProps) {
   // Render based on element type
   switch (element.type) {
     case 'text':
-      return <TextElement element={element} theme={theme} scale={scale} />;
+      return <TextElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
 
     case 'image':
-      return <ImageElement element={element} scale={scale} />;
+      return <ImageElement element={element} scaleX={scaleX} scaleY={scaleY} />;
 
     case 'shape':
-      return <ShapeElement element={element} theme={theme} scale={scale} />;
+      return <ShapeElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
 
     case 'line':
-      return <LineElement element={element} scale={scale} />;
+      return <LineElement element={element} scaleX={scaleX} scaleY={scaleY} />;
 
     case 'video':
-      return <VideoElement element={element} scale={scale} />;
+      return <VideoElement element={element} scaleX={scaleX} scaleY={scaleY} />;
 
     default:
       // Unknown type - render placeholder

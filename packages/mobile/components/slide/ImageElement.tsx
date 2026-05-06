@@ -8,24 +8,26 @@ import type { PPTImageElement } from './types';
 
 interface ImageElementProps {
   element: PPTImageElement;
-  /** Scale factor for positioning */
-  scale: number;
+  /** Scale factor for horizontal positioning */
+  scaleX: number;
+  /** Scale factor for vertical positioning */
+  scaleY: number;
 }
 
 /**
  * ImageElement Component
  */
-export function ImageElement({ element, scale }: ImageElementProps) {
-  // Container style with absolute positioning - scaled
+export function ImageElement({ element, scaleX, scaleY }: ImageElementProps) {
+  // Container style with absolute positioning - dual-axis scaled
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
-    top: element.top * scale,
-    left: element.left * scale,
-    width: element.width * scale,
-    height: element.height * scale,
+    top: element.top * scaleY,
+    left: element.left * scaleX,
+    width: element.width * scaleX,
+    height: element.height * scaleY,
     transform: [{ rotate: `${element.rotate || 0}deg` }],
     zIndex: 1,
-  }), [element, scale]);
+  }), [element, scaleX, scaleY]);
 
   // Flip transforms
   const flipTransform = useMemo(() => {
@@ -37,11 +39,11 @@ export function ImageElement({ element, scale }: ImageElementProps) {
 
   // Image style
   const imageStyle = useMemo(() => ({
-    width: element.width * scale,
-    height: element.height * scale,
-    borderRadius: (element.radius || 0) * scale,
+    width: element.width * scaleX,
+    height: element.height * scaleY,
+    borderRadius: (element.radius || 0) * Math.min(scaleX, scaleY),
     resizeMode: 'cover' as const,
-  }), [element, scale]);
+  }), [element, scaleX, scaleY]);
 
   return (
     <View style={[containerStyle, flipTransform.length > 0 && { transform: flipTransform }]}>

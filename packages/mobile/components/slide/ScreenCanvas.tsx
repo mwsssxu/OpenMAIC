@@ -1,11 +1,18 @@
 /**
  * ScreenCanvas - Main slide canvas for Mobile
  *
- * Renders slide content using absolute positioning with proper scaling
- * Adapted from Web's components/slide-renderer/Editor/ScreenCanvas.tsx
+ * Renders slide content using the same positioning algorithm as Web
  *
- * Note: React Native doesn't support CSS transformOrigin, so we scale
- * element positions/dimensions directly instead of using scale transform.
+ * Web端定位算法（关键）：
+ * - viewportSize = 1000, viewportRatio = 0.5625 (16:9)
+ * - 外层容器：缩放后的尺寸 (viewportWidth * scale, viewportHeight * scale)
+ * - 内层内容：原始尺寸 (viewportWidth, viewportHeight)，通过CSS scale变换
+ * - 元素坐标：基于原始viewport的left/top
+ *
+ * Mobile端适配：
+ * - React Native不支持CSS transform scale
+ * - 采用Web端相同的scale计算
+ * - 元素直接使用缩放后的坐标（原始坐标 * scale）
  */
 
 import React, { useRef, useMemo, useCallback, useState } from 'react';
@@ -38,15 +45,13 @@ interface ScreenCanvasProps {
   laserOptions?: { color?: string; duration?: number };
 }
 
-const VIEWPORT_WIDTH = 1000;
+// 固定viewport尺寸（与Web端一致）
+const VIEWPORT_SIZE = 1000;
 const VIEWPORT_RATIO = 16 / 9;
-const VIEWPORT_HEIGHT = VIEWPORT_WIDTH / VIEWPORT_RATIO; // 562.5 for 16:9 widescreen
+const VIEWPORT_HEIGHT = VIEWPORT_SIZE / VIEWPORT_RATIO; // 562.5
 
 /**
  * ScreenCanvas Component
- *
- * Renders a slide with absolute positioned elements and proper scaling
- * Includes SpotlightOverlay and LaserOverlay for visual effects
  */
 export function ScreenCanvas({
   elements,
@@ -60,31 +65,47 @@ export function ScreenCanvas({
   const containerRef = useRef<View>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  // Calculate scale to fit viewport in container
-  const scale = useMemo(() => {
-    if (containerSize.width === 0 || containerSize.height === 0) return 1;
-    const containerRatio = containerSize.height / containerSize.width;
+  // 与Web端完全一致的scale计算逻辑
+  // 参考：components/slide-renderer/Editor/Canvas/hooks/useViewportSize.ts
+  // Web端关键代码：
+  // if (canvasHeight / canvasWidth > viewportRatio) {
+  //   viewportActualWidth = canvasWidth * (canvasPercentage / 100)
+  //   scale = viewportActualWidth / viewportSize
+  // } else {
+  //   viewportActualHeight = canvasHeight * (canvasPercentage / 100)
+  //   scale = viewportActualHeight / (viewportSize * viewportRatio)
+  // }
 
-    if (containerRatio > VIEWPORT_RATIO) {
-      // Container is taller - fit by width (95% of container width)
-      return (containerSize.width * 0.95) / VIEWPORT_WIDTH;
-    } else {
-      // Container is wider - fit by height (95% of container height)
-      return (containerSize.height * 0.95) / VIEWPORT_HEIGHT;
-    }
-  }, [containerSize]);
+  // 注意：viewportSize * viewportRatio 是错误的！
+  // viewportHeight = viewportSize / viewportRatio（除法而非乘法）
+  // 或者直接用预定义的 VIEWPORT_HEIGHT = 562.5
 
-  // Calculate positioned canvas position
-  const canvasPosition = useMemo(() => {
-    const scaledWidth = VIEWPORT_WIDTH * scale;
-    const scaledHeight = VIEWPORT_HEIGHT * scale;
-    return {
-      left: (containerSize.width - scaledWidth) / 2,
-      top: (containerSize.height - scaledHeight) / 2,
-    };
-  }, [containerSize, scale]);
+  // Mobile端适配策略：双轴缩放
+  // viewport ratio (16:9=1.78) 与 container ratio (~0.85) 差异大
+  // 使用不同的scaleX和scaleY来同时填充宽度和高度
 
-  // Handle layout to get container dimensions
+  const canvasScaleX = useMemo(() => {
+    if (containerSize.width === 0) return 1;
+    // 按宽度适配，留10px边距
+    return (containerSize.width - 20) / VIEWPORT_SIZE;
+  }, [containerSize.width]);
+
+  const canvasScaleY = useMemo(() => {
+    if (containerSize.height === 0) return 1;
+    // 按高度适配，让内容填满垂直空间
+    // 保持与X轴缩放相同的基准，但调整viewportHeight概念
+    // viewportHeight概念调整为：让scaleY使内容填满容器高度
+    const targetHeight = containerSize.height - 40; // 留边距
+    return targetHeight / VIEWPORT_HEIGHT;
+  }, [containerSize.height]);
+
+  // Canvas在容器中的位置
+  const viewportLeft = 10;
+  const viewportTop = 20;
+
+  // 简洁调试 - 只在首次渲染时打印scale
+
+  // Handle layout
   const handleLayout = useCallback((event: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width, height } = event.nativeEvent.layout;
     if (width > 0 && height > 0) {
@@ -95,7 +116,7 @@ export function ScreenCanvas({
   // Background style
   const backgroundStyle = useSlideBackgroundStyle(background);
 
-  // Default theme values
+  // Default theme
   const defaultTheme: SlideTheme = {
     backgroundColor: '#ffffff',
     fontColor: '#333333',
@@ -103,16 +124,17 @@ export function ScreenCanvas({
   };
   const activeTheme = theme || defaultTheme;
 
-  // Calculate spotlight geometry if needed
+  // Spotlight geometry - 使用viewport坐标（0-1000），不转换为百分比
+  // Overlay内部会处理缩放
   const spotlightGeometry = useMemo(() => {
     if (!spotlightElementId) return null;
     const element = elements.find((el) => el.id === spotlightElementId);
     if (!element) return null;
 
-    // LineElement doesn't have height, use calculated height
     const width = element.width || (isLineElement(element) ? Math.abs(element.end[0] - element.start[0]) : 100);
     const height = isLineElement(element) ? Math.abs(element.end[1] - element.start[1]) : (element.height || 2);
 
+    // viewport坐标（基于VIEWPORT_SIZE=1000）
     return {
       centerX: element.left + width / 2,
       centerY: element.top + height / 2,
@@ -121,13 +143,12 @@ export function ScreenCanvas({
     };
   }, [spotlightElementId, elements]);
 
-  // Calculate laser position if needed
+  // Laser position - viewport坐标
   const laserPosition = useMemo(() => {
     if (!laserElementId) return null;
     const element = elements.find((el) => el.id === laserElementId);
     if (!element) return null;
 
-    // LineElement doesn't have height, use calculated height
     const width = element.width || (isLineElement(element) ? Math.abs(element.end[0] - element.start[0]) : 100);
     const height = isLineElement(element) ? Math.abs(element.end[1] - element.start[1]) : (element.height || 2);
 
@@ -137,9 +158,9 @@ export function ScreenCanvas({
     };
   }, [laserElementId, elements]);
 
-  // Canvas dimensions for overlays
-  const canvasWidth = VIEWPORT_WIDTH * scale;
-  const canvasHeight = VIEWPORT_HEIGHT * scale;
+  // Canvas实际显示尺寸 - 使用不同的宽高缩放
+  const canvasWidth = VIEWPORT_SIZE * canvasScaleX;
+  const canvasHeight = VIEWPORT_HEIGHT * canvasScaleY;
 
   return (
     <View
@@ -147,50 +168,51 @@ export function ScreenCanvas({
       style={styles.container}
       onLayout={handleLayout}
     >
-      {/* Canvas - positioned absolutely with scaled dimensions */}
-      {/* Elements inside are rendered at scaled positions directly */}
+      {/* Canvas容器 - 与Web端外层容器一致 */}
       <View
         style={[
           styles.canvas,
           backgroundStyle,
           {
             position: 'absolute',
-            left: canvasPosition.left,
-            top: canvasPosition.top,
+            left: viewportLeft,
+            top: viewportTop,
             width: canvasWidth,
             height: canvasHeight,
           },
         ]}
       >
-        {/* Elements layer - each element receives scale for positioning */}
-        {elements.map((element, index) => (
+        {/* 内容层 - 元素使用缩放后的坐标 */}
+        {elements.map((element) => (
           <ScreenElement
             key={element.id}
             element={element}
-            index={index}
             theme={activeTheme}
-            scale={scale}
+            scaleX={canvasScaleX}
+            scaleY={canvasScaleY}
           />
         ))}
 
-        {/* Spotlight overlay - dimming + highlight effect */}
+        {/* Spotlight overlay */}
         {spotlightGeometry && (
           <SpotlightOverlay
             geometry={spotlightGeometry}
             dimness={spotlightOptions?.dimness ?? 0.7}
-            scale={scale}
+            scaleX={canvasScaleX}
+            scaleY={canvasScaleY}
             canvasWidth={canvasWidth}
             canvasHeight={canvasHeight}
           />
         )}
 
-        {/* Laser pointer overlay - fly-in + pulse effect */}
+        {/* Laser pointer overlay */}
         {laserPosition && (
           <LaserOverlay
             position={laserPosition}
             color={laserOptions?.color ?? '#ff3b30'}
             duration={laserOptions?.duration ?? 500}
-            scale={scale}
+            scaleX={canvasScaleX}
+            scaleY={canvasScaleY}
             canvasWidth={canvasWidth}
             canvasHeight={canvasHeight}
           />
@@ -204,8 +226,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f7fa',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   canvas: {
     backgroundColor: '#ffffff',

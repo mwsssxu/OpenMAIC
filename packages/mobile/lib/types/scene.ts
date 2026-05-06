@@ -1,6 +1,22 @@
 /**
- * Scene and Action 类型定义
+ * Scene and Action 类型定义 - Mobile端
  */
+
+// Agent 类型
+export type AgentRole = 'teacher' | 'assistant' | 'student';
+
+export interface Agent {
+  id: string;
+  name: string;
+  role: AgentRole;
+  color: string;
+  persona?: string;
+  avatar?: string;
+  voiceConfig?: {
+    providerId: string;
+    voiceId: string;
+  };
+}
 
 // Action 类型
 export type ActionType = 'speech' | 'spotlight' | 'laser' | 'highlight' | 'gesture';
@@ -14,15 +30,15 @@ export interface SpeechActionData {
 
 export interface SpotlightActionData {
   target_element_id: string;
-  dim_opacity?: number;  // 0-1, dimming intensity
+  dim_opacity?: number;
   duration_ms?: number;
 }
 
 export interface LaserActionData {
-  target_element_id?: string;  // 目标元素 ID
+  target_element_id?: string;
   start_position?: { x: number; y: number };
   end_position?: { x: number; y: number };
-  color?: string;  // laser color, default '#ff3b30'
+  color?: string;
   duration_ms?: number;
 }
 
@@ -43,44 +59,45 @@ export interface SceneAction<T extends ActionType = ActionType> {
 // Scene 类型
 export type SceneType = 'slide' | 'quiz' | 'interactive' | 'pbl';
 
-export interface CanvasElement {
-  id: string;
-  type: 'text' | 'image' | 'shape' | 'video';
-  content?: string;
-  src?: string;
-  position?: {
-    left?: number;
-    top?: number;
-    width?: number;
-    height?: number;
-  };
-  style?: {
-    fontSize?: number;
-    fontWeight?: string;
+// Slide content - 使用Web端定义的结构
+export interface SlideCanvas {
+  elements: any[]; // PPTElement数组，直接使用后端返回的数据
+  background?: {
+    type: 'solid' | 'image' | 'gradient';
     color?: string;
-    textAlign?: string;
   };
-  shapeType?: string;
+  theme?: {
+    backgroundColor: string;
+    fontColor: string;
+    fontName: string;
+  };
 }
 
-export interface Canvas {
-  width: number;
-  height: number;
-  background?: string;
-  elements: CanvasElement[];
+export interface SlideContent {
+  type: 'slide';
+  canvas: SlideCanvas;
 }
 
-export interface SceneContent {
-  type: SceneType;
-  canvas?: Canvas;
-  text?: string;
-  description?: string;
-  questions?: Array<{
-    id: string;
-    question: string;
-    options?: Array<{ value: string; label: string }>;
-  }>;
+export interface QuizQuestion {
+  id: string;
+  type: 'single' | 'multiple' | 'short_answer';
+  question: string;
+  options?: Array<{ label: string; value: string }>;
+  answer?: string[];
 }
+
+export interface QuizContent {
+  type: 'quiz';
+  questions: QuizQuestion[];
+}
+
+export interface InteractiveContent {
+  type: 'interactive';
+  url: string;
+  html?: string;
+}
+
+export type SceneContent = SlideContent | QuizContent | InteractiveContent;
 
 export interface Scene {
   id: string;
@@ -88,24 +105,8 @@ export interface Scene {
   title: string;
   order_index?: number;
   content: SceneContent;
-  actions: SceneAction[];
+  actions?: SceneAction[];
   whiteboards?: unknown;
-}
-
-// Agent 类型
-export type AgentRole = 'teacher' | 'assistant' | 'student';
-
-export interface Agent {
-  id: string;
-  name: string;
-  role: AgentRole;
-  color: string;
-  persona?: string;
-  avatar?: string;
-  voiceConfig?: {
-    providerId: string;
-    voiceId: string;
-  };
 }
 
 // Classroom 类型
@@ -123,4 +124,5 @@ export interface ClassroomStage {
 export interface Classroom {
   stage: ClassroomStage;
   scenes: Scene[];
+  agents?: Agent[];
 }
