@@ -1,282 +1,227 @@
-# 语音讲解、幻灯片与激光笔技术框架
+# Audio + Slide + Laser 技术方案
 
-本文档详细说明 OpenMAIC 中语音讲解 (Speech)、幻灯片渲染 (Slide) 和激光笔 (Laser) 的技术架构与实现细节。
+## 架构概述
 
-## 架构总览
+课程播放系统由三个核心模块组成：
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Action Layer (动作定义)                      │
-│  SpeechAction │ SpotlightAction │ LaserAction │ HighlightAction │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                     Engine Layer (执行引擎)                      │
-│           PlaybackEngine (播放控制) │ ActionEngine (动作执行)     │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                     Store Layer (状态管理)                       │
-│        useCanvasStore (视觉特效) │ useSettingsStore (TTS配置)    │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                   Renderer Layer (视觉渲染)                      │
-│  ScreenCanvas │ LaserOverlay │ SpotlightOverlay │ HighlightOverlay │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                     Audio Layer (语音合成)                       │
-│   TTS Providers (多提供者) │ AudioPlayer │ Browser Native TTS    │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         PlaybackEngine                               │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │
+│  │   speech    │───▶│  spotlight  │───▶│    laser    │              │
+│  │   (TTS)     │    │  (聚焦)     │    │   (激光笔)  │              │
+│  └─────────────┘    └─────────────┘    └─────────────┘              │
+│         │                 │                  │                       │
+│         ▼                 ▼                  ▼                       │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                    ActionEngine                                  ││
+│  │  execute(action) → updateCanvasStore → trigger callbacks       ││
+│  └─────────────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                       ScreenCanvas                                   │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                     Elements Layer                           │    │
+│  │  TextElement, ImageElement, ShapeElement, VideoElement      │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                    HighlightOverlay                          │    │
+│  │  手动高亮标注（用户绘制）                                    │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                   SpotlightOverlay                           │    │
+│  │  SVG Mask遮罩 + 背景变暗 + 目标高亮                         │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                    LaserOverlay                              │    │
+│  │  飞入动画 + 脉冲发光                                         │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 一、语音讲解 (Speech)
+## 1. Action 类型定义
 
-### 1.1 Action 类型定义
-
-**文件位置**: `lib/types/action.ts`
+### Speech Action
 
 ```typescript
-export interface SpeechAction extends ActionBase {
-  type: 'speech';
-  text: string;           // 讲解文本内容
-  audioId?: string;       // 预生成音频ID
-  audioUrl?: string;      // 预生成音频URL（服务端TTS生成）
-  voice?: string;         // 语音ID
-  speed?: number;         // 语速 (默认 1.0)
-}
-```
-
-### 1.2 TTS 提供者架构
-
-OpenMAIC 采用 **工厂模式** 路由 TTS 请求到多个提供者，核心文件为 `lib/audio/tts-providers.ts`。
-
-| 提供者 | API 端点 | 特点 | 默认模型 |
-|--------|----------|------|----------|
-| OpenAI TTS | `api.openai.com/v1/audio/speech` | 高质量多语言 | `gpt-4o-mini-tts` |
-| Azure TTS | `{region}.tts.speech.microsoft.com` | SSML 标记支持 | - |
-| GLM TTS | `open.bigmodel.cn/api/paas/v4` | 智谱清言中文 | `glm-tts` |
-| Qwen TTS | `dashscope.aliyuncs.com/api/v1` | 阿里云百炼 | `qwen3-tts-flash` |
-| MiniMax TTS | `api.minimaxi.com/v1/t2a_v2` | 多中文音色 | `speech-2.8-hd` |
-| Doubao TTS | `openspeech.bytedance.com/api/v3/tts` | 火山引擎 | - |
-| ElevenLabs TTS | `api.elevenlabs.io/v1` | 国际高质量 | `eleven_multilingual_v2` |
-| VoxCPM2 | 本地部署 `http://127.0.0.1:8000` | 开源可控 | - |
-| Browser Native | Web Speech API | 客户端免费 | - |
-
-### 1.3 PlaybackEngine 状态机
-
-**文件位置**: `lib/playback/engine.ts`
-
-状态流转图:
-```
-                start()                  pause()
-  idle ──────────────────→ playing ──────────────→ paused
-    ↑                         ↑                       │
-    │                         │  resume()             │
-    │                         └───────────────────────┘
-    │
-    │  handleEndDiscussion()
-    └─────────────────────────────────────────────────
-```
-
-**语音执行流程** (`processNext()` 方法):
-
-1. **预生成音频检查**: 优先使用 `audioId/audioUrl`
-2. **AudioPlayer 播放**: 调用 `audioPlayer.play(audioId, audioUrl)`
-3. **Browser Native TTS**: 无预生成音频时，检查是否启用 Web Speech API
-4. **分句策略**: 将长文本按句号分割，避免 Chrome 15秒截断问题
-5. **阅读时间模拟**: 未启用 TTS 时，按 CJK 150ms/字符、非CJK 240ms/词 计算
-
-### 1.4 Browser Native TTS 分句实现
-
-```typescript
-// lib/playback/engine.ts:608-616
-private splitIntoChunks(text: string): string[] {
-  // 按句号分割 (支持中英文标点)
-  const chunks = text
-    .split(/(?<=[.!?。！？\n])\s*/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  return chunks.length > 0 ? chunks : [text];
-}
-```
-
-**分句原因**: Chrome 浏览器存在 bug，超过约 15 秒的语音会被静默截断，`onend` 回调永不触发，导致引擎卡死。
-
-### 1.5 TTS 配置管理
-
-**文件位置**: `lib/audio/constants.ts`
-
-配置结构:
-```typescript
-export interface TTSProviderConfig {
+interface SpeechAction {
   id: string;
-  name: string;
-  requiresApiKey: boolean;
-  defaultBaseUrl: string;
-  icon: string;
-  models: { id: string; name: string }[];
-  defaultModelId: string;
-  voices: TTSVoiceInfo[];
-  supportedFormats: string[];
-  speedRange: { min: number; max: number; default: number };
+  type: 'speech';
+  text: string;
+  elementId?: string;  // 关联的目标元素（用于同步高亮）
+  voiceId?: string;
+  speed?: number;
 }
 ```
 
----
-
-## 二、幻灯片渲染 (Slide)
-
-### 2.1 Scene 类型路由
-
-**文件位置**: `components/stage/scene-renderer.tsx`
+### Spotlight Action
 
 ```typescript
-export function SceneRenderer({ scene, mode }) {
-  switch (scene.type) {
-    case 'slide':     return <SlideRenderer mode={mode} />;
-    case 'quiz':      return <QuizView questions={scene.content.questions} />;
-    case 'interactive': return <InteractiveRenderer content={scene.content} />;
-    case 'pbl':       return <PBLRenderer content={scene.content} mode={mode} />;
-  }
+interface SpotlightAction {
+  id: string;
+  type: 'spotlight';
+  elementId: string;    // 目标元素ID
+  dimOpacity?: number;  // 背景变暗程度 (0-1, 默认0.7)
+  duration?: number;    // 持续时间(ms)
 }
 ```
 
-### 2.2 SlideRenderer 双模式
-
-**文件位置**: `components/slide-renderer/Editor/index.tsx`
-
-| 模式 | 组件 | 用途 |
-|------|------|------|
-| `autonomous` | `Canvas` | 编辑模式，支持交互操作 |
-| 其他 | `ScreenCanvas` | 演示模式，只读 + 视觉特效 |
-
-### 2.3 ScreenCanvas 视觉层结构
-
-**文件位置**: `components/slide-renderer/Editor/ScreenCanvas.tsx`
-
-```tsx
-<div className="relative h-full w-full overflow-hidden">
-  {/* 背景层 */}
-  <div style={backgroundStyle} />
-  
-  {/* 内容层 - 按 canvasScale 缩放 */}
-  <div style={{ transform: `scale(${canvasScale})` }}>
-    {elements.map((element) => (
-      <ScreenElement key={element.id} elementInfo={element} />
-    ))}
-    <HighlightOverlay />
-  </div>
-  
-  {/* 聚光灯层 - 全屏 SVG 遮罩 */}
-  <SpotlightOverlay />
-  
-  {/* 视觉特效层 - 百分比坐标定位 */}
-  <div style={{ padding: '5%' }}>
-    <LaserOverlay />
-  </div>
-</div>
-```
-
-### 2.4 元素类型映射
-
-**文件位置**: `components/slide-renderer/Editor/ScreenElement.tsx`
+### Laser Action
 
 ```typescript
-const elementTypeMap = {
-  image:   BaseImageElement,
-  text:    BaseTextElement,
-  shape:   BaseShapeElement,
-  line:    BaseLineElement,   // 支持笔画动画
-  chart:   BaseChartElement,
-  latex:   BaseLatexElement,
-  table:   BaseTableElement,
-  video:   BaseVideoElement,
-  code:    BaseCodeElement,
-};
-```
-
-### 2.5 Scene Context 数据订阅
-
-**文件位置**: `lib/contexts/scene-context.tsx`
-
-使用 React 18 的 `useSyncExternalStore` 实现精确订阅:
-```typescript
-export function useSceneSelector<T, R>(
-  content: T,
-  selector: (content: T) => R,
-): R {
-  return selector(content);
-}
-```
-
----
-
-## 三、激光笔 (Laser)
-
-### 3.1 Action 类型定义
-
-**文件位置**: `lib/types/action.ts`
-
-```typescript
-export interface LaserAction extends ActionBase {
+interface LaserAction {
+  id: string;
   type: 'laser';
-  elementId: string;      // 目标元素 ID
-  color?: string;         // 颜色 (默认 '#ff0000')
+  elementId: string;    // 目标元素ID
+  color?: string;       // 激光笔颜色 (默认 '#ff3b30')
+  duration?: number;    // 飞入动画时间(ms)
 }
 ```
 
-### 3.2 ActionEngine 执行
+---
 
-**文件位置**: `lib/action/engine.ts`
+## 2. SpotlightOverlay 实现原理
 
-```typescript
-private executeLaser(action: LaserAction): void {
-  useCanvasStore.getState().setLaser(action.elementId, {
-    color: action.color ?? '#ff0000',
-  });
-  this.scheduleEffectClear();  // 5 秒后自动清除
-}
-```
-
-**特点**: Fire-and-forget (发射即忘)，不阻塞后续动作执行。
-
-### 3.3 LaserOverlay 动画实现
-
-**文件位置**: `components/slide-renderer/Editor/LaserOverlay.tsx`
+### Web端实现（SVG Mask）
 
 ```tsx
+// SpotlightOverlay.tsx
+export function SpotlightOverlay() {
+  const spotlightElementId = useCanvasStore.use.spotlightElementId();
+  const dimness = spotlightOptions?.dimness ?? 0.7;
+
+  // 使用 SVG mask 实现遮罩效果
+  return (
+    <svg viewBox="0 0 100 100">
+      <defs>
+        <mask id={`mask-${spotlightElementId}`}>
+          {/* 白色背景 = 显示遮罩层 */}
+          <rect x="0" y="0" width="100" height="100" fill="white" />
+          {/* 黑色矩形 = 遮罩层镂空（高亮区域） */}
+          <rect
+            x={rect.x - padding}
+            y={rect.y - padding}
+            width={rect.w + padding * 2}
+            height={rect.h + padding * 2}
+            fill="black"
+            rx={radius}
+          />
+        </mask>
+      </defs>
+
+      {/* 遮罩层：背景变暗 */}
+      <rect
+        width="100"
+        height="100"
+        fill={`rgba(0,0,0,${dimness})`}
+        mask={`url(#mask-${spotlightElementId})`}
+      />
+
+      {/* 白色边框：高亮边界 */}
+      <rect
+        x={rect.x - borderWidth}
+        y={rect.y - borderWidth}
+        width={rect.w + borderWidth * 2}
+        height={rect.h + borderWidth * 2}
+        fill="none"
+        stroke="rgba(255,255,255,0.7)"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+```
+
+### 动画效果
+
+```tsx
+// 从大范围收缩到精确位置
+<motion.rect
+  initial={{
+    x: rect.x - 8,      // 初始：较大范围
+    y: rect.y - 8,
+    width: rect.w + 16,
+    height: rect.h + 16,
+    rx: 4,              // 圆角较大
+  }}
+  animate={{
+    x: rect.x - 0.4,    // 最终：精确范围
+    y: rect.y - 0.6,
+    width: rect.w + 0.8,
+    height: rect.h + 1.2,
+    rx: 1,              // 圆角较小
+  }}
+  transition={{
+    duration: 0.6,
+    ease: [0.16, 1, 0.3, 1],  // ease-out-expo
+  }}
+/>
+```
+
+### 视觉效果
+
+| 层级 | 效果 | 实现 |
+|------|------|------|
+| 遮罩层 | 背景变暗(70%) | SVG rect + mask |
+| 镂空区 | 目标元素清晰 | mask black cutout |
+| 边框 | 白色半透明边框 | stroke rect |
+| 动画 | 收缩动画 | motion/react |
+
+---
+
+## 3. LaserOverlay 实现原理
+
+### Web端实现
+
+```tsx
+// LaserOverlay.tsx
 export function LaserOverlay({ geometry, color = '#ff3b30' }) {
-  const { centerX, centerY } = geometry;
-  
-  // 从最近的角落飞入
+  const { centerX, centerY } = geometry;  // 百分比坐标 (0-100)
+
+  // 从屏幕角落飞入
   const startPos = {
-    x: centerX > 50 ? 105 : -5,
-    y: centerY > 50 ? 105 : -5,
+    x: centerX > 50 ? 105 : -5,  // 右侧元素从右上飞入
+    y: centerY > 50 ? 105 : -5,  // 左侧元素从左上飞入
   };
-  
+
   return (
     <motion.div
-      initial={{ opacity: 0, left: `${startPos.x}%`, top: `${startPos.y}%` }}
-      animate={{ opacity: 1, left: `${centerX}%`, top: `${centerY}%` }}
-      exit={{ opacity: 0, left: `${startPos.x}%`, top: `${startPos.y}%` }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      initial={{
+        opacity: 0,
+        left: `${startPos.x}%`,
+        top: `${startPos.y}%`,
+      }}
+      animate={{
+        opacity: 1,
+        left: `${centerX}%`,
+        top: `${centerY}%`,
+      }}
+      transition={{
+        left: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+        top: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+      }}
     >
-      {/* 环形脉冲动画 */}
+      {/* 脉冲环 */}
       <motion.div
         animate={{ scale: [1, 2.8], opacity: [0.6, 0] }}
-        transition={{ repeat: Infinity, duration: 1.5, ease: 'easeOut' }}
+        transition={{
+          repeat: Infinity,
+          duration: 1.5,
+        }}
         style={{ border: `1.5px solid ${color}` }}
       />
-      
-      {/* 光点核心 */}
+
+      {/* 核心点 */}
       <div
         style={{
+          width: 10,
+          height: 10,
           backgroundColor: color,
-          boxShadow: `0 0 8px 2px ${color}60`,
+          boxShadow: `0 0 8px 2px ${color}60`,  // 发光效果
         }}
       />
     </motion.div>
@@ -284,242 +229,333 @@ export function LaserOverlay({ geometry, color = '#ff3b30' }) {
 }
 ```
 
-**动画参数**:
-- 飞入动画: 500ms, ease `[0.22, 1, 0.36, 1]` (ease-out 曲线)
-- 退出动画: 250ms, ease `[0.4, 0, 1, 1]`
-- 脉冲动画: 1.5s 无限循环, scale 1→2.8
+### 视觉效果
 
-### 3.4 百分比坐标系统
-
-激光笔使用百分比坐标 (0-100) 定位，而非像素坐标，确保响应式布局:
-```typescript
-export interface PercentageGeometry {
-  x: number;       // 左边界 (0-100)
-  y: number;       // 上边界 (0-100)
-  w: number;       // 宽度 (0-100)
-  h: number;       // 高度 (0-100)
-  centerX: number; // 中心 X (0-100)
-  centerY: number; // 中心 Y (0-100)
-}
-```
+| 元素 | 效果 | 参数 |
+|------|------|------|
+| 飞入路径 | 从角落到目标 | 0.5s ease-out |
+| 核心点 | 10px 圆点 | + 发光阴影 |
+| 脉冲环 | 1→2.8倍放大 | 1.5s 循环 |
+| 退出动画 | 返回角落消失 | 0.25s |
 
 ---
 
-## 四、聚光灯 (Spotlight)
+## 4. PlaybackEngine 处理流程
 
-### 4.1 Action 类型定义
+### Web端流程
 
 ```typescript
-export interface SpotlightAction extends ActionBase {
-  type: 'spotlight';
-  elementId: string;
-  dimOpacity?: number;  // 背景变暗程度 (默认 0.5)
+// lib/playback/engine.ts
+case 'spotlight':
+case 'laser': {
+  // 1. 执行 ActionEngine（更新 CanvasStore）
+  this.actionEngine.execute(action);
+
+  // 2. 触发回调（通知UI层）
+  this.callbacks.onEffectFire?.({
+    kind: action.type,
+    targetId: action.elementId,
+    ...(action.type === 'spotlight'
+      ? { dimOpacity: action.dimOpacity }
+      : { color: action.color }),
+  });
+
+  // 3. 非阻塞执行（避免阻塞后续 speech）
+  queueMicrotask(() => this.processNext());
+  break;
 }
 ```
 
-### 4.2 SVG Mask 实现原理
+### ActionEngine 执行
 
-**文件位置**: `components/slide-renderer/Editor/SpotlightOverlay.tsx`
+```typescript
+// lib/action/engine.ts
+execute(action: Action): void {
+  switch (action.type) {
+    case 'spotlight':
+      useCanvasStore.getState().setSpotlightElementId(action.elementId);
+      useCanvasStore.getState().setSpotlightOptions({
+        dimness: action.dimOpacity ?? 0.7,
+      });
+      break;
 
-```tsx
-<svg viewBox="0 0 100 100" preserveAspectRatio="none">
-  <defs>
-    <mask id={`mask-${spotlightElementId}`}>
-      {/* 白色背景 = 显示遮罩层 (变暗区域) */}
-      <rect x="0" y="0" width="100" height="100" fill="white" />
-      
-      {/* 黑色矩形 = 隐藏遮罩层 (镂空聚焦区) */}
-      <motion.rect
-        fill="black"
-        animate={{
-          x: rect.x - 0.4,
-          y: rect.y - 0.6,
-          width: rect.w + 0.8,
-          height: rect.h + 1.2,
-          rx: 1,  // 圆角
-        }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      />
-    </mask>
-  </defs>
-  
-  {/* 变暗背景层 */}
-  <rect
-    width="100" height="100"
-    fill={`rgba(0,0,0,${dimness})`}
-    mask={`url(#mask-${spotlightElementId})`}
-  />
-  
-  {/* 白色边框 (高亮轮廓) */}
-  <motion.rect
-    stroke="rgba(255,255,255,0.7)"
-    strokeWidth="1.2"
-    fill="none"
-  />
-</svg>
-```
-
-**关键技术**:
-- SVG `<mask>` 元素实现镂空效果
-- `preserveAspectRatio="none"` 确保全屏覆盖
-- 不使用 `backdrop-filter` (与 SVG mask 冲突，导致某些浏览器聚焦区也被变暗)
-
----
-
-## 五、高亮 (Highlight)
-
-### 5.1 实现方式
-
-**文件位置**: `components/slide-renderer/Editor/HighlightOverlay.tsx`
-
-```tsx
-<div style={{
-  border: `${borderWidth}px solid ${color}`,
-  boxShadow: `0 0 ${borderWidth * 3}px ${color}`,
-  backgroundColor: `${color}${opacityHex}`,
-}}>
-  {/* 脉冲动画 */}
-  <div className="animate-pulse" />
-  
-  {/* 闪烁效果 */}
-  {animated && (
-    <div className="animate-ping" style={{ animationDuration: '2s' }} />
-  )}
-</div>
-
-<style jsx>{`
-  @keyframes breathe {
-    0%, 100% { opacity: 0.6; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.02); }
+    case 'laser':
+      useCanvasStore.getState().setLaserElementId(action.elementId);
+      useCanvasStore.getState().setLaserOptions({
+        color: action.color ?? '#ff3b30',
+      });
+      break;
   }
-`}</style>
-```
-
-**特点**:
-- 不修改元素本身属性，创建叠加层
-- 支持多元素同时高亮
-- CSS `box-shadow` 实现发光效果
-
----
-
-## 六、状态管理 (useCanvasStore)
-
-**文件位置**: `lib/store/canvas.ts`
-
-### 6.1 教学特性状态
-
-```typescript
-interface CanvasState {
-  // 聚光灯
-  spotlightElementId: string;
-  spotlightOptions: SpotlightOptions | null;
-  spotlightMode: 'pixel' | 'percentage';
-  spotlightPercentageGeometry: PercentageGeometry | null;
-  
-  // 高亮
-  highlightedElementIds: string[];
-  highlightOptions: HighlightOverlayOptions | null;
-  
-  // 激光笔
-  laserElementId: string;
-  laserOptions: LaserOptions | null;
-  
-  // 缩放
-  zoomTarget: { elementId: string; scale: number } | null;
 }
 ```
 
-### 6.2 Actions
+---
+
+## 5. CanvasStore 状态管理
+
+### Web端 Zustand Store
 
 ```typescript
-// 设置激光笔
-setLaser: (elementId: string, options?: LaserOptions) => void;
+// lib/store/canvas.ts
+interface CanvasStore {
+  // Spotlight 状态
+  spotlightElementId: string | null;
+  spotlightOptions: { dimness: number } | null;
+  setSpotlightElementId: (id: string | null) => void;
+  setSpotlightOptions: (options: { dimness: number } | null) => void;
 
-// 清除激光笔
-clearLaser: () => void;
+  // Laser 状态
+  laserElementId: string | null;
+  laserOptions: { color: string } | null;
+  setLaserElementId: (id: string | null) => void;
+  setLaserOptions: ( options: { color: string } | null) => void;
 
-// 清除所有特效
-clearAllEffects: () => void;  // 清除 spotlight, highlight, laser, zoom
+  // 清除所有效果
+  clearEffects: () => void;
+}
 ```
 
 ---
 
-## 七、数据流时序图
+## 6. Mobile端适配方案
+
+### React Native 限制
+
+| 功能 | Web实现 | Mobile适配 |
+|------|---------|------------|
+| SVG Mask | 原生SVG | 使用绝对定位 + opacity |
+| motion/react | Framer Motion Web | react-native-reanimated |
+| 遮罩效果 | CSS mask | 半透明遮罩View + 镂空区域 |
+| 激光飞入 | CSS left/top动画 | Animated.Value + transform |
+
+### Spotlight 移动端实现
+
+```tsx
+// 使用遮罩层 + 镂空区域（替代SVG mask）
+<View style={{ flex: 1 }}>
+  {/* 半透明遮罩层 */}
+  <View
+    style={[
+      styles.dimOverlay,
+      { backgroundColor: `rgba(0,0,0,${dimness})` }
+    ]}
+  />
+
+  {/* 镂空区域（白色边框） */}
+  <Animated.View
+    style={[
+      styles.spotlightCutout,
+      {
+        left: position.left * scale,
+        top: position.top * scale,
+        width: position.width * scale,
+        height: position.height * scale,
+      }
+    ]}
+  >
+    {/* 白色边框 */}
+    <View style={styles.spotlightBorder} />
+  </Animated.View>
+</View>
+```
+
+### Laser 移动端实现
+
+```tsx
+// react-native-reanimated 实现
+const laserX = useSharedValue(startX);
+const laserY = useSharedValue(startY);
+const laserOpacity = useSharedValue(0);
+const pulseScale = useSharedValue(1);
+
+useEffect(() => {
+  // 飞入动画
+  laserX.value = withTiming(targetX, { duration: 500, easing: Easing.out(Easing.exp) });
+  laserY.value = withTiming(targetY, { duration: 500, easing: Easing.out(Easing.exp) });
+  laserOpacity.value = withTiming(1, { duration: 150 });
+
+  // 脉冲动画
+  pulseScale.value = withRepeat(
+    withSequence(
+      withTiming(1, { duration: 300 }),
+      withTiming(2.8, { duration: 1200 })
+    ),
+    -1,  // infinite
+    true
+  );
+}, []);
+
+const animatedStyle = useAnimatedStyle(() => ({
+  left: laserX.value * scale,
+  top: laserY.value * scale,
+  opacity: laserOpacity.value,
+}));
+```
+
+---
+
+## 7. 语音+视觉效果联动
+
+### Action 执行顺序
+
+```typescript
+// 场景 actions 示例
+actions: [
+  { type: 'speech', text: '现在我们来学习第一个要点...', elementId: 'point_0' },
+  { type: 'spotlight', elementId: 'point_0', dimOpacity: 0.7 },
+  { type: 'laser', elementId: 'point_0', color: '#ff3b30' },
+  { type: 'speech', text: '接下来是第二个要点...', elementId: 'point_1' },
+  { type: 'spotlight', elementId: 'point_1' },
+  // ...
+]
+```
+
+### 联动效果
 
 ```
-AI Agent                 PlaybackEngine            ActionEngine
-   │                          │                         │
-   │  Scene.actions[]         │                         │
-   │─────────────────────────>│                         │
-   │                          │                         │
-   │                          │  execute(LaserAction)   │
-   │                          │────────────────────────>│
-   │                          │                         │
-   │                          │                         │  setLaser()
-   │                          │                         │──────────> useCanvasStore
-   │                          │                         │
-   │                          │  processNext()          │
-   │                          │  (queueMicrotask)       │
-   │                          │                         │
-   │                          │                         │
-   │                          │  execute(SpeechAction)  │
-   │                          │────────────────────────>│
-   │                          │                         │
-   │                          │  AudioPlayer.play()     │
-   │                          │──────────> AudioPlayer  │
-   │                          │                         │
-   │                          │  onEnded callback       │
-   │                          │<────────────────────────│
-   │                          │                         │
-   │                          │  processNext()          │
-   │                          │  (continue)             │
+Timeline:
+───────────────────────────────────────────────────────────────▶
+│   Speech     │   Spotlight  │   Laser      │   Speech      │
+│   point_0    │   point_0    │   point_0    │   point_1     │
+│   ──────     │   ──────     │   ──────     │   ──────      │
+│   语音播放   │   背景变暗   │   激光飞入   │   切换目标    │
+│   同时高亮   │   聚焦效果   │   动画效果   │   转移焦点    │
 ```
 
 ---
 
-## 八、关键文件索引
+## 8. 数据结构示例
 
-| 功能模块 | 核心文件 |
-|----------|----------|
-| Action 类型定义 | `lib/types/action.ts` |
-| 播放引擎 | `lib/playback/engine.ts` |
-| 动作执行引擎 | `lib/action/engine.ts` |
-| Canvas 状态管理 | `lib/store/canvas.ts` |
-| TTS 提供者实现 | `lib/audio/tts-providers.ts` |
-| TTS 配置常量 | `lib/audio/constants.ts` |
-| 激光笔渲染 | `components/slide-renderer/Editor/LaserOverlay.tsx` |
-| 聚光灯渲染 | `components/slide-renderer/Editor/SpotlightOverlay.tsx` |
-| 高亮渲染 | `components/slide-renderer/Editor/HighlightOverlay.tsx` |
-| 幻灯片画布 | `components/slide-renderer/Editor/ScreenCanvas.tsx` |
-| Scene 渲染路由 | `components/stage/scene-renderer.tsx` |
-| Scene Context | `lib/contexts/scene-context.tsx` |
+### Scene Content
+
+```json
+{
+  "type": "slide",
+  "canvas": {
+    "width": 1000,
+    "height": 562,
+    "background": "#ffffff",
+    "elements": [
+      {
+        "id": "title",
+        "type": "text",
+        "content": "木工基础与安全规范",
+        "position": { "top": 30, "left": 50, "width": 900, "height": 60 },
+        "style": { "fontSize": 36, "color": "#333333" }
+      },
+      {
+        "id": "point_0",
+        "type": "text",
+        "content": "• 木工安全规范概述",
+        "position": { "top": 200, "left": 50, "width": 900, "height": 40 },
+        "style": { "fontSize": 16, "color": "#444444" }
+      }
+    ]
+  }
+}
+```
+
+### Actions
+
+```json
+[
+  {
+    "id": "speech_1",
+    "type": "speech",
+    "text": "现在我们来学习木工安全规范...",
+    "elementId": "point_0"
+  },
+  {
+    "id": "spotlight_1",
+    "type": "spotlight",
+    "elementId": "point_0",
+    "dimOpacity": 0.7
+  },
+  {
+    "id": "laser_1",
+    "type": "laser",
+    "elementId": "point_0",
+    "color": "#ff3b30"
+  }
+]
+```
 
 ---
 
-## 九、扩展指南
+## 9. 参考文件路径
 
-### 添加新的 TTS 提供者
-
-1. 在 `lib/audio/types.ts` 中添加 `TTSProviderId`
-2. 在 `lib/audio/constants.ts` 中添加配置
-3. 在 `lib/audio/tts-providers.ts` 中实现 `generateXxxTTS()` 函数
-4. 在 `generateTTS()` switch 中添加 case
-5. 在 `lib/i18n.ts` 中添加翻译
-
-### 添加新的视觉特效
-
-1. 在 `lib/types/action.ts` 中定义新的 Action 类型
-2. 在 `lib/store/canvas.ts` 中添加状态和 Actions
-3. 在 `lib/action/engine.ts` 中实现执行方法
-4. 在 `components/slide-renderer/Editor/` 中创建 Overlay 组件
-5. 在 `ScreenCanvas.tsx` 中引入并渲染
+| 文件 | 路径 | 功能 |
+|------|------|------|
+| ScreenCanvas | `components/slide-renderer/Editor/ScreenCanvas.tsx` | 幻灯片画布主组件 |
+| SpotlightOverlay | `components/slide-renderer/Editor/SpotlightOverlay.tsx` | 聚光灯效果 |
+| LaserOverlay | `components/slide-renderer/Editor/LaserOverlay.tsx` | 激光笔效果 |
+| PlaybackEngine | `lib/playback/engine.ts` | 播放引擎 |
+| ActionEngine | `lib/action/engine.ts` | Action执行引擎 |
+| CanvasStore | `lib/store/canvas.ts` | 画布状态管理 |
+| types/action | `lib/types/action.ts` | Action类型定义 |
 
 ---
 
-## 十、注意事项
+## 10. Mobile端待实现功能
 
-1. **Fire-and-forget 动作**: `spotlight` 和 `laser` 不阻塞播放，使用 `queueMicrotask()` 避免栈溢出
-2. **特效自动清除**: 默认 5 秒后自动清除，防止视觉干扰累积
-3. **百分比坐标**: 激光笔和聚光灯使用百分比坐标，确保响应式
-4. **Browser TTS 分句**: 必须分句播放，避免 Chrome 截断 bug
-5. **SVG Mask**: 聚光灯不使用 `backdrop-filter`，与 SVG mask 存在兼容问题
+| 功能 | 状态 | 优先级 |
+|------|------|--------|
+| SpotlightOverlay | 已实现 | ✅ |
+| LaserOverlay | 已实现 | ✅ |
+| PlaybackEngine spotlight/laser处理 | 已实现 | ✅ |
+| CanvasElement → PPTElement 转换 | 已实现 | ✅ |
+| Speech + Spotlight 联动 | 已实现 | ✅ |
+| elementId → geometry 转换 | 已有 | ✅ |
+
+---
+
+## 11. Mobile端实现文件路径
+
+| 文件 | 路径 | 功能 |
+|------|------|------|
+| SpotlightOverlay | `components/slide/SpotlightOverlay.tsx` | 四层遮罩镂空效果 + 收缩动画 |
+| LaserOverlay | `components/slide/LaserOverlay.tsx` | 飞入动画 + 脉冲发光 |
+| ScreenCanvas | `components/slide/ScreenCanvas.tsx` | 整合 spotlight/laser overlay |
+| PlaybackEngine | `lib/playback/engine.ts` | 添加 onSpotlight/onLaser 回调 |
+| classroom/[id].tsx | `app/classroom/[id].tsx` | 整合视觉效果状态管理 |
+
+---
+
+## 12. 实现细节说明
+
+### SpotlightOverlay 实现
+
+由于 React Native 不支持 SVG mask，采用四块遮罩层方案：
+- Top layer: 从画布顶部到镂空区域顶部
+- Bottom layer: 从镂空区域底部到画布底部
+- Left layer: 镂空区域左侧（高度覆盖镂空区上下）
+- Right layer: 镂空区域右侧（高度覆盖镂空区上下）
+
+动画使用 `react-native-reanimated`:
+- `paddingAnim`: 从 40px 收缩到 8px（600ms ease-out-expo）
+- `borderRadiusAnim`: 从 12px 收缩到 4px
+
+### LaserOverlay 实现
+
+飞入动画:
+- 从屏幕角落飞入（根据目标位置决定起点）
+- 目标在右侧 → 从右上角飞入
+- 目标在左侧 → 从左上角飞入
+- 动画时长 500ms，ease-out-expo
+
+脉冲动画:
+- `pulseScale`: 1 → 2.8 无限循环（1.5s 周期）
+- `pulseOpacity`: 0.6 → 0 无限循环
+
+### PlaybackEngine 回调
+
+新增回调类型:
+```typescript
+onSpotlight?: (elementId: string, dimness?: number) => void;
+onLaser?: (elementId: string, color?: string) => void;
+onClearEffects?: () => void;
+```
+
+非阻塞执行:
+- spotlight/laser action 执行后立即继续处理下一个 action
+- speech action 是阻塞的，等待音频播放完成

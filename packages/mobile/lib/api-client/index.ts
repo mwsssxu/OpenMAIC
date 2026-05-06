@@ -1439,6 +1439,13 @@ class ApiClient {
     return data;
   }
 
+  async reviewKnowledgeCard(cardId: string, masteryChange: number) {
+    const { data } = await this.client.post(`/knowledge/cards/${cardId}/review`, null, {
+      params: { mastery_change: masteryChange },
+    });
+    return data;
+  }
+
   async extractKnowledgeFromScene(sceneId: string) {
     const { data } = await this.client.post('/knowledge/extract', {
       scene_id: sceneId,

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -176,6 +177,11 @@ export default function ClassroomScreen() {
   });
   const [showTtsSettings, setShowTtsSettings] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<Record<string, Array<{ id: string; name: string }>>>({});
+
+  // 知识提取
+  const [extractingKnowledge, setExtractingKnowledge] = useState(false);
+  const [showExtractResult, setShowExtractResult] = useState(false);
+  const [extractedCards, setExtractedCards] = useState<any[]>([]);
 
   // 场景切换动画 - 使用 Reanimated
   const translateX = useSharedValue(0);
@@ -478,6 +484,27 @@ export default function ClassroomScreen() {
     setShowChatModal(true);
   }
 
+  // 提取当前场景知识点
+  async function extractKnowledge() {
+    if (!currentScene) return;
+
+    setExtractingKnowledge(true);
+    try {
+      const result = await apiClient.extractKnowledgeFromScene(currentScene.id);
+      if (result.created_cards && result.created_cards.length > 0) {
+        setExtractedCards(result.created_cards);
+        setShowExtractResult(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Alert.alert('提示', '未提取到新的知识点');
+      }
+    } catch (err: any) {
+      Alert.alert('提取失败', err.response?.data?.detail || 'AI服务暂时不可用');
+    } finally {
+      setExtractingKnowledge(false);
+    }
+  }
+
   if (authLoading) {
     return (
       <View style={styles.center}>
@@ -750,6 +777,19 @@ export default function ClassroomScreen() {
         >
           <Ionicons name="radio-button-on" size={20} color={showPointer ? 'white' : '#666'} />
         </TouchableOpacity>
+
+        {/* 提取知识点 */}
+        <TouchableOpacity
+          style={[styles.toolBtn, extractingKnowledge && styles.toolBtnActive]}
+          onPress={extractKnowledge}
+          disabled={extractingKnowledge}
+        >
+          {extractingKnowledge ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="book-outline" size={20} color="#666" />
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* 智能体聊天模态框 */}
@@ -902,6 +942,51 @@ export default function ClassroomScreen() {
               }}
             >
               <Text style={styles.ttsSaveBtnText}>应用设置</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 知识提取结果弹窗 */}
+      <Modal
+        visible={showExtractResult}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowExtractResult(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="book" size={24} color="#5b9bd5" />
+              <Text style={styles.modalTitle}>知识点已提取</Text>
+              <TouchableOpacity onPress={() => setShowExtractResult(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.extractHint}>
+              从当前场景提取了 {extractedCards.length} 个知识点，已保存到知识库
+            </Text>
+
+            <ScrollView style={styles.extractResults}>
+              {extractedCards.map((card, index) => (
+                <View key={card.id} style={styles.extractCardItem}>
+                  <Text style={styles.extractCardTitle}>{card.title}</Text>
+                  <Text style={styles.extractCardCategory}>
+                    {card.skill_category || 'general'}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.extractViewBtn}
+              onPress={() => {
+                setShowExtractResult(false);
+                router.push('/(tabs)/knowledge' as any);
+              }}
+            >
+              <Text style={styles.extractViewBtnText}>查看知识库</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1321,4 +1406,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ttsSaveBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
+
+  // 知识提取结果
+  extractHint: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  extractResults: {
+    maxHeight: 200,
+    marginBottom: Spacing.md,
+  },
+  extractCardItem: {
+    padding: Spacing.sm,
+    borderRadius: Rounded.sm,
+    backgroundColor: '#f5f7fa',
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  extractCardTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
+  extractCardCategory: {
+    fontSize: 12,
+    color: '#5b9bd5',
+  },
+  extractViewBtn: {
+    backgroundColor: '#5b9bd5',
+    padding: Spacing.sm + 3,
+    borderRadius: Rounded.md,
+    alignItems: 'center',
+  },
+  extractViewBtnText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
