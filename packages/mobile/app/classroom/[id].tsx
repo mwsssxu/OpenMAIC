@@ -120,6 +120,11 @@ export default function ClassroomScreen() {
   const [showExtractResult, setShowExtractResult] = useState(false);
   const [extractedCards, setExtractedCards] = useState<any[]>([]);
 
+  // 测验交互状态
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, boolean>>({});
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
+
   // 场景切换动画 - 使用 Reanimated
   const translateX = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -378,8 +383,53 @@ export default function ClassroomScreen() {
     if (index !== currentSceneIndex) {
       playbackEngineRef.current?.jumpToScene(index);
       setShowThumbnailNav(false);
+      // 重置测验状态
+      setSelectedAnswers({});
+      setSubmittedAnswers({});
+      setQuizSubmitted(false);
     }
   }
+
+  // 测验交互函数
+  const selectAnswer = (questionId: string, optionValue: string) => {
+    setSelectedAnswers(prev => ({ ...prev, [questionId]: optionValue }));
+  };
+
+  const submitQuiz = async () => {
+    if (!currentScene?.content?.questions) return;
+
+    const questions = (currentScene.content as any).questions;
+    const results: Record<string, boolean> = {};
+
+    // 检查答案
+    questions.forEach((q: any) => {
+      const correctAnswer = q.answer?.[0] || q.answer;
+      results[q.id] = selectedAnswers[q.id] === correctAnswer;
+    });
+
+    setSubmittedAnswers(results);
+    setQuizSubmitted(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // 如果有错误答案，请求 Agent 解析（可选）
+    const wrongQuestions = questions.filter((q: any) => !results[q.id]);
+    if (wrongQuestions.length > 0 && agents.length > 0) {
+      const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
+      setSelectedAgent(teacherAgent);
+      const wrongSummary = wrongQuestions.map((q: any) => q.question).join('\n');
+      setChatHistory([
+        { agent: '系统', message: `你在以下问题上有错误：\n${wrongSummary}` },
+        { agent: teacherAgent.name, message: '让我帮你分析一下这些问题的正确答案...' }
+      ]);
+      setShowChatModal(true);
+    }
+  };
+
+  const resetQuiz = () => {
+    setSelectedAnswers({});
+    setSubmittedAnswers({});
+    setQuizSubmitted(false);
+  };
 
   async function sendMessage() {
     if (!chatMessage.trim() || !selectedAgent) return;
@@ -601,18 +651,75 @@ export default function ClassroomScreen() {
                 <View style={styles.quizHeader}>
                   <Ionicons name="help-circle" size={24} color="#f59e0b" />
                   <Text style={styles.quizTitle}>测验</Text>
+                  {quizSubmitted && (
+                    <Text style={styles.quizResult}>
+                      {Object.values(submittedAnswers).filter(v => v).length}/{Object.keys(submittedAnswers).length} 正确
+                    </Text>
+                  )}
                 </View>
-                {(currentScene.content as any)?.questions?.map((q: any, idx: number) => (
-                  <View key={q.id || idx} style={styles.questionContainer}>
-                    <Text style={styles.questionText}>{q.question}</Text>
-                    {q.options?.map((opt: any, optIdx: number) => (
-                      <TouchableOpacity key={opt.value ?? optIdx} style={styles.optionButton}>
-                        <Text style={styles.optionLabel}>{String.fromCharCode(65 + optIdx)}.</Text>
-                        <Text style={styles.optionText}>{opt.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
+                {(currentScene.content as any)?.questions?.map((q: any, idx: number) => {
+                  const correctAnswer = q.answer?.[0] || q.answer;
+
+                  return (
+                    <View key={q.id || idx} style={styles.questionContainer}>
+                      <Text style={styles.questionText}>{q.question}</Text>
+                      {q.options?.map((opt: any, optIdx: number) => {
+                        const optSelected = selectedAnswers[q.id] === opt.value;
+                        const optIsCorrect = opt.value === correctAnswer;
+                        const showResult = quizSubmitted && submittedAnswers[q.id] !== undefined;
+
+                        return (
+                          <TouchableOpacity
+                            key={opt.value ?? optIdx}
+                            style={[
+                              styles.optionButton,
+                              optSelected && styles.optionSelected,
+                              showResult && optIsCorrect && styles.optionCorrect,
+                              showResult && optSelected && !optIsCorrect && styles.optionWrong,
+                            ]}
+                            onPress={() => !quizSubmitted && selectAnswer(q.id, opt.value)}
+                            disabled={quizSubmitted}
+                          >
+                            <Text style={[
+                              styles.optionLabel,
+                              optSelected && styles.optionLabelSelected,
+                              showResult && optIsCorrect && styles.optionLabelCorrect,
+                            ]}>{String.fromCharCode(65 + optIdx)}.</Text>
+                            <Text style={[
+                              styles.optionText,
+                              optSelected && styles.optionTextSelected,
+                            ]}>{opt.label}</Text>
+                            {showResult && optIsCorrect && (
+                              <Ionicons name="checkmark-circle" size={18} color="#22c55e" style={styles.optionIcon} />
+                            )}
+                            {showResult && optSelected && !optIsCorrect && (
+                              <Ionicons name="close-circle" size={18} color="#ef4444" style={styles.optionIcon} />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {quizSubmitted && !submittedAnswers[q.id] && (
+                        <Text style={styles.explanationText}>
+                          正确答案：{q.options?.find((o: any) => o.value === correctAnswer)?.label || correctAnswer}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+
+                {/* 提交按钮 */}
+                {!quizSubmitted && Object.keys(selectedAnswers).length > 0 && (
+                  <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
+                    <Text style={styles.submitButtonText}>提交答案</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* 重试按钮 */}
+                {quizSubmitted && (
+                  <TouchableOpacity style={styles.resetButton} onPress={resetQuiz}>
+                    <Text style={styles.resetButtonText}>重新作答</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </ScrollView>
           </View>
@@ -1131,6 +1238,20 @@ const styles = StyleSheet.create({
   },
   optionLabel: { fontSize: 14, fontWeight: 'bold', color: '#5b9bd5', marginRight: Spacing.sm },
   optionText: { fontSize: 14, color: '#666' },
+  // Quiz selection states
+  optionSelected: { backgroundColor: '#dbeafe', borderColor: '#3b82f6', borderWidth: 2 },
+  optionCorrect: { backgroundColor: '#dcfce7', borderColor: '#22c55e', borderWidth: 2 },
+  optionWrong: { backgroundColor: '#fef2f2', borderColor: '#ef4444', borderWidth: 2 },
+  optionLabelSelected: { color: '#3b82f6' },
+  optionLabelCorrect: { color: '#22c55e' },
+  optionTextSelected: { color: '#3b82f6', fontWeight: '500' },
+  optionIcon: { marginLeft: Spacing.sm },
+  quizResult: { fontSize: 14, color: '#22c55e', fontWeight: 'bold', marginLeft: Spacing.sm },
+  explanationText: { fontSize: 13, color: '#ef4444', marginTop: Spacing.sm, padding: Spacing.sm, backgroundColor: '#fef2f2', borderRadius: Rounded.sm },
+  submitButton: { backgroundColor: '#3b82f6', padding: Spacing.md, borderRadius: Rounded.md, marginTop: Spacing.md, alignItems: 'center' },
+  submitButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  resetButton: { backgroundColor: '#6b7280', padding: Spacing.md, borderRadius: Rounded.md, marginTop: Spacing.md, alignItems: 'center' },
+  resetButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   quizHintContainer: { marginTop: Spacing.lg },
   quizHintText: { fontSize: 14, color: '#666', marginVertical: Spacing.xs + 1 },
   quizHint: { fontSize: 14, color: '#666', textAlign: 'center' },
