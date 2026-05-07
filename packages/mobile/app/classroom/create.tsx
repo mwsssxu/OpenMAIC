@@ -191,13 +191,12 @@ export default function CreateClassroomScreen() {
     setCurrentStep(3);
   };
 
-  // 步骤4: 开始创建课程（包含幻灯片生成）
+  // 步骤4: 开始创建课程（分开创建场景以避免超时）
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 使用完整课程创建接口（包含大纲生成幻灯片）
       // 传递完整的智能体配置，而非仅ID（去除UI状态属性）
       const enabledAgents = agents.filter(a => a.enabled);
       const cleanAgentConfigs = enabledAgents.map(a => ({
@@ -210,20 +209,34 @@ export default function CreateClassroomScreen() {
         priority: a.priority,
         voiceConfig: a.voiceConfig,
       }));
+
+      // 1. 创建课程记录（不生成场景）
       const result = await apiClient.createFullClassroom(
         requirement.slice(0, 50),
         requirement,
         outlines,
         enabledAgents.map(a => a.id),
         language,
-        cleanAgentConfigs  // 传递清理后的智能体配置
+        cleanAgentConfigs
       );
+
+      // 2. 逐个创建场景（避免批量生成超时）
+      let successCount = 0;
+      for (let i = 0; i < outlines.length; i++) {
+        try {
+          await apiClient.createScene(result.id, outlines[i], i + 1, language);
+          successCount++;
+        } catch (sceneErr: any) {
+          // 单个场景失败不影响整体流程，继续创建其他场景
+          console.warn(`场景 ${i + 1} 创建失败:`, sceneErr.message);
+        }
+      }
 
       setCreatedClassroomId(result.id);
       onSuccess();
 
       // 显示成功消息并跳转
-      Alert.alert('成功', `课程创建成功！已生成 ${result.scenes_count} 个幻灯片`, [
+      Alert.alert('成功', `课程创建成功！已生成 ${successCount} 个场景`, [
         { text: '查看课程', onPress: () => router.replace(`/classroom/${result.id}`) }
       ]);
 

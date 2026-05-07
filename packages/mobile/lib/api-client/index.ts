@@ -231,8 +231,19 @@ class ApiClient {
       description,
       outlines,
       agent_ids: agentIds,
-      agent_configs: agentConfigs,  // 传递完整的智能体配置
+      agent_configs: agentConfigs,
       language: language || 'zh-CN',
+    });
+    return data;
+  }
+
+  async createScene(classroomId: string, outline: any, orderIndex: number, language?: string) {
+    const { data } = await this.client.post(`/classrooms/${classroomId}/scenes/create`, {
+      outline,
+      order_index: orderIndex,
+      language: language || 'zh-CN',
+    }, {
+      timeout: 120000, // 单个场景生成需要时间
     });
     return data;
   }

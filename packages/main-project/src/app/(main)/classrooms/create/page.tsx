@@ -112,15 +112,25 @@ export default function CreateClassroomPage() {
     setLoading(true);
 
     try {
-      // 使用 create-full 接口：一次请求完成创建+生成+保存
+      // 1. 创建课程记录（不生成场景）
       const classroom = await apiClient.createFullClassroom({
         name: topic,
         description: description,
         outlines: outlines,
         agent_ids: agents.map(a => a.id),
-        agent_configs: agents, // 传递完整配置
+        agent_configs: agents,
         language: 'zh-CN',
       });
+
+      // 2. 逐个创建场景
+      for (let i = 0; i < outlines.length; i++) {
+        const outline = outlines[i];
+        await apiClient.createScene(classroom.id, {
+          outline: outline,
+          order_index: i + 1,
+          language: 'zh-CN',
+        });
+      }
 
       router.push(`/classrooms/${classroom.id}`);
     } catch (err: any) {

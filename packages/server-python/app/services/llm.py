@@ -66,35 +66,37 @@ async def call_llm(
     logger.info(f"[LLM] 开始调用 - model={model_str}, api_base={api_base}, max_tokens={max_tokens}")
     logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
 
-    # 使用 httpx 异步客户端，增加超时时间和 Keep-Alive
-    # DashScope API 需要更长时间处理，增加总超时到 300 秒
-    timeout = httpx.Timeout(300.0, connect=60.0, read=300.0, write=60.0, pool=30.0)
+    # 使用 httpx，简化超时配置
+    timeout = httpx.Timeout(300.0, connect=30.0)
 
     for attempt in range(max_retries):
         attempt_start = time.time()
         try:
             logger.info(f"[LLM] 尝试 #{attempt + 1}/{max_retries}")
-            # 使用 limits 配置连接池，增加 Keep-Alive
-            limits = httpx.Limits(max_connections=10, max_keepalive_connections=5, keepalive_expiry=30.0)
-            async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
-                response = await client.post(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                )
-                response.raise_for_status()
-                result = response.json()
-                content = result["choices"][0]["message"]["content"]
 
-                elapsed = time.time() - attempt_start
-                total_elapsed = time.time() - start_time
-                logger.info(f"[LLM] 调用成功 (本次耗时: {elapsed:.1f}s, 总耗时: {total_elapsed:.1f}s)")
-                logger.debug(f"[LLM] 响应长度: {len(content)}")
+            # 使用同步客户端（通过 asyncio.to_thread 包装）
+            def sync_call():
+                with httpx.Client(timeout=timeout) as client:
+                    resp = client.post(
+                        url,
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                    )
+                    resp.raise_for_status()
+                    return resp.json()
 
-                return content
+            result = await asyncio.to_thread(sync_call)
+            content = result["choices"][0]["message"]["content"]
+
+            elapsed = time.time() - attempt_start
+            total_elapsed = time.time() - start_time
+            logger.info(f"[LLM] 调用成功 (本次耗时: {elapsed:.1f}s, 总耗时: {total_elapsed:.1f}s)")
+            logger.debug(f"[LLM] 响应长度: {len(content)}")
+
+            return content
 
         except httpx.TimeoutException as e:
             elapsed = time.time() - attempt_start
@@ -106,15 +108,15 @@ async def call_llm(
                 logger.error(f"[LLM] 最终超时 (总耗时: {total_elapsed:.1f}s)")
                 raise Exception(f"LLM API timeout after {max_retries} retries: {e}")
 
-        except httpx.RemoteProtocolError as e:
+        except httpx.ConnectError as e:
             elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 连接关闭 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            logger.warning(f"[LLM] 连接错误 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(3)  # 等待后重试
             else:
                 total_elapsed = time.time() - start_time
-                logger.error(f"[LLM] 最终连接关闭 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API connection closed after {max_retries} retries: {e}")
+                logger.error(f"[LLM] 最终连接错误 (总耗时: {total_elapsed:.1f}s)")
+                raise Exception(f"LLM API connection error after {max_retries} retries: {e}")
 
         except httpx.HTTPStatusError as e:
             elapsed = time.time() - attempt_start

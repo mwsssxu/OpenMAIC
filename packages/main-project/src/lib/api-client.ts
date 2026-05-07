@@ -125,13 +125,24 @@ class ApiClient {
   async createFullClassroom(body: {
     name: string;
     description?: string;
-    outlines: any[];
+    outlines?: any[];
     agent_ids?: string[];
     agent_configs?: any[];
     language?: string;
   }) {
     const { data } = await this.client.post('/classrooms/create-full', body, {
-      timeout: 180000, // 3分钟（场景生成需要时间）
+      timeout: 30000, // 只创建课程记录，不需要长超时
+    });
+    return data;
+  }
+
+  async createScene(classroomId: string, body: {
+    outline: any;
+    order_index: number;
+    language?: string;
+  }) {
+    const { data } = await this.client.post(`/classrooms/${classroomId}/scenes/create`, body, {
+      timeout: 120000, // 单个场景生成需要时间
     });
     return data;
   }

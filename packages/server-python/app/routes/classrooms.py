@@ -211,81 +211,135 @@ async def create_full_classroom(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """
-    创建完整课程（包含大纲生成幻灯片内容）
+    创建课程记录（不生成场景）
 
     请求体参数:
-    - outlines: 大纲列表（必填）
     - name: 课程名称
     - description: 课程描述
     - language: 语言设置 (zh-CN, en-US, ja-JP, ko-KR)
     - agent_ids: 智能体 ID 列表
     - agent_configs: 智能体完整配置列表（可选，包含name/role/color/persona等）
+    - outlines: 大纲列表（用于返回，不立即生成）
+
+    返回课程 ID，前端应逐个调用 /scenes/create 来生成场景
     """
     start_time = time.time()
-
-    # 1. 参数验证
-    outlines = body.get("outlines", [])
-    if not outlines:
-        raise HTTPException(status_code=400, detail="大纲列表不能为空")
-
-    # 验证大纲数量
-    scene_count = validate_scene_count(len(outlines))
-    if scene_count != len(outlines):
-        logger.warning(f"[Create] 大纲数量限制: {len(outlines)} -> {scene_count}")
-        outlines = outlines[:scene_count]
 
     user_uuid = validate_uuid(current_user_id, "用户ID")
 
     # 验证语言参数
     language = validate_language(body.get("language", "zh-CN"))
 
-    # 提取其他参数
+    # 提取参数
     name = body.get("name", "新课程")
     description = body.get("description")
     agent_ids = body.get("agent_ids", [])
-    agent_configs = body.get("agent_configs")  # 完整的智能体配置
+    agent_configs = body.get("agent_configs")
+    outlines = body.get("outlines", [])
 
-    # 详细日志记录请求参数
-    logger.info(f"[Create] Request body keys: {list(body.keys())}")
-    logger.info(f"[Create] agent_ids count: {len(agent_ids)}, agent_configs type: {type(agent_configs)}, count: {len(agent_configs) if agent_configs else 0}")
-    if agent_configs:
-        logger.info(f"[Create] First agent config sample: id={agent_configs[0].get('id')}, name={agent_configs[0].get('name')}, role={agent_configs[0].get('role')}")
+    # 验证大纲数量
+    if outlines:
+        scene_count = validate_scene_count(len(outlines))
+        if scene_count != len(outlines):
+            outlines = outlines[:scene_count]
 
-    logger.info(f"[Create] 开始创建课程 - name={name}, scenes={len(outlines)}, lang={language}, agents={len(agent_configs or agent_ids)}")
+    logger.info(f"[Create] 创建课程记录 - name={name}, outlines={len(outlines)}, lang={language}")
 
     stage_id = uuid.uuid4()
 
-    # 2. 使用事务创建课程和场景
-    async with db.transaction():
-        # 创建课程记录
-        await create_stage_record(
-            stage_id=stage_id,
-            user_uuid=user_uuid,
-            name=name,
-            description=description,
-            language=language,
-            agent_ids=agent_ids,
-            generated_agent_configs=agent_configs,
-            db=db
-        )
-
-        # 批量创建场景
-        scenes = await create_all_scenes(
-            outlines=outlines,
-            stage_id=stage_id,
-            user_uuid=user_uuid,
-            db=db,
-            language=language,
-        )
+    # 创建课程记录（不生成场景）
+    await create_stage_record(
+        stage_id=stage_id,
+        user_uuid=user_uuid,
+        name=name,
+        description=description,
+        language=language,
+        agent_ids=agent_ids,
+        generated_agent_configs=agent_configs,
+        db=db
+    )
 
     total_elapsed = time.time() - start_time
-    logger.info(f"[Create] 课程创建完成 - {len(scenes)} 个场景 (总耗时: {total_elapsed:.2f}s)")
+    logger.info(f"[Create] 课程记录创建完成 (耗时: {total_elapsed:.2f}s)")
 
     return {
         "id": str(stage_id),
         "name": name,
-        "scenes_count": len(scenes),
+        "outlines_count": len(outlines),
         "language": language,
+        "elapsed_seconds": round(total_elapsed, 2)
+    }
+
+
+@router.post("/{classroom_id}/scenes/create")
+async def create_scene_for_classroom(
+    classroom_id: str,
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    为课程创建单个场景
+
+    请求体参数:
+    - outline: 场景大纲 (title, type, description, key_points)
+    - order_index: 场景顺序
+    - language: 语言设置
+    """
+    start_time = time.time()
+
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
+    # 验证课程所有权
+    stage = await db.fetchrow(
+        "SELECT id, name, language_directive FROM stages WHERE id = $1 AND user_id = $2",
+        classroom_uuid,
+        user_uuid
+    )
+    if stage is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+
+    # 提取参数
+    outline = body.get("outline", {})
+    order_index = body.get("order_index", 1)
+    language = validate_language(body.get("language", stage["language_directive"] or "zh-CN"))
+
+    if not outline:
+        raise HTTPException(status_code=400, detail="场景大纲不能为空")
+
+    logger.info(f"[Scene] 创建场景 - classroom={classroom_id}, title={outline.get('title')}, order={order_index}")
+
+    # 创建单个场景
+    from app.services.scene_service import create_single_scene
+    try:
+        scene = await create_single_scene(
+            outline=outline,
+            stage_id=classroom_uuid,
+            user_uuid=user_uuid,
+            order_index=order_index,
+            db=db,
+            language=language,
+        )
+    except Exception as e:
+        logger.warning(f"[Scene] 创建失败，使用降级场景: {e}")
+        from app.services.scene_service import create_fallback_scene
+        scene = await create_fallback_scene(
+            outline=outline,
+            stage_id=classroom_uuid,
+            user_uuid=user_uuid,
+            order_index=order_index,
+            db=db
+        )
+
+    total_elapsed = time.time() - start_time
+    logger.info(f"[Scene] 场景创建完成 (耗时: {total_elapsed:.2f}s)")
+
+    return {
+        "id": scene["id"],
+        "title": scene["title"],
+        "type": scene["type"],
+        "order_index": scene["order_index"],
         "elapsed_seconds": round(total_elapsed, 2)
     }
 
