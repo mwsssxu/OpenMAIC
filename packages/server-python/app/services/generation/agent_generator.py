@@ -62,86 +62,27 @@ DEFAULT_VOICE_CONFIGS = [
 ]
 
 
-AGENT_SYSTEM_PROMPT = """
-你是一个专业的课程设计专家。你的任务是根据课程信息，生成合适的智能体配置。
+AGENT_SYSTEM_PROMPT = """你是课程设计专家，根据课程名称生成智能体配置。
 
-智能体类型：
-- teacher: 主讲老师，负责讲解核心内容，priority=10（必须有1个）
-- assistant: 助教，负责辅助讲解和答疑，priority=7（建议有1个）
-- student: 学生角色，负责提问互动，priority=4-6（建议有2-3个不同性格的学生）
+输出JSON格式：{"agents": [...]}
+规则：
+1. 必须有1个teacher(priority=10)
+2. 建议1个assistant(priority=7)
+3. 建议2个不同性格的student(priority=4-6)
+4. 每个agent包含: name, role, persona(性格描述), avatar, color, priority
+5. persona用一句话描述性格风格
+6. 学生性格要不同(好奇型/学霸型/活泼型等)
+7. 使用不同颜色: #5b9bd5(蓝), #10b981(绿), #f59e0b(橙), #8b5cf6(紫)
+8. 只输出JSON，无其他内容"""
 
-输出要求：
-1. 返回 JSON 对象，包含 agents 数组
-2. 必须有且仅有1个 teacher
-3. 建议配置：1个老师 + 1个助教 + 2-3个不同性格的学生（共4-5个智能体）
-4. 每个智能体包含：name, role, persona, avatar, color, priority
-5. persona 是2-3句话描述智能体的性格和教学/学习风格
-6. 所有智能体使用不同颜色
-7. 学生角色应该有不同性格（如：好奇型、学霸型、活泼型等）
-8. 只输出 JSON，不要其他内容
+AGENT_USER_PROMPT_TEMPLATE = """课程: {stage_name}
+描述: {stage_description}
+大纲: {scene_outlines}
+语言: {language}
+可用头像: {available_avatars}
+可用颜色: {available_colors}
 
-示例输出格式：
-{
-  "agents": [
-    {
-      "name": "张老师",
-      "role": "teacher",
-      "persona": "资深教师，讲解清晰有条理，善于用例子说明复杂概念。",
-      "avatar": "teacher.png",
-      "color": "#5b9bd5",
-      "priority": 10
-    },
-    {
-      "name": "李助教",
-      "role": "assistant",
-      "persona": "助教老师，耐心负责，善于答疑解惑，补充老师的讲解。",
-      "avatar": "assistant.png",
-      "color": "#10b981",
-      "priority": 7
-    },
-    {
-      "name": "好奇小明",
-      "role": "student",
-      "persona": "好奇心强，喜欢提问基础问题，经常代表初学者提出疑问。",
-      "avatar": "student1.png",
-      "color": "#f59e0b",
-      "priority": 5
-    },
-    {
-      "name": "学霸小红",
-      "role": "student",
-      "persona": "学习能力强，善于总结和举一反三，经常提出深入的思考问题。",
-      "avatar": "student2.png",
-      "color": "#8b5cf6",
-      "priority": 6
-    }
-  ]
-}
-"""
-
-AGENT_USER_PROMPT_TEMPLATE = """
-请根据以下课程信息生成智能体配置：
-
-## 课程名称
-{stage_name}
-
-## 课程描述
-{stage_description}
-
-## 课程大纲
-{scene_outlines}
-
-## 语言
-{language}
-
-## 可用头像
-{available_avatars}
-
-## 可用颜色
-{available_colors}
-
-请输出 JSON 格式的智能体配置。
-"""
+生成智能体配置JSON。"""
 
 
 async def generate_agent_profiles(
