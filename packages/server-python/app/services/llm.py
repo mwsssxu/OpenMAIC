@@ -118,6 +118,16 @@ async def call_llm(
                 logger.error(f"[LLM] 最终连接错误 (总耗时: {total_elapsed:.1f}s)")
                 raise Exception(f"LLM API connection error after {max_retries} retries: {e}")
 
+        except httpx.RemoteProtocolError as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 服务器断开连接 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)  # 等待后重试
+            else:
+                total_elapsed = time.time() - start_time
+                logger.error(f"[LLM] 最终服务器断开 (总耗时: {total_elapsed:.1f}s)")
+                raise Exception(f"LLM API server disconnected after {max_retries} retries: {e}")
+
         except httpx.HTTPStatusError as e:
             elapsed = time.time() - attempt_start
             logger.error(f"[LLM] HTTP错误 (耗时: {elapsed:.1f}s): {e.response.status_code} - {e.response.text}")
