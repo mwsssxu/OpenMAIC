@@ -70,10 +70,10 @@ async def call_llm(
     timeout = httpx.Timeout(300.0, connect=30.0)
 
     # 配置代理（如果设置）
-    proxies = None
+    proxy = None
     if settings.HTTP_PROXY:
-        proxies = {"http://": settings.HTTP_PROXY, "https://": settings.HTTP_PROXY}
-        logger.info(f"[LLM] 使用代理: {settings.HTTP_PROXY}")
+        proxy = settings.HTTP_PROXY
+        logger.info(f"[LLM] 使用代理: {proxy}")
 
     for attempt in range(max_retries):
         attempt_start = time.time()
@@ -82,7 +82,7 @@ async def call_llm(
 
             # 使用同步客户端（通过 asyncio.to_thread 包装）
             def sync_call():
-                with httpx.Client(timeout=timeout, proxies=proxies) as client:
+                with httpx.Client(timeout=timeout, proxy=proxy) as client:
                     resp = client.post(
                         url,
                         headers={
