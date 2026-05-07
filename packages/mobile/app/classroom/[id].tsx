@@ -724,6 +724,114 @@ export default function ClassroomScreen() {
             </ScrollView>
           </View>
         )}
+
+        {/* Interactive 类型：互动讨论场景 */}
+        {currentScene?.type === 'interactive' && (
+          <View style={styles.interactiveOverlay}>
+            <ScrollView style={styles.interactiveScroll} nestedScrollEnabled>
+              <View style={styles.interactiveCard}>
+                <View style={styles.interactiveHeader}>
+                  <Ionicons name="people" size={24} color="#10b981" />
+                  <Text style={styles.interactiveTitle}>互动讨论</Text>
+                </View>
+                <Text style={styles.interactiveTopic}>{currentScene?.title}</Text>
+                <Text style={styles.interactiveDesc}>{(currentScene?.content as any)?.description || currentScene?.description}</Text>
+
+                {/* 关键讨论点 */}
+                {(currentScene?.content as any)?.key_points?.length > 0 && (
+                  <View style={styles.discussionPoints}>
+                    <Text style={styles.discussionLabel}>讨论要点：</Text>
+                    {(currentScene?.content as any)?.key_points?.map((point: string, idx: number) => (
+                      <View key={idx} style={styles.discussionItem}>
+                        <Ionicons name="chatbubble-outline" size={16} color="#10b981" />
+                        <Text style={styles.discussionText}>{point}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* 开始讨论按钮 */}
+                <TouchableOpacity
+                  style={styles.startDiscussionBtn}
+                  onPress={() => {
+                    if (agents.length > 0) {
+                      const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
+                      setSelectedAgent(teacherAgent);
+                      setChatHistory([]);
+                      setShowChatModal(true);
+                    }
+                  }}
+                >
+                  <Ionicons name="chatbubbles" size={20} color="white" />
+                  <Text style={styles.startDiscussionText}>开始互动讨论</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* PBL 类型：项目学习场景 */}
+        {currentScene?.type === 'pbl' && (
+          <View style={styles.pblOverlay}>
+            <ScrollView style={styles.pblScroll} nestedScrollEnabled>
+              <View style={styles.pblCard}>
+                <View style={styles.pblHeader}>
+                  <Ionicons name="bulb" size={24} color="#8b5cf6" />
+                  <Text style={styles.pblTitle}>项目学习</Text>
+                </View>
+                <Text style={styles.pblTask}>{currentScene?.title}</Text>
+                <Text style={styles.pblDesc}>{(currentScene?.content as any)?.description || currentScene?.description}</Text>
+
+                {/* 项目步骤 */}
+                {(currentScene?.content as any)?.steps?.length > 0 ? (
+                  <View style={styles.projectSteps}>
+                    {(currentScene?.content as any)?.steps?.map((step: any, idx: number) => (
+                      <View key={idx} style={styles.projectStep}>
+                        <View style={styles.stepNumber}>
+                          <Text style={styles.stepNumberText}>{idx + 1}</Text>
+                        </View>
+                        <View style={styles.stepContent}>
+                          <Text style={styles.stepTitle}>{step.title || step}</Text>
+                          {step.description && (
+                            <Text style={styles.stepDesc}>{step.description}</Text>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.projectPoints}>
+                    <Text style={styles.projectLabel}>关键要点：</Text>
+                    {(currentScene?.content as any)?.key_points?.map((point: string, idx: number) => (
+                      <View key={idx} style={styles.projectItem}>
+                        <Ionicons name="checkbox-outline" size={16} color="#8b5cf6" />
+                        <Text style={styles.projectText}>{point}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* 请求指导按钮 */}
+                <TouchableOpacity
+                  style={styles.requestGuidanceBtn}
+                  onPress={() => {
+                    if (agents.length > 0) {
+                      const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
+                      setSelectedAgent(teacherAgent);
+                      setChatHistory([
+                        { agent: teacherAgent.name, message: `欢迎开始${currentScene?.title}项目。让我为你介绍项目目标和步骤...` }
+                      ]);
+                      setShowChatModal(true);
+                    }
+                  }}
+                >
+                  <Ionicons name="school" size={20} color="white" />
+                  <Text style={styles.requestGuidanceText}>请求Agent指导</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        )}
       </Animated.View>
 
       {/* 白板覆盖层 - 从 scene.actions 中获取 wb_draw actions */}
@@ -1293,7 +1401,72 @@ const styles = StyleSheet.create({
   },
   startInteractiveText: { color: 'white', fontSize: 16, fontWeight: '600', marginLeft: Spacing.sm },
 
-  // PBL
+  // Interactive overlay (for interactive scenes)
+  interactiveOverlay: {
+    position: 'absolute',
+    bottom: 100,
+    left: Spacing.sm,
+    right: Spacing.sm,
+    maxHeight: 200,
+  },
+  interactiveScroll: { flex: 1 },
+  interactiveTopic: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: Spacing.sm },
+  interactiveDesc: { fontSize: 14, color: '#666', marginBottom: Spacing.md },
+  discussionPoints: { marginBottom: Spacing.md },
+  discussionLabel: { fontSize: 14, fontWeight: '600', color: '#10b981', marginBottom: Spacing.sm },
+  discussionItem: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.xs },
+  discussionText: { fontSize: 14, color: '#333', marginLeft: Spacing.sm, flex: 1 },
+  startDiscussionBtn: {
+    backgroundColor: '#10b981',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+    borderRadius: Rounded.md,
+    marginTop: Spacing.sm,
+  },
+  startDiscussionText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: Spacing.sm },
+
+  // PBL overlay (for project-based learning scenes)
+  pblOverlay: {
+    position: 'absolute',
+    bottom: 100,
+    left: Spacing.sm,
+    right: Spacing.sm,
+    maxHeight: 200,
+  },
+  pblScroll: { flex: 1 },
+  pblTask: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: Spacing.sm },
+  projectSteps: { marginBottom: Spacing.md },
+  projectStep: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.sm },
+  stepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: Rounded.full,
+    backgroundColor: '#8b5cf6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepNumberText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
+  stepContent: { flex: 1, marginLeft: Spacing.sm },
+  stepTitle: { fontSize: 14, fontWeight: '600', color: '#333' },
+  stepDesc: { fontSize: 12, color: '#666', marginTop: Spacing.xs },
+  projectPoints: { marginBottom: Spacing.md },
+  projectLabel: { fontSize: 14, fontWeight: '600', color: '#8b5cf6', marginBottom: Spacing.sm },
+  projectItem: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.xs },
+  projectText: { fontSize: 14, color: '#333', marginLeft: Spacing.sm, flex: 1 },
+  requestGuidanceBtn: {
+    backgroundColor: '#8b5cf6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+    borderRadius: Rounded.md,
+    marginTop: Spacing.sm,
+  },
+  requestGuidanceText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: Spacing.sm },
+
+  // PBL (existing styles)
   pblContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.sm + 3 },
   pblCard: {
     backgroundColor: 'white',
