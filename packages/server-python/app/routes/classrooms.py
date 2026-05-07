@@ -310,27 +310,28 @@ async def create_scene_for_classroom(
 
     logger.info(f"[Scene] 创建场景 - classroom={classroom_id}, title={outline.get('title')}, order={order_index}")
 
-    # 创建单个场景
-    from app.services.scene_service import create_single_scene
-    try:
-        scene = await create_single_scene(
-            outline=outline,
-            stage_id=classroom_uuid,
-            user_uuid=user_uuid,
-            order_index=order_index,
-            db=db,
-            language=language,
-        )
-    except Exception as e:
-        logger.warning(f"[Scene] 创建失败，使用降级场景: {e}")
-        from app.services.scene_service import create_fallback_scene
-        scene = await create_fallback_scene(
-            outline=outline,
-            stage_id=classroom_uuid,
-            user_uuid=user_uuid,
-            order_index=order_index,
-            db=db
-        )
+    # 创建单个场景（使用事务确保原子性）
+    from app.services.scene_service import create_single_scene, create_fallback_scene
+
+    async with db.transaction():
+        try:
+            scene = await create_single_scene(
+                outline=outline,
+                stage_id=classroom_uuid,
+                user_uuid=user_uuid,
+                order_index=order_index,
+                db=db,
+                language=language,
+            )
+        except Exception as e:
+            logger.warning(f"[Scene] 创建失败，使用降级场景: {e}")
+            scene = await create_fallback_scene(
+                outline=outline,
+                stage_id=classroom_uuid,
+                user_uuid=user_uuid,
+                order_index=order_index,
+                db=db
+            )
 
     total_elapsed = time.time() - start_time
     logger.info(f"[Scene] 场景创建完成 (耗时: {total_elapsed:.2f}s)")

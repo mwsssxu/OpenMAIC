@@ -51,6 +51,7 @@ export default function CreateClassroomScreen() {
   // 步骤状态
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 步骤1: 需求输入
@@ -194,6 +195,7 @@ export default function CreateClassroomScreen() {
   // 步骤4: 开始创建课程（分开创建场景以避免超时）
   const handleCreate = async () => {
     setLoading(true);
+    setLoadingMessage('正在创建课程记录...');
     setError(null);
 
     try {
@@ -223,6 +225,7 @@ export default function CreateClassroomScreen() {
       // 2. 逐个创建场景（避免批量生成超时）
       let successCount = 0;
       for (let i = 0; i < outlines.length; i++) {
+        setLoadingMessage(`正在生成场景 ${i + 1}/${outlines.length}...`);
         try {
           await apiClient.createScene(result.id, outlines[i], i + 1, language);
           successCount++;
@@ -232,6 +235,7 @@ export default function CreateClassroomScreen() {
         }
       }
 
+      setLoadingMessage(null);
       setCreatedClassroomId(result.id);
       onSuccess();
 
@@ -248,6 +252,7 @@ export default function CreateClassroomScreen() {
       onError();
     } finally {
       setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
@@ -560,7 +565,10 @@ export default function CreateClassroomScreen() {
           disabled={loading || !!createdClassroomId}
         >
           {loading ? (
-            <ActivityIndicator color="white" />
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="white" size="small" />
+              {loadingMessage && <Text style={styles.loadingText}>{loadingMessage}</Text>}
+            </View>
           ) : (
             <Text style={styles.createBtnText}>开始创建课程</Text>
           )}
@@ -774,5 +782,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   createBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  loadingRow: { flexDirection: 'row', alignItems: 'center' },
+  loadingText: { color: 'white', fontSize: 14, marginLeft: Spacing.sm },
   btnDisabled: { backgroundColor: '#ccc' },
 });

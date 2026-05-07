@@ -399,6 +399,14 @@ export default function ClassroomScreen() {
     if (!currentScene?.content?.questions) return;
 
     const questions = (currentScene.content as any).questions;
+
+    // 检查是否所有问题都已选择答案
+    const unanswered = questions.filter((q: any) => !selectedAnswers[q.id]);
+    if (unanswered.length > 0) {
+      Alert.alert('提示', `还有 ${unanswered.length} 个问题未作答，请完成所有问题后再提交`);
+      return;
+    }
+
     const results: Record<string, boolean> = {};
 
     // 检查答案
@@ -735,7 +743,7 @@ export default function ClassroomScreen() {
                   <Text style={styles.interactiveTitle}>互动讨论</Text>
                 </View>
                 <Text style={styles.interactiveTopic}>{currentScene?.title}</Text>
-                <Text style={styles.interactiveDesc}>{(currentScene?.content as any)?.description || currentScene?.description}</Text>
+                <Text style={styles.interactiveDesc}>{(currentScene?.content as any)?.description || '互动讨论场景，点击下方按钮开始与Agent互动'}</Text>
 
                 {/* 关键讨论点 */}
                 {(currentScene?.content as any)?.key_points?.length > 0 && (
@@ -780,7 +788,7 @@ export default function ClassroomScreen() {
                   <Text style={styles.pblTitle}>项目学习</Text>
                 </View>
                 <Text style={styles.pblTask}>{currentScene?.title}</Text>
-                <Text style={styles.pblDesc}>{(currentScene?.content as any)?.description || currentScene?.description}</Text>
+                <Text style={styles.pblDesc}>{(currentScene?.content as any)?.description || '项目学习场景，点击下方按钮请求Agent指导'}</Text>
 
                 {/* 项目步骤 */}
                 {(currentScene?.content as any)?.steps?.length > 0 ? (
@@ -1388,7 +1396,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: Spacing.sm,
   },
-  interactiveDesc: { fontSize: 14, color: '#666', marginLeft: Spacing.sm, flex: 1 },
   interactiveHint: { fontSize: 14, color: '#666', textAlign: 'center' },
   startInteractiveBtn: {
     flexDirection: 'row',
