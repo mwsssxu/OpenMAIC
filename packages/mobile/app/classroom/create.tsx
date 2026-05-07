@@ -16,8 +16,8 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
-// 步骤定义 - 按照原逻辑：需求输入 → 智能体生成 → 大纲生成 → 确认创建
-const STEPS = ['需求输入', '智能体生成', '大纲生成', '确认创建'];
+// 步骤定义 - 参考Web端：需求输入 → 大纲生成 → 智能体生成 → 确认创建
+const STEPS = ['需求输入', '大纲生成', '智能体生成', '确认创建'];
 
 interface AgentProfile {
   id: string;
@@ -86,7 +86,7 @@ export default function CreateClassroomScreen() {
     );
   }
 
-  // 步骤1: 提交需求，进入智能体生成
+  // 步骤1: 提交需求，进入大纲生成（参考Web端顺序）
   const handleStep1Next = () => {
     if (!requirement.trim()) {
       setError('请输入课程需求');
@@ -94,29 +94,36 @@ export default function CreateClassroomScreen() {
     }
     setError(null);
     setCurrentStep(1);
-    // 自动开始生成智能体
-    generateAgents();
+    // 自动开始生成大纲
+    generateOutlines();
   };
 
-  // 生成智能体（LLM根据课程信息实时生成 - 在大纲之前）
-  const generateAgents = async () => {
+  // 步骤2: 大纲确认后，进入智能体生成
+  const handleStep2Next = async () => {
+    setCurrentStep(2);
+    // 大纲生成完成后，自动生成Agent（带着大纲，参考Web端）
+    await generateAgents(outlines);
+  };
+
+  // 生成智能体（LLM根据课程信息和大纲生成 - 参考Web端）
+  const generateAgents = async (outlinesData: SceneOutline[]) => {
     setGeneratingAgents(true);
     setError(null);
 
     try {
-      // 使用新的 API 格式传递完整参数
+      // 参考Web端：传递大纲给Agent生成，让LLM根据大纲内容设计agent
       const result = await apiClient.generateAgentProfiles(
-        { name: requirement.slice(0, 50), description: requirement }, // stageInfo 对象
-        language, // 语言
-        [], // sceneOutlines - 大纲还未生成
-        undefined, // availableAvatars - 使用默认头像
-        undefined, // avatarDescriptions - 可选
-        undefined // availableVoices - 可选
+        { name: requirement.slice(0, 50), description: requirement },
+        language,
+        outlinesData, // 传递大纲（参考Web端）
+        undefined,
+        undefined,
+        undefined
       );
       const generatedAgents = result.agents || [];
       setAgents(generatedAgents.map((a: AgentProfile) => ({ ...a, enabled: true })));
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '智能体生成失败');
+      console.warn('Agent生成失败，使用默认配置:', err);
       // 失败时获取默认配置
       try {
         const defaultResult = await apiClient.getDefaultAgents(language);
@@ -129,13 +136,7 @@ export default function CreateClassroomScreen() {
     }
   };
 
-  // 步骤2: 智能体确认后，进入大纲生成
-  const handleStep2Next = async () => {
-    setCurrentStep(2);
-    await generateOutlines();
-  };
-
-  // 生成大纲（真正的流式生成）
+  // 生成大纲（真正的流式生成）- 参考Web端，不依赖agents
   const generateOutlines = async () => {
     setGeneratingOutlines(true);
     setError(null);
@@ -143,11 +144,11 @@ export default function CreateClassroomScreen() {
     outlinesRef.current = []; // 重置 ref
 
     try {
-      // 使用真正的 SSE 流式生成
+      // 使用真正的 SSE 流式生成（参考Web端，agents还未生成）
       await apiClient.generateOutlinesStream(
         requirement,
         language,
-        agents.filter(a => a.enabled),
+        [], // agents还未生成，传空数组
         webSearchEnabled,
         // 每个大纲生成时的回调
         (outline) => {
@@ -187,7 +188,7 @@ export default function CreateClassroomScreen() {
     }
   };
 
-  // 步骤3: 大纲确认后，进入创建确认
+  // 步骤3: Agent确认后，进入创建确认
   const handleStep3Next = () => {
     setCurrentStep(3);
   };
@@ -346,7 +347,7 @@ export default function CreateClassroomScreen() {
   );
 
   // 渲染步骤2: 智能体生成（LLM实时生成）
-  const renderStep2 = () => (
+  const renderStepAgent = () => (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>课堂智能体</Text>
       <Text style={styles.stepHint}>AI正在根据您的课程需求生成互动角色...</Text>
@@ -405,7 +406,7 @@ export default function CreateClassroomScreen() {
       ) : (
         <View style={styles.centerContent}>
           <Text style={styles.errorText}>智能体生成失败</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={generateAgents}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => generateAgents(outlines)}>
             <Text style={styles.retryText}>重新生成</Text>
           </TouchableOpacity>
         </View>
@@ -420,22 +421,22 @@ export default function CreateClassroomScreen() {
       {error && !generatingAgents && agents.length > 0 && <Text style={styles.errorText}>{error}</Text>}
 
       <View style={styles.stepButtons}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(0)}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(1)}>
           <Text style={styles.backBtnText}>返回</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.nextBtn, (generatingAgents || agents.length === 0) && styles.btnDisabled]}
-          onPress={handleStep2Next}
+          onPress={handleStep3Next}
           disabled={generatingAgents || agents.length === 0}
         >
-          <Text style={styles.nextBtnText}>生成大纲</Text>
+          <Text style={styles.nextBtnText}>确认智能体</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
   // 渲染步骤3: 大纲生成（流式生成）
-  const renderStep3 = () => (
+  const renderStepOutline = () => (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>课程大纲</Text>
       <Text style={styles.stepHint}>
@@ -492,15 +493,15 @@ export default function CreateClassroomScreen() {
       {error && !generatingOutlines && <Text style={styles.errorText}>{error}</Text>}
 
       <View style={styles.stepButtons}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(1)}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(0)}>
           <Text style={styles.backBtnText}>返回</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.nextBtn, (generatingOutlines || outlines.length === 0) && styles.btnDisabled]}
-          onPress={handleStep3Next}
+          onPress={handleStep2Next}
           disabled={generatingOutlines || outlines.length === 0}
         >
-          <Text style={styles.nextBtnText}>确认大纲</Text>
+          <Text style={styles.nextBtnText}>生成智能体</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -582,8 +583,8 @@ export default function CreateClassroomScreen() {
       {renderStepIndicator()}
 
       {currentStep === 0 && renderStep1()}
-      {currentStep === 1 && renderStep2()}
-      {currentStep === 2 && renderStep3()}
+      {currentStep === 1 && renderStepOutline()}
+      {currentStep === 2 && renderStepAgent()}
       {currentStep === 3 && renderStep4()}
     </ScrollView>
   );
