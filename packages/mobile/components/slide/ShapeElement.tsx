@@ -22,21 +22,49 @@ interface ShapeElementProps {
  * ShapeElement Component
  *
  * Simplified rendering - uses View with background color instead of SVG
+ * 改进：支持圆形检测，优化zIndex（shape在text下方）
  */
 export function ShapeElement({ element, theme, scaleX, scaleY }: ShapeElementProps) {
-  // Container style with absolute positioning - dual-axis scaled
+  // 根据path判断形状类型
+  const isCircle = useMemo(() => {
+    // 圆形path包含弧线命令 'A' 和半径标记
+    return element.path?.includes('A') && (
+      element.path?.includes('0.5') ||
+      element.path?.includes('500')
+    );
+  }, [element.path]);
+
+  // 计算实际尺寸
+  const width = (element.width || 100) * scaleX;
+  const height = (element.height || 100) * scaleY;
+  const left = (element.left || 0) * scaleX;
+  const top = (element.top || 0) * scaleY;
+
+  // 计算圆角
+  const borderRadius = useMemo(() => {
+    if (isCircle) {
+      return Math.min(width, height) / 2;
+    }
+    // 圆角矩形检测
+    if (element.path?.includes('round')) {
+      return 8 * Math.min(scaleX, scaleY);
+    }
+    return 0;
+  }, [isCircle, width, height, element.path, scaleX, scaleY]);
+
+  // Container style - shape在text下方
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
-    top: element.top * scaleY,
-    left: element.left * scaleX,
-    width: element.width * scaleX,
-    height: element.height * scaleY,
+    top,
+    left,
+    width,
+    height,
     transform: [{ rotate: `${element.rotate || 0}deg` }],
-    backgroundColor: element.fill,
-    borderRadius: element.path?.includes('round') ? 8 * Math.min(scaleX, scaleY) : 0,
+    backgroundColor: element.fill || '#5b9bd5',
+    borderRadius,
     opacity: element.opacity || 1,
-    zIndex: 1,
-  }), [element, scaleX, scaleY]);
+    zIndex: 0, // shape通常在text下方作为背景
+  }), [element, left, top, width, height, borderRadius, scaleX, scaleY]);
 
   // Handle flip transforms
   const flipTransform = useMemo(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
@@ -8,15 +8,8 @@ import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { useCollaboration, useWhiteboardSync } from '@/lib/websocket';
 import { Whiteboard, ChatPanel, ParticipantsList } from '@/components/collaboration';
-
-interface Scene {
-  id: string;
-  type: string;
-  title: string;
-  order_index: number;
-  content: any;
-  actions: any[];
-}
+import { WebPlaybackEngine, PlaybackMode, Scene } from '@/lib/playback/engine';
+import { SpotlightOverlay, LaserOverlay } from '@/components/playback';
 
 interface Agent {
   id: string;
@@ -54,10 +47,99 @@ export default function ClassroomPlayPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [agents, setAgents] = useState<Agent[]>([]);
 
+  // Playback states
+  const playbackEngineRef = useRef<WebPlaybackEngine | null>(null);
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('idle');
+  const [spotlightElementId, setSpotlightElementId] = useState<string | null>(null);
+  const [laserElementId, setLaserElementId] = useState<string | null>(null);
+  const [laserColor, setLaserColor] = useState('#ff3b30');
+
+  // Canvas dimensions for precise layout
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
+  const VIEWPORT_WIDTH = 1000;
+  const VIEWPORT_HEIGHT = 562.5;
+
+  // Calculate scale based on actual container size
+  const getCanvasScale = useCallback(() => {
+    if (canvasDimensions.width === 0) return { scaleX: 1, scaleY: 1 };
+    const scaleX = canvasDimensions.width / VIEWPORT_WIDTH;
+    const scaleY = canvasDimensions.height / VIEWPORT_HEIGHT;
+    return { scaleX, scaleY };
+  }, [canvasDimensions]);
+
+  // Monitor canvas container size changes
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+
+    const updateDimensions = () => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setCanvasDimensions({ width: rect.width, height: rect.height });
+      }
+    };
+
+    // Initial update
+    updateDimensions();
+
+    // Use ResizeObserver for responsive updates
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, []);
+
   const id = params.id as string;
 
   const { client, isConnected: wsConnected } = useCollaboration(id, token || '');
   const { sync, isConnected: crdtConnected } = useWhiteboardSync(id, token || '');
+
+  // Initialize playback engine
+  const initPlaybackEngine = useCallback(() => {
+    if (!data?.scenes) return;
+
+    playbackEngineRef.current = new WebPlaybackEngine(data.scenes as Scene[], {
+      onSceneChange: (index, _scene) => {
+        setCurrentSceneIndex(index);
+        setSpotlightElementId(null);
+        setLaserElementId(null);
+      },
+      onModeChange: (mode) => {
+        setPlaybackMode(mode);
+      },
+      onComplete: () => {
+        console.log('[Playback] All scenes completed');
+      },
+      onError: (error) => {
+        console.error('[Playback]', error);
+      },
+      onSpotlight: (elementId, _dimness) => {
+        setSpotlightElementId(elementId);
+        setLaserElementId(null);
+      },
+      onLaser: (elementId, color) => {
+        setLaserElementId(elementId);
+        setLaserColor(color || '#ff3b30');
+      },
+      onClearEffects: () => {
+        setSpotlightElementId(null);
+        setLaserElementId(null);
+      },
+      onSpeechStart: (text) => {
+        console.log('[Speech]', text.slice(0, 50));
+      },
+      onSpeechEnd: () => {
+        console.log('[Speech] Complete');
+      },
+    });
+  }, [data]);
+
+  useEffect(() => {
+    if (data && !loading) {
+      initPlaybackEngine();
+    }
+  }, [data, loading, initPlaybackEngine]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -90,7 +172,7 @@ export default function ClassroomPlayPage() {
   async function loadAgents(classroomData: ClassroomData) {
     try {
       // 尝试获取已配置的 agent
-      if (classroomData.stage.agent_ids?.length > 0) {
+      if (classroomData.stage.agent_ids && classroomData.stage.agent_ids.length > 0) {
         const agentsData = await apiClient.generateAgentProfiles({
           stage_name: classroomData.stage.name,
           stage_description: classroomData.stage.description,
@@ -120,17 +202,26 @@ export default function ClassroomPlayPage() {
   }
 
   function goToNextScene() {
-    if (data && currentSceneIndex < data.scenes.length - 1) {
-      setCurrentSceneIndex(currentSceneIndex + 1);
-      client?.sendSceneChange(currentSceneIndex + 1);
-    }
+    playbackEngineRef.current?.nextScene();
   }
 
   function goToPrevScene() {
-    if (currentSceneIndex > 0) {
-      setCurrentSceneIndex(currentSceneIndex - 1);
-      client?.sendSceneChange(currentSceneIndex - 1);
+    playbackEngineRef.current?.prevScene();
+  }
+
+  // Playback controls
+  function handlePlay() {
+    if (playbackMode === 'idle' || playbackMode === 'paused') {
+      playbackEngineRef.current?.playCurrentScene();
     }
+  }
+
+  function handlePause() {
+    playbackEngineRef.current?.pause();
+  }
+
+  function handleStop() {
+    playbackEngineRef.current?.stop();
   }
 
   function getRoleLabel(role: string) {
@@ -141,6 +232,46 @@ export default function ClassroomPlayPage() {
     };
     return labels[role] || role;
   }
+
+  // Helper functions for Spotlight/Laser geometry
+  function getElementGeometry(elementId: string, elements: any[]): { centerX: number; centerY: number; width: number; height: number } | null {
+    const element = elements.find((el: any) => el.id === elementId);
+    if (!element) return null;
+
+    const width = element.width || 100;
+    const height = element.height || 50;
+    const left = element.left || 50;
+    const top = element.top || 50;
+
+    return {
+      centerX: left + width / 2,
+      centerY: top + height / 2,
+      width,
+      height,
+    };
+  }
+
+  function getElementPosition(elementId: string, elements: any[]): { x: number; y: number } | null {
+    const element = elements.find((el: any) => el.id === elementId);
+    if (!element) return null;
+
+    const width = element.width || 100;
+    const height = element.height || 50;
+    const left = element.left || 50;
+    const top = element.top || 50;
+
+    return {
+      x: left + width / 2,
+      y: top + height / 2,
+    };
+  }
+
+  // Cleanup playback engine on unmount
+  useEffect(() => {
+    return () => {
+      playbackEngineRef.current?.dispose();
+    };
+  }, []);
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -267,38 +398,72 @@ export default function ClassroomPlayPage() {
               </div>
 
               {/* 场景内容 */}
-              <div className="p-8 pt-14">
+              <div
+                ref={canvasContainerRef}
+                className="p-8 pt-14 relative"
+              >
                 {currentScene?.type === 'slide' && (
-                  <div className="animate-slide-in">
-                    {currentScene.content?.canvas?.elements?.map((el: any) => (
-                      <div key={el.id} className="mb-6">
-                        {el.type === 'text' && (
-                          <div
-                            className="font-bold text-gray-800"
-                            style={{
-                              fontSize: el.style?.fontSize || 24,
-                              color: el.style?.color || '#1f2937',
-                            }}
-                          >
-                            {el.content}
+                  <div className="animate-slide-in relative" style={{ minHeight: '300px' }}>
+                    {(() => {
+                      const { scaleX, scaleY } = getCanvasScale();
+                      const elements = currentScene.content?.canvas?.elements || [];
+
+                      return elements.map((el: any) => {
+                        // 精确坐标定位
+                        const style: React.CSSProperties = {
+                          position: 'absolute',
+                          left: el.left * scaleX,
+                          top: el.top * scaleY - 56, // 减去 padding offset
+                          width: el.width * scaleX,
+                          minHeight: el.height * scaleY,
+                        };
+
+                        return (
+                          <div key={el.id} style={style}>
+                            {el.type === 'text' && (
+                              <div
+                                className="font-bold text-gray-800"
+                                style={{
+                                  fontSize: (el.style?.fontSize || el.defaultFontSize || 24) * scaleX,
+                                  color: el.style?.color || el.defaultColor || '#1f2937',
+                                }}
+                              >
+                                {/* 支持HTML content或纯文本 */}
+                                {el.content?.includes('<p')
+                                  ? el.content.replace(/<[^>]+>/g, '') // 提取纯文本
+                                  : el.content}
+                              </div>
+                            )}
+                            {el.type === 'shape' && (
+                              <div
+                                className="rounded-xl shadow"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  background: `linear-gradient(135deg, ${el.fill || el.style?.backgroundColor || '#6366f1'}, ${el.fill || el.style?.backgroundColor || '#8b5cf6'})`,
+                                }}
+                              />
+                            )}
+                            {el.type === 'line' && (
+                              <div
+                                className="rounded"
+                                style={{
+                                  width: Math.abs((el.end?.[0] || 100) - (el.start?.[0] || 0)) * scaleX,
+                                  backgroundColor: el.color || el.defaultColor || '#5b9bd5',
+                                  height: (el.width || el.strokeWidth || 2) * scaleY,
+                                }}
+                              />
+                            )}
+                            {el.type === 'chart' && (
+                              <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-6 text-center w-full h-full">
+                                <span className="text-3xl">📊</span>
+                                <div className="mt-2 font-medium text-gray-700">{el.content || el.chartType}</div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {el.type === 'shape' && (
-                          <div
-                            className="w-40 h-10 rounded-xl shadow"
-                            style={{
-                              background: `linear-gradient(135deg, ${el.style?.backgroundColor || '#6366f1'}, ${el.style?.backgroundColor || '#8b5cf6'})`,
-                            }}
-                          />
-                        )}
-                        {el.type === 'chart' && (
-                          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-6 text-center">
-                            <span className="text-3xl">📊</span>
-                            <div className="mt-2 font-medium text-gray-700">{el.content}</div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
 
@@ -364,6 +529,39 @@ export default function ClassroomPlayPage() {
                   </Button>
                 </div>
               )}
+
+              {/* Spotlight/Laser Effects */}
+              {(() => {
+                const elements = currentScene?.content?.canvas?.elements;
+                if (!elements || canvasDimensions.width === 0) return null;
+                const { scaleX, scaleY } = getCanvasScale();
+                const spotlightGeometry = spotlightElementId ? getElementGeometry(spotlightElementId, elements) : null;
+                const laserPosition = laserElementId ? getElementPosition(laserElementId, elements) : null;
+                return (
+                  <>
+                    {spotlightGeometry && (
+                      <SpotlightOverlay
+                        geometry={spotlightGeometry}
+                        canvasWidth={canvasDimensions.width}
+                        canvasHeight={canvasDimensions.height}
+                        dimness={0.7}
+                        scaleX={scaleX}
+                        scaleY={scaleY}
+                      />
+                    )}
+                    {laserPosition && (
+                      <LaserOverlay
+                        position={laserPosition}
+                        canvasWidth={canvasDimensions.width}
+                        canvasHeight={canvasDimensions.height}
+                        color={laserColor}
+                        scaleX={scaleX}
+                        scaleY={scaleY}
+                      />
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Controls */}
@@ -378,6 +576,41 @@ export default function ClassroomPlayPage() {
                   ← 上一页
                 </Button>
                 <div className="flex gap-3">
+                  {/* Playback controls */}
+                  <div className="flex gap-2 mr-3 border-r pr-3">
+                    {playbackMode === 'idle' && (
+                      <Button
+                        className="bg-green-500 hover:bg-green-600 text-white"
+                        onClick={handlePlay}
+                      >
+                        🔊 播放
+                      </Button>
+                    )}
+                    {playbackMode === 'playing' && (
+                      <Button
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        onClick={handlePause}
+                      >
+                        ⏸️ 暂停
+                      </Button>
+                    )}
+                    {playbackMode === 'paused' && (
+                      <Button
+                        className="bg-green-500 hover:bg-green-600 text-white"
+                        onClick={handlePlay}
+                      >
+                        🔊 继续
+                      </Button>
+                    )}
+                    {playbackMode !== 'idle' && (
+                      <Button
+                        className="bg-red-500 hover:bg-red-600 text-white"
+                        onClick={handleStop}
+                      >
+                        ⏹️ 停止
+                      </Button>
+                    )}
+                  </div>
                   <Button
                     className={`${showWhiteboard ? 'btn-primary' : 'bg-white border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'}`}
                     onClick={() => setShowWhiteboard(!showWhiteboard)}

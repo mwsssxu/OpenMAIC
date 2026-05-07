@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
 import { Scene, Agent as LibAgent } from '@/lib/types/scene';
 import { ScreenCanvas, SlideBackground } from '@/components/slide';
+import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 
 // 本地 Agent 类型（扩展自 lib/types）
@@ -391,25 +392,77 @@ export default function ClassroomScreen() {
     setChatHistory(prev => [...prev, { agent: '我', message: userMessage }]);
 
     try {
-      // 直接调用 chatWithPersona
-      const response = await apiClient.chatWithPersona(
-        selectedAgent.id,
-        userMessage,
-        currentScene?.title,
-        'teaching'
+      // 使用 SSE 流式对话（与Web端一致）
+      // 构建消息格式
+      const messages = [{ role: 'user', content: userMessage }];
+
+      // 构建配置 - 包含 agent IDs 和 personas
+      const agentPersonas: Record<string, string> = {};
+      if (selectedAgent.persona) {
+        agentPersonas[selectedAgent.id] = selectedAgent.persona;
+      }
+
+      const config = {
+        agentIds: [selectedAgent.id],
+        agentPersonas,
+      };
+
+      // 构建上下文
+      const storeState = {
+        stage: { name: data?.stage?.name || '' },
+        scene: { title: currentScene?.title || '' },
+      };
+
+      await apiClient.streamAgentChat(
+        messages,
+        config,
+        storeState,
+        // onEvent - 流式更新（可用于实时显示）
+        (event) => {
+          if (event.type === 'text_delta' && event.text) {
+            // 可在此处实现实时流式显示（可选优化）
+          }
+        },
+        // onComplete - 完成时添加到历史
+        (response) => {
+          setChatHistory(prev => [...prev, {
+            agent: selectedAgent.name,
+            message: response || '让我来为你讲解...'
+          }]);
+          setSendingMessage(false);
+        },
+        // onError
+        (error) => {
+          console.warn('[Agent Chat] SSE error:', error);
+          // 降级回复
+          setChatHistory(prev => [...prev, {
+            agent: selectedAgent.name,
+            message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！让我来为你讲解...' : '我也有同样的疑问，让我们一起探讨...'}`
+          }]);
+          setSendingMessage(false);
+        }
       );
-
-      const agentResponse = response.response || '收到你的问题了，让我思考一下...';
-
-      setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
     } catch (err: any) {
-      // 降级回复
-      setChatHistory(prev => [...prev, {
-        agent: selectedAgent.name,
-        message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！让我来为你讲解...' : '我也有同样的疑问，让我们一起探讨...'}`
-      }]);
-    } finally {
-      setSendingMessage(false);
+      // SSE 失败时降级到 REST API
+      console.warn('[Agent Chat] SSE failed, using REST fallback:', err);
+      try {
+        const response = await apiClient.chatWithPersona(
+          selectedAgent.id,
+          userMessage,
+          currentScene?.title,
+          'teaching',
+          selectedAgent.persona
+        );
+        const agentResponse = response.response || '收到你的问题了，让我思考一下...';
+        setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
+      } catch (fallbackErr: any) {
+        setChatHistory(prev => [...prev, {
+          agent: selectedAgent.name,
+          message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！让我来为你讲解...' : '我也有同样的疑问，让我们一起探讨...'}`
+        }]);
+      } finally {
+        setSendingMessage(false);
+      }
     }
   }
 
@@ -565,6 +618,15 @@ export default function ClassroomScreen() {
           </View>
         )}
       </Animated.View>
+
+      {/* 白板覆盖层 - 从 scene.actions 中获取 wb_draw actions */}
+      <WhiteboardOverlay
+        visible={showWhiteboard}
+        actions={(currentScene?.actions as any[])?.filter(
+          (a: any) => a.type === 'wb_draw_text' || a.type === 'wb_draw_shape'
+        ) || []}
+        onClose={() => setShowWhiteboard(false)}
+      />
 
       {/* 场景缩略图导航（可展开） */}
       <TouchableOpacity

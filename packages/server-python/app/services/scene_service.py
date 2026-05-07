@@ -6,10 +6,13 @@ import uuid
 import json
 import logging
 import time
+import re
 from typing import Dict, List, Optional, Any
 from app.core.config import settings
 from app.core.time_utils import utcnow
 from app.services.tts_service import generate_tts, encode_audio_base64
+from app.services.generation.scene_generator import generate_scene_content, fix_element_format, generate_scene_actions
+from app.services.generation.outline_generator import SceneOutline
 
 logger = logging.getLogger(__name__)
 
@@ -152,41 +155,64 @@ async def generate_scene_actions_with_tts(
     scene_title: str,
     scene_desc: str,
     language: str = "zh-CN",
+    content: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    生成场景讲解动作（仅包含文本，音频由客户端按需生成）
+    生成场景讲解动作（fallback，生成完整讲解内容）
 
     Args:
         scene_title: 场景标题
         scene_desc: 场景描述
         language: 语言设置
+        content: 场景内容（用于提取元素文本）
 
     Returns:
-        Actions 列表（speech action，不含预生成的音频）
+        Actions 列表（speech actions + spotlight）
     """
-    # 根据语言生成讲解文本
-    if language == "en-US":
-        speech_text = f"Now let's learn about {scene_title}. {scene_desc}"
-    elif language == "ja-JP":
-        speech_text = f"{scene_title}について学びましょう。{scene_desc}"
-    else:
-        speech_text = f"现在我们来学习{scene_title}。{scene_desc}"
+    actions = []
 
-    # 文本长度检查
-    if len(speech_text) > MAX_TTS_TEXT_LENGTH:
-        speech_text = speech_text[:MAX_TTS_TEXT_LENGTH]
-        logger.warning(f"[TTS] Text truncated to {MAX_TTS_TEXT_LENGTH} characters")
-
-    action_id = str(uuid.uuid4())
-
-    # 只存储文本，不预生成音频（客户端按需请求 TTS API）
-    action_data = {
-        "id": action_id,
+    # 1. 标题介绍
+    intro_text = f"现在我们来学习{scene_title}。{scene_desc}" if language == "zh-CN" else f"Now let's learn about {scene_title}. {scene_desc}"
+    actions.append({
+        "id": str(uuid.uuid4()),
         "type": "speech",
-        "data": {"text": speech_text}
-    }
+        "data": {"text": intro_text}
+    })
 
-    return [action_data]
+    # 2. 从content中提取元素文本，生成详细讲解
+    if content and content.get("canvas", {}).get("elements"):
+        elements = content["canvas"]["elements"]
+
+        for el in elements[:5]:  # 最多处理5个元素
+            if el.get("type") == "text" and el.get("content"):
+                # 清理HTML标签
+                text_content = el.get("content", "")
+                if "<p" in text_content:
+                    # 提取纯文本
+                    import re
+                    text_content = re.sub(r"<[^>]+>", "", text_content).strip()
+
+                if text_content and len(text_content) > 5:
+                    # 添加讲解
+                    explain_text = f"接下来看这个要点：{text_content}" if language == "zh-CN" else f"Let's look at this point: {text_content}"
+                    actions.append({
+                        "id": str(uuid.uuid4()),
+                        "type": "speech",
+                        "data": {"text": explain_text}
+                    })
+
+                    # 添加聚焦效果（使用元素ID）
+                    actions.append({
+                        "id": str(uuid.uuid4()),
+                        "type": "spotlight",
+                        "data": {
+                            "target_element_id": el.get("id"),
+                            "dim_opacity": 0.7
+                        }
+                    })
+
+    logger.info(f"[Scene] Fallback生成 {len(actions)} 个actions")
+    return actions
 
 
 async def create_single_scene(
@@ -225,17 +251,52 @@ async def create_single_scene(
         base_topic = scene_title.replace("课程", "").replace("学习", "").strip()
         key_points = generate_key_points(scene_type, base_topic, language)
 
-    # 构建内容
-    content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
-
-    # 生成讲解动作（仅文本，不预生成音频）
-    actions = await generate_scene_actions_with_tts(
-        scene_title, scene_desc, language
+    # 构建 SceneOutline 对象
+    outline_obj = SceneOutline(
+        id=str(uuid.uuid4()),
+        type=scene_type,
+        title=scene_title,
+        description=scene_desc,
+        key_points=key_points,
+        order=order_index,
     )
+
+    # 使用 LLM 生成精确排版内容（替代 build_slide_content 简化模板）
+    try:
+        content = await generate_scene_content(
+            outline_obj,
+            language=language,
+            model=settings.DEFAULT_MODEL,
+        )
+        logger.info(f"[Scene] #{order_index}: LLM生成内容成功 - {scene_title}")
+    except Exception as e:
+        logger.warning(f"[Scene] #{order_index}: LLM生成失败，使用简化模板 - {e}")
+        # 降级到简化模板，并转换为精确坐标格式
+        fallback_content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
+        content = fix_element_format(fallback_content)
+
+    # 使用 LLM 生成讲解动作（包含 speech + spotlight + laser + wb_draw）
+    # 替代 generate_scene_actions_with_tts 简化模板
+    try:
+        actions = await generate_scene_actions(
+            outline_obj,
+            content,
+            language=language,
+            model=settings.DEFAULT_MODEL,
+        )
+        # 转换 Action model 为 dict
+        actions_data = [a.model_dump() for a in actions]
+        logger.info(f"[Scene] #{order_index}: LLM生成Actions成功 ({len(actions_data)}个)")
+    except Exception as e:
+        logger.warning(f"[Scene] #{order_index}: Actions生成失败，使用fallback - {e}")
+        # 降级到fallback，生成完整讲解（包含元素内容）
+        actions_data = await generate_scene_actions_with_tts(
+            scene_title, scene_desc, language, content  # 传递content
+        )
 
     # 存储到数据库
     content_json = json.dumps(content)
-    actions_json = json.dumps(actions)
+    actions_json = json.dumps(actions_data)
 
     await db.execute(
         """
@@ -262,7 +323,7 @@ async def create_single_scene(
         "title": scene_title,
         "order_index": order_index,
         "content": content,
-        "actions": actions,
+        "actions": actions_data,
     }
 
 

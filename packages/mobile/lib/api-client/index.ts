@@ -558,9 +558,115 @@ class ApiClient {
 
   // ==================== Chat (SSE) ====================
 
+  /**
+   * SSE 流式 Agent 对话（与Web端一致的实现）
+   * 使用 /chat API，支持多 Agent 讨论
+   */
+  async streamAgentChat(
+    messages: Array<{ role: string; content: string }>,
+    config: { agentIds?: string[]; agentPersonas?: Record<string, string> },
+    storeState: { stage?: { name: string }; scene?: { title: string } },
+    onEvent?: (event: { type: string; agent_id?: string; text?: string; content?: string }) => void,
+    onComplete?: (response: string) => void,
+    onError?: (error: string) => void,
+  ): Promise<void> {
+    const url = `${this.getBaseUrl()}/chat`;
+    const token = this.token;
+
+    if (!token) {
+      if (onError) onError('请先登录');
+      return Promise.reject(new Error('未登录'));
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+      xhr.setRequestHeader('Cache-Control', 'no-cache');
+
+      let lastProcessedLength = 0;
+      let currentEvent = '';
+      let fullResponse = '';
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState >= 3) {
+          // Check HTTP status first
+          if (xhr.readyState === 4 && xhr.status !== 200) {
+            if (xhr.status === 401) {
+              if (onError) onError('登录已过期');
+              reject(new Error('Token expired'));
+            } else {
+              if (onError) onError(`请求失败: ${xhr.status}`);
+              reject(new Error(`HTTP ${xhr.status}`));
+            }
+            return;
+          }
+
+          const fullText = xhr.responseText;
+          const newText = fullText.slice(lastProcessedLength);
+          lastProcessedLength = fullText.length;
+
+          const lines = newText.split('\n');
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith('event:')) {
+              currentEvent = trimmedLine.slice(6).trim();
+            } else if (trimmedLine.startsWith('data:')) {
+              const dataStr = trimmedLine.slice(5).trim();
+              if (!dataStr) continue;
+              try {
+                const data = JSON.parse(dataStr);
+
+                if (currentEvent === 'start') {
+                  if (onEvent) onEvent({ type: 'start', agent_id: data.agent_id });
+                } else if (currentEvent === 'text_delta') {
+                  fullResponse = data.text || '';
+                  if (onEvent) onEvent({ type: 'text_delta', agent_id: data.agent_id, text: data.text });
+                } else if (currentEvent === 'response_complete') {
+                  fullResponse = data.content || fullResponse;
+                  if (onEvent) onEvent({ type: 'response_complete', agent_id: data.agent_id, content: data.content });
+                } else if (currentEvent === 'end') {
+                  if (onComplete) onComplete(fullResponse);
+                  resolve();
+                } else if (currentEvent === 'error') {
+                  if (onError) onError(data.error || '对话失败');
+                  reject(new Error(data.error));
+                }
+              } catch (e) {
+                // JSON 解析失败，跳过
+              }
+            }
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        if (onError) onError('网络请求失败');
+        reject(new Error('网络请求失败'));
+      };
+
+      xhr.ontimeout = () => {
+        if (onError) onError('请求超时');
+        reject(new Error('请求超时'));
+      };
+
+      xhr.timeout = 60000; // 60秒超时
+
+      // 发送请求（格式与 Web端一致）
+      xhr.send(JSON.stringify({
+        messages,
+        config,
+        storeState,
+        model: 'gpt-4o-mini', // 使用与 Web端一致的模型
+      }));
+    });
+  }
+
+  // Legacy method - 保留向后兼容
   streamChat(messages: any[], config: any, storeState: any) {
     const url = `${API_BASE_URL}/chat`;
-    // SSE 需要使用 EventSource 或 fetch
     return {
       url,
       headers: {
@@ -1232,13 +1338,14 @@ class ApiClient {
     return data;
   }
 
-  async chatWithPersona(personaId: string, message: string, context?: string, mode?: string) {
-    // 直接聊天接口
+  async chatWithPersona(personaId: string, message: string, context?: string, mode?: string, persona?: string) {
+    // 直接聊天接口 - 支持历史人物和课程Agent
     const { data } = await this.client.post('/personas/chat', {
       persona_id: personaId,
       message,
       context,
       mode: mode || 'teaching',
+      persona,  // 课程Agent的个性描述（可选）
     });
     return data;
   }

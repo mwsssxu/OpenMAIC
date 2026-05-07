@@ -125,32 +125,15 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
     zIndex: 1,
   }), [position, element.rotate, scaleX, scaleY]);
 
-  // Text wrapper style - 与Web端element-content一致
-  // 根据元素ID自动添加背景色装饰（因为后端数据没有fill属性）
-  const backgroundColor = useMemo(() => {
-    // 如果数据自带fill属性，使用它
-    if (element.fill) return element.fill;
-
-    // 否则根据元素ID自动分配背景色
-    const el = element as any;
-    if (el.id?.startsWith('title')) {
-      return '#e8f4fd'; // 标题：浅蓝色
-    } else if (el.id?.startsWith('desc')) {
-      return '#f0f9e8'; // 描述：浅绿色
-    } else if (el.id?.startsWith('point')) {
-      return '#f5f5f5'; // 要点：浅灰色
-    }
-    return 'transparent';
-  }, [element]);
-
+  // Text wrapper style - 使用元素自带的fill属性
+  // 精确格式数据自带fill属性，无需自动装饰
   const textWrapperStyle = useMemo(() => ({
     flex: 1,
-    padding: 10 * Math.min(scaleX, scaleY), // padding使用较小的scale保持比例
+    padding: 10 * Math.min(scaleX, scaleY),
     justifyContent: 'flex-start' as const,
-    backgroundColor,
+    backgroundColor: element.fill || 'transparent',
     opacity: element.opacity || 1,
-    borderRadius: 8 * Math.min(scaleX, scaleY), // 添加圆角
-  }), [scaleX, scaleY, backgroundColor, element.opacity]);
+  }), [scaleX, scaleY, element.fill, element.opacity]);
 
   // Text style
   const textStyle = useMemo(() => ({

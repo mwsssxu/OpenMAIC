@@ -121,6 +121,21 @@ class ApiClient {
     return data;
   }
 
+  // 创建完整课程（包含大纲生成场景内容并保存）
+  async createFullClassroom(body: {
+    name: string;
+    description?: string;
+    outlines: any[];
+    agent_ids?: string[];
+    agent_configs?: any[];
+    language?: string;
+  }) {
+    const { data } = await this.client.post('/classrooms/create-full', body, {
+      timeout: 180000, // 3分钟（场景生成需要时间）
+    });
+    return data;
+  }
+
   async deleteClassroom(id: string) {
     const { data } = await this.client.delete(`/classrooms/${id}`);
     return data;

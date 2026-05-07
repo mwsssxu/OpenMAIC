@@ -20,8 +20,11 @@ import { View, StyleSheet } from 'react-native';
 import { ScreenElement } from './ScreenElement';
 import { SpotlightOverlay } from './SpotlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
+import { SimplifiedLayout } from './SimplifiedLayout';
+import { detectLayoutMode } from './utils/layout-detection';
 import type { PPTElement, SlideBackground, SlideTheme, PPTLineElement } from './types';
 import { useSlideBackgroundStyle } from './hooks/useViewportSize';
+import { VIEWPORT_SIZE, VIEWPORT_HEIGHT, CANVAS_MARGIN_PRECISE, CANVAS_MARGIN_SIMPLIFIED } from './constants';
 
 // Helper to check if element is a line
 function isLineElement(element: PPTElement): element is PPTLineElement {
@@ -44,11 +47,6 @@ interface ScreenCanvasProps {
   /** Laser options */
   laserOptions?: { color?: string; duration?: number };
 }
-
-// 固定viewport尺寸（与Web端一致）
-const VIEWPORT_SIZE = 1000;
-const VIEWPORT_RATIO = 16 / 9;
-const VIEWPORT_HEIGHT = VIEWPORT_SIZE / VIEWPORT_RATIO; // 562.5
 
 /**
  * ScreenCanvas Component
@@ -80,38 +78,52 @@ export function ScreenCanvas({
   // viewportHeight = viewportSize / viewportRatio（除法而非乘法）
   // 或者直接用预定义的 VIEWPORT_HEIGHT = 562.5
 
-  // Mobile端适配策略：双轴缩放
-  // viewport ratio (16:9=1.78) 与 container ratio (~0.85) 差异大
-  // 使用不同的scaleX和scaleY来同时填充宽度和高度
+  // 布局模式检测
+  const layoutMode = useMemo(() => detectLayoutMode(elements), [elements]);
 
+  // 精确格式：双轴缩放
   const canvasScaleX = useMemo(() => {
+    if (layoutMode !== 'precise') return 1;
     if (containerSize.width === 0) return 1;
-    // 按宽度适配，留10px边距
-    return (containerSize.width - 20) / VIEWPORT_SIZE;
-  }, [containerSize.width]);
+    return (containerSize.width - CANVAS_MARGIN_PRECISE) / VIEWPORT_SIZE;
+  }, [layoutMode, containerSize.width]);
 
   const canvasScaleY = useMemo(() => {
+    if (layoutMode !== 'precise') return 1;
     if (containerSize.height === 0) return 1;
-    // 按高度适配，让内容填满垂直空间
-    // 保持与X轴缩放相同的基准，但调整viewportHeight概念
-    // viewportHeight概念调整为：让scaleY使内容填满容器高度
-    const targetHeight = containerSize.height - 40; // 留边距
+    const targetHeight = containerSize.height - CANVAS_MARGIN_SIMPLIFIED;
     return targetHeight / VIEWPORT_HEIGHT;
-  }, [containerSize.height]);
+  }, [layoutMode, containerSize.height]);
 
-  // Canvas在容器中的位置
+  // Canvas尺寸计算
+  // 简化格式：宽度固定，高度自适应（内容撑开）
+  const canvasWidth = useMemo(() => {
+    if (layoutMode === 'simplified') {
+      return containerSize.width - CANVAS_MARGIN_PRECISE;
+    }
+    return VIEWPORT_SIZE * canvasScaleX;
+  }, [layoutMode, containerSize.width, canvasScaleX]);
+
+  // 精确格式：固定高度（双轴缩放）
+  const canvasHeight = useMemo(() => {
+    if (layoutMode === 'simplified') {
+      return undefined; // 简化格式自适应高度
+    }
+    return VIEWPORT_HEIGHT * canvasScaleY;
+  }, [layoutMode, containerSize.height, canvasScaleY]);
+
+  // Canvas位置
   const viewportLeft = 10;
-  const viewportTop = 20;
-
-  // 简洁调试 - 只在首次渲染时打印scale
+  const viewportTop = 10;
 
   // Handle layout
   const handleLayout = useCallback((event: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width, height } = event.nativeEvent.layout;
     if (width > 0 && height > 0) {
       setContainerSize({ width, height });
+      console.log('[ScreenCanvas] mode:', detectLayoutMode(elements));
     }
-  }, []);
+  }, [elements]);
 
   // Background style
   const backgroundStyle = useSlideBackgroundStyle(background);
@@ -158,22 +170,23 @@ export function ScreenCanvas({
     };
   }, [laserElementId, elements]);
 
-  // Canvas实际显示尺寸 - 使用不同的宽高缩放
-  const canvasWidth = VIEWPORT_SIZE * canvasScaleX;
-  const canvasHeight = VIEWPORT_HEIGHT * canvasScaleY;
-
   return (
     <View
       ref={containerRef}
       style={styles.container}
       onLayout={handleLayout}
     >
-      {/* Canvas容器 - 与Web端外层容器一致 */}
+      {/* Canvas容器 */}
       <View
         style={[
           styles.canvas,
           backgroundStyle,
-          {
+          layoutMode === 'simplified' ? {
+            position: 'absolute',
+            left: viewportLeft,
+            top: viewportTop,
+            width: canvasWidth,
+          } : {
             position: 'absolute',
             left: viewportLeft,
             top: viewportTop,
@@ -182,40 +195,54 @@ export function ScreenCanvas({
           },
         ]}
       >
-        {/* 内容层 - 元素使用缩放后的坐标 */}
-        {elements.map((element) => (
-          <ScreenElement
-            key={element.id}
-            element={element}
+        {/* 简化格式渲染 */}
+        {layoutMode === 'simplified' && (
+          <SimplifiedLayout
+            elements={elements}
             theme={activeTheme}
-            scaleX={canvasScaleX}
-            scaleY={canvasScaleY}
-          />
-        ))}
-
-        {/* Spotlight overlay */}
-        {spotlightGeometry && (
-          <SpotlightOverlay
-            geometry={spotlightGeometry}
-            dimness={spotlightOptions?.dimness ?? 0.7}
-            scaleX={canvasScaleX}
-            scaleY={canvasScaleY}
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
+            containerSize={containerSize}
           />
         )}
 
-        {/* Laser pointer overlay */}
-        {laserPosition && (
-          <LaserOverlay
-            position={laserPosition}
-            color={laserOptions?.color ?? '#ff3b30'}
-            duration={laserOptions?.duration ?? 500}
-            scaleX={canvasScaleX}
-            scaleY={canvasScaleY}
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
-          />
+        {/* 精确格式渲染 */}
+        {layoutMode === 'precise' && (
+          <>
+            {/* 内容层 - 元素使用缩放后的坐标 */}
+            {elements.map((element) => (
+              <ScreenElement
+                key={element.id}
+                element={element}
+                theme={activeTheme}
+                scaleX={canvasScaleX}
+                scaleY={canvasScaleY}
+              />
+            ))}
+
+            {/* Spotlight overlay */}
+            {spotlightGeometry && canvasHeight && (
+              <SpotlightOverlay
+                geometry={spotlightGeometry}
+                dimness={spotlightOptions?.dimness ?? 0.7}
+                scaleX={canvasScaleX}
+                scaleY={canvasScaleY}
+                canvasWidth={canvasWidth}
+                canvasHeight={canvasHeight}
+              />
+            )}
+
+            {/* Laser pointer overlay */}
+            {laserPosition && canvasHeight && (
+              <LaserOverlay
+                position={laserPosition}
+                color={laserOptions?.color ?? '#ff3b30'}
+                duration={laserOptions?.duration ?? 500}
+                scaleX={canvasScaleX}
+                scaleY={canvasScaleY}
+                canvasWidth={canvasWidth}
+                canvasHeight={canvasHeight}
+              />
+            )}
+          </>
         )}
       </View>
     </View>

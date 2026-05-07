@@ -39,8 +39,10 @@ async def call_llm(
     start_time = time.time()
 
     model_str = model or settings.DEFAULT_MODEL
-    # 移除 openai/ 前缀
+    # 移除 provider 前缀 (支持 openai/ 和 openai: 两种格式)
     if model_str.startswith("openai/"):
+        model_str = model_str[7:]
+    elif model_str.startswith("openai:"):
         model_str = model_str[7:]
 
     messages = []
@@ -64,14 +66,17 @@ async def call_llm(
     logger.info(f"[LLM] 开始调用 - model={model_str}, api_base={api_base}, max_tokens={max_tokens}")
     logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
 
-    # 使用 httpx 异步客户端，增加超时时间（GLM-5 推理模型需要更长时间）
-    timeout = httpx.Timeout(180.0, connect=30.0)  # 总超时180秒，连接超时30秒
+    # 使用 httpx 异步客户端，增加超时时间和 Keep-Alive
+    # DashScope API 需要更长时间处理，增加总超时到 300 秒
+    timeout = httpx.Timeout(300.0, connect=60.0, read=300.0, write=60.0, pool=30.0)
 
     for attempt in range(max_retries):
         attempt_start = time.time()
         try:
             logger.info(f"[LLM] 尝试 #{attempt + 1}/{max_retries}")
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            # 使用 limits 配置连接池，增加 Keep-Alive
+            limits = httpx.Limits(max_connections=10, max_keepalive_connections=5, keepalive_expiry=30.0)
+            async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
                 response = await client.post(
                     url,
                     headers={

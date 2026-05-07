@@ -112,17 +112,13 @@ export default function CreateClassroomPage() {
     setLoading(true);
 
     try {
-      // 创建课程，传递 agent_ids
-      const classroom = await apiClient.createClassroom({
+      // 使用 create-full 接口：一次请求完成创建+生成+保存
+      const classroom = await apiClient.createFullClassroom({
         name: topic,
         description: description,
-        language_directive: 'zh-CN',
-        agent_ids: agents.map(a => a.id),
-      });
-
-      // 生成场景内容
-      await apiClient.generateScenes({
         outlines: outlines,
+        agent_ids: agents.map(a => a.id),
+        agent_configs: agents, // 传递完整配置
         language: 'zh-CN',
       });
 

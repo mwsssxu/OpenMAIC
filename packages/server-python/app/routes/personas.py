@@ -1,6 +1,7 @@
 """AI Personas - Historical figures as learning companions
 
 Create differentiated AI personas with unique knowledge, style, and teaching methods.
+Also supports course-generated agents (teacher, student, assistant) with custom personas.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ import time
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id
 from app.services.llm import call_llm
+from app.services.orchestration.director_graph import AGENT_SYSTEM_PROMPTS
 
 router = APIRouter(prefix="/personas", tags=["ai-personas"])
 logger = logging.getLogger(__name__)
@@ -110,8 +112,9 @@ class PersonaInfo(BaseModel):
 class PersonaChatRequest(BaseModel):
     persona_id: str
     message: str
-    context: Optional[str] = None  # course_id, question_id, etc.
+    context: Optional[str] = None  # course_id, scene_title, etc.
     mode: str = "teaching"  # 'teaching', 'discussion', 'questioning'
+    persona: Optional[str] = None  # Course agent persona description (for course-generated agents)
 
 
 class PersonaChatResponse(BaseModel):
@@ -141,19 +144,20 @@ async def generate_persona_response(
     context: Optional[str],
     mode: str,
     user_id: str,
-    db: asyncpg.Connection
+    db: asyncpg.Connection,
+    persona_description: Optional[str] = None,  # Course agent persona
 ) -> dict:
-    """Generate persona response using AI."""
+    """Generate persona response using AI. Supports both historical personas and course agents."""
     start_time = time.time()
+
+    # Check if it's a historical persona or course agent
     persona = PERSONAS.get(persona_id)
-    if not persona:
+    is_course_agent = persona_id in AGENT_SYSTEM_PROMPTS
+
+    if not persona and not is_course_agent:
         raise HTTPException(status_code=404, detail="Persona not found")
 
-    logger.info(f"[Persona] 开始生成响应 - persona={persona['name']}, mode={mode}")
-    logger.debug(f"[Persona] 用户消息: {user_message[:LOG_TRUNCATION_LENGTH]}...")
-    logger.debug(f"[Persona] 上下文: {context or '无'}")
-
-    # 获取用户信息
+    # Get user info
     user_info = await db.fetchrow(
         """
         SELECT nickname, league_tier, point_balance
@@ -161,13 +165,45 @@ async def generate_persona_response(
         """,
         uuid.UUID(user_id)
     )
-    user_name = user_info["nickname"] or "学员"
+    user_name = user_info["nickname"] if user_info else "学员"
 
-    # 构建智能体提示词
-    style = persona["style"]
-    quotes = style["quotes"]
+    # Build system prompt based on persona type
+    if is_course_agent:
+        # Course agent mode - use AGENT_SYSTEM_PROMPTS
+        logger.info(f"[Persona] 课程Agent模式 - persona_id={persona_id}")
+        base_prompt = AGENT_SYSTEM_PROMPTS[persona_id]
 
-    system_prompt = f"""你是{persona['name']}（{persona['name_en']}），{persona['era']}的历史人物。
+        # Add mode-specific instructions (same as historical personas)
+        mode_instructions = {
+            "teaching": "详细讲解概念，给出例子。",
+            "discussion": "引导讨论，提出追问让学生思考。",
+            "questioning": "用苏格拉底式提问引导学生发现答案。",
+        }
+
+        # Add persona description if provided
+        if persona_description:
+            system_prompt = base_prompt + f"\n\n## 你的个性\n{persona_description}"
+        else:
+            system_prompt = base_prompt
+
+        # Add mode instruction
+        system_prompt += f"\n\n## 当前任务\n{mode_instructions.get(mode, mode_instructions['teaching'])}"
+
+        # Add course context
+        if context:
+            system_prompt += f"\n\n## 当前场景\n{context}"
+
+        system_prompt += f"\n\n当前对话者：{user_name}"
+        quotes = []
+        style_tone = "专业教学"
+    else:
+        # Historical persona mode (existing logic)
+        logger.info(f"[Persona] 历史人物模式 - persona={persona['name']}, mode={mode}")
+        style = persona["style"]
+        quotes = style["quotes"]
+        style_tone = style["tone"]
+
+        system_prompt = f"""你是{persona['name']}（{persona['name_en']}），{persona['era']}的历史人物。
 
 ## 你的身份特征
 - 专业领域：{persona['specialty']}
@@ -192,7 +228,13 @@ async def generate_persona_response(
 
 当前对话者：{user_name}"""
 
-    user_prompt = f"""学生问题：{user_message}
+    # Build user prompt
+    if is_course_agent:
+        user_prompt = f"""学生问题：{user_message}
+
+请以{persona_id}角色的身份回答这个问题。"""
+    else:
+        user_prompt = f"""学生问题：{user_message}
 
 请以{persona['name']}的身份回答这个问题。"""
 
@@ -219,8 +261,8 @@ async def generate_persona_response(
         return {
             "persona_id": persona_id,
             "response": response,
-            "style_used": style["tone"],
-            "quotes_used": quotes[:2],
+            "style_used": style_tone,
+            "quotes_used": quotes[:2] if quotes else [],
             "suggestions": ["继续深入探讨", "尝试实际应用", "思考相关原理"],
             "elapsed_seconds": round(total_elapsed, 2)
         }
@@ -230,20 +272,34 @@ async def generate_persona_response(
         logger.error(f"[Persona] LLM调用失败 (耗时: {elapsed:.1f}s): {e}")
 
         # 降级到模拟响应
-        if mode == "teaching":
-            response = f"{persona['name']}：{user_message[:30]}...这个问题很有趣。{style['quotes'][0]}。让我为你讲解..."
-        elif mode == "discussion":
-            response = f"{persona['name']}：你说得很好。但我有不同的看法，{style['quotes'][-1]}。你怎么看？"
+        if is_course_agent:
+            # Course agent fallback
+            role_name = persona_id.replace("_", " ").title()
+            if mode == "teaching":
+                response = f"{role_name}：{user_message[:30]}...这是一个很好的问题。让我为你讲解..."
+            elif mode == "discussion":
+                response = f"{role_name}：你说得很好。我有一些补充观点。你怎么看？"
+            else:
+                response = f"{role_name}：那么你认为这个问题的关键是什么？"
+        elif persona:
+            # Historical persona fallback
+            style = persona["style"]
+            if mode == "teaching":
+                response = f"{persona['name']}：{user_message[:30]}...这个问题很有趣。{style['quotes'][0]}。让我为你讲解..."
+            elif mode == "discussion":
+                response = f"{persona['name']}：你说得很好。但我有不同的看法，{style['quotes'][-1]}。你怎么看？"
+            else:
+                response = f"{persona['name']}：{style['quotes'][0]}。那么你认为这个概念的本质是什么？"
         else:
-            response = f"{persona['name']}：{style['quotes'][0]}。那么你认为这个概念的本质是什么？"
+            response = "让我思考一下这个问题..."
 
         logger.info(f"[Persona] 使用降级响应: {response[:100]}...")
 
         return {
             "persona_id": persona_id,
             "response": response,
-            "style_used": style["tone"],
-            "quotes_used": quotes[:2],
+            "style_used": style_tone,
+            "quotes_used": quotes[:2] if quotes else [],
             "suggestions": [],
             "elapsed_seconds": round(elapsed, 2),
             "fallback": True
@@ -299,8 +355,8 @@ async def chat_with_persona(
     logger.info(f"[Chat] 用户消息: {request.message}")
     logger.info(f"[Chat] 上下文: {request.context or '无'}")
 
-    if len(request.message) < 3:
-        raise HTTPException(status_code=400, detail="Message too short")
+    if not request.message or len(request.message.strip()) < 1:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     # Generate response
     response_data = await generate_persona_response(
@@ -309,7 +365,8 @@ async def chat_with_persona(
         request.context,
         request.mode,
         user_id,
-        db
+        db,
+        request.persona  # Pass course agent persona description
     )
 
     # Store message in session

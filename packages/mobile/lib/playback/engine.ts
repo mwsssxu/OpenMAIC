@@ -167,6 +167,7 @@ export class PlaybackEngine {
 
   /**
    * 处理场景的所有 actions
+   * 按顺序执行：spotlight/laser非阻塞立即执行，speech阻塞等待播放完成
    */
   private async processSceneActions(scene: Scene): Promise<void> {
     const actions = scene.actions || [];
@@ -180,22 +181,21 @@ export class PlaybackEngine {
     // 先清除之前的视觉效果
     this.callbacks.onClearEffects?.();
 
-    // 处理所有 actions
-    // spotlight/laser 是非阻塞的，speech 是阻塞的
+    // 按顺序处理所有 actions
     for (const action of actions) {
       this.callbacks.onActionExecute?.(action);
 
       if (action.type === 'spotlight') {
         this.executeSpotlight(action);
-        // 非阻塞，立即继续
+        // 非阻塞，立即继续下一个action
       } else if (action.type === 'laser') {
         this.executeLaser(action);
-        // 非阻塞，立即继续
+        // 非阻塞，立即继续下一个action
       } else if (action.type === 'speech') {
-        // speech 是阻塞的，等待完成
+        // 阻塞，等待播放完成再继续
         await this.executeSpeech(action as SceneAction<'speech'>);
-        return;
       }
+      // 其他action类型（wb_draw等）暂不处理
     }
   }
 
@@ -228,6 +228,10 @@ export class PlaybackEngine {
     // 跳过不需要播放的场景
     if (NON_SPEECH_SCENE_TYPES.includes(scene.type)) {
       await this.nextScene();
+      // 继续播放下一个场景（与 Web端一致）
+      if (this.mode === 'playing') {
+        await this.playCurrentSceneAuto();
+      }
       return;
     }
 
@@ -302,6 +306,9 @@ export class PlaybackEngine {
     await this.audioPlayer.stop();
     Speech.stop();
     this.speechPlaying = false;
+
+    // 清除视觉效果（与 Web端 一致）
+    this.callbacks.onClearEffects?.();
   }
 
   /**

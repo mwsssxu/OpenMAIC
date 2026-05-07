@@ -2,6 +2,7 @@ node_modules/
 .expo/
 dist/
 dist-test*/
+temp_export/
 npm-debug.*
 *.jks
 *.p8
