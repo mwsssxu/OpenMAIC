@@ -62,27 +62,21 @@ DEFAULT_VOICE_CONFIGS = [
 ]
 
 
-AGENT_SYSTEM_PROMPT = """你是课程设计专家，根据课程名称生成智能体配置。
+# 合并prompt（不使用system_prompt，避免DashScope超时）
+AGENT_PROMPT_TEMPLATE = """你是课程设计专家。根据课程信息生成智能体配置。
 
-输出JSON格式：{"agents": [...]}
-规则：
-1. 必须有1个teacher(priority=10)
-2. 建议1个assistant(priority=7)
-3. 建议2个不同性格的student(priority=4-6)
-4. 每个agent包含: name, role, persona(性格描述), avatar, color, priority
-5. persona用一句话描述性格风格
-6. 学生性格要不同(好奇型/学霸型/活泼型等)
-7. 使用不同颜色: #5b9bd5(蓝), #10b981(绿), #f59e0b(橙), #8b5cf6(紫)
-8. 只输出JSON，无其他内容"""
-
-AGENT_USER_PROMPT_TEMPLATE = """课程: {stage_name}
+课程: {stage_name}
 描述: {stage_description}
 大纲: {scene_outlines}
-语言: {language}
-可用头像: {available_avatars}
-可用颜色: {available_colors}
 
-生成智能体配置JSON。"""
+输出JSON: {"agents": [...]}
+规则：
+- 1个teacher(priority=10, #5b9bd5蓝)
+- 1个assistant(priority=7, #10b981绿)
+- 2个不同性格student(priority=4-6)
+- 每个agent: name, role, persona(一句话), color, priority
+- 学生性格: 好奇型/学霸型/活泼型等
+- 只输出JSON"""
 
 
 async def generate_agent_profiles(
@@ -113,26 +107,23 @@ async def generate_agent_profiles(
             for i, o in enumerate(scene_outlines)
         ])
     else:
-        outlines_summary = "暂无大纲" if language == "zh-CN" else "No outlines available"
+        outlines_summary = "暂无大纲" if language == "zh-CN" else "No outlines"
 
-    # 构建提示词
-    user_prompt = AGENT_USER_PROMPT_TEMPLATE.format(
+    # 构建合并prompt（避免DashScope超时）
+    prompt = AGENT_PROMPT_TEMPLATE.format(
         stage_name=stage_name,
         stage_description=stage_description or ("暂无描述" if language == "zh-CN" else "No description"),
         scene_outlines=outlines_summary,
-        language=language,
-        available_avatars=json.dumps(DEFAULT_AVATARS),
-        available_colors=json.dumps(AGENT_COLOR_PALETTE),
     )
 
-    # 调用 LLM
+    # 调用 LLM（不使用system_prompt，避免超时）
     try:
         response = await call_llm(
-            prompt=user_prompt,
-            system_prompt=AGENT_SYSTEM_PROMPT,
+            prompt=prompt,
+            system_prompt=None,  # 不使用system_prompt避免DashScope超时
             model=model,
             temperature=0.7,
-            max_tokens=2048,
+            max_tokens=800,
         )
 
         # 解析 JSON
