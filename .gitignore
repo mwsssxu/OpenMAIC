@@ -69,6 +69,8 @@ next-env.d.ts
 /data
 /logs
 
-# docs - now tracked in repository
-# /docs
-.history
+# docs
+/docs
+# Eval results
+eval/whiteboard-layout/results/
+eval/outline-language/results/

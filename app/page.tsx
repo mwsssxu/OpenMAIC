@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -12,16 +12,23 @@ import {
   ImagePlus,
   Pencil,
   Trash2,
+  Search,
   Settings,
   Sun,
   Moon,
   Monitor,
   BotOff,
   ChevronUp,
+  Upload,
+  Sparkles,
+  Atom,
+  X,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { LanguageSwitcher } from '@/components/language-switcher';
 import { createLogger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
+import { InputGroup, InputGroupInput, InputGroupButton } from '@/components/ui/input-group';
 import { Textarea as UITextarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/settings';
@@ -39,6 +46,7 @@ import {
   deleteStageData,
   renameStage,
   getFirstSlideByStages,
+  revokeThumbnailSlideMediaUrls,
 } from '@/lib/utils/stage-storage';
 import { ThumbnailSlide } from '@/components/slide-renderer/components/ThumbnailSlide';
 import type { Slide } from '@/lib/types/slides';
@@ -47,29 +55,30 @@ import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDraftCache } from '@/lib/hooks/use-draft-cache';
 import { SpeechButton } from '@/components/audio/speech-button';
+import { useImportClassroom } from '@/lib/import/use-import-classroom';
 
 const log = createLogger('Home');
 
 const WEB_SEARCH_STORAGE_KEY = 'webSearchEnabled';
-const LANGUAGE_STORAGE_KEY = 'generationLanguage';
 const RECENT_OPEN_STORAGE_KEY = 'recentClassroomsOpen';
+const INTERACTIVE_MODE_STORAGE_KEY = 'interactiveModeEnabled';
 
 interface FormState {
   pdfFile: File | null;
   requirement: string;
-  language: 'zh-CN' | 'en-US';
   webSearch: boolean;
+  interactiveMode: boolean;
 }
 
 const initialFormState: FormState = {
   pdfFile: null,
   requirement: '',
-  language: 'zh-CN',
   webSearch: false,
+  interactiveMode: false,
 };
 
 function HomePage() {
-  const { t, locale, setLocale } = useI18n();
+  const { t } = useI18n();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [form, setForm] = useState<FormState>(initialFormState);
@@ -85,6 +94,14 @@ function HomePage() {
   // Model setup state
   const currentModelId = useSettingsStore((s) => s.modelId);
   const [recentOpen, setRecentOpen] = useState(true);
+  const persistRecentOpen = (next: boolean) => {
+    setRecentOpen(next);
+    try {
+      localStorage.setItem(RECENT_OPEN_STORAGE_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Hydrate client-only state after mount (avoids SSR mismatch)
   /* eslint-disable react-hooks/set-state-in-effect -- Hydration from localStorage must happen in effect */
@@ -97,15 +114,10 @@ function HomePage() {
     }
     try {
       const savedWebSearch = localStorage.getItem(WEB_SEARCH_STORAGE_KEY);
-      const savedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      const savedInteractiveMode = localStorage.getItem(INTERACTIVE_MODE_STORAGE_KEY);
       const updates: Partial<FormState> = {};
       if (savedWebSearch === 'true') updates.webSearch = true;
-      if (savedLanguage === 'zh-CN' || savedLanguage === 'en-US') {
-        updates.language = savedLanguage;
-      } else {
-        const detected = navigator.language?.startsWith('zh') ? 'zh-CN' : 'en-US';
-        updates.language = detected;
-      }
+      if (savedInteractiveMode === 'true') updates.interactiveMode = true;
       if (Object.keys(updates).length > 0) {
         setForm((prev) => ({ ...prev, ...updates }));
       }
@@ -115,36 +127,51 @@ function HomePage() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Restore requirement draft from cache (derived state pattern — no effect needed)
-  const [prevCachedRequirement, setPrevCachedRequirement] = useState(cachedRequirement);
-  if (cachedRequirement !== prevCachedRequirement) {
-    setPrevCachedRequirement(cachedRequirement);
-    if (cachedRequirement) {
-      setForm((prev) => ({ ...prev, requirement: cachedRequirement }));
-    }
-  }
+  // Restore requirement draft from localStorage on mount. The previous derived-state
+  // pattern initialised `prev` from the cached value itself, so on the first client
+  // render the comparison was always equal and the restore never fired. Use an effect
+  // so the cache is hydrated into the form once we know the live requirement is empty.
+  const draftRestoredRef = useRef(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- Hydration from localStorage must happen in effect */
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    if (!cachedRequirement) return;
+    draftRestoredRef.current = true;
+    setForm((prev) => (prev.requirement ? prev : { ...prev, requirement: cachedRequirement }));
+  }, [cachedRequirement]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [classrooms, setClassrooms] = useState<StageListItem[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, Slide>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const thumbnailsRef = useRef<Record<string, Slide>>({});
+
+  const replaceThumbnails = (slides: Record<string, Slide>) => {
+    const previous = thumbnailsRef.current;
+    thumbnailsRef.current = slides;
+    setThumbnails(slides);
+    window.setTimeout(() => revokeThumbnailSlideMediaUrls(previous), 0);
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
-    if (!languageOpen && !themeOpen) return;
+    if (!themeOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setLanguageOpen(false);
         setThemeOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [languageOpen, themeOpen]);
+  }, [themeOpen]);
 
   const loadClassrooms = async () => {
     try {
@@ -153,12 +180,20 @@ function HomePage() {
       // Load first slide thumbnails
       if (list.length > 0) {
         const slides = await getFirstSlideByStages(list.map((c) => c.id));
-        setThumbnails(slides);
+        replaceThumbnails(slides);
+      } else {
+        replaceThumbnails({});
       }
     } catch (err) {
       log.error('Failed to load classrooms:', err);
     }
   };
+
+  const { importing, fileInputRef, triggerFileSelect, handleFileChange } = useImportClassroom(
+    () => {
+      loadClassrooms();
+    },
+  );
 
   useEffect(() => {
     // Clear stale media store to prevent cross-course thumbnail contamination.
@@ -169,6 +204,11 @@ function HomePage() {
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Store hydration on mount
     loadClassrooms();
+
+    return () => {
+      revokeThumbnailSlideMediaUrls(thumbnailsRef.current);
+      thumbnailsRef.current = {};
+    };
   }, []);
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -197,11 +237,23 @@ function HomePage() {
     }
   };
 
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const filteredClassrooms = useMemo(() => {
+    const q = deferredSearchQuery.trim().toLowerCase();
+    if (!q) return classrooms;
+    return classrooms.filter((c) => {
+      const name = c.name?.toLowerCase() ?? '';
+      const desc = c.description?.toLowerCase() ?? '';
+      return name.includes(q) || desc.includes(q);
+    });
+  }, [classrooms, deferredSearchQuery]);
+
   const updateForm = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     try {
       if (field === 'webSearch') localStorage.setItem(WEB_SEARCH_STORAGE_KEY, String(value));
-      if (field === 'language') localStorage.setItem(LANGUAGE_STORAGE_KEY, String(value));
+      if (field === 'interactiveMode')
+        localStorage.setItem(INTERACTIVE_MODE_STORAGE_KEY, String(value));
       if (field === 'requirement') updateRequirementCache(value as string);
     } catch {
       /* ignore */
@@ -261,10 +313,10 @@ function HomePage() {
       const userProfile = useUserProfileStore.getState();
       const requirements: UserRequirements = {
         requirement: form.requirement,
-        language: form.language,
         userNickname: userProfile.nickname || undefined,
         userBio: userProfile.bio || undefined,
         webSearch: form.webSearch || undefined,
+        interactiveMode: form.interactiveMode,
       };
 
       let pdfStorageKey: string | undefined;
@@ -332,53 +384,20 @@ function HomePage() {
 
   return (
     <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 pt-16 md:p-8 md:pt-16 overflow-x-hidden">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".zip"
+        onChange={handleFileChange}
+        className="hidden"
+      />
       {/* ═══ Top-right pill (unchanged) ═══ */}
       <div
         ref={toolbarRef}
         className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md px-2 py-1.5 rounded-full border border-gray-100/50 dark:border-gray-700/50 shadow-sm"
       >
         {/* Language Selector */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setLanguageOpen(!languageOpen);
-              setThemeOpen(false);
-            }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all"
-          >
-            {locale === 'zh-CN' ? 'CN' : 'EN'}
-          </button>
-          {languageOpen && (
-            <div className="absolute top-full mt-2 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden z-50 min-w-[120px]">
-              <button
-                onClick={() => {
-                  setLocale('zh-CN');
-                  setLanguageOpen(false);
-                }}
-                className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
-                  locale === 'zh-CN' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
-                )}
-              >
-                简体中文
-              </button>
-              <button
-                onClick={() => {
-                  setLocale('en-US');
-                  setLanguageOpen(false);
-                }}
-                className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
-                  locale === 'en-US' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
-                )}
-              >
-                English
-              </button>
-            </div>
-          )}
-        </div>
+        <LanguageSwitcher onOpen={() => setThemeOpen(false)} />
 
         <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
 
@@ -387,7 +406,6 @@ function HomePage() {
           <button
             onClick={() => {
               setThemeOpen(!themeOpen);
-              setLanguageOpen(false);
             }}
             className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all"
           >
@@ -542,8 +560,6 @@ function HomePage() {
             <div className="px-3 pb-3 flex items-end gap-2">
               <div className="flex-1 min-w-0">
                 <GenerationToolbar
-                  language={form.language}
-                  onLanguageChange={(lang) => updateForm('language', lang)}
                   webSearch={form.webSearch}
                   onWebSearchChange={(v) => updateForm('webSearch', v)}
                   onSettingsOpen={(section) => {
@@ -555,6 +571,37 @@ function HomePage() {
                   onPdfError={setError}
                 />
               </div>
+
+              {/* Interactive mode toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                    onClick={() => updateForm('interactiveMode', !form.interactiveMode)}
+                    className={cn(
+                      'relative inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap border shrink-0 h-8',
+                      form.interactiveMode
+                        ? 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.35)] dark:shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                        : 'border-cyan-300/60 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20',
+                    )}
+                  >
+                    {form.interactiveMode && (
+                      <span
+                        className="absolute inset-[-4px] rounded-full border border-cyan-400/40 dark:border-cyan-400/25"
+                        style={{
+                          animation: 'interactive-mode-breathe 2s ease-in-out infinite',
+                        }}
+                      />
+                    )}
+                    <Atom className="size-3.5 relative z-10 animate-[spin_3s_linear_infinite]" />
+                    <span className="relative z-10">{t('toolbar.interactiveModeLabel')}</span>
+                  </motion.button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {t('toolbar.interactiveModeHint')}
+                </TooltipContent>
+              </Tooltip>
 
               {/* Voice input */}
               <SpeechButton
@@ -599,6 +646,18 @@ function HomePage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* ── Import button (empty state) ── */}
+        {classrooms.length === 0 && (
+          <button
+            onClick={triggerFileSelect}
+            disabled={importing}
+            className="relative z-10 mt-4 flex items-center gap-1.5 text-[12px] text-muted-foreground/40 hover:text-foreground/60 transition-colors"
+          >
+            <Upload className="size-3.5" />
+            <span>{t('import.classroom')}</span>
+          </button>
+        )}
       </motion.div>
 
       {/* ═══ Recent classrooms — collapsible ═══ */}
@@ -610,32 +669,119 @@ function HomePage() {
           className="relative z-10 mt-10 w-full max-w-6xl flex flex-col items-center"
         >
           {/* Trigger — divider-line with centered text */}
-          <button
-            onClick={() => {
-              const next = !recentOpen;
-              setRecentOpen(next);
-              try {
-                localStorage.setItem(RECENT_OPEN_STORAGE_KEY, String(next));
-              } catch {
-                /* ignore */
-              }
-            }}
-            className="group w-full flex items-center gap-4 py-2 cursor-pointer"
-          >
+          <div className="group w-full flex items-center gap-4 py-2">
             <div className="flex-1 h-px bg-border/40 group-hover:bg-border/70 transition-colors" />
-            <span className="shrink-0 flex items-center gap-2 text-[13px] text-muted-foreground/60 group-hover:text-foreground/70 transition-colors select-none">
-              <Clock className="size-3.5" />
-              {t('classroom.recentClassrooms')}
-              <span className="text-[11px] tabular-nums opacity-60">{classrooms.length}</span>
-              <motion.div
-                animate={{ rotate: recentOpen ? 180 : 0 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
+            <div className="shrink-0 flex items-center gap-3 text-[13px] text-muted-foreground/60 select-none">
+              <button
+                onClick={() => persistRecentOpen(!recentOpen)}
+                className="flex items-center gap-2 hover:text-foreground/70 transition-colors cursor-pointer"
               >
-                <ChevronDown className="size-3.5" />
-              </motion.div>
-            </span>
+                <Clock className="size-3.5" />
+                {t('classroom.recentClassrooms')}
+                <span className="text-[11px] tabular-nums opacity-60">{classrooms.length}</span>
+                <motion.div
+                  animate={{ rotate: recentOpen ? 180 : 0 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
+                >
+                  <ChevronDown className="size-3.5" />
+                </motion.div>
+              </button>
+
+              {/* Search toggle — icon that expands into an input in place */}
+              <AnimatePresence initial={false}>
+                {!searchOpen ? (
+                  <motion.button
+                    key="search-icon"
+                    ref={searchButtonRef}
+                    type="button"
+                    aria-label={t('classroom.searchAriaLabel')}
+                    onClick={() => {
+                      setSearchOpen(true);
+                      if (!recentOpen) persistRecentOpen(true);
+                      requestAnimationFrame(() => searchInputRef.current?.focus());
+                    }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12, ease: 'easeOut' }}
+                    className="flex items-center justify-center size-6 rounded-full text-muted-foreground/50 hover:text-foreground/70 hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
+                    <Search className="size-3.5" />
+                  </motion.button>
+                ) : (
+                  <motion.div
+                    key="search-input"
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 200 }}
+                    exit={{ opacity: 0, width: 0 }}
+                    transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <InputGroup
+                      className={cn(
+                        'h-7 text-[12px] rounded-full bg-muted/40 border-transparent shadow-none',
+                        'transition-colors',
+                        'hover:bg-muted/60',
+                        'has-[[data-slot=input-group-control]:focus-visible]:bg-muted/60',
+                        'has-[[data-slot=input-group-control]:focus-visible]:border-transparent',
+                        'has-[[data-slot=input-group-control]:focus-visible]:ring-0',
+                      )}
+                    >
+                      <InputGroupInput
+                        ref={searchInputRef}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            if (searchQuery) {
+                              setSearchQuery('');
+                            } else {
+                              setSearchOpen(false);
+                              requestAnimationFrame(() => searchButtonRef.current?.focus());
+                            }
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!searchQuery) {
+                            setSearchOpen(false);
+                          }
+                        }}
+                        placeholder={t('classroom.searchPlaceholder')}
+                        aria-label={t('classroom.searchAriaLabel')}
+                        className="h-7 pl-3 placeholder:text-muted-foreground/50"
+                      />
+                      {searchQuery && (
+                        <InputGroupButton
+                          size="icon-xs"
+                          aria-label={t('classroom.clearSearch')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setSearchQuery('');
+                            searchInputRef.current?.focus();
+                          }}
+                        >
+                          <X />
+                        </InputGroupButton>
+                      )}
+                    </InputGroup>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <button
+                onClick={triggerFileSelect}
+                disabled={importing}
+                className="group/import grid grid-cols-[auto_0fr] hover:grid-cols-[auto_1fr] items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px] text-muted-foreground/35 hover:text-muted-foreground/70 hover:bg-muted/50 transition-all duration-200 cursor-pointer"
+              >
+                <Upload className="size-3" />
+                <span className="overflow-hidden opacity-0 group-hover/import:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                  {t('import.classroom')}
+                </span>
+              </button>
+            </div>
             <div className="flex-1 h-px bg-border/40 group-hover:bg-border/70 transition-colors" />
-          </button>
+          </div>
 
           {/* Expandable content */}
           <AnimatePresence>
@@ -647,32 +793,38 @@ function HomePage() {
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                 className="w-full overflow-hidden"
               >
-                <div className="pt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-8">
-                  {classrooms.map((classroom, i) => (
-                    <motion.div
-                      key={classroom.id}
-                      initial={{ opacity: 0, y: 16 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        delay: i * 0.04,
-                        duration: 0.35,
-                        ease: 'easeOut',
-                      }}
-                    >
-                      <ClassroomCard
-                        classroom={classroom}
-                        slide={thumbnails[classroom.id]}
-                        formatDate={formatDate}
-                        onDelete={handleDelete}
-                        onRename={handleRename}
-                        confirmingDelete={pendingDeleteId === classroom.id}
-                        onConfirmDelete={() => confirmDelete(classroom.id)}
-                        onCancelDelete={() => setPendingDeleteId(null)}
-                        onClick={() => router.push(`/classroom/${classroom.id}`)}
-                      />
-                    </motion.div>
-                  ))}
-                </div>
+                {searchQuery.trim() && filteredClassrooms.length === 0 ? (
+                  <div className="pt-8 pb-2 text-center text-[13px] text-muted-foreground/60">
+                    {t('classroom.searchEmpty')}
+                  </div>
+                ) : (
+                  <div className="pt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-8">
+                    {filteredClassrooms.map((classroom, i) => (
+                      <motion.div
+                        key={classroom.id}
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          delay: i * 0.04,
+                          duration: 0.35,
+                          ease: 'easeOut',
+                        }}
+                      >
+                        <ClassroomCard
+                          classroom={classroom}
+                          slide={thumbnails[classroom.id]}
+                          formatDate={formatDate}
+                          onDelete={handleDelete}
+                          onRename={handleRename}
+                          confirmingDelete={pendingDeleteId === classroom.id}
+                          onConfirmDelete={() => confirmDelete(classroom.id)}
+                          onCancelDelete={() => setPendingDeleteId(null)}
+                          onClick={() => router.push(`/classroom/${classroom.id}`)}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -797,13 +949,8 @@ function GreetingBar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="leading-none select-none flex items-center gap-1">
-                  <span>
-                    <span className="text-xs text-muted-foreground/60 group-hover:text-muted-foreground transition-colors">
-                      {t('home.greeting')}
-                    </span>
-                    <span className="text-[13px] font-semibold text-foreground/85 group-hover:text-foreground transition-colors">
-                      {displayName}
-                    </span>
+                  <span className="text-[13px] font-semibold text-foreground/85 group-hover:text-foreground transition-colors">
+                    {t('home.greetingWithName', { name: displayName })}
                   </span>
                   <ChevronDown className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors shrink-0" />
                 </span>
@@ -1056,6 +1203,31 @@ function ClassroomCard({
             </div>
           </div>
         ) : null}
+
+        {classroom.interactiveMode && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label={t('toolbar.interactiveModeLabel')}
+                onClick={(e) => e.stopPropagation()}
+                className="absolute bottom-2 left-2 inline-flex items-center justify-center size-5 rounded-full bg-white/70 dark:bg-slate-900/60 text-cyan-600 dark:text-cyan-300 backdrop-blur-sm shadow-sm ring-1 ring-cyan-500/30 z-10"
+              >
+                <Atom className="size-3" />
+              </span>
+            </TooltipTrigger>
+            {/* Negative sideOffset compensates for the global Tooltip Arrow's
+                rotate-45 bounding box, which Radix reserves as spacing. */}
+            <TooltipContent
+              side="top"
+              align="start"
+              sideOffset={-4}
+              collisionPadding={0}
+              className="text-xs"
+            >
+              {t('toolbar.interactiveModeLabel')}
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Delete — top-right, only on hover */}
         <AnimatePresence>

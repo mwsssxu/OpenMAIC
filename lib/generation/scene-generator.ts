@@ -1,16 +1,8 @@
 /**
- * 场景生成器 - 第二阶段：场景内容与动作生成
+ * Stage 2: Scene content and action generation.
  *
- * 核心职责：
- * - 将场景大纲（SceneOutline）转换为完整的场景（Scene）
- * - 支持四种场景类型：幻灯片(slide)、测验(quiz)、交互式(interactive)、项目制学习(pbl)
- * - 为每个场景生成对应的动作列表（Action[]）
- *
- * 生成流程（两步走）：
- *   Step 3.1: 大纲 → 页面内容（slide/quiz/interactive/pbl 的具体数据）
- *   Step 3.2: 内容 + 讲稿 → 动作列表（speech、spotlight、whiteboard 等）
- *
- * 所有场景采用并行生成策略，通过 Promise.all 实现
+ * Generates full scenes (slide/quiz/interactive/pbl with actions)
+ * from scene outlines.
  */
 
 import { nanoid } from 'nanoid';
@@ -25,17 +17,22 @@ import type {
   ScientificModel,
   PdfImage,
   ImageMapping,
+  WidgetOutline,
 } from '@/lib/types/generation';
+import type { WidgetType, WidgetConfig, TeacherAction } from '@/lib/types/widgets';
+import type { PromptId } from '@/lib/prompts/types';
 import type { LanguageModel } from 'ai';
 import type { StageStore } from '@/lib/api/stage-api';
 import { createStageAPI } from '@/lib/api/stage-api';
 import { generatePBLContent } from '@/lib/pbl/generate-pbl';
-import { buildPrompt, PROMPT_IDS } from './prompts';
+import { buildPrompt, PROMPT_IDS } from '@/lib/prompts';
+import { DEFAULT_LANGUAGE_DIRECTIVE } from './outline-generator';
 import { postProcessInteractiveHtml } from './interactive-post-processor';
 import { parseActionsFromStructuredOutput } from './action-parser';
 import { parseJsonResponse } from './json-repair';
 import {
   buildCourseContext,
+  buildLanguageText,
   formatAgentsForPrompt,
   formatTeacherPersonaForPrompt,
   formatImageDescription,
@@ -43,7 +40,14 @@ import {
 } from './prompt-formatters';
 import type { PPTElement, Slide, SlideBackground, SlideTheme } from '@/lib/types/slides';
 import type { QuizQuestion } from '@/lib/types/stage';
-import type { Action } from '@/lib/types/action';
+import type {
+  Action,
+  SpeechAction,
+  WidgetHighlightAction,
+  WidgetSetStateAction,
+  WidgetAnnotationAction,
+  WidgetRevealAction,
+} from '@/lib/types/action';
 import type {
   AgentInfo,
   SceneGenerationContext,
@@ -52,37 +56,52 @@ import type {
   GenerationResult,
   GenerationCallbacks,
 } from './pipeline-types';
+import type { ThinkingConfig } from '@/lib/types/provider';
 import { createLogger } from '@/lib/logger';
 const log = createLogger('Generation');
 
-// ==================== 第二阶段：完整场景生成（两步流程）====================
+// ── Options interfaces for scene generation functions ──
+
+export interface SceneContentOptions {
+  assignedImages?: PdfImage[];
+  imageMapping?: ImageMapping;
+  languageModel?: LanguageModel;
+  visionEnabled?: boolean;
+  generatedMediaMapping?: ImageMapping;
+  agents?: AgentInfo[];
+  languageDirective?: string;
+  thinkingConfig?: ThinkingConfig;
+}
+
+export interface SceneActionsOptions {
+  ctx?: SceneGenerationContext;
+  agents?: AgentInfo[];
+  userProfile?: string;
+  languageDirective?: string;
+}
+
+// ==================== Stage 2: Full Scenes (Two-Step) ====================
 
 /**
- * 第三阶段：并行生成完整场景
+ * Stage 3: Generate full scenes (parallel version)
  *
- * @param sceneOutlines - 场景大纲数组，由 outline-generator 生成
- * @param store - Zustand 状态存储，用于创建场景 API
- * @param aiCall - AI 调用函数，用于生成内容
- * @param callbacks - 生成进度回调（onProgress、onError）
+ * Two steps:
+ * - Step 3.1: Outline -> Page content (slide/quiz)
+ * - Step 3.2: Content + script -> Action list
  *
- * @returns 成功生成的场景 ID 数组（保持原始顺序）
- *
- * 并行策略：
- * - 使用 Promise.all 同时生成所有场景
- * - 每个场景独立生成，互不依赖
- * - 失败的场景会被跳过，不影响其他场景
+ * All scenes generated in parallel using Promise.all
  */
 export async function generateFullScenes(
   sceneOutlines: SceneOutline[],
   store: StageStore,
   aiCall: AICallFn,
   callbacks?: GenerationCallbacks,
+  languageDirective?: string,
 ): Promise<GenerationResult<string[]>> {
   const api = createStageAPI(store);
   const totalScenes = sceneOutlines.length;
   let completedCount = 0;
 
-  // 发送初始进度回调
   callbacks?.onProgress?.({
     currentStage: 3,
     overallProgress: 66,
@@ -92,14 +111,13 @@ export async function generateFullScenes(
     totalScenes,
   });
 
-  // 并行生成所有场景
-  // 每个场景独立处理，失败的场景返回 null，不影响其他场景
+  // Generate all scenes in parallel
   const results = await Promise.all(
     sceneOutlines.map(async (outline, index) => {
       try {
-        const sceneId = await generateSingleScene(outline, api, aiCall);
+        const sceneId = await generateSingleScene(outline, api, aiCall, languageDirective);
 
-        // 更新进度（非原子操作，但足够用于 UI 展示）
+        // Update progress (not atomic, but sufficient for UI display)
         completedCount++;
         callbacks?.onProgress?.({
           currentStage: 3,
@@ -119,7 +137,7 @@ export async function generateFullScenes(
     }),
   );
 
-  // 收集成功生成的场景 ID，保持原始顺序
+  // Collect successful sceneIds in original order
   const sceneIds = results
     .filter(
       (r): r is { success: true; sceneId: string; index: number } =>
@@ -132,25 +150,20 @@ export async function generateFullScenes(
 }
 
 /**
- * 生成单个场景（两步流程）
+ * Generate a single scene (two-step process)
  *
- * 流程：
- *   Step 3.1: 根据大纲生成内容（幻灯片元素、测验题目、交互 HTML、PBL 配置）
- *   Step 3.2: 根据内容和讲稿生成动作列表
- *
- * @param outline - 场景大纲
- * @param api - Stage API 实例
- * @param aiCall - AI 调用函数
- * @returns 生成的场景 ID，失败返回 null
+ * Step 3.1: Generate content
+ * Step 3.2: Generate Actions
  */
 async function generateSingleScene(
   outline: SceneOutline,
   api: ReturnType<typeof createStageAPI>,
   aiCall: AICallFn,
+  languageDirective?: string,
 ): Promise<string | null> {
   // Step 3.1: Generate content
   log.info(`Step 3.1: Generating content for: ${outline.title}`);
-  const content = await generateSceneContent(outline, aiCall);
+  const content = await generateSceneContent(outline, aiCall, { languageDirective });
   if (!content) {
     log.error(`Failed to generate content for: ${outline.title}`);
     return null;
@@ -158,40 +171,112 @@ async function generateSingleScene(
 
   // Step 3.2: Generate Actions
   log.info(`Step 3.2: Generating actions for: ${outline.title}`);
-  const actions = await generateSceneActions(outline, content, aiCall);
+  const actions = await generateSceneActions(outline, content, aiCall, { languageDirective });
   log.info(`Generated ${actions.length} actions for: ${outline.title}`);
 
   // Create complete Scene
   return createSceneWithActions(outline, content, actions, api);
 }
 
+// ==================== Backward Compatibility Helpers ====================
+
 /**
- * Step 3.1：根据场景大纲生成内容
- *
- * 根据场景类型分发到对应的生成函数：
- * - slide → generateSlideContent（幻灯片元素：文本、图片、图表等）
- * - quiz → generateQuizContent（测验题目：单选、多选、简答）
- * - interactive → generateInteractiveContent（交互式 HTML 页面）
- * - pbl → generatePBLSceneContent（项目制学习配置）
- *
- * @param outline - 场景大纲
- * @param aiCall - AI 调用函数
- * @param assignedImages - 从 PDF 提取的图片（用于幻灯片）
- * @param imageMapping - 图片 ID 到 base64 URL 的映射
- * @param languageModel - 语言模型实例（PBL 专用）
- * @param visionEnabled - 是否启用视觉模型（多模态）
- * @param generatedMediaMapping - AI 生成的媒体资源映射
- * @param agents - 智能体信息列表
+ * Convert legacy interactiveConfig to unified widget fields
+ * For backward compatibility with old classrooms
+ */
+function convertInteractiveConfigToWidget(outline: SceneOutline): SceneOutline {
+  const config = outline.interactiveConfig;
+  if (!config) {
+    log.warn(
+      `Interactive outline missing both widget and interactiveConfig, falling back to simulation`,
+    );
+    return {
+      ...outline,
+      widgetType: 'simulation' as WidgetType,
+      widgetOutline: { concept: outline.title },
+    };
+  }
+
+  const widgetType = inferWidgetType(
+    config.subject || '',
+    config.conceptName,
+    config.designIdea || '',
+  );
+
+  log.info(`Converting interactiveConfig to widget: ${widgetType} for "${outline.title}"`);
+
+  return {
+    ...outline,
+    widgetType,
+    widgetOutline: buildWidgetOutline(widgetType, config),
+  };
+}
+
+/**
+ * Infer widget type from concept characteristics
+ */
+function inferWidgetType(subject: string, concept: string, designIdea: string): WidgetType {
+  const text = (subject + ' ' + concept + ' ' + designIdea).toLowerCase();
+
+  // Rule-based inference
+  if (
+    /physics|chemistry|力学|化学|运动|反应|force|motion|equilibrium|wave|电路|circuit/.test(text)
+  ) {
+    return 'simulation';
+  }
+  if (/programming|code|algorithm|编程|算法|python|javascript|function|代码/.test(text)) {
+    return 'code';
+  }
+  if (/process|workflow|步骤|流程|逻辑|step|flow|系统|system/.test(text)) {
+    return 'diagram';
+  }
+  if (
+    /biology|anatomy|cell|molecular|生物|细胞|分子|3d|三维|solar|planet|skeleton|organ/.test(text)
+  ) {
+    return 'visualization3d';
+  }
+  if (/game|quiz|practice|练习|游戏|puzzle|match|challenge|挑战/.test(text)) {
+    return 'game';
+  }
+
+  // Default fallback
+  return 'simulation';
+}
+
+/**
+ * Build widgetOutline from interactiveConfig for backward compatibility
+ */
+function buildWidgetOutline(
+  widgetType: WidgetType,
+  config: { conceptName: string; conceptOverview: string; designIdea: string },
+): WidgetOutline {
+  const base: WidgetOutline = { concept: config.conceptName };
+
+  switch (widgetType) {
+    case 'simulation':
+      // Try to extract variables from designIdea
+      const varMatch = config.designIdea.match(/variables|参数|调整|adjust|slider/i);
+      return { ...base, keyVariables: varMatch ? [] : undefined };
+    case 'diagram':
+      return { ...base, diagramType: 'flowchart' };
+    case 'code':
+      return { ...base, language: 'python' };
+    case 'game':
+      return { ...base, gameType: 'quiz' };
+    case 'visualization3d':
+      return { ...base, visualizationType: 'custom', objects: [] };
+    default:
+      return base;
+  }
+}
+
+/**
+ * Step 3.1: Generate content based on outline
  */
 export async function generateSceneContent(
   outline: SceneOutline,
   aiCall: AICallFn,
-  assignedImages?: PdfImage[],
-  imageMapping?: ImageMapping,
-  languageModel?: LanguageModel,
-  visionEnabled?: boolean,
-  generatedMediaMapping?: ImageMapping,
-  agents?: AgentInfo[],
+  options: SceneContentOptions = {},
 ): Promise<
   | GeneratedSlideContent
   | GeneratedQuizContent
@@ -199,21 +284,39 @@ export async function generateSceneContent(
   | GeneratedPBLContent
   | null
 > {
-  // 如果交互式场景缺少配置，回退到幻灯片
-  if (outline.type === 'interactive' && !outline.interactiveConfig) {
-    log.warn(
-      `Interactive outline "${outline.title}" missing interactiveConfig, falling back to slide`,
-    );
-    const fallbackOutline = { ...outline, type: 'slide' as const };
-    return generateSlideContent(
-      fallbackOutline,
-      aiCall,
-      assignedImages,
-      imageMapping,
-      visionEnabled,
-      generatedMediaMapping,
-      agents,
-    );
+  const {
+    assignedImages,
+    imageMapping,
+    languageModel,
+    visionEnabled,
+    generatedMediaMapping,
+    agents,
+    languageDirective,
+    thinkingConfig,
+  } = options;
+
+  // Unified path for interactive scenes (both normal and ultra mode)
+  if (outline.type === 'interactive') {
+    // Backward compatibility: convert legacy interactiveConfig
+    if (!outline.widgetType && outline.interactiveConfig) {
+      log.info(`Converting legacy interactiveConfig for: ${outline.title}`);
+      outline = convertInteractiveConfigToWidget(outline);
+    }
+
+    // If still no widgetType after conversion, fallback to simulation
+    if (!outline.widgetType) {
+      log.warn(
+        `Interactive outline "${outline.title}" has no widgetType, falling back to simulation`,
+      );
+      outline = {
+        ...outline,
+        widgetType: 'simulation' as WidgetType,
+        widgetOutline: { concept: outline.title },
+      };
+    }
+
+    // Route to widget generation (handles all 5 types)
+    return generateWidgetContent(outline, aiCall, languageDirective);
   }
 
   switch (outline.type) {
@@ -226,29 +329,26 @@ export async function generateSceneContent(
         visionEnabled,
         generatedMediaMapping,
         agents,
+        languageDirective,
       );
     case 'quiz':
-      return generateQuizContent(outline, aiCall);
-    case 'interactive':
-      return generateInteractiveContent(outline, aiCall, outline.language);
+      return generateQuizContent(outline, aiCall, languageDirective);
     case 'pbl':
-      return generatePBLSceneContent(outline, languageModel);
+      return generatePBLSceneContent(outline, languageModel, languageDirective, thinkingConfig);
     default:
       return null;
   }
 }
 
 /**
- * 判断字符串是否为图片 ID 引用（如 "img_1"、"img_2"）
+ * Check if a string looks like an image ID (e.g., "img_1", "img_2")
+ * rather than a base64 data URL or actual URL
  *
- * 用于区分以下几种情况：
- * - 图片 ID："img_1"、"img_2" 等 → 返回 true
- * - Base64 数据 URL："data:image/..." → 返回 false
- * - HTTP URL："http://..."、"https://..." → 返回 false
- * - 相对路径："/images/..." → 返回 false
- *
- * @param value - 待检查的字符串
- * @returns 是否为图片 ID 格式
+ * This function distinguishes between:
+ * - Image IDs: "img_1", "img_2", etc. → returns true
+ * - Base64 data URLs: "data:image/..." → returns false
+ * - HTTP URLs: "http://...", "https://..." → returns false
+ * - Relative paths: "/images/..." → returns false
  */
 function isImageIdReference(value: string): boolean {
   if (!value) return false;
@@ -261,13 +361,8 @@ function isImageIdReference(value: string): boolean {
 }
 
 /**
- * 判断字符串是否为 AI 生成的媒体 ID（如 "gen_img_1"、"gen_vid_xK8f2mQ"）
- *
- * 这些是 AI 生成媒体的占位符，而非 PDF 提取的图片。
- * 格式：gen_img_xxx（图片）或 gen_vid_xxx（视频）
- *
- * @param value - 待检查的字符串
- * @returns 是否为生成的媒体 ID 格式
+ * Check if a string looks like a generated image/video ID (e.g., "gen_img_1", "gen_img_xK8f2mQ")
+ * These are placeholders for AI-generated media, not PDF-extracted images.
  */
 function isGeneratedImageId(value: string): boolean {
   if (!value) return false;
@@ -275,22 +370,16 @@ function isGeneratedImageId(value: string): boolean {
 }
 
 /**
- * 解析元素中的图片 ID 引用为实际的 base64 URL
+ * Resolve image ID references in src field to actual base64 URLs
  *
- * 转换过程：
- *   AI 生成：{ type: "image", src: "img_1", ... }
- *   解析后：{ type: "image", src: "data:image/png;base64,...", ... }
+ * AI generates: { type: "image", src: "img_1", ... }
+ * This function replaces: { type: "image", src: "data:image/png;base64,...", ... }
  *
- * 设计理念（Plan B）：
- * - 简单性：AI 只需知道一个字段（src）
- * - 一致性：生成的 JSON 结构与最终 PPTImageElement 匹配
- * - 直观性：src 是图片来源，先是 ID，后是实际 URL
- * - 降低提示复杂度：无需解释 imageId 与 src 的区别
- *
- * @param elements - 待处理的元素数组
- * @param imageMapping - PDF 提取图片的 ID → URL 映射
- * @param generatedMediaMapping - AI 生成媒体的 ID → URL 映射
- * @returns 处理后的元素数组（无效图片元素已移除）
+ * Design rationale (Plan B):
+ * - Simpler: AI only needs to know one field (src)
+ * - Consistent: Generated JSON structure matches final PPTImageElement
+ * - Intuitive: src is the image source, first as ID then as actual URL
+ * - Less prompt complexity: No need to explain imageId vs src distinction
  */
 function resolveImageIds(
   elements: GeneratedSlideData['elements'],
@@ -329,7 +418,8 @@ function resolveImageIds(
       }
 
       if (el.type === 'video') {
-        if (!('src' in el)) {
+        const mediaRef = (el as Record<string, unknown>).mediaRef;
+        if (!('src' in el) && typeof mediaRef !== 'string') {
           log.warn(`Video element missing src, removing element`);
           return null;
         }
@@ -350,35 +440,80 @@ function resolveImageIds(
     .filter((el): el is NonNullable<typeof el> => el !== null);
 }
 
+function normalizeGeneratedVideoRefs(
+  elements: GeneratedSlideData['elements'],
+  generatedVideoEntries: SceneOutline['mediaGenerations'] = [],
+): GeneratedSlideData['elements'] {
+  const validRefs = generatedVideoEntries
+    .filter((mg) => mg.type === 'video')
+    .map((mg) => mg.elementId);
+
+  const validRefSet = new Set(validRefs);
+  const onlyRef = validRefs.length === 1 ? validRefs[0] : undefined;
+
+  return elements
+    .map((el) => {
+      if (el.type !== 'video') return el;
+
+      const videoEl = { ...el } as Record<string, unknown>;
+      const mediaRef = typeof videoEl.mediaRef === 'string' ? videoEl.mediaRef : undefined;
+      const src = typeof videoEl.src === 'string' ? videoEl.src : undefined;
+      const hasGeneratedSrc = !!src && isGeneratedImageId(src);
+      const hasDirectSrc = !!src && !hasGeneratedSrc;
+
+      if (hasDirectSrc) {
+        if (mediaRef) delete videoEl.mediaRef;
+        return videoEl as typeof el;
+      }
+
+      if (mediaRef && validRefSet.has(mediaRef)) {
+        if (hasGeneratedSrc) delete videoEl.src;
+        return videoEl as typeof el;
+      }
+
+      if (src && validRefSet.has(src)) {
+        videoEl.mediaRef = src;
+        delete videoEl.src;
+        return videoEl as typeof el;
+      }
+
+      if ((mediaRef || hasGeneratedSrc) && onlyRef) {
+        log.warn(`Correcting generated video reference "${mediaRef || src}" to "${onlyRef}"`);
+        videoEl.mediaRef = onlyRef;
+        if (hasGeneratedSrc) delete videoEl.src;
+        return videoEl as typeof el;
+      }
+
+      if (mediaRef || hasGeneratedSrc) {
+        log.warn(`Invalid generated video reference "${mediaRef || src}", removing element`);
+        return null;
+      }
+
+      return el;
+    })
+    .filter((el): el is NonNullable<typeof el> => el !== null);
+}
+
 /**
- * 修复元素缺失的必填字段
- *
- * AI 生成的元素可能缺少某些必填字段，此函数为它们添加默认值：
- * - 线条元素：points（端点样式）、start/end（起点终点）、style（样式）、color（颜色）
- * - 文本元素：defaultFontName（字体）、defaultColor（颜色）、content（内容）
- * - 图片元素：fixedRatio（固定宽高比），并修正宽高比
- * - 形状元素：viewBox、path、fill、fixedRatio
- *
- * @param elements - 待处理的元素数组
- * @param assignedImages - 已分配的图片列表（用于修正宽高比）
- * @returns 修复后的元素数组
+ * Fix elements with missing required fields
+ * Adds default values for fields that AI might not have generated correctly
  */
 function fixElementDefaults(
   elements: GeneratedSlideData['elements'],
   assignedImages?: PdfImage[],
 ): GeneratedSlideData['elements'] {
   return elements.map((el) => {
-    // 修复线条元素
+    // Fix line elements
     if (el.type === 'line') {
       const lineEl = el as Record<string, unknown>;
 
-      // 确保 points 字段存在，默认无端点标记
+      // Ensure points field exists with default values
       if (!lineEl.points || !Array.isArray(lineEl.points) || lineEl.points.length !== 2) {
         log.warn(`Line element missing points, adding defaults`);
-        lineEl.points = ['', ''] as [string, string]; // 默认：两端无标记
+        lineEl.points = ['', ''] as [string, string]; // Default: no markers on either end
       }
 
-      // 确保 start/end 存在
+      // Ensure start/end exist
       if (!lineEl.start || !Array.isArray(lineEl.start)) {
         lineEl.start = [el.left ?? 0, el.top ?? 0];
       }
@@ -386,12 +521,12 @@ function fixElementDefaults(
         lineEl.end = [(el.left ?? 0) + (el.width ?? 100), (el.top ?? 0) + (el.height ?? 0)];
       }
 
-      // 确保 style 存在
+      // Ensure style exists
       if (!lineEl.style) {
         lineEl.style = 'solid';
       }
 
-      // 确保 color 存在
+      // Ensure color exists
       if (!lineEl.color) {
         lineEl.color = '#333333';
       }
@@ -399,7 +534,7 @@ function fixElementDefaults(
       return lineEl as typeof el;
     }
 
-    // 修复文本元素
+    // Fix text elements
     if (el.type === 'text') {
       const textEl = el as Record<string, unknown>;
 
@@ -416,7 +551,7 @@ function fixElementDefaults(
       return textEl as typeof el;
     }
 
-    // 修复图片元素
+    // Fix image elements
     if (el.type === 'image') {
       const imageEl = el as Record<string, unknown>;
 
@@ -424,7 +559,7 @@ function fixElementDefaults(
         imageEl.fixedRatio = true;
       }
 
-      // 使用已知的宽高比修正尺寸（此时 src 仍为 img_id）
+      // Correct dimensions using known aspect ratio (src is still img_id at this point)
       if (assignedImages && typeof imageEl.src === 'string') {
         const imgMeta = assignedImages.find((img) => img.id === imageEl.src);
         if (imgMeta?.width && imgMeta?.height) {
@@ -432,10 +567,10 @@ function fixElementDefaults(
           const curW = (el.width || 400) as number;
           const curH = (el.height || 300) as number;
           if (Math.abs(curW / curH - knownRatio) / knownRatio > 0.1) {
-            // 保持宽度，修正高度
+            // Keep width, correct height
             const newH = Math.round(curW / knownRatio);
             if (newH > 462) {
-              // 画布高度 562.5 - 边距 50×2
+              // canvas 562.5 - margins 50×2
               const newW = Math.round(462 * knownRatio);
               imageEl.width = newW;
               imageEl.height = 462;
@@ -449,7 +584,7 @@ function fixElementDefaults(
       return imageEl as typeof el;
     }
 
-    // 修复形状元素
+    // Fix shape elements
     if (el.type === 'shape') {
       const shapeEl = el as Record<string, unknown>;
 
@@ -457,7 +592,7 @@ function fixElementDefaults(
         shapeEl.viewBox = `0 0 ${el.width ?? 100} ${el.height ?? 100}`;
       }
       if (!shapeEl.path) {
-        // 默认为矩形
+        // Default to rectangle
         const w = el.width ?? 100;
         const h = el.height ?? 100;
         shapeEl.path = `M0 0 L${w} 0 L${w} ${h} L0 ${h} Z`;
@@ -477,13 +612,9 @@ function fixElementDefaults(
 }
 
 /**
- * 处理 LaTeX 元素：将 latex 字符串渲染为 HTML（使用 KaTeX）
- *
- * 填充 html 和 fixedRatio 字段。
- * 转换失败的元素会被移除。
- *
- * @param elements - 待处理的元素数组
- * @returns 处理后的元素数组（转换失败的元素已移除）
+ * Process LaTeX elements: render latex string to HTML using KaTeX.
+ * Fills in html and fixedRatio fields.
+ * Elements that fail conversion are removed.
  */
 function processLatexElements(
   elements: GeneratedSlideData['elements'],
@@ -519,22 +650,7 @@ function processLatexElements(
 }
 
 /**
- * 生成幻灯片内容
- *
- * 调用 AI 生成幻灯片元素（文本、图片、图表、形状、公式等）。
- * 支持：
- * - PDF 提取的图片（通过 assignedImages 和 imageMapping）
- * - AI 生成的图片/视频（通过 generatedMediaMapping）
- * - 多模态视觉模型（visionEnabled 时传入图片给 AI）
- *
- * @param outline - 场景大纲
- * @param aiCall - AI 调用函数
- * @param assignedImages - 已分配的图片列表
- * @param imageMapping - 图片 ID → URL 映射
- * @param visionEnabled - 是否启用视觉模型
- * @param generatedMediaMapping - AI 生成媒体映射
- * @param agents - 智能体信息（用于教师人设）
- * @returns 生成的幻灯片内容，失败返回 null
+ * Generate slide content
  */
 async function generateSlideContent(
   outline: SceneOutline,
@@ -544,24 +660,23 @@ async function generateSlideContent(
   visionEnabled?: boolean,
   generatedMediaMapping?: ImageMapping,
   agents?: AgentInfo[],
+  languageDirective?: string,
 ): Promise<GeneratedSlideContent | null> {
-  const lang = outline.language || 'zh-CN';
-
-  // 构建已分配图片的描述，用于 AI 提示
+  // Build assigned images description for the prompt
   let assignedImagesText = '无可用图片，禁止插入任何 image 元素';
   let visionImages: Array<{ id: string; src: string }> | undefined;
 
   if (assignedImages && assignedImages.length > 0) {
     if (visionEnabled && imageMapping) {
-      // 视觉模式：分为视觉图片和纯文本描述
+      // Vision mode: split into vision images and text-only
       const withSrc = assignedImages.filter((img) => imageMapping[img.id]);
       const visionSlice = withSrc.slice(0, MAX_VISION_IMAGES);
       const textOnlySlice = withSrc.slice(MAX_VISION_IMAGES);
       const noSrcImages = assignedImages.filter((img) => !imageMapping[img.id]);
 
-      const visionDescriptions = visionSlice.map((img) => formatImagePlaceholder(img, lang));
+      const visionDescriptions = visionSlice.map((img) => formatImagePlaceholder(img));
       const textDescriptions = [...textOnlySlice, ...noSrcImages].map((img) =>
-        formatImageDescription(img, lang),
+        formatImageDescription(img),
       );
       assignedImagesText = [...visionDescriptions, ...textDescriptions].join('\n');
 
@@ -572,20 +687,24 @@ async function generateSlideContent(
         height: img.height,
       }));
     } else {
-      assignedImagesText = assignedImages
-        .map((img) => formatImageDescription(img, lang))
-        .join('\n');
+      assignedImagesText = assignedImages.map((img) => formatImageDescription(img)).join('\n');
     }
   }
 
-  // 添加 AI 生成媒体的占位符信息（图片 + 视频）
+  const generatedImageEntries = outline.mediaGenerations?.filter((mg) => mg.type === 'image') ?? [];
+  const generatedVideoEntries = outline.mediaGenerations?.filter((mg) => mg.type === 'video') ?? [];
+  const hasAssignedImages = (assignedImages?.length ?? 0) > 0;
+  const generatedImageEnabled = generatedImageEntries.length > 0;
+  const generatedVideoEnabled = generatedVideoEntries.length > 0;
+  const imageElementEnabled = hasAssignedImages || generatedImageEnabled;
+  const mediaElementEnabled = imageElementEnabled || generatedVideoEnabled;
+
+  // Add generated media placeholders info (images + videos)
   if (outline.mediaGenerations && outline.mediaGenerations.length > 0) {
-    const genImgDescs = outline.mediaGenerations
-      .filter((mg) => mg.type === 'image')
+    const genImgDescs = generatedImageEntries
       .map((mg) => `- ${mg.elementId}: "${mg.prompt}" (aspect ratio: ${mg.aspectRatio || '16:9'})`)
       .join('\n');
-    const genVidDescs = outline.mediaGenerations
-      .filter((mg) => mg.type === 'video')
+    const genVidDescs = generatedVideoEntries
       .map((mg) => `- ${mg.elementId}: "${mg.prompt}" (aspect ratio: ${mg.aspectRatio || '16:9'})`)
       .join('\n');
 
@@ -594,7 +713,9 @@ async function generateSlideContent(
       mediaParts.push(`AI-Generated Images (use these IDs as image element src):\n${genImgDescs}`);
     }
     if (genVidDescs) {
-      mediaParts.push(`AI-Generated Videos (use these IDs as video element src):\n${genVidDescs}`);
+      mediaParts.push(
+        `AI-Generated Videos (use these IDs as video element mediaRef):\n${genVidDescs}`,
+      );
     }
 
     if (mediaParts.length > 0) {
@@ -607,7 +728,7 @@ async function generateSlideContent(
     }
   }
 
-  // Canvas 尺寸（与 viewportSize 和 viewportRatio 匹配）
+  // Canvas dimensions (matching viewportSize and viewportRatio)
   const canvasWidth = 1000;
   const canvasHeight = 562.5;
 
@@ -622,35 +743,40 @@ async function generateSlideContent(
     canvas_width: canvasWidth,
     canvas_height: canvasHeight,
     teacherContext,
+    languageDirective: languageDirective || '',
+    imageElementEnabled,
+    generatedImageEnabled,
+    generatedVideoEnabled,
+    mediaElementEnabled,
   });
 
   if (!prompts) {
     return null;
   }
 
-  log.debug(`正在生成幻灯片内容: ${outline.title}`);
+  log.debug(`Generating slide content for: ${outline.title}`);
   if (assignedImages && assignedImages.length > 0) {
-    log.debug(`已分配图片: ${assignedImages.map((img) => img.id).join(', ')}`);
+    log.debug(`Assigned images: ${assignedImages.map((img) => img.id).join(', ')}`);
   }
   if (visionImages && visionImages.length > 0) {
-    log.debug(`视觉图片: ${visionImages.map((img) => img.id).join(', ')}`);
+    log.debug(`Vision images: ${visionImages.map((img) => img.id).join(', ')}`);
   }
 
   const response = await aiCall(prompts.system, prompts.user, visionImages);
   const generatedData = parseJsonResponse<GeneratedSlideData>(response);
 
   if (!generatedData || !generatedData.elements || !Array.isArray(generatedData.elements)) {
-    log.error(`解析 AI 响应失败: ${outline.title}`);
+    log.error(`Failed to parse AI response for: ${outline.title}`);
     return null;
   }
 
-  log.debug(`获得 ${generatedData.elements.length} 个元素: ${outline.title}`);
+  log.debug(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
 
-  // 调试：记录解析前的图片元素
+  // Debug: Log image elements before resolution
   const imageElements = generatedData.elements.filter((el) => el.type === 'image');
   if (imageElements.length > 0) {
     log.debug(
-      `解析前的图片元素:`,
+      `Image elements before resolution:`,
       imageElements.map((el) => ({
         type: el.type,
         src:
@@ -658,33 +784,39 @@ async function generateSlideContent(
           String((el as Record<string, unknown>).src).substring(0, 50),
       })),
     );
-    log.debug(`imageMapping 键数量:`, imageMapping ? Object.keys(imageMapping).length : '0 keys');
+    log.debug(`imageMapping keys:`, imageMapping ? Object.keys(imageMapping).length : '0 keys');
   }
 
-  // 修复元素缺失的必填字段 + 宽高比修正（此时 src 仍为 img_id）
+  // Fix elements with missing required fields + aspect ratio correction (while src is still img_id)
   const fixedElements = fixElementDefaults(generatedData.elements, assignedImages);
-  log.debug(`元素修复后: ${fixedElements.length} 个元素`);
+  log.debug(`After element fixing: ${fixedElements.length} elements`);
 
-  // 处理 LaTeX 元素：latex 字符串 → HTML（KaTeX 渲染）
+  // Process LaTeX elements: render latex string → HTML via KaTeX
   const latexProcessedElements = processLatexElements(fixedElements);
-  log.debug(`LaTeX 处理后: ${latexProcessedElements.length} 个元素`);
+  log.debug(`After LaTeX processing: ${latexProcessedElements.length} elements`);
 
-  // 解析图片 ID 引用为实际 URL
+  // Resolve image_id references to actual URLs
   const resolvedElements = resolveImageIds(
     latexProcessedElements,
     imageMapping,
     generatedMediaMapping,
   );
-  log.debug(`图片解析后: ${resolvedElements.length} 个元素`);
+  log.debug(`After image resolution: ${resolvedElements.length} elements`);
 
-  // 处理元素，分配唯一 ID
-  const processedElements: PPTElement[] = resolvedElements.map((el) => ({
+  const videoNormalizedElements = normalizeGeneratedVideoRefs(
+    resolvedElements,
+    outline.mediaGenerations,
+  );
+  log.debug(`After video reference normalization: ${videoNormalizedElements.length} elements`);
+
+  // Process elements, assign unique IDs
+  const processedElements: PPTElement[] = videoNormalizedElements.map((el) => ({
     ...el,
     id: `${el.type}_${nanoid(8)}`,
     rotate: 0,
   })) as PPTElement[];
 
-  // 处理背景
+  // Process background
   let background: SlideBackground | undefined;
   if (generatedData.background) {
     if (generatedData.background.type === 'solid' && generatedData.background.color) {
@@ -705,15 +837,12 @@ async function generateSlideContent(
 }
 
 /**
- * 生成测验内容
- *
- * @param outline - 场景大纲
- * @param aiCall - AI 调用函数
- * @returns 生成的测验题目数组，失败返回 null
+ * Generate quiz content
  */
 async function generateQuizContent(
   outline: SceneOutline,
   aiCall: AICallFn,
+  languageDirective?: string,
 ): Promise<GeneratedQuizContent | null> {
   const quizConfig = outline.quizConfig || {
     questionCount: 3,
@@ -728,6 +857,7 @@ async function generateQuizContent(
     questionCount: quizConfig.questionCount,
     difficulty: quizConfig.difficulty,
     questionTypes: quizConfig.questionTypes.join(', '),
+    languageDirective: languageDirective || '',
   });
 
   if (!prompts) {
@@ -761,13 +891,9 @@ async function generateQuizContent(
 }
 
 /**
- * 规范化测验选项格式
- *
- * AI 生成的选项可能是纯字符串 ["选项A", "选项B"] 或 QuizOption 对象。
- * 此函数统一转换为 QuizOption[] 格式：{ value: "A", label: "选项A" }
- *
- * @param options - 原始选项数组
- * @returns 规范化后的选项数组
+ * Normalize quiz options from AI response.
+ * AI may generate plain strings ["OptionA", "OptionB"] or QuizOption objects.
+ * This normalizes to QuizOption[] format: { value: "A", label: "OptionA" }
  */
 function normalizeQuizOptions(
   options: unknown[] | undefined,
@@ -794,13 +920,12 @@ function normalizeQuizOptions(
 }
 
 /**
- * 规范化测验答案格式
- *
- * AI 生成的正确答案可能是字符串或数组，字段名也可能是 correctAnswer、answer 或 correct_answer。
- * 此函数统一转换为 string[] 格式，与选项值匹配。
+ * Normalize quiz answer from AI response.
+ * AI may generate correctAnswer as string or string[], under various field names.
+ * This normalizes to string[] format matching option values.
  */
 function normalizeQuizAnswer(question: Record<string, unknown>): string[] | undefined {
-  // AI 可能使用 "correctAnswer"、"answer" 或 "correct_answer" 字段名
+  // AI might use "correctAnswer", "answer", or "correct_answer"
   const raw =
     question.answer ??
     question.correctAnswer ??
@@ -814,116 +939,14 @@ function normalizeQuizAnswer(question: Record<string, unknown>): string[] | unde
 }
 
 /**
- * 生成交互式页面内容
- *
- * 两次 AI 调用 + 后处理：
- * 1. 科学建模 → ScientificModel（失败时回退）
- * 2. HTML 生成（带约束）→ 后处理的 HTML
- *
- * @param outline - 场景大纲
- * @param aiCall - AI 调用函数
- * @param language - 语言（zh-CN 或 en-US）
- * @returns 生成的交互式内容，包含 HTML 和科学模型
- */
-async function generateInteractiveContent(
-  outline: SceneOutline,
-  aiCall: AICallFn,
-  language: 'zh-CN' | 'en-US' = 'zh-CN',
-): Promise<GeneratedInteractiveContent | null> {
-  const config = outline.interactiveConfig!;
-
-  // Step 1: Scientific modeling (with fallback on failure)
-  let scientificModel: ScientificModel | undefined;
-  try {
-    const modelPrompts = buildPrompt(PROMPT_IDS.INTERACTIVE_SCIENTIFIC_MODEL, {
-      subject: config.subject || '',
-      conceptName: config.conceptName,
-      conceptOverview: config.conceptOverview,
-      keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
-      designIdea: config.designIdea,
-    });
-
-    if (modelPrompts) {
-      log.info(`Step 1: Scientific modeling for: ${outline.title}`);
-      const modelResponse = await aiCall(modelPrompts.system, modelPrompts.user);
-      const parsed = parseJsonResponse<ScientificModel>(modelResponse);
-      if (parsed && parsed.core_formulas) {
-        scientificModel = parsed;
-        log.info(
-          `Scientific model: ${parsed.core_formulas.length} formulas, ${parsed.constraints?.length || 0} constraints`,
-        );
-      }
-    }
-  } catch (error) {
-    log.warn(`Scientific modeling failed, continuing without: ${error}`);
-  }
-
-  // Format scientific constraints for HTML generation prompt
-  let scientificConstraints = 'No specific scientific constraints available.';
-  if (scientificModel) {
-    const lines: string[] = [];
-    if (scientificModel.core_formulas?.length) {
-      lines.push(`Core Formulas: ${scientificModel.core_formulas.join('; ')}`);
-    }
-    if (scientificModel.mechanism?.length) {
-      lines.push(`Mechanisms: ${scientificModel.mechanism.join('; ')}`);
-    }
-    if (scientificModel.constraints?.length) {
-      lines.push(`Must Obey: ${scientificModel.constraints.join('; ')}`);
-    }
-    if (scientificModel.forbidden_errors?.length) {
-      lines.push(`Forbidden Errors: ${scientificModel.forbidden_errors.join('; ')}`);
-    }
-    scientificConstraints = lines.join('\n');
-  }
-
-  // Step 2: HTML generation
-  const htmlPrompts = buildPrompt(PROMPT_IDS.INTERACTIVE_HTML, {
-    conceptName: config.conceptName,
-    subject: config.subject || '',
-    conceptOverview: config.conceptOverview,
-    keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
-    scientificConstraints,
-    designIdea: config.designIdea,
-    language,
-  });
-
-  if (!htmlPrompts) {
-    log.error(`Failed to build HTML prompt for: ${outline.title}`);
-    return null;
-  }
-
-  log.info(`Step 2: Generating HTML for: ${outline.title}`);
-  const htmlResponse = await aiCall(htmlPrompts.system, htmlPrompts.user);
-  // Extract HTML from response
-  const rawHtml = extractHtml(htmlResponse);
-  if (!rawHtml) {
-    log.error(`Failed to extract HTML from response for: ${outline.title}`);
-    return null;
-  }
-
-  // 第三步：后处理 HTML（LaTeX 分隔符转换 + KaTeX 注入）
-  const processedHtml = postProcessInteractiveHtml(rawHtml);
-  log.info(`Post-processed HTML (${processedHtml.length} chars) for: ${outline.title}`);
-
-  return {
-    html: processedHtml,
-    scientificModel,
-  };
-}
-
-/**
- * 生成 PBL（项目制学习）内容
- *
- * 使用 lib/pbl/generate-pbl.ts 中的智能体循环生成项目配置。
- *
- * @param outline - 场景大纲
- * @param languageModel - 语言模型实例
- * @returns 生成的 PBL 项目配置，失败返回 null
+ * Generate PBL project content
+ * Uses the agentic loop from lib/pbl/generate-pbl.ts
  */
 async function generatePBLSceneContent(
   outline: SceneOutline,
   languageModel?: LanguageModel,
+  languageDirective?: string,
+  thinkingConfig?: ThinkingConfig,
 ): Promise<GeneratedPBLContent | null> {
   if (!languageModel) {
     log.error('LanguageModel required for PBL generation');
@@ -945,12 +968,13 @@ async function generatePBLSceneContent(
         projectDescription: pblConfig.projectDescription,
         targetSkills: pblConfig.targetSkills,
         issueCount: pblConfig.issueCount,
-        language: pblConfig.language,
+        languageDirective: languageDirective || DEFAULT_LANGUAGE_DIRECTIVE,
       },
       languageModel,
       {
         onProgress: (msg) => log.info(`${msg}`),
       },
+      thinkingConfig,
     );
     log.info(
       `PBL generated: ${projectConfig.agents.length} agents, ${projectConfig.issueboard.issues.length} issues`,
@@ -964,18 +988,11 @@ async function generatePBLSceneContent(
 }
 
 /**
- * 从 AI 响应中提取 HTML 文档
- *
- * 三种提取策略：
- * 1. 查找完整的 HTML 文档（<!DOCTYPE html>...</html>）
- * 2. 从代码块中提取
- * 3. 如果响应本身就是 HTML
- *
- * @param response - AI 响应字符串
- * @returns 提取的 HTML 字符串，失败返回 null
+ * Extract HTML document from AI response.
+ * Tries to find <!DOCTYPE html>...</html> first, then falls back to code block extraction.
  */
 function extractHtml(response: string): string | null {
-  // 策略 1：查找完整的 HTML 文档
+  // Strategy 1: Find complete HTML document
   const doctypeStart = response.indexOf('<!DOCTYPE html>');
   const htmlTagStart = response.indexOf('<html');
   const start = doctypeStart !== -1 ? doctypeStart : htmlTagStart;
@@ -987,7 +1004,7 @@ function extractHtml(response: string): string | null {
     }
   }
 
-  // 策略 2：从代码块中提取
+  // Strategy 2: Extract from code block
   const codeBlockMatch = response.match(/```(?:html)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     const content = codeBlockMatch[1].trim();
@@ -996,33 +1013,197 @@ function extractHtml(response: string): string | null {
     }
   }
 
-  // 策略 3：如果响应本身就是 HTML
+  // Strategy 3: If response itself looks like HTML
   const trimmed = response.trim();
   if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
     return trimmed;
   }
 
-  log.error('无法从响应中提取 HTML');
-  log.error('响应预览:', response.substring(0, 200));
+  log.error('Could not extract HTML from response');
+  log.error('Response preview:', response.substring(0, 200));
   return null;
 }
 
+// ==================== Ultra Mode Widget Generation ====================
+
 /**
- * Step 3.2：根据内容和讲稿生成动作列表
- *
- * 为不同类型的场景生成对应的动作：
- * - slide：聚光灯、激光笔、语音讲解、白板绘图等
- * - quiz：语音引导
- * - interactive：交互引导语音
- * - pbl：项目介绍语音
- *
- * @param outline - 场景大纲
- * @param content - 场景内容
- * @param aiCall - AI 调用函数
- * @param ctx - 场景生成上下文
- * @param agents - 智能体信息列表
- * @param userProfile - 用户简介
- * @returns 动作列表
+ * Generate widget content based on widget type (Ultra Mode)
+ */
+async function generateWidgetContent(
+  outline: SceneOutline,
+  aiCall: AICallFn,
+  languageDirective?: string,
+): Promise<GeneratedInteractiveContent | null> {
+  const widgetType = outline.widgetType;
+  const widgetOutline = outline.widgetOutline;
+
+  if (!widgetType || !widgetOutline) {
+    log.warn(`Interactive outline missing widget config, falling back to standard interactive`);
+    return null;
+  }
+
+  // Select appropriate prompt based on widget type
+  let promptId: PromptId;
+  let variables: Record<string, unknown>;
+
+  switch (widgetType) {
+    case 'simulation':
+      promptId = PROMPT_IDS.SIMULATION_CONTENT;
+      variables = {
+        conceptName: widgetOutline.concept || outline.title,
+        conceptOverview: outline.description,
+        keyPoints: (outline.keyPoints || []).join('\n'),
+        variables: widgetOutline.keyVariables?.join(', ') || '',
+        designIdea: '',
+        languageDirective: languageDirective || '',
+      };
+      break;
+
+    case 'diagram':
+      promptId = PROMPT_IDS.DIAGRAM_CONTENT;
+      variables = {
+        title: outline.title,
+        diagramType: widgetOutline.diagramType || 'flowchart',
+        description: outline.description,
+        keyPoints: (outline.keyPoints || []).join('\n'),
+        languageDirective: languageDirective || '',
+      };
+      break;
+
+    case 'code':
+      promptId = PROMPT_IDS.CODE_CONTENT;
+      variables = {
+        title: outline.title,
+        programmingLanguage: widgetOutline.language || 'python',
+        description: outline.description,
+        keyPoints: (outline.keyPoints || []).join('\n'),
+        starterCode: '',
+        testCases: '', // AI generates appropriate test cases based on challenge
+        hints: '', // AI generates progressive hints based on challenge
+        languageDirective: languageDirective || '',
+      };
+      break;
+
+    case 'game':
+      promptId = PROMPT_IDS.GAME_CONTENT;
+      variables = {
+        title: outline.title,
+        gameType: widgetOutline.gameType || 'quiz',
+        description: outline.description,
+        keyPoints: (outline.keyPoints || []).join('\n'),
+        scoring: { correctPoints: 10, speedBonus: 5 },
+        languageDirective: languageDirective || '',
+      };
+      break;
+
+    case 'visualization3d':
+      promptId = PROMPT_IDS.VISUALIZATION3D_CONTENT;
+      variables = {
+        title: outline.title,
+        visualizationType: widgetOutline.visualizationType || 'custom',
+        description: outline.description,
+        keyPoints: (outline.keyPoints || []).join('\n'),
+        objects: widgetOutline.objects || [],
+        interactions: widgetOutline.interactions || [],
+        languageDirective: languageDirective || '',
+      };
+      break;
+
+    default:
+      log.warn(`Unknown widget type: ${widgetType}`);
+      return null;
+  }
+
+  const prompts = buildPrompt(promptId, variables);
+  if (!prompts) {
+    log.error(`Failed to build ${widgetType} prompt for: ${outline.title}`);
+    return null;
+  }
+
+  log.info(`Generating ${widgetType} widget for: ${outline.title}`);
+  const response = await aiCall(prompts.system, prompts.user);
+  const html = extractHtml(response);
+
+  if (!html) {
+    log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`);
+    return null;
+  }
+
+  // Extract widget config from HTML if present
+  const widgetConfig = extractWidgetConfig(html);
+
+  // Generate teacher actions
+  const teacherActions = await generateWidgetTeacherActions(
+    widgetType,
+    outline,
+    widgetConfig,
+    aiCall,
+    languageDirective,
+  );
+  log.info(
+    `[Ultra Mode] Generated ${teacherActions?.length || 0} teacher actions for "${outline.title}" (${widgetType})`,
+  );
+  if (teacherActions && teacherActions.length > 0) {
+    log.info(
+      `[Ultra Mode] Teacher actions for "${outline.title}": ${JSON.stringify(teacherActions, null, 2)}`,
+    );
+  }
+
+  return {
+    html: postProcessInteractiveHtml(html),
+    widgetType,
+    widgetConfig,
+    teacherActions,
+  };
+}
+
+/**
+ * Extract widget config from embedded JSON in HTML
+ */
+function extractWidgetConfig(html: string): WidgetConfig | undefined {
+  const match = html.match(
+    /<script type="application\/json" id="widget-config">([\s\S]*?)<\/script>/,
+  );
+  if (!match) return undefined;
+
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Generate teacher actions for a widget
+ */
+async function generateWidgetTeacherActions(
+  widgetType: WidgetType,
+  outline: SceneOutline,
+  widgetConfig: WidgetConfig | undefined,
+  aiCall: AICallFn,
+  languageDirective?: string,
+): Promise<TeacherAction[] | undefined> {
+  const prompts = buildPrompt(PROMPT_IDS.WIDGET_TEACHER_ACTIONS, {
+    widgetType,
+    description: outline.description,
+    keyPoints: (outline.keyPoints || []).join('\n'),
+    widgetConfig: JSON.stringify(widgetConfig || {}),
+    languageDirective: languageDirective || '',
+  });
+
+  if (!prompts) return undefined;
+
+  try {
+    const response = await aiCall(prompts.system, prompts.user);
+    const parsed = parseJsonResponse<{ actions: TeacherAction[] }>(response);
+    return parsed?.actions;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Step 3.2: Generate Actions based on content and script
  */
 export async function generateSceneActions(
   outline: SceneOutline,
@@ -1032,14 +1213,31 @@ export async function generateSceneActions(
     | GeneratedInteractiveContent
     | GeneratedPBLContent,
   aiCall: AICallFn,
-  ctx?: SceneGenerationContext,
-  agents?: AgentInfo[],
-  userProfile?: string,
+  options: SceneActionsOptions = {},
 ): Promise<Action[]> {
+  const { ctx, agents, userProfile, languageDirective } = options;
   const agentsText = formatAgentsForPrompt(agents);
 
+  // Debug: Log content type and teacherActions presence for interactive scenes
+  if (outline.type === 'interactive') {
+    const hasHtml = 'html' in content;
+    const teacherActionsCount = hasHtml ? content.teacherActions?.length || 0 : 0;
+    log.info(
+      `[Actions Gen] Interactive "${outline.title}": hasHtml=${hasHtml}, teacherActions=${teacherActionsCount}, widgetType=${hasHtml ? content.widgetType : 'N/A'}`,
+    );
+  }
+
+  // Ultra Mode: If interactive content has teacherActions, convert and use them
+  // Skip normal action generation for widget-based interactive scenes
+  if (outline.type === 'interactive' && 'html' in content && content.teacherActions?.length) {
+    log.info(
+      `[Ultra Mode] Converting ${content.teacherActions.length} teacherActions to Actions for: ${outline.title}`,
+    );
+    return convertTeacherActionsToActions(content.teacherActions);
+  }
+
   if (outline.type === 'slide' && 'elements' in content) {
-    // 格式化元素列表，供 AI 选择元素 ID
+    // Format element list for AI to select from
     const elementsText = formatElementsForPrompt(content.elements);
 
     const prompts = buildPrompt(PROMPT_IDS.SLIDE_ACTIONS, {
@@ -1050,6 +1248,7 @@ export async function generateSceneActions(
       courseContext: buildCourseContext(ctx),
       agents: agentsText,
       userProfile: userProfile || '',
+      languageDirective: languageDirective || '',
     });
 
     if (!prompts) {
@@ -1078,6 +1277,7 @@ export async function generateSceneActions(
       questions: questionsText,
       courseContext: buildCourseContext(ctx),
       agents: agentsText,
+      languageDirective: languageDirective || '',
     });
 
     if (!prompts) {
@@ -1105,6 +1305,7 @@ export async function generateSceneActions(
       designIdea: config?.designIdea || '',
       courseContext: buildCourseContext(ctx),
       agents: agentsText,
+      languageDirective: languageDirective || '',
     });
 
     if (!prompts) {
@@ -1132,6 +1333,7 @@ export async function generateSceneActions(
       projectDescription: pblConfig?.projectDescription || outline.description,
       courseContext: buildCourseContext(ctx),
       agents: agentsText,
+      languageDirective: languageDirective || '',
     });
 
     if (!prompts) {
@@ -1198,23 +1400,135 @@ function formatElementsForPrompt(elements: PPTElement[]): string {
 function formatQuestionsForPrompt(questions: QuizQuestion[]): string {
   return questions
     .map((q, i) => {
-      const optionsText = q.options ? `Options: ${q.options.join(', ')}` : '';
+      const optionsText = q.options
+        ? `Options: ${q.options.map((o) => `${o.value}. ${o.label}`).join(', ')}`
+        : '';
       return `Q${i + 1} (${q.type}): ${q.question}\n${optionsText}`;
     })
     .join('\n\n');
 }
 
 /**
- * 处理并验证动作
+ * Convert Ultra Mode teacherActions to standard Actions for playback.
  *
- * - 为每个动作分配唯一 ID
- * - 验证 spotlight 动作的 elementId 是否有效
- * - 验证/填充 discussion 动作的 agentId
+ * TeacherAction types: speech, highlight, annotation, reveal, setState
+ * Action types: speech, widget_highlight, widget_setState, widget_annotation, widget_reveal
  *
- * @param actions - 待处理的动作数组
- * @param elements - PPT 元素数组（用于验证 elementId）
- * @param agents - 智能体信息数组（用于验证 agentId）
- * @returns 处理后的动作数组
+ * Conversion strategy:
+ * - speech → single speech Action
+ * - highlight/setState/annotation/reveal with content → TWO Actions:
+ *   1. widget action (visual/state change) - quick, non-blocking
+ *   2. speech action (narration) - PlaybackEngine handles TTS
+ * - highlight/setState/annotation/reveal without content → single widget action
+ */
+function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action[] {
+  const actions: Action[] = [];
+
+  for (const ta of teacherActions) {
+    // Always use nanoid for unique action IDs to prevent audio ID collisions
+    // Ultra Mode generates sequential IDs like "action_1" which are NOT unique across scenes
+    const actionId = `action_${nanoid(8)}`;
+    const base = {
+      id: actionId,
+      title: ta.label || '',
+    };
+
+    switch (ta.type) {
+      case 'speech':
+        actions.push({
+          ...base,
+          type: 'speech',
+          text: ta.content || '',
+        } as SpeechAction);
+        break;
+
+      case 'highlight':
+        // Add widget highlight action (visual, quick)
+        actions.push({
+          ...base,
+          type: 'widget_highlight',
+          target: ta.target || '',
+          content: undefined, // No speech in widget action
+        } as WidgetHighlightAction);
+        // Add speech action for narration (if content exists)
+        if (ta.content) {
+          actions.push({
+            id: `${base.id}_speech`,
+            type: 'speech',
+            text: ta.content,
+            title: base.title,
+          } as SpeechAction);
+        }
+        break;
+
+      case 'setState':
+        // Add widget setState action
+        actions.push({
+          ...base,
+          type: 'widget_setState',
+          state: ta.state || {},
+          content: undefined,
+        } as WidgetSetStateAction);
+        // Add speech action for narration
+        if (ta.content) {
+          actions.push({
+            id: `${base.id}_speech`,
+            type: 'speech',
+            text: ta.content,
+            title: base.title,
+          } as SpeechAction);
+        }
+        break;
+
+      case 'annotation':
+        actions.push({
+          ...base,
+          type: 'widget_annotation',
+          target: ta.target || '',
+          content: undefined,
+        } as WidgetAnnotationAction);
+        if (ta.content) {
+          actions.push({
+            id: `${base.id}_speech`,
+            type: 'speech',
+            text: ta.content,
+            title: base.title,
+          } as SpeechAction);
+        }
+        break;
+
+      case 'reveal':
+        actions.push({
+          ...base,
+          type: 'widget_reveal',
+          target: ta.target || '',
+          content: undefined,
+        } as WidgetRevealAction);
+        if (ta.content) {
+          actions.push({
+            id: `${base.id}_speech`,
+            type: 'speech',
+            text: ta.content,
+            title: base.title,
+          } as SpeechAction);
+        }
+        break;
+
+      default:
+        // Fallback to speech for unknown types
+        actions.push({
+          ...base,
+          type: 'speech',
+          text: ta.content || '',
+        } as SpeechAction);
+    }
+  }
+
+  return actions;
+}
+
+/**
+ * Process and validate Actions
  */
 function processActions(actions: Action[], elements: PPTElement[], agents?: AgentInfo[]): Action[] {
   const elementIds = new Set(elements.map((el) => el.id));
@@ -1223,17 +1537,17 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
   const nonTeacherAgents = agents?.filter((a) => a.role !== 'teacher') || [];
 
   return actions.map((action) => {
-    // 确保每个动作都有 ID
+    // Ensure each action has an ID
     const processedAction: Action = {
       ...action,
       id: action.id || `action_${nanoid(8)}`,
     };
 
-    // 验证 spotlight 动作的 elementId
+    // Validate spotlight elementId
     if (processedAction.type === 'spotlight') {
       const spotlightAction = processedAction;
       if (!spotlightAction.elementId || !elementIds.has(spotlightAction.elementId)) {
-        // 如果 elementId 无效，尝试选择第一个元素
+        // If elementId is invalid, try selecting the first element
         if (elements.length > 0) {
           spotlightAction.elementId = elements[0].id;
           log.warn(
@@ -1243,12 +1557,12 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
       }
     }
 
-    // 验证/填充 discussion 动作的 agentId
+    // Validate/fill discussion agentId
     if (processedAction.type === 'discussion' && agents && agents.length > 0) {
       if (processedAction.agentId && agentIds.has(processedAction.agentId)) {
-        // agentId 有效，保持不变
+        // agentId valid — keep it
       } else {
-        // agentId 缺失或无效 — 随机选择一个学生或非教师智能体
+        // agentId missing or invalid — pick a random student, or non-teacher, or skip
         const pool = studentAgents.length > 0 ? studentAgents : nonTeacherAgents;
         if (pool.length > 0) {
           const picked = pool[Math.floor(Math.random() * pool.length)];
@@ -1265,19 +1579,12 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
 }
 
 /**
- * 生成默认的幻灯片动作（回退方案）
- *
- * - 为文本元素添加聚光灯动作
- * - 根据要点添加语音讲解动作
- *
- * @param outline - 场景大纲
- * @param elements - PPT 元素数组
- * @returns 默认动作数组
+ * Generate default slide Actions (fallback)
  */
 function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement[]): Action[] {
   const actions: Action[] = [];
 
-  // 为文本元素添加聚光灯动作
+  // Add spotlight for text elements
   const textElements = elements.filter((el) => el.type === 'text');
   if (textElements.length > 0) {
     actions.push({
@@ -1288,7 +1595,7 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
     });
   }
 
-  // 根据要点添加开场语音
+  // Add opening speech based on key points
   const speechText = outline.keyPoints?.length
     ? outline.keyPoints.join('。') + '。'
     : outline.description || outline.title;
@@ -1303,7 +1610,7 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
 }
 
 /**
- * 生成默认的测验动作（回退方案）
+ * Generate default quiz Actions (fallback)
  */
 function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
   return [
@@ -1317,7 +1624,7 @@ function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
 }
 
 /**
- * 生成默认的交互式动作（回退方案）
+ * Generate default interactive Actions (fallback)
  */
 function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
   return [
@@ -1331,19 +1638,7 @@ function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
 }
 
 /**
- * 创建带有动作的完整场景
- *
- * 根据场景类型创建对应的场景对象：
- * - slide：创建包含 Slide 对象的场景
- * - quiz：创建包含测验题目的场景
- * - interactive：创建包含 HTML 的场景
- * - pbl：创建包含项目配置的场景
- *
- * @param outline - 场景大纲
- * @param content - 场景内容
- * @param actions - 动作列表
- * @param api - Stage API 实例
- * @returns 创建的场景 ID，失败返回 null
+ * Create a complete scene with Actions
  */
 export function createSceneWithActions(
   outline: SceneOutline,
@@ -1356,7 +1651,7 @@ export function createSceneWithActions(
   api: ReturnType<typeof createStageAPI>,
 ): string | null {
   if (outline.type === 'slide' && 'elements' in content) {
-    // 构建完整的 Slide 对象
+    // Build complete Slide object
     const defaultTheme: SlideTheme = {
       backgroundColor: '#ffffff',
       themeColors: ['#5b9bd5', '#ed7d31', '#a5a5a5', '#ffc000', '#4472c4'],
@@ -1413,6 +1708,10 @@ export function createSceneWithActions(
         type: 'interactive',
         url: '',
         html: content.html,
+        // Ultra Mode widget fields
+        widgetType: content.widgetType,
+        widgetConfig: content.widgetConfig,
+        teacherActions: content.teacherActions,
       },
       actions,
     });
