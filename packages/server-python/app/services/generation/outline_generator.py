@@ -30,8 +30,11 @@ class SceneOutline(BaseModel):
     media_generations: Optional[List[Dict]] = None
     suggested_image_ids: Optional[List[str]] = None
     quiz_config: Optional[Dict] = None  # quiz场景配置
-    interactive_config: Optional[Dict] = None  # interactive场景配置
+    interactive_config: Optional[Dict] = None  # interactive场景配置 (deprecated)
     pbl_config: Optional[Dict] = None  # pbl场景配置
+    # Widget字段（Web端新功能）
+    widget_type: Optional[str] = None  # simulation, game, diagram, code, visualization3d
+    widget_outline: Optional[Dict] = None  # Widget配置
 
 
 # 增量JSON解析器（与Web端一致）
@@ -220,6 +223,9 @@ type可选：slide/quiz/interactive/pbl
                 quiz_config=item.get("quizConfig"),
                 interactive_config=item.get("interactiveConfig"),
                 pbl_config=item.get("pblConfig"),
+                # Widget字段（Web端新功能）
+                widget_type=item.get("widgetType"),
+                widget_outline=item.get("widgetOutline"),
             )
             outlines.append(outline)
 
@@ -333,6 +339,9 @@ Design the course content and teaching style to match this teacher's persona."""
                     media_generations=outline_data.get("media_generations"),
                     quiz_config=outline_data.get("quizConfig"),
                     interactive_config=outline_data.get("interactiveConfig"),
+                    # Widget字段（Web端新功能）
+                    widget_type=outline_data.get("widgetType"),
+                    widget_outline=outline_data.get("widgetOutline"),
                 )
                 elapsed = time.time() - start_time
                 logger.info(f"[StreamOutline] 大纲 #{parsed_count} 解析完成 - {outline.title} (耗时: {elapsed:.1f}s)")

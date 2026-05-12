@@ -1,8 +1,8 @@
 """
 场景生成器 - 两阶段生成管道 Stage 2
 
-使用精确排版Prompt模板生成丰富的幻灯片内容
-包含: text元素 + shape装饰 + 精确坐标
+使用Web端一致的模板化Prompt生成场景内容
+支持: slide, quiz, interactive (simulation, game, diagram, code, visualization3d)
 """
 
 import json
@@ -12,11 +12,8 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from app.services.llm import call_llm, stream_llm
 from app.services.generation.outline_generator import SceneOutline
-from app.services.generation.prompts.slide_content_simple import (
-    SLIDE_CONTENT_SYSTEM_PROMPT,
-    SLIDE_CONTENT_USER_TEMPLATE,
-    TEXT_HEIGHT_TABLE,
-)
+from app.services.generation.prompts import build_prompt, PROMPT_IDS
+from app.services.generation.prompts.slide_content_simple import TEXT_HEIGHT_TABLE
 import uuid
 
 
@@ -163,35 +160,73 @@ QUIZ_USER_PROMPT_TEMPLATE = """
 async def generate_scene_content(
     outline: SceneOutline,
     language: str = "zh-CN",
+    language_directive: Optional[str] = None,
     model: Optional[str] = None,
     agents: Optional[List[Dict[str, Any]]] = None,
+    image_enabled: bool = False,
+    video_enabled: bool = False,
 ) -> Dict[str, Any]:
     """
-    生成场景内容（使用精确排版Prompt + 流式调用避免超时）
+    生成场景内容（使用Web端一致的模板化Prompt）
 
     Args:
         outline: 场景大纲
         language: 语言
+        language_directive: 语言指令（从大纲生成阶段传递）
         model: LLM 模型
         agents: 智能体信息列表（用于构建teacherContext）
+        image_enabled: 是否启用图片生成
+        video_enabled: 是否启用视频生成
 
     Returns:
-        场景内容（JSON），包含精确坐标格式的元素
+        场景内容（JSON）
     """
-    if outline.type == "slide":
-        # 构建教师人设上下文（与Web端一致）
-        teacher_context = format_teacher_persona_for_prompt(agents)
+    # 构建教师人设上下文
+    teacher_context = format_teacher_persona_for_prompt(agents)
 
-        # 使用精确排版Prompt模板
-        prompt = SLIDE_CONTENT_USER_TEMPLATE.format(
-            title=outline.title,
-            type=outline.type,
-            description=outline.description,
-            key_points=", ".join(outline.key_points or []),
-            language=language,
-            teacher_context=teacher_context,
+    # 构建语言指令
+    lang_directive = language_directive or f"Output all content in {language} language."
+
+    if outline.type == "slide":
+        # 使用Web端一致的slide-content模板
+        system_prompt, user_prompt = build_prompt(
+            "slide-content",
+            {
+                "title": outline.title,
+                "description": outline.description,
+                "keyPoints": ", ".join(outline.key_points or []),
+                "teacherContext": teacher_context,
+                "languageDirective": lang_directive,
+                "canvas_width": 1000,
+                "canvas_height": 562,
+                "imageElementEnabled": False,  # 暂不支持源图片
+                "generatedImageEnabled": image_enabled,
+                "generatedVideoEnabled": video_enabled,
+            },
+            conditions={
+                "imageElementEnabled": False,
+                "generatedImageEnabled": image_enabled,
+                "generatedVideoEnabled": video_enabled,
+            }
         )
-        system_prompt = SLIDE_CONTENT_SYSTEM_PROMPT
+
+        # 如果模板加载失败，使用fallback
+        if not system_prompt or not user_prompt:
+            logger.warning("[SceneGenerator] slide-content template not found, using fallback")
+            from app.services.generation.prompts.slide_content_simple import (
+                SLIDE_CONTENT_SYSTEM_PROMPT,
+                SLIDE_CONTENT_USER_TEMPLATE,
+            )
+            system_prompt = SLIDE_CONTENT_SYSTEM_PROMPT
+            user_prompt = SLIDE_CONTENT_USER_TEMPLATE.format(
+                title=outline.title,
+                type=outline.type,
+                description=outline.description,
+                key_points=", ".join(outline.key_points or []),
+                language=language,
+                teacher_context=teacher_context,
+            )
+
     elif outline.type == "quiz":
         prompt = QUIZ_USER_PROMPT_TEMPLATE.format(
             title=outline.title,
@@ -199,18 +234,42 @@ async def generate_scene_content(
             language=language,
         )
         system_prompt = "你是测验内容生成专家。只输出JSON。"
+        user_prompt = prompt
+
+    elif outline.type == "interactive":
+        # Interactive场景 - 使用widget模板
+        widget_type = getattr(outline, 'widget_type', None) or 'simulation'
+        widget_outline = getattr(outline, 'widget_outline', {}) or {}
+
+        system_prompt, user_prompt = build_prompt(
+            f"{widget_type}-content",
+            {
+                "title": outline.title,
+                "description": outline.description,
+                "keyPoints": ", ".join(outline.key_points or []),
+                "languageDirective": lang_directive,
+                "teacherContext": teacher_context,
+                # Widget特定参数
+                **widget_outline,
+            }
+        )
+
+        if not system_prompt or not user_prompt:
+            logger.warning(f"[SceneGenerator] {widget_type}-content template not found, using default")
+            return {"type": "interactive", "content": {}, "widgetType": widget_type}
+
     else:
-        # interactive / pbl 暂时返回默认结构
+        # pbl等其他类型暂时返回默认结构
         return {"type": outline.type, "content": {}}
 
     logger.info(f"[SceneGenerator] Generating content for: {outline.title} ({outline.type})")
-    logger.debug(f"[SceneGenerator] Prompt length: {len(prompt)}, System prompt length: {len(system_prompt)}")
+    logger.debug(f"[SceneGenerator] System prompt length: {len(system_prompt) if system_prompt else 0}, User prompt length: {len(user_prompt) if user_prompt else 0}")
 
-    # 使用流式调用避免DashScope 30秒超时问题（与Web端一致）
+    # 使用流式调用避免超时
     try:
         chunks = []
         async for chunk in stream_llm(
-            prompt=prompt,
+            prompt=user_prompt,
             system_prompt=system_prompt,
             model=model,
             temperature=0.7,
@@ -222,21 +281,24 @@ async def generate_scene_content(
         logger.info(f"[SceneGenerator] Stream completed, response length: {len(response)}")
     except Exception as e:
         logger.warning(f"[SceneGenerator] Stream failed, falling back to non-stream: {e}")
-        # 流式失败时回退到非流式（可能超时）
         response = await call_llm(
-            prompt=prompt,
+            prompt=user_prompt,
             system_prompt=system_prompt,
             model=model,
             temperature=0.7,
             max_tokens=4096,
         )
 
-    # 增强的JSON解析逻辑
+    # 解析JSON
     content = parse_json_response(response, outline.type)
 
-    # 后处理：确保元素格式正确（精确坐标而非嵌套position）
+    # 后处理
     if outline.type == "slide" and content.get("canvas"):
         content = fix_element_format(content)
+
+    # Interactive场景添加widgetType标记
+    if outline.type == "interactive":
+        content["widgetType"] = getattr(outline, 'widget_type', 'simulation')
 
     return content
 

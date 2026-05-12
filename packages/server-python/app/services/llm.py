@@ -1,5 +1,10 @@
 """
 LLM 统一接口 - 支持 OpenAI 兼容 API
+
+支持:
+- 多Provider调用
+- Thinking/Reasoning参数
+- 流式和非流式模式
 """
 
 import asyncio
@@ -36,6 +41,33 @@ MODEL_REMAP = {
 }
 
 
+def parse_model_string(model_str: str) -> tuple:
+    """
+    解析模型字符串，提取provider和model_id
+
+    Args:
+        model_str: 模型字符串，如 "openai:gpt-5.5" 或 "gpt-5.5"
+
+    Returns:
+        (provider_id, model_id) tuple
+    """
+    # 支持多种格式: "openai:gpt-5.5", "openai/gpt-5.5", "gpt-5.5"
+    provider_id = "openai"  # 默认provider
+
+    if "/" in model_str:
+        parts = model_str.split("/", 1)
+        provider_id = parts[0]
+        model_id = parts[1]
+    elif ":" in model_str:
+        parts = model_str.split(":", 1)
+        provider_id = parts[0]
+        model_id = parts[1]
+    else:
+        model_id = model_str
+
+    return provider_id, model_id
+
+
 async def call_llm(
     prompt: str,
     system_prompt: Optional[str] = None,
@@ -44,24 +76,37 @@ async def call_llm(
     max_tokens: Optional[int] = None,
     stream: bool = False,
     max_retries: int = 3,
+    thinking_config: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
-    调用 LLM（使用 httpx，支持重试）
+    调用 LLM（支持Thinking参数）
+
+    Args:
+        prompt: 用户提示
+        system_prompt: 系统提示
+        model: 模型字符串 (支持 "provider:model" 格式)
+        temperature: 温度参数
+        max_tokens: 最大tokens
+        stream: 是否流式
+        max_retries: 最大重试次数
+        thinking_config: Thinking配置 {"enabled": bool, "effort": str, "budget_tokens": int}
+
+    Returns:
+        LLM响应文本
     """
     start_time = time.time()
 
     model_str = model or settings.DEFAULT_MODEL
-    # 移除 provider 前缀 (支持 openai/ 和 openai: 两种格式)
-    if model_str.startswith("openai/"):
-        model_str = model_str[7:]
-    elif model_str.startswith("openai:"):
-        model_str = model_str[7:]
+
+    # 解析provider和model_id
+    provider_id, model_id = parse_model_string(model_str)
 
     # 模型映射 - 转换为 DashScope 支持的模型
-    if model_str in MODEL_REMAP:
-        original_model = model_str
-        model_str = MODEL_REMAP[model_str]
-        logger.info(f"[LLM] 模型映射: {original_model} -> {model_str}")
+    if model_id in MODEL_REMAP:
+        original_model = model_id
+        model_id = MODEL_REMAP[model_id]
+        provider_id = "qwen"  # 映射后使用qwen provider
+        logger.info(f"[LLM] 模型映射: {original_model} -> {model_id}")
 
     messages = []
     if system_prompt:
@@ -72,16 +117,27 @@ async def call_llm(
     api_key = settings.OPENAI_API_KEY
 
     payload = {
-        "model": model_str,
+        "model": model_id,
         "messages": messages,
         "temperature": temperature,
     }
     if max_tokens:
         payload["max_tokens"] = max_tokens
 
+    # 添加thinking参数（如果配置）
+    if thinking_config:
+        try:
+            from app.services.model_metadata import build_thinking_params
+            thinking_params = build_thinking_params(provider_id, model_id, thinking_config)
+            if thinking_params:
+                payload.update(thinking_params)
+                logger.info(f"[LLM] Thinking参数: {thinking_params}")
+        except ImportError:
+            logger.warning("[LLM] model_metadata not available, skipping thinking params")
+
     url = f"{api_base}/chat/completions"
 
-    logger.info(f"[LLM] 开始调用 - model={model_str}, api_base={api_base}, max_tokens={max_tokens}")
+    logger.info(f"[LLM] 开始调用 - provider={provider_id}, model={model_id}, api_base={api_base}, max_tokens={max_tokens}")
     logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
 
     # DashScope Coding Plan API 有30秒超时限制，需要适配
@@ -186,21 +242,34 @@ async def stream_llm(
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
     max_retries: int = 3,
+    thinking_config: Optional[Dict[str, Any]] = None,
 ):
     """
-    流式调用 LLM（真正的流式，逐块返回）
+    流式调用 LLM（支持Thinking参数）
+
+    Args:
+        prompt: 用户提示
+        system_prompt: 系统提示
+        model: 模型字符串
+        temperature: 温度参数
+        max_tokens: 最大tokens
+        max_retries: 最大重试次数
+        thinking_config: Thinking配置
+
+    Yields:
+        流式响应的每个chunk
     """
     model_str = model or settings.DEFAULT_MODEL
-    if model_str.startswith("openai/"):
-        model_str = model_str[7:]
-    elif model_str.startswith("openai:"):
-        model_str = model_str[7:]
 
-    # 模型映射 - 转换为 DashScope 支持的模型
-    if model_str in MODEL_REMAP:
-        original_model = model_str
-        model_str = MODEL_REMAP[model_str]
-        logger.info(f"[LLM Stream] 模型映射: {original_model} -> {model_str}")
+    # 解析provider和model_id
+    provider_id, model_id = parse_model_string(model_str)
+
+    # 模型映射
+    if model_id in MODEL_REMAP:
+        original_model = model_id
+        model_id = MODEL_REMAP[model_id]
+        provider_id = "qwen"
+        logger.info(f"[LLM Stream] 模型映射: {original_model} -> {model_id}")
 
     messages = []
     if system_prompt:
@@ -211,7 +280,7 @@ async def stream_llm(
     api_key = settings.OPENAI_API_KEY
 
     payload = {
-        "model": model_str,
+        "model": model_id,
         "messages": messages,
         "temperature": temperature,
         "stream": True,  # 启用流式输出
@@ -219,9 +288,18 @@ async def stream_llm(
     if max_tokens:
         payload["max_tokens"] = max_tokens
 
+    # 添加thinking参数
+    if thinking_config:
+        try:
+            from app.services.model_metadata import build_thinking_params
+            thinking_params = build_thinking_params(provider_id, model_id, thinking_config)
+            if thinking_params:
+                payload.update(thinking_params)
+        except ImportError:
+            pass
+
     url = f"{api_base}/chat/completions"
-    # 增加流式超时到600秒（场景生成需要两次LLM调用）
-    timeout = httpx.Timeout(600.0, connect=30.0)  # 流式需要更长超时
+    timeout = httpx.Timeout(600.0, connect=30.0)
 
     for attempt in range(max_retries):
         try:

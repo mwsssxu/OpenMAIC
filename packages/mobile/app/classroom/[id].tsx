@@ -28,6 +28,15 @@ import { Scene, Agent as LibAgent } from '@/lib/types/scene';
 import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import {
+  readDraft,
+  writeDraft,
+  readSubmittedState,
+  writeSubmittedAnswers,
+  writeSubmittedResults,
+  clearSubmitted,
+  type QuestionResult,
+} from '@/lib/quiz/persistence';
 
 // 场景大纲类型（用于后台创建）
 interface SceneOutline {
@@ -555,7 +564,7 @@ export default function ClassroomScreen() {
     if (index !== currentSceneIndex) {
       playbackEngineRef.current?.jumpToScene(index);
       setShowThumbnailNav(false);
-      // 重置测验状态
+      // 重置测验状态（新的场景会在useEffect中恢复持久化状态）
       setSelectedAnswers({});
       setSubmittedAnswers({});
       setQuizSubmitted(false);
@@ -564,7 +573,12 @@ export default function ClassroomScreen() {
 
   // 测验交互函数
   const selectAnswer = (questionId: string, optionValue: string) => {
-    setSelectedAnswers(prev => ({ ...prev, [questionId]: optionValue }));
+    const newAnswers = { ...selectedAnswers, [questionId]: optionValue };
+    setSelectedAnswers(newAnswers);
+    // 持久化草稿答案
+    if (currentScene?.id) {
+      writeDraft(currentScene.id, newAnswers);
+    }
   };
 
   const submitQuiz = async () => {
@@ -580,16 +594,29 @@ export default function ClassroomScreen() {
     }
 
     const results: Record<string, boolean> = {};
+    const questionResults: QuestionResult[] = [];
 
     // 检查答案
     questions.forEach((q: any) => {
       const correctAnswer = q.answer?.[0] || q.answer;
-      results[q.id] = selectedAnswers[q.id] === correctAnswer;
+      const isCorrect = selectedAnswers[q.id] === correctAnswer;
+      results[q.id] = isCorrect;
+      questionResults.push({
+        questionId: q.id,
+        correct: isCorrect,
+        feedback: isCorrect ? '回答正确' : `正确答案是: ${correctAnswer}`,
+      });
     });
 
     setSubmittedAnswers(results);
     setQuizSubmitted(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // 持久化提交答案和结果
+    if (currentScene?.id) {
+      await writeSubmittedAnswers(currentScene.id, selectedAnswers);
+      await writeSubmittedResults(currentScene.id, questionResults);
+    }
 
     // 如果有错误答案，请求 Agent 解析（可选）
     const wrongQuestions = questions.filter((q: any) => !results[q.id]);
@@ -605,10 +632,14 @@ export default function ClassroomScreen() {
     }
   };
 
-  const resetQuiz = () => {
+  const resetQuiz = async () => {
     setSelectedAnswers({});
     setSubmittedAnswers({});
     setQuizSubmitted(false);
+    // 清除持久化数据
+    if (currentScene?.id) {
+      await clearSubmitted(currentScene.id);
+    }
   };
 
   async function sendMessage() {
@@ -815,6 +846,50 @@ export default function ClassroomScreen() {
   }
 
   const currentScene = data.scenes[currentSceneIndex];
+
+  // Quiz场景状态恢复 - 当切换到Quiz场景时加载持久化状态
+  useEffect(() => {
+    if (currentScene?.type === 'quiz' && currentScene?.id) {
+      const loadQuizState = async () => {
+        const submittedState = await readSubmittedState(currentScene.id);
+        if (submittedState) {
+          if (submittedState.kind === 'reviewing') {
+            // 已提交并批改 - 转换类型：QuizAnswers是string | string[]，单选转为string
+            const answers: Record<string, string> = {};
+            Object.entries(submittedState.answers).forEach(([key, value]) => {
+              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            });
+            setSelectedAnswers(answers);
+            const resultsMap: Record<string, boolean> = {};
+            submittedState.results.forEach(r => {
+              resultsMap[r.questionId] = r.correct === true;
+            });
+            setSubmittedAnswers(resultsMap);
+            setQuizSubmitted(true);
+          } else if (submittedState.kind === 'answering') {
+            // 已提交但未批改
+            const answers: Record<string, string> = {};
+            Object.entries(submittedState.answers).forEach(([key, value]) => {
+              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            });
+            setSelectedAnswers(answers);
+            setQuizSubmitted(true);
+          }
+        } else {
+          // 没有提交状态，加载草稿
+          const draft = await readDraft(currentScene.id);
+          if (draft && Object.keys(draft).length > 0) {
+            const answers: Record<string, string> = {};
+            Object.entries(draft).forEach(([key, value]) => {
+              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            });
+            setSelectedAnswers(answers);
+          }
+        }
+      };
+      loadQuizState();
+    }
+  }, [currentScene?.id, currentScene?.type]);
 
   return (
     <GestureDetector gesture={composedGesture}>
