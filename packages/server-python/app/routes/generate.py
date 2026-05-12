@@ -34,6 +34,8 @@ from app.services.scene_service import (
 from app.services.pdf_service import parse_pdf
 from app.services.web_search_service import web_search_with_provider
 from app.services.tts_service import generate_tts, encode_audio_base64
+from app.services.llm import call_llm
+from app.services.generation.prompts import build_prompt
 from app.core.config import settings
 from app.core.ssrf_guard import validate_url_for_ssrf
 import asyncpg
@@ -41,6 +43,7 @@ import uuid
 import json
 import asyncio
 import logging
+import re
 import time
 
 router = APIRouter()
@@ -167,6 +170,36 @@ async def parse_pdf_endpoint(
 
 # ==================== 网络搜索 ====================
 
+def _extract_rewritten_query(raw: str) -> Optional[str]:
+    """从 LLM 原始输出中提取 {"query":"..."} 的 query 字段。
+
+    兼容场景：
+    - 带 markdown 代码块的 ```json {...} ```
+    - 纯 JSON 文本
+    - 解析失败时返回 None
+    """
+    if not raw:
+        return None
+    # 仅剤除首尾的围栏，避免损坏 query 内部的反引号
+    text = re.sub(r"^```(?:json)?\s*|\s*```\s*$", "", raw.strip(), flags=re.S).strip()
+    if not text:
+        return None
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    snippet = text[start:end + 1]
+    try:
+        obj = json.loads(snippet)
+    except Exception:
+        return None
+    value = obj.get("query") if isinstance(obj, dict) else None
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return None
+
+
 @router.post("/web-search")
 async def web_search_endpoint(
     body: dict,
@@ -188,12 +221,40 @@ async def web_search_endpoint(
     pdf_text = body.get("pdfText")
     api_key = body.get("apiKey")
     provider = body.get("provider", "serper")
+    # 默认不开启查询重写；前端可显式设置 rewriteQuery=true 开启
+    # （避免在常见 pdfText 场景下隐式新增一次 LLM 调用）
+    rewrite_query = body.get("rewriteQuery", False)
 
     logger.info(f"[WebSearch] Query: {query[:50]}, provider={provider}")
 
+    # 当有 pdfText 且开启重写时，调用 web-search-query-rewrite 模板将 query 优化为具体搜索词
+    effective_query = query
+    if rewrite_query and pdf_text and pdf_text.strip():
+        try:
+            sys_p, usr_p = build_prompt(
+                "web-search-query-rewrite",
+                {
+                    "requirement": query,
+                    "pdfExcerpt": pdf_text[:4000],
+                },
+            )
+            if sys_p and usr_p:
+                raw = await call_llm(
+                    prompt=usr_p,
+                    system_prompt=sys_p,
+                    temperature=0.2,
+                    max_tokens=256,
+                )
+                rewritten = _extract_rewritten_query(raw)
+                if rewritten and len(rewritten) <= 320:
+                    logger.info(f"[WebSearch] Query rewritten: {query[:30]!r} -> {rewritten[:30]!r}")
+                    effective_query = rewritten
+        except Exception as rewrite_err:
+            logger.warning(f"[WebSearch] query rewrite failed, use original: {rewrite_err}")
+
     try:
         result = await web_search_with_provider(
-            query=query,
+            query=effective_query,
             provider=provider,
             api_key=api_key,
             pdf_text=pdf_text,

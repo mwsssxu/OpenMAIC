@@ -1,5 +1,16 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
@@ -31,9 +42,14 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [policyAgreed, setPolicyAgreed] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 键盘顺序跳转
+  const passwordInputRef = useRef<TextInput>(null);
+  const nicknameInputRef = useRef<TextInput>(null);
 
   // 注册成功后自动跳转
   if (isAuthenticated && !registering) {
@@ -75,63 +91,102 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>创建账户</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: Colors.neutral.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>创建账户</Text>
 
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="邮箱"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="密码（至少 6 位）"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="昵称（可选）"
-          value={nickname}
-          onChangeText={setNickname}
-        />
-
-        <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
-
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            placeholder="邮箱"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="username"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              ref={passwordInputRef}
+              style={[styles.input, styles.passwordInput]}
+              placeholder="密码（至少 6 位）"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoComplete="new-password"
+              textContentType="newPassword"
+              returnKeyType="next"
+              onSubmitEditing={() => nicknameInputRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((v) => !v)}
+              accessibilityLabel={showPassword ? '隐藏密码' : '显示密码'}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={22}
+                color={Colors.neutral.textMuted}
+              />
+            </TouchableOpacity>
           </View>
-        )}
+          <TextInput
+            ref={nicknameInputRef}
+            style={styles.input}
+            placeholder="昵称（可选）"
+            value={nickname}
+            onChangeText={setNickname}
+            textContentType="nickname"
+            returnKeyType="done"
+            onSubmitEditing={handleRegister}
+          />
 
-        <TouchableOpacity
-          style={[styles.button, (isLoading || registering) && styles.buttonDisabled]}
-          onPress={handleRegister}
-          disabled={isLoading || registering}
-        >
-          {registering ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.buttonText}>注册</Text>
+          <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
+
+          {error && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
           )}
-        </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.link}>已有账户？返回登录</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+          <TouchableOpacity
+            style={[styles.button, (isLoading || registering) && styles.buttonDisabled]}
+            onPress={handleRegister}
+            disabled={isLoading || registering}
+          >
+            {registering ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.buttonText}>注册</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.link}>已有账户？返回登录</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     padding: Spacing.md,
     backgroundColor: Colors.neutral.background,
@@ -148,6 +203,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: Colors.neutral.card,
     color: Colors.neutral.textPrimary,
+  },
+  passwordRow: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  passwordInput: {
+    paddingRight: 44,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: Spacing.sm,
+    top: 14,
+    padding: 4,
   },
   errorBox: {
     backgroundColor: Colors.feedback.errorBg,

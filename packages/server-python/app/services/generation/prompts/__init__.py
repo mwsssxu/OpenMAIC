@@ -25,14 +25,16 @@ PROMPT_IDS = {
     "SLIDE_ACTIONS": "slide-actions",
     "QUIZ_CONTENT": "quiz-content",
     "QUIZ_ACTIONS": "quiz-actions",
-    "INTERACTIVE_CONTENT": "interactive-content",
     "INTERACTIVE_ACTIONS": "interactive-actions",
+    "INTERACTIVE_HTML": "interactive-html",
+    "INTERACTIVE_SCIENTIFIC_MODEL": "interactive-scientific-model",
     "SIMULATION_CONTENT": "simulation-content",
     "GAME_CONTENT": "game-content",
     "DIAGRAM_CONTENT": "diagram-content",
     "CODE_CONTENT": "code-content",
     "VISUALIZATION3D_CONTENT": "visualization3d-content",
     "PBL_ACTIONS": "pbl-actions",
+    "WEB_SEARCH_QUERY_REWRITE": "web-search-query-rewrite",
 }
 
 

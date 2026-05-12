@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Modal,
   TextInput,
   Alert,
 } from 'react-native';
@@ -27,6 +26,9 @@ import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
 import { Scene, Agent as LibAgent } from '@/lib/types/scene';
 import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
+import { BottomSheetModal } from '@/components/common/BottomSheetModal';
+import { HintToast } from '@/components/common/HintToast';
+import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import {
   readDraft,
@@ -102,6 +104,12 @@ export default function ClassroomScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+
+  // 首次进入课堂：提示滑动与缩放手势（3.8s 后自动消失）
+  const classroomGestureHint = useFirstTimeHint('classroom.gesture', {
+    delayMs: 800,
+    autoHideMs: 3800,
+  });
 
   // 后台创建场景进度
   const [backgroundCreating, setBackgroundCreating] = useState(false);
@@ -1371,220 +1379,214 @@ export default function ClassroomScreen() {
       </View>
 
       {/* 智能体聊天模态框 */}
-      <Modal
+      <BottomSheetModal
         visible={showChatModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowChatModal(false)}
+        onClose={() => setShowChatModal(false)}
+        contentStyle={styles.modalContent}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            {/* 模态框头部 */}
-            <View style={styles.modalHeader}>
-              {selectedAgent && (
-                <View style={[styles.modalAgentAvatar, { backgroundColor: safeColorWithAlpha(selectedAgent.color, '20') }]}>
-                  <Ionicons name="person" size={32} color={selectedAgent.color} />
-                </View>
-              )}
-              <Text style={styles.modalTitle}>
-                {selectedAgent ? `与 ${selectedAgent.name} 对话` : '智能体对话'}
-              </Text>
-              <TouchableOpacity onPress={() => setShowChatModal(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+        {/* 模态框头部 */}
+        <View style={styles.modalHeader}>
+          {selectedAgent && (
+            <View style={[styles.modalAgentAvatar, { backgroundColor: safeColorWithAlpha(selectedAgent.color, '20') }]}>
+              <Ionicons name="person" size={32} color={selectedAgent.color} />
             </View>
-
-            {/* 聊天历史 */}
-            <ScrollView style={styles.chatHistory}>
-              {chatHistory.length === 0 && (
-                <Text style={styles.chatHint}>开始提问吧，{selectedAgent?.name} 会帮助你理解课程内容</Text>
-              )}
-              {chatHistory.map((item, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.chatBubble,
-                    item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent
-                  ]}
-                >
-                  <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
-                  <Text style={styles.chatBubbleText}>{item.message}</Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            {/* 输入框 - 只在非讨论模式显示 */}
-            {!discussionMode && (
-              <View style={styles.chatInputArea}>
-                <TextInput
-                  style={styles.chatInput}
-                  placeholder="输入你的问题..."
-                  value={chatMessage}
-                  onChangeText={setChatMessage}
-                  multiline
-                />
-                <TouchableOpacity
-                  style={[styles.sendBtn, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]}
-                  onPress={sendMessage}
-                  disabled={!chatMessage.trim() || sendingMessage}
-                >
-                  {sendingMessage ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Ionicons name="send" size={20} color="white" />
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* 讨论模式提示 */}
-            {discussionMode && (
-              <View style={styles.discussionModeHint}>
-                {discussionRunning ? (
-                  <ActivityIndicator size="small" color="#10b981" />
-                ) : (
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                )}
-                <Text style={styles.discussionModeText}>
-                  {discussionRunning ? 'Agent正在轮流发言...' : '讨论已结束'}
-                </Text>
-              </View>
-            )}
-          </View>
+          )}
+          <Text style={styles.modalTitle}>
+            {selectedAgent ? `与 ${selectedAgent.name} 对话` : '智能体对话'}
+          </Text>
+          <TouchableOpacity onPress={() => setShowChatModal(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        {/* 聊天历史 */}
+        <ScrollView style={styles.chatHistory}>
+          {chatHistory.length === 0 && (
+            <Text style={styles.chatHint}>开始提问吧，{selectedAgent?.name} 会帮助你理解课程内容</Text>
+          )}
+          {chatHistory.map((item, index) => (
+            <View
+              key={index}
+              style={[
+                styles.chatBubble,
+                item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent
+              ]}
+            >
+              <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
+              <Text style={styles.chatBubbleText}>{item.message}</Text>
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* 输入框 - 只在非讨论模式显示 */}
+        {!discussionMode && (
+          <View style={styles.chatInputArea}>
+            <TextInput
+              style={styles.chatInput}
+              placeholder="输入你的问题..."
+              value={chatMessage}
+              onChangeText={setChatMessage}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]}
+              onPress={sendMessage}
+              disabled={!chatMessage.trim() || sendingMessage}
+            >
+              {sendingMessage ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Ionicons name="send" size={20} color="white" />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* 讨论模式提示 */}
+        {discussionMode && (
+          <View style={styles.discussionModeHint}>
+            {discussionRunning ? (
+              <ActivityIndicator size="small" color="#10b981" />
+            ) : (
+              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+            )}
+            <Text style={styles.discussionModeText}>
+              {discussionRunning ? 'Agent正在轮流发言...' : '讨论已结束'}
+            </Text>
+          </View>
+        )}
+      </BottomSheetModal>
 
       {/* TTS 设置模态框 */}
-      <Modal
+      <BottomSheetModal
         visible={showTtsSettings}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowTtsSettings(false)}
+        onClose={() => setShowTtsSettings(false)}
+        contentStyle={styles.modalContent}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Ionicons name="settings" size={24} color="#5b9bd5" />
-              <Text style={styles.modalTitle}>语音设置</Text>
-              <TouchableOpacity onPress={() => setShowTtsSettings(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.ttsSettingsContent}>
-              {/* Provider 选择 */}
-              <Text style={styles.ttsSettingLabel}>语音服务商</Text>
-              <View style={styles.ttsOptionsRow}>
-                {['qwen', 'openai', 'minimax'].map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[styles.ttsOptionBtn, ttsConfig.provider === p && styles.ttsOptionActive]}
-                    onPress={() => {
-                      const defaultVoices: Record<string, string> = {
-                        qwen: 'Cherry',
-                        openai: 'alloy',
-                        minimax: 'female-yujie',
-                      };
-                      setTtsConfig({ ...ttsConfig, provider: p as any, voice: defaultVoices[p] });
-                    }}
-                  >
-                    <Text style={[styles.ttsOptionText, ttsConfig.provider === p && styles.ttsOptionTextActive]}>
-                      {p === 'qwen' ? '阿里云' : p === 'openai' ? 'OpenAI' : 'MiniMax'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Voice 选择 */}
-              <Text style={styles.ttsSettingLabel}>语音角色</Text>
-              <ScrollView horizontal style={styles.voiceScroll} showsHorizontalScrollIndicator={false}>
-                {(availableVoices[ttsConfig.provider] || []).map((v) => (
-                  <TouchableOpacity
-                    key={v.id}
-                    style={[styles.voiceBtn, ttsConfig.voice === v.id && styles.voiceBtnActive]}
-                    onPress={() => setTtsConfig({ ...ttsConfig, voice: v.id })}
-                  >
-                    <Text style={[styles.voiceText, ttsConfig.voice === v.id && styles.voiceTextActive]}>
-                      {v.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Speed 选择 */}
-              <Text style={styles.ttsSettingLabel}>语速: {ttsConfig.speed.toFixed(1)}x</Text>
-              <View style={styles.speedSlider}>
-                {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.speedBtn, ttsConfig.speed === s && styles.speedBtnActive]}
-                    onPress={() => setTtsConfig({ ...ttsConfig, speed: s })}
-                  >
-                    <Text style={[styles.speedText, ttsConfig.speed === s && styles.speedTextActive]}>
-                      {s}x
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.ttsSaveBtn}
-              onPress={() => {
-                playbackEngineRef.current?.setTTSConfig(ttsConfig);
-                setShowTtsSettings(false);
-              }}
-            >
-              <Text style={styles.ttsSaveBtnText}>应用设置</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.modalHeader}>
+          <Ionicons name="settings" size={24} color="#5b9bd5" />
+          <Text style={styles.modalTitle}>语音设置</Text>
+          <TouchableOpacity onPress={() => setShowTtsSettings(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <ScrollView style={styles.ttsSettingsContent}>
+          {/* Provider 选择 */}
+          <Text style={styles.ttsSettingLabel}>语音服务商</Text>
+          <View style={styles.ttsOptionsRow}>
+            {['qwen', 'openai', 'minimax'].map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.ttsOptionBtn, ttsConfig.provider === p && styles.ttsOptionActive]}
+                onPress={() => {
+                  const defaultVoices: Record<string, string> = {
+                    qwen: 'Cherry',
+                    openai: 'alloy',
+                    minimax: 'female-yujie',
+                  };
+                  setTtsConfig({ ...ttsConfig, provider: p as any, voice: defaultVoices[p] });
+                }}
+              >
+                <Text style={[styles.ttsOptionText, ttsConfig.provider === p && styles.ttsOptionTextActive]}>
+                  {p === 'qwen' ? '阿里云' : p === 'openai' ? 'OpenAI' : 'MiniMax'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Voice 选择 */}
+          <Text style={styles.ttsSettingLabel}>语音角色</Text>
+          <ScrollView horizontal style={styles.voiceScroll} showsHorizontalScrollIndicator={false}>
+            {(availableVoices[ttsConfig.provider] || []).map((v) => (
+              <TouchableOpacity
+                key={v.id}
+                style={[styles.voiceBtn, ttsConfig.voice === v.id && styles.voiceBtnActive]}
+                onPress={() => setTtsConfig({ ...ttsConfig, voice: v.id })}
+              >
+                <Text style={[styles.voiceText, ttsConfig.voice === v.id && styles.voiceTextActive]}>
+                  {v.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Speed 选择 */}
+          <Text style={styles.ttsSettingLabel}>语速: {ttsConfig.speed.toFixed(1)}x</Text>
+          <View style={styles.speedSlider}>
+            {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={[styles.speedBtn, ttsConfig.speed === s && styles.speedBtnActive]}
+                onPress={() => setTtsConfig({ ...ttsConfig, speed: s })}
+              >
+                <Text style={[styles.speedText, ttsConfig.speed === s && styles.speedTextActive]}>
+                  {s}x
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+
+        <TouchableOpacity
+          style={styles.ttsSaveBtn}
+          onPress={() => {
+            playbackEngineRef.current?.setTTSConfig(ttsConfig);
+            setShowTtsSettings(false);
+          }}
+        >
+          <Text style={styles.ttsSaveBtnText}>应用设置</Text>
+        </TouchableOpacity>
+      </BottomSheetModal>
 
       {/* 知识提取结果弹窗 */}
-      <Modal
+      <BottomSheetModal
         visible={showExtractResult}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowExtractResult(false)}
+        onClose={() => setShowExtractResult(false)}
+        contentStyle={styles.modalContent}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Ionicons name="book" size={24} color="#5b9bd5" />
-              <Text style={styles.modalTitle}>知识点已提取</Text>
-              <TouchableOpacity onPress={() => setShowExtractResult(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.extractHint}>
-              从当前场景提取了 {extractedCards.length} 个知识点，已保存到知识库
-            </Text>
-
-            <ScrollView style={styles.extractResults}>
-              {extractedCards.map((card, _index) => (
-                <View key={card.id} style={styles.extractCardItem}>
-                  <Text style={styles.extractCardTitle}>{card.title}</Text>
-                  <Text style={styles.extractCardCategory}>
-                    {card.skill_category || 'general'}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.extractViewBtn}
-              onPress={() => {
-                setShowExtractResult(false);
-                router.push('/(tabs)/knowledge' as any);
-              }}
-            >
-              <Text style={styles.extractViewBtnText}>查看知识库</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.modalHeader}>
+          <Ionicons name="book" size={24} color="#5b9bd5" />
+          <Text style={styles.modalTitle}>知识点已提取</Text>
+          <TouchableOpacity onPress={() => setShowExtractResult(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <Text style={styles.extractHint}>
+          从当前场景提取了 {extractedCards.length} 个知识点，已保存到知识库
+        </Text>
+
+        <ScrollView style={styles.extractResults}>
+          {extractedCards.map((card, _index) => (
+            <View key={card.id} style={styles.extractCardItem}>
+              <Text style={styles.extractCardTitle}>{card.title}</Text>
+              <Text style={styles.extractCardCategory}>
+                {card.skill_category || 'general'}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+
+        <TouchableOpacity
+          style={styles.extractViewBtn}
+          onPress={() => {
+            setShowExtractResult(false);
+            router.push('/(tabs)/knowledge' as any);
+          }}
+        >
+          <Text style={styles.extractViewBtnText}>查看知识库</Text>
+        </TouchableOpacity>
+      </BottomSheetModal>
+
+      {/* 首次进入课堂的手势操作提示 */}
+      <HintToast
+        visible={classroomGestureHint.visible}
+        onClose={classroomGestureHint.dismiss}
+        icon="swap-horizontal"
+        text="左右滑动切场景 · 双指缩放画面"
+        position="top"
+      />
       </View>
     </GestureDetector>
   );

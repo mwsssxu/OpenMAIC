@@ -12,7 +12,17 @@ import {
   TextInput,
   ScrollView,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
+import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
+import { HintToast } from '@/components/common/HintToast';
 import {
   readDraft,
   writeDraft,
@@ -47,6 +57,13 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
   const [grading, setGrading] = useState(false);
   const [score, setScore] = useState(0);
   const [initialized, setInitialized] = useState(false);
+
+  // 首次答题提示：左右滑动切换题目（多题时才提示）
+  const swipeHintStore = useFirstTimeHint('quiz.swipe', {
+    enabled: questions.length > 1,
+    delayMs: 600,
+    autoHideMs: 3200,
+  });
 
   // 加载持久化状态
   useEffect(() => {
@@ -86,13 +103,21 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
   const currentQuestion = questions[currentIndex];
   const isLastQuestion = currentIndex === questions.length - 1;
 
+  // 滑动翻题动画
+  const translateX = useSharedValue(0);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
   const handleSingleSelect = (questionId: string, option: string) => {
     if (submitted) return;
+    Haptics.selectionAsync();
     setAnswers((prev) => ({ ...prev, [questionId]: option }));
   };
 
   const handleMultipleSelect = (questionId: string, option: string) => {
     if (submitted) return;
+    Haptics.selectionAsync();
     setAnswers((prev) => {
       const current = (prev[questionId] as string[]) || [];
       const isSelected = current.includes(option);
@@ -108,17 +133,43 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
     setAnswers((prev) => ({ ...prev, [questionId]: text }));
   };
 
+  const handleOptionLongPress = (option: string) => {
+    // 长按预览选项：中度震动提示，以后可扩展为气泡提示
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCurrentIndex(currentIndex + 1);
+    } else {
+      // 到底：轻微回弹提示
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
   };
 
   const handlePrev = () => {
     if (currentIndex > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCurrentIndex(currentIndex - 1);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
   };
+
+  // 左右滑动手势：activeOffsetX 让垂直 ScrollView 不被截持
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-15, 15])
+    .onEnd((event) => {
+      'worklet';
+      if (submitted) return;
+      if (event.translationX < -50) {
+        runOnJS(handleNext)();
+      } else if (event.translationX > 50) {
+        runOnJS(handlePrev)();
+      }
+    });
 
   const handleSubmit = async () => {
     setGrading(true);
@@ -247,56 +298,65 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${((currentIndex + 1) / questions.length) * 100}%` }]} />
         </View>
+        <Text style={styles.swipeHint}>{t('quiz.swipeHint') || '左右滑动切换题目'}</Text>
       </View>
 
-      {/* 问题内容 */}
-      <ScrollView style={styles.questionContainer}>
-        <Text style={styles.questionType}>
-          {currentQuestion.type === 'single' ? t('quiz.singleChoice') :
-           currentQuestion.type === 'multiple' ? t('quiz.multipleChoice') : t('quiz.shortAnswer')}
-        </Text>
-        <Text style={styles.questionText}>{currentQuestion.question}</Text>
+      {/* 问题内容 - 包裹在 GestureDetector 中支持左右滑动翻题 */}
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[styles.questionOuter, animatedStyle]}>
+          <ScrollView style={styles.questionContainer}>
+            <Text style={styles.questionType}>
+              {currentQuestion.type === 'single' ? t('quiz.singleChoice') :
+               currentQuestion.type === 'multiple' ? t('quiz.multipleChoice') : t('quiz.shortAnswer')}
+            </Text>
+            <Text style={styles.questionText}>{currentQuestion.question}</Text>
 
-        {/* 单选题 */}
-        {currentQuestion.type === 'single' && currentQuestion.options?.map((option, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[styles.option, isOptionSelected(currentQuestion.id, option) && styles.optionSelected]}
-            onPress={() => handleSingleSelect(currentQuestion.id, option)}
-          >
-            <View style={[styles.optionRadio, isOptionSelected(currentQuestion.id, option) && styles.optionRadioSelected]}>
-              {isOptionSelected(currentQuestion.id, option) && <View style={styles.optionRadioInner} />}
-            </View>
-            <Text style={styles.optionText}>{option}</Text>
-          </TouchableOpacity>
-        ))}
+            {/* 单选题 */}
+            {currentQuestion.type === 'single' && currentQuestion.options?.map((option, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.option, isOptionSelected(currentQuestion.id, option) && styles.optionSelected]}
+                onPress={() => handleSingleSelect(currentQuestion.id, option)}
+                onLongPress={() => handleOptionLongPress(option)}
+                delayLongPress={300}
+              >
+                <View style={[styles.optionRadio, isOptionSelected(currentQuestion.id, option) && styles.optionRadioSelected]}>
+                  {isOptionSelected(currentQuestion.id, option) && <View style={styles.optionRadioInner} />}
+                </View>
+                <Text style={styles.optionText}>{option}</Text>
+              </TouchableOpacity>
+            ))}
 
-        {/* 多选题 */}
-        {currentQuestion.type === 'multiple' && currentQuestion.options?.map((option, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[styles.option, isOptionSelected(currentQuestion.id, option) && styles.optionSelected]}
-            onPress={() => handleMultipleSelect(currentQuestion.id, option)}
-          >
-            <View style={[styles.optionCheckbox, isOptionSelected(currentQuestion.id, option) && styles.optionCheckboxSelected]}>
-              {isOptionSelected(currentQuestion.id, option) && <Text style={styles.checkMark}>✓</Text>}
-            </View>
-            <Text style={styles.optionText}>{option}</Text>
-          </TouchableOpacity>
-        ))}
+            {/* 多选题 */}
+            {currentQuestion.type === 'multiple' && currentQuestion.options?.map((option, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.option, isOptionSelected(currentQuestion.id, option) && styles.optionSelected]}
+                onPress={() => handleMultipleSelect(currentQuestion.id, option)}
+                onLongPress={() => handleOptionLongPress(option)}
+                delayLongPress={300}
+              >
+                <View style={[styles.optionCheckbox, isOptionSelected(currentQuestion.id, option) && styles.optionCheckboxSelected]}>
+                  {isOptionSelected(currentQuestion.id, option) && <Text style={styles.checkMark}>✓</Text>}
+                </View>
+                <Text style={styles.optionText}>{option}</Text>
+              </TouchableOpacity>
+            ))}
 
-        {/* 简答题 */}
-        {currentQuestion.type === 'short' && (
-          <TextInput
-            style={styles.shortAnswerInput}
-            multiline
-            numberOfLines={4}
-            placeholder={t('quiz.placeholder')}
-            value={(answers[currentQuestion.id] as string) || ''}
-            onChangeText={(text) => handleShortAnswer(currentQuestion.id, text)}
-          />
-        )}
-      </ScrollView>
+            {/* 简答题 */}
+            {currentQuestion.type === 'short' && (
+              <TextInput
+                style={styles.shortAnswerInput}
+                multiline
+                numberOfLines={4}
+                placeholder={t('quiz.placeholder')}
+                value={(answers[currentQuestion.id] as string) || ''}
+                onChangeText={(text) => handleShortAnswer(currentQuestion.id, text)}
+              />
+            )}
+          </ScrollView>
+        </Animated.View>
+      </GestureDetector>
 
       {/* 导航按钮 */}
       <View style={styles.navigation}>
@@ -318,6 +378,14 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* 首次答题的滑动提示 */}
+      <HintToast
+        visible={swipeHintStore.visible}
+        onClose={swipeHintStore.dismiss}
+        icon="swap-horizontal"
+        text={t('quiz.swipeHint') || '左右滑动切换题目'}
+      />
     </View>
   );
 }
@@ -328,6 +396,8 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 14, color: '#666', marginBottom: 8 },
   progressBar: { height: 4, backgroundColor: '#eee', borderRadius: 2 },
   progressFill: { height: 4, backgroundColor: '#007AFF', borderRadius: 2 },
+  swipeHint: { fontSize: 11, color: '#999', textAlign: 'center', marginTop: 6 },
+  questionOuter: { flex: 1 },
   questionContainer: { flex: 1, padding: 15 },
   questionType: { fontSize: 12, color: '#007AFF', marginBottom: 8 },
   questionText: { fontSize: 18, fontWeight: '500', marginBottom: 20 },

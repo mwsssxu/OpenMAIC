@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,19 @@ import {
   TextInput,
   Modal,
   Platform,
+  Pressable,
+  PanResponder,
+  Animated as RNAnimated,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useI18n } from '@/lib/i18n';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
+import { HintToast } from '@/components/common/HintToast';
 
 interface Classroom {
   id: string;
@@ -35,6 +41,9 @@ export default function CoursesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 首次进入提示：长按卡片的操作菜单 — 有课程才提示，避免在空列表显示无意义提示
+  const longPressHintStore = useFirstTimeHint('courses.cardLongPress', { autoHideMs: 4500 });
+
   // 搜索状态
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,6 +57,44 @@ export default function CoursesScreen() {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [newName, setNewName] = useState<string>('');
+
+  // 长按弹出的底部操作菜单
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionTarget, setActionTarget] = useState<Classroom | null>(null);
+
+  // ActionSheet 下滑关闭 - 使用 Animated.Value 跟随手指拖动
+  const sheetTranslateY = useRef(new RNAnimated.Value(0)).current;
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_evt, gesture) =>
+        Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      onPanResponderMove: (_evt, gesture) => {
+        if (gesture.dy > 0) sheetTranslateY.setValue(gesture.dy);
+      },
+      onPanResponderRelease: (_evt, gesture) => {
+        if (gesture.dy > 100 || gesture.vy > 0.5) {
+          // 下滑足够距离或速度 → 关闭
+          RNAnimated.timing(sheetTranslateY, {
+            toValue: 500,
+            duration: 180,
+            useNativeDriver: true,
+          }).start(() => {
+            sheetTranslateY.setValue(0);
+            setActionSheetVisible(false);
+            setActionTarget(null);
+          });
+        } else {
+          // 回弹
+          RNAnimated.spring(sheetTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start();
+        }
+      },
+    }),
+  ).current;
 
   useEffect(() => {
     loadClassrooms();
@@ -80,6 +127,18 @@ export default function CoursesScreen() {
   const handleCreate = () => {
     onPress();
     router.push('/classroom/create' as any);
+  };
+
+  // 长按卡片 → 弹出底部操作菜单（移动端常用手势）
+  const openActionSheet = (classroom: Classroom) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setActionTarget(classroom);
+    setActionSheetVisible(true);
+  };
+
+  const closeActionSheet = () => {
+    setActionSheetVisible(false);
+    setActionTarget(null);
   };
 
   // 打开删除确认
@@ -165,6 +224,8 @@ export default function CoursesScreen() {
     <TouchableOpacity
       style={styles.classroomCard}
       onPress={() => router.push(`/classroom/${item.id}` as any)}
+      onLongPress={() => openActionSheet(item)}
+      delayLongPress={350}
       activeOpacity={0.7}
     >
       {/* 缩略图区域 */}
@@ -172,20 +233,9 @@ export default function CoursesScreen() {
         <View style={styles.thumbnailPlaceholder}>
           <Ionicons name="document-text-outline" size={32} color={Colors.secondary.info} />
         </View>
-        {/* 删除和重命名按钮 */}
-        <View style={styles.cardActions}>
-          <TouchableOpacity
-            style={styles.cardActionBtn}
-            onPress={() => openRename(item)}
-          >
-            <Ionicons name="pencil" size={16} color={Colors.neutral.textInverse} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.cardActionBtn, styles.deleteBtn]}
-            onPress={() => openDeleteConfirm(item)}
-          >
-            <Ionicons name="trash-outline" size={16} color={Colors.neutral.textInverse} />
-          </TouchableOpacity>
+        {/* 长按提示微标签 */}
+        <View style={styles.longPressHint}>
+          <Ionicons name="ellipsis-horizontal" size={14} color={Colors.neutral.textInverse} />
         </View>
       </View>
 
@@ -307,8 +357,8 @@ export default function CoursesScreen() {
         animationType="fade"
         onRequestClose={() => setDeleteModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
+        <Pressable style={styles.modalContainer} onPress={() => setDeleteModalVisible(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Ionicons name="warning-outline" size={48} color={Colors.feedback.warningText} />
             <Text style={styles.modalTitle}>确认删除</Text>
             <Text style={styles.modalMessage}>
@@ -328,8 +378,8 @@ export default function CoursesScreen() {
                 <Text style={styles.modalConfirmText}>删除</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* 重命名模态框 */}
@@ -339,8 +389,8 @@ export default function CoursesScreen() {
         animationType="fade"
         onRequestClose={() => setRenameModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
+        <Pressable style={styles.modalContainer} onPress={() => setRenameModalVisible(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Ionicons name="pencil-outline" size={48} color={Colors.secondary.info} />
             <Text style={styles.modalTitle}>重命名课程</Text>
             <TextInput
@@ -364,9 +414,67 @@ export default function CoursesScreen() {
                 <Text style={styles.modalConfirmText}>保存</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
+      {/* 长按底部操作菜单 - 支持下滑关闭和点背景关闭 */}
+      <Modal
+        visible={actionSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeActionSheet}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={closeActionSheet}>
+          <RNAnimated.View
+            style={[
+              styles.sheetContainer,
+              { transform: [{ translateY: sheetTranslateY }] },
+            ]}
+            {...sheetPanResponder.panHandlers}
+            onStartShouldSetResponder={() => true}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.sheetHandle} />
+              {actionTarget && (
+                <Text style={styles.sheetTitle} numberOfLines={1}>{actionTarget.name}</Text>
+              )}
+              <TouchableOpacity
+                style={styles.sheetItem}
+                onPress={() => {
+                  const target = actionTarget;
+                  closeActionSheet();
+                  if (target) openRename(target);
+                }}
+              >
+                <Ionicons name="pencil-outline" size={20} color={Colors.neutral.textPrimary} />
+                <Text style={styles.sheetItemText}>重命名</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.sheetItem}
+                onPress={() => {
+                  const target = actionTarget;
+                  closeActionSheet();
+                  if (target) openDeleteConfirm(target);
+                }}
+              >
+                <Ionicons name="trash-outline" size={20} color={Colors.feedback.errorText} />
+                <Text style={[styles.sheetItemText, { color: Colors.feedback.errorText }]}>删除</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.sheetCancelBtn} onPress={closeActionSheet}>
+                <Text style={styles.sheetCancelText}>取消</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </RNAnimated.View>
+        </Pressable>
+      </Modal>
+
+      {/* 首次进入操作提示 */}
+      <HintToast
+        visible={longPressHintStore.visible && classrooms.length > 0}
+        onClose={longPressHintStore.dismiss}
+        icon="hand-left-outline"
+        text="长按课程卡片可重命名或删除"
+      />
     </View>
   );
 }
@@ -454,6 +562,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.xs,
   },
+  longPressHint: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+    width: 24,
+    height: 24,
+    borderRadius: Rounded.full,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cardActionBtn: {
     width: 28,
     height: 28,
@@ -540,4 +659,59 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary.main,
   },
   modalConfirmText: { color: Colors.neutral.white, fontSize: 16, fontWeight: '600' },
+
+  // 底部操作菜单（ActionSheet）
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: Colors.neutral.card,
+    borderTopLeftRadius: Rounded.lg,
+    borderTopRightRadius: Rounded.lg,
+    paddingBottom: Spacing.xl,
+    paddingTop: Spacing.sm,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.neutral.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.sm,
+  },
+  sheetTitle: {
+    fontSize: 13,
+    color: Colors.neutral.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.neutral.border,
+  },
+  sheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  sheetItemText: {
+    fontSize: 16,
+    color: Colors.neutral.textPrimary,
+  },
+  sheetCancelBtn: {
+    marginTop: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderRadius: Rounded.md,
+    backgroundColor: Colors.neutral.backgroundAlt,
+    alignItems: 'center',
+  },
+  sheetCancelText: {
+    fontSize: 16,
+    color: Colors.neutral.textSecondary,
+    fontWeight: '500',
+  },
 });

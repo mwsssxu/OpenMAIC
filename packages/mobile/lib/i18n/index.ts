@@ -89,6 +89,7 @@ const translations = {
       retry: '重新答题',
       nextQuestion: '下一题',
       prevQuestion: '上一题',
+      swipeHint: '左右滑动切换题目',
     },
     // Agent
     agent: {
@@ -258,6 +259,7 @@ const translations = {
       retry: 'Retry',
       nextQuestion: 'Next',
       prevQuestion: 'Previous',
+      swipeHint: 'Swipe left/right to change question',
     },
     agent: {
       teacher: 'Teacher',

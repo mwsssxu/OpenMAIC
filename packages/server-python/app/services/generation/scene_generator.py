@@ -137,24 +137,25 @@ class Action(BaseModel):
 # 包含Canvas规范、高度查表、元素类型定义、设计规则
 
 
-QUIZ_USER_PROMPT_TEMPLATE = """
-请根据以下大纲生成测验内容：
+# quiz/pbl/interactive 场景内容生成使用模板化 Prompt，参见 generate_scene_content
+# 保留此占位常量避免向后不兼容，已废弃
+QUIZ_USER_PROMPT_TEMPLATE = """(deprecated — use build_prompt('quiz-content'))"""
 
-## 场景大纲
-标题：{title}
-描述：{description}
 
-## 语言
-{language}
+# widget_type → prompt_id 映射表
+# 绝大多数 widget 用 f"{type}-content"；个别模板名不按命名规则（与 Web 端 prompts-zh-CN 一致）
+# 在这里显式列出，避免默默 fallback 到不存在的模板
+WIDGET_CONTENT_PROMPT_OVERRIDES = {
+    "html": "interactive-html",
+    "scientific-model": "interactive-scientific-model",
+}
 
-## 要求
-1. 生成 3-5 个测验问题
-2. 类型包括：single（单选）、multiple（多选）、short_answer（简答）
-3. 提供正确答案和解析
 
-输出格式：
-{{"type": "quiz", "questions": [{{'id': 'q_1', 'type': 'single', 'question': '问题文本', 'options': [{{'label': '选项A', 'value': 'A'}}], 'answer': ['A'], 'analysis': '解析文本'}}]}}
-"""
+def _resolve_widget_prompt_id(widget_type: str) -> str:
+    """根据 widget_type 返回对应的 prompt 模板 ID。"""
+    if widget_type in WIDGET_CONTENT_PROMPT_OVERRIDES:
+        return WIDGET_CONTENT_PROMPT_OVERRIDES[widget_type]
+    return f"{widget_type}-content"
 
 
 async def generate_scene_content(
@@ -228,21 +229,42 @@ async def generate_scene_content(
             )
 
     elif outline.type == "quiz":
-        prompt = QUIZ_USER_PROMPT_TEMPLATE.format(
-            title=outline.title,
-            description=outline.description,
-            language=language,
+        # 使用 Web 端一致的 quiz-content 模板
+        widget_outline = getattr(outline, 'widget_outline', {}) or {}
+        system_prompt, user_prompt = build_prompt(
+            "quiz-content",
+            {
+                "title": outline.title,
+                "description": outline.description,
+                "keyPoints": ", ".join(outline.key_points or []),
+                "questionCount": widget_outline.get("questionCount", 5),
+                "difficulty": widget_outline.get("difficulty", "medium"),
+                "questionTypes": widget_outline.get("questionTypes", "single,multiple,short_answer"),
+                "languageDirective": lang_directive,
+                "teacherContext": teacher_context,
+            }
         )
-        system_prompt = "你是测验内容生成专家。只输出JSON。"
-        user_prompt = prompt
+        if not system_prompt or not user_prompt:
+            logger.warning("[SceneGenerator] quiz-content template not found, using minimal fallback")
+            system_prompt = "你是测验内容生成专家。只输出JSON。"
+            user_prompt = (
+                f"标题：{outline.title}\n"
+                f"描述：{outline.description}\n"
+                f"要点：{', '.join(outline.key_points or [])}\n"
+                f"{lang_directive}\n"
+                "生成 3-5 道题，类型 single/multiple/short_answer，每道附 analysis 与 points。\n"
+                # 与 Web 端 quiz-content 模板输出保持一致的字段命名（answer/options/analysis/points）
+                "直接输出 JSON 数组 [{\"id\":\"q1\",\"type\":\"single\",\"question\":\"...\",\"options\":[\"A\",\"B\"],\"answer\":[\"A\"],\"analysis\":\"...\",\"points\":5}]"
+            )
 
     elif outline.type == "interactive":
         # Interactive场景 - 使用widget模板
         widget_type = getattr(outline, 'widget_type', None) or 'simulation'
         widget_outline = getattr(outline, 'widget_outline', {}) or {}
+        widget_prompt_id = _resolve_widget_prompt_id(widget_type)
 
         system_prompt, user_prompt = build_prompt(
-            f"{widget_type}-content",
+            widget_prompt_id,
             {
                 "title": outline.title,
                 "description": outline.description,
@@ -255,7 +277,7 @@ async def generate_scene_content(
         )
 
         if not system_prompt or not user_prompt:
-            logger.warning(f"[SceneGenerator] {widget_type}-content template not found, using default")
+            logger.warning(f"[SceneGenerator] {widget_prompt_id} template not found for widget_type={widget_type}, using default")
             return {"type": "interactive", "content": {}, "widgetType": widget_type}
 
     else:
@@ -309,7 +331,8 @@ def parse_json_response(response: str, content_type: str) -> Dict[str, Any]:
 
     Args:
         response: LLM原始响应
-        content_type: 内容类型
+        content_type: 内容类型。quiz 分支要求返回 JSON 数组，会被包装成
+                      {"type": "quiz", "questions": [...]}。其他类型默认按 JSON 对象解析。
 
     Returns:
         解析后的JSON字典
@@ -317,31 +340,38 @@ def parse_json_response(response: str, content_type: str) -> Dict[str, Any]:
     try:
         cleaned = response.strip()
 
-        # 移除 markdown 代码块标记
-        if "```" in cleaned:
-            # 多种模式匹配
-            patterns = [
-                r"```json\s*",  # ```json
-                r"```\s*",      # ```
-            ]
-            for pattern in patterns:
-                cleaned = re.sub(pattern, "", cleaned)
-            # 移除结尾的 ```
-            cleaned = re.sub(r"```.*$", "", cleaned)
+        # 移除 markdown 代码块标记（仅剥首尾的围栏，避免损坏内部反引号）
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```\s*$", "", cleaned, flags=re.S).strip()
 
-        cleaned = cleaned.strip()
+        # quiz 场景下 LLM 输出为 JSON 数组，需优先尝试数组解析
+        if content_type == "quiz":
+            start_bracket = cleaned.find("[")
+            end_bracket = cleaned.rfind("]")
+            if start_bracket != -1 and end_bracket > start_bracket:
+                arr_text = cleaned[start_bracket:end_bracket + 1]
+                arr = json.loads(arr_text)
+                if isinstance(arr, list):
+                    return {"type": "quiz", "questions": arr}
+            # 如果模型返了对象包装格式（如 {"questions":[...]}），回落对象解析
 
-        # 找到 JSON 对象的起始位置
+        # 通用对象解析
         start_brace = cleaned.find("{")
         if start_brace != -1:
             cleaned = cleaned[start_brace:]
 
-        # 找到最后一个 }
         end_brace = cleaned.rfind("}")
         if end_brace != -1:
             cleaned = cleaned[:end_brace + 1]
 
-        return json.loads(cleaned.strip())
+        parsed = json.loads(cleaned.strip())
+
+        # quiz 回落路径：若对象缺少 type 或 questions，补全为标准形式
+        if content_type == "quiz" and isinstance(parsed, dict):
+            questions = parsed.get("questions")
+            if isinstance(questions, list):
+                return {"type": "quiz", "questions": questions}
+
+        return parsed
 
     except json.JSONDecodeError as e:
         logger.warning(f"[SceneGenerator] JSON解析失败: {e}")
@@ -424,6 +454,87 @@ def fix_element_format(content: Dict[str, Any]) -> Dict[str, Any]:
     return content
 
 
+def _build_agents_block(agents: Optional[List[Dict[str, Any]]], limit: int = 3, exclude_teacher: bool = True) -> str:
+    """构建 agents 介绍文本块（供 actions 模板使用）。
+
+    Args:
+        agents: 智能体列表
+        limit: 最多展示几个
+        exclude_teacher: 默认排除 role=teacher 的智能体，避免与 teacherContext 信息重复
+    """
+    if not agents:
+        return ""
+    filtered = [a for a in agents if not (exclude_teacher and a.get("role") == "teacher")]
+    if not filtered:
+        return ""
+    lines = [
+        f"- {a.get('name', 'Agent')} ({a.get('role', 'assistant')}): {a.get('persona', '专业讲师')}"
+        for a in filtered[:limit]
+    ]
+    return "## 讲解智能体\n" + "\n".join(lines)
+
+
+def _actions_prompt_id(scene_type: str) -> str:
+    """根据场景类型返回对应的 actions 模板 ID"""
+    mapping = {
+        "slide": "slide-actions",
+        "quiz": "quiz-actions",
+        "interactive": "interactive-actions",
+        "pbl": "pbl-actions",
+    }
+    return mapping.get(scene_type, "slide-actions")
+
+
+def _normalize_actions(raw_items: List[Any]) -> List[Action]:
+    """将模板输出的统一 {type,name,params} / {type:'text',content} 格式规范化为库内 Action。
+
+    未知 / 未支持的项会记录 warning 日志以便排查。
+    """
+    results: List[Action] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            logger.warning(f"[actions] skip non-dict item: {item!r}")
+            continue
+        item_type = item.get("type")
+        if item_type == "text":
+            # 文本/语音
+            results.append(Action(
+                id=item.get("id") or str(uuid.uuid4()),
+                type="speech",
+                data={"text": item.get("content", "")},
+            ))
+        elif item_type == "action":
+            name = item.get("name", "")
+            params = item.get("params", {}) or {}
+            if name in ("spotlight", "laser"):
+                # 合并顺序：先清洗 params、再优先映射 target_element_id，避免被 params 里的同名键覆盖
+                sanitized = {k: v for k, v in params.items() if k not in ("elementId", "target_element_id")}
+                target_id = params.get("target_element_id") or params.get("elementId")
+                results.append(Action(
+                    id=item.get("id") or str(uuid.uuid4()),
+                    type=name,
+                    data={**sanitized, "target_element_id": target_id},
+                ))
+            elif name == "discussion":
+                results.append(Action(
+                    id=item.get("id") or str(uuid.uuid4()),
+                    type="discussion",
+                    data=params,
+                ))
+            else:
+                logger.warning(f"[actions] skip unsupported action name: {name!r}")
+        elif item_type in ("speech", "spotlight", "laser", "discussion", "wb_draw_text", "wb_draw_shape"):
+            # 兼容旧格式
+            results.append(Action(
+                id=item.get("id") or str(uuid.uuid4()),
+                type=item_type,
+                data=item.get("data", {}),
+            ))
+        else:
+            logger.warning(f"[actions] skip unrecognized type: {item_type!r}")
+    return results
+
+
 async def generate_scene_actions(
     outline: SceneOutline,
     content: Dict[str, Any],
@@ -432,7 +543,7 @@ async def generate_scene_actions(
     agents: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Action]:
     """
-    生成 Agent Actions（讲解行为）- 使用流式调用避免超时
+    生成 Agent Actions（讲解行为）- 使用模板化 Prompt，按场景类型分派
 
     Args:
         outline: 场景大纲
@@ -444,79 +555,81 @@ async def generate_scene_actions(
     Returns:
         Action 列表
     """
-    # 构建教师人设上下文（与Web端一致）
+    scene_type = outline.type or "slide"
+    prompt_id = _actions_prompt_id(scene_type)
+
     teacher_context = format_teacher_persona_for_prompt(agents)
+    agents_block = _build_agents_block(agents)
+    lang_directive = f"Output all content in {language} language."
 
-    # 构建智能体列表信息（用于讲解风格）
-    agents_info = ""
-    if agents and len(agents) > 0:
-        agents_info = "## 讲解智能体\n" + "\n".join([
-            f"- {a.get('name', 'Agent')} ({a.get('role', 'assistant')}): {a.get('persona', '专业讲师')}"
-            for a in agents[:3]  # 最多3个
-        ])
+    # 按场景类型构造模板变量
+    common_vars = {
+        "title": outline.title,
+        "description": outline.description or "",
+        "keyPoints": ", ".join(outline.key_points or []),
+        "teacherContext": teacher_context,
+        "agents": agents_block,
+        "courseContext": "",
+        "userProfile": "",
+        "languageDirective": lang_directive,
+    }
 
-    ACTIONS_PROMPT = """生成Agent讲解行为:
-标题: {title}
-描述: {description}
-要点: {key_points}
-元素: {elements_info}
-{teacher_context}
-{agents_info}
-语言: {language}
+    if scene_type == "slide":
+        common_vars["elements"] = format_elements_info(content)
+    elif scene_type == "quiz":
+        questions = content.get("questions", []) if isinstance(content, dict) else []
+        common_vars["questions"] = "\n".join([
+            f"- [{q.get('type', 'single')}] {q.get('question', '')}" for q in (questions[:10] if isinstance(questions, list) else [])
+        ]) or "暂无题目"
+    elif scene_type == "interactive":
+        widget_outline = getattr(outline, 'widget_outline', {}) or {}
+        common_vars["conceptName"] = widget_outline.get("conceptName") or outline.title
+        common_vars["designIdea"] = widget_outline.get("designIdea", "")
+    elif scene_type == "pbl":
+        widget_outline = getattr(outline, 'widget_outline', {}) or {}
+        common_vars["projectTopic"] = widget_outline.get("projectTopic") or outline.title
+        common_vars["projectDescription"] = widget_outline.get("projectDescription") or outline.description or ""
 
-行为类型:
-- speech: 讲解文本(必需)
-- spotlight: 聚焦元素(target_element_id)
-- laser: 激光笔(target_element_id,color)
-- wb_draw_text: 白板写字
+    system_prompt, user_prompt = build_prompt(prompt_id, common_vars)
 
-规则: target_element_id必须是真实元素ID,先聚焦再讲解,讲解内容比幻灯片更丰富(背景知识+举例)
+    # 模板不存在时的最简化 fallback（保障流程不断）
+    if not system_prompt or not user_prompt:
+        logger.warning(f"[SceneGenerator] {prompt_id} template missing, using fallback")
+        system_prompt = "你是教学动作设计师，只输出 JSON 数组。"
+        user_prompt = (
+            f"标题：{outline.title}\n"
+            f"要点：{', '.join(outline.key_points or [])}\n"
+            f"{lang_directive}\n"
+            "输出 JSON 数组 [{\"type\":\"text\",\"content\":\"...\"}]"
+        )
 
-输出:[{{'id':'a1','type':'speech','data':{{'text':'开场'}}}},{{'id':'a2','type':'spotlight','data':{{'target_element_id':'title','dim_opacity':0.7}}}},{{'id':'a3','type':'speech','data':{{'text':'标题讲解'}}}}]
-只输出JSON数组。"""
+    logger.info(f"[SceneGenerator] Generating actions for {outline.title} ({scene_type}) via {prompt_id}")
 
-    prompt = ACTIONS_PROMPT.format(
-        title=outline.title,
-        description=outline.description or "",
-        key_points=", ".join(outline.key_points or []),
-        elements_info=format_elements_info(content),
-        teacher_context=teacher_context,
-        agents_info=agents_info,
-        language=language,
-    )
-
-    logger.info(f"[SceneGenerator] Generating actions for: {outline.title}")
-    logger.debug(f"[SceneGenerator] Elements info:\n{format_elements_info(content)}")
-
-    # 使用流式调用避免DashScope 30秒超时问题
+    # 使用流式调用避免 DashScope 30s 超时
     try:
         chunks = []
         async for chunk in stream_llm(
-            prompt=prompt,
-            system_prompt="Agent行为设计专家。只输出JSON数组。",
+            prompt=user_prompt,
+            system_prompt=system_prompt,
             model=model,
             temperature=0.7,
             max_tokens=2048,
         ):
             chunks.append(chunk)
-
         response = "".join(chunks)
-        logger.info(f"[SceneGenerator] Stream completed, response length: {len(response)}")
     except Exception as stream_error:
-        logger.warning(f"[SceneGenerator] Stream failed, falling back to non-stream: {stream_error}")
-        # 流式失败时回退到非流式
+        logger.warning(f"[SceneGenerator] Stream failed, fallback to non-stream: {stream_error}")
         response = await call_llm(
-            prompt=prompt,
-            system_prompt="Agent行为设计专家。只输出JSON数组。",
+            prompt=user_prompt,
+            system_prompt=system_prompt,
             model=model,
             temperature=0.7,
             max_tokens=2048,
         )
-        logger.info(f"[SceneGenerator] Fallback response length: {len(response)}")
 
+    # 解析 JSON 数组
+    cleaned = response.strip()
     try:
-        cleaned = response.strip()
-        # 移除 markdown 代码块标记
         if "```" in cleaned:
             start_idx = cleaned.find("```")
             if start_idx != -1:
@@ -530,29 +643,24 @@ async def generate_scene_actions(
                     cleaned = cleaned[:end_idx]
 
         cleaned = cleaned.strip()
-        # 找到 JSON 数组的起始位置
         start_bracket = cleaned.find("[")
         if start_bracket != -1:
             cleaned = cleaned[start_bracket:]
-
-        # 找到最后一个 ]
         end_bracket = cleaned.rfind("]")
         if end_bracket != -1:
             cleaned = cleaned[:end_bracket + 1]
 
-        actions_data = json.loads(cleaned.strip())
+        raw_items = json.loads(cleaned)
+        if not isinstance(raw_items, list):
+            raise ValueError("actions response is not a JSON array")
 
-        return [
-            Action(
-                id=a.get("id") or str(uuid.uuid4()),
-                type=a.get("type", "speech"),
-                data=a.get("data", {}),
-            )
-            for a in actions_data
-        ]
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        actions = _normalize_actions(raw_items)
+        if not actions:
+            raise ValueError("no valid action parsed")
+        return actions
+
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
         logger.warning(f"[SceneGenerator] Actions解析失败: {e}, cleaned content: {cleaned[:500]}")
-        # 抛出异常，让scene_service.py的完整fallback接管
         raise ValueError(f"Failed to parse actions JSON: {e}")
 
 

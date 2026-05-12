@@ -1,5 +1,16 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
@@ -23,9 +34,13 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [policyAgreed, setPolicyAgreed] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 使用 ref 实现邮箱 → 密码的键盘回车跳转
+  const passwordInputRef = useRef<TextInput>(null);
 
   // 登录成功后自动跳转
   if (isAuthenticated && !loggingIn) {
@@ -65,82 +80,116 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>OpenMAIC</Text>
-      <Text style={styles.subtitle}>AI 交互课堂</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: Colors.neutral.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>OpenMAIC</Text>
+        <Text style={styles.subtitle}>AI 交互课堂</Text>
 
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="邮箱"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="密码"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
-
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            placeholder="邮箱"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="username"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              ref={passwordInputRef}
+              style={[styles.input, styles.passwordInput]}
+              placeholder="密码"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoComplete="password"
+              textContentType="password"
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((v) => !v)}
+              accessibilityLabel={showPassword ? '隐藏密码' : '显示密码'}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={22}
+                color={Colors.neutral.textMuted}
+              />
+            </TouchableOpacity>
           </View>
-        )}
 
-        <TouchableOpacity
-          style={[styles.button, (isLoading || loggingIn) && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={isLoading || loggingIn}
-        >
-          {loggingIn ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.buttonText}>登录</Text>
+          <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
+
+          {error && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
           )}
-        </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/auth/register')}>
-          <Text style={styles.link}>注册新账户</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.button, (isLoading || loggingIn) && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading || loggingIn}
+          >
+            {loggingIn ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.buttonText}>登录</Text>
+            )}
+          </TouchableOpacity>
 
-      <View style={styles.oauthSection}>
-        <Text style={styles.oauthTitle}>第三方登录</Text>
-        <View style={styles.oauthButtons}>
-          <TouchableOpacity
-            style={[styles.oauthButton, { backgroundColor: '#000' }]}
-            onPress={() => handleOAuthLogin('Apple')}
-          >
-            <Text style={styles.oauthButtonText}>Apple</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.oauthButton, { backgroundColor: '#4285F4' }]}
-            onPress={() => handleOAuthLogin('Google')}
-          >
-            <Text style={styles.oauthButtonText}>Google</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.oauthButton, { backgroundColor: '#07C160' }]}
-            onPress={() => handleOAuthLogin('WeChat')}
-          >
-            <Text style={styles.oauthButtonText}>微信</Text>
+          <TouchableOpacity onPress={() => router.push('/auth/register')}>
+            <Text style={styles.link}>注册新账户</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </View>
+
+        <View style={styles.oauthSection}>
+          <Text style={styles.oauthTitle}>第三方登录</Text>
+          <View style={styles.oauthButtons}>
+            <TouchableOpacity
+              style={[styles.oauthButton, { backgroundColor: '#000' }]}
+              onPress={() => handleOAuthLogin('Apple')}
+            >
+              <Text style={styles.oauthButtonText}>Apple</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.oauthButton, { backgroundColor: '#4285F4' }]}
+              onPress={() => handleOAuthLogin('Google')}
+            >
+              <Text style={styles.oauthButtonText}>Google</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.oauthButton, { backgroundColor: '#07C160' }]}
+              onPress={() => handleOAuthLogin('WeChat')}
+            >
+              <Text style={styles.oauthButtonText}>微信</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: Spacing.md,
@@ -159,6 +208,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: Colors.neutral.card,
     color: Colors.neutral.textPrimary,
+  },
+  passwordRow: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  passwordInput: {
+    paddingRight: 44,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: Spacing.sm,
+    top: 14,
+    padding: 4,
   },
   errorBox: {
     backgroundColor: Colors.feedback.errorBg,

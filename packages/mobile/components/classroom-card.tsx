@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 interface ClassroomCardProps {
   classroom: {
@@ -11,12 +12,25 @@ interface ClassroomCardProps {
     scene_count?: number;
   };
   onPress: () => void;
+  onLongPress?: () => void; // 移动端长按手势（例如弹出操作菜单）
   thumbnail?: React.ReactNode; // 可选的缩略图组件
 }
 
-export function ClassroomCard({ classroom, onPress, thumbnail }: ClassroomCardProps) {
+export function ClassroomCard({ classroom, onPress, onLongPress, thumbnail }: ClassroomCardProps) {
+  const handleLongPress = () => {
+    if (!onLongPress) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onLongPress();
+  };
+
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      onLongPress={onLongPress ? handleLongPress : undefined}
+      delayLongPress={350}
+      activeOpacity={0.7}
+    >
       {/* 缩略图区域 */}
       {thumbnail && (
         <View style={styles.thumbnailArea}>

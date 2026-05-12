@@ -208,6 +208,132 @@ class TestTemplateDirectory:
             assert os.path.exists(os.path.join(widget_dir, "system.md"))
             assert os.path.exists(os.path.join(widget_dir, "user.md"))
 
+    def test_new_templates_exist(self):
+        """本次新增的 8 套模板全部存在"""
+        new_templates = [
+            "quiz-content",
+            "slide-actions",
+            "quiz-actions",
+            "interactive-actions",
+            "interactive-html",
+            "interactive-scientific-model",
+            "pbl-actions",
+            "web-search-query-rewrite",
+        ]
+        for name in new_templates:
+            tpl_dir = os.path.join(PROMPT_DIR, name)
+            assert os.path.exists(tpl_dir), f"Template directory missing: {name}"
+            assert os.path.exists(os.path.join(tpl_dir, "system.md")), f"system.md missing: {name}"
+            assert os.path.exists(os.path.join(tpl_dir, "user.md")), f"user.md missing: {name}"
+
+    def test_new_snippets_exist(self):
+        """action-types / element-types / json-output-rules 三个 snippet 存在"""
+        for name in ["action-types", "element-types", "json-output-rules"]:
+            path = os.path.join(SNIPPET_DIR, f"{name}.md")
+            assert os.path.exists(path), f"Snippet missing: {name}"
+
+    def test_prompt_ids_match_disk(self):
+        """PROMPT_IDS 声明与磁盘目录一致（避免配置漂移）"""
+        for _, prompt_id in PROMPT_IDS.items():
+            tpl_dir = os.path.join(PROMPT_DIR, prompt_id)
+            assert os.path.exists(tpl_dir), (
+                f"PROMPT_IDS declares {prompt_id} but directory missing on disk"
+            )
+
+
+class TestNewTemplatesBuild:
+    """验证新增模板能正常 build（snippet/变量/条件全处理）"""
+
+    def test_build_quiz_content(self):
+        system, user = build_prompt(
+            "quiz-content",
+            {
+                "title": "分数基础测验",
+                "description": "考核分数加减",
+                "keyPoints": "同分母, 异分母",
+                "questionCount": 3,
+                "difficulty": "easy",
+                "questionTypes": "single,multiple",
+                "languageDirective": "中文输出",
+                "teacherContext": "",
+            },
+        )
+        assert system and user
+        assert "分数基础测验" in user
+        assert "{{" not in user, "未替换的变量占位"
+
+    def test_build_slide_actions_with_elements(self):
+        system, user = build_prompt(
+            "slide-actions",
+            {
+                "title": "热传导",
+                "description": "演示导热性差异",
+                "keyPoints": "金属, 非金属",
+                "elements": "- ID: t1, 类型: text",
+                "agents": "## 讲解智能体\n- Alice",
+                "teacherContext": "",
+                "courseContext": "",
+                "userProfile": "",
+                "languageDirective": "中文输出",
+            },
+        )
+        assert system and user
+        assert "热传导" in user
+        assert "t1" in user
+
+    def test_build_interactive_actions(self):
+        system, user = build_prompt(
+            "interactive-actions",
+            {
+                "title": "摩擦力模拟",
+                "description": "调节摩擦力系数",
+                "keyPoints": "静摩擦, 动摩擦",
+                "conceptName": "摩擦力",
+                "designIdea": "拖拽滑块观察变化",
+                "agents": "",
+                "teacherContext": "",
+                "courseContext": "",
+                "userProfile": "",
+                "languageDirective": "中文输出",
+            },
+        )
+        assert system and user
+        assert "摩擦力" in user
+
+    def test_build_web_search_query_rewrite(self):
+        system, user = build_prompt(
+            "web-search-query-rewrite",
+            {
+                "requirement": "讲解注意力机制",
+                "pdfExcerpt": "Attention Is All You Need, Vaswani et al., 2017 ...",
+            },
+        )
+        assert system and user
+        assert "注意力机制" in user
+        assert "Vaswani" in user
+        # snippet:json-output-rules 应已被展开
+        assert "{{snippet:" not in system
+
+    def test_build_pbl_actions(self):
+        system, user = build_prompt(
+            "pbl-actions",
+            {
+                "title": "市场调研项目",
+                "description": "开展一次面向高中生的市场调研",
+                "keyPoints": "问卷设计, 数据分析",
+                "projectTopic": "商圈饮品消费调查",
+                "projectDescription": "针对商业街周边大学生",
+                "agents": "",
+                "teacherContext": "",
+                "courseContext": "",
+                "userProfile": "",
+                "languageDirective": "中文输出",
+            },
+        )
+        assert system and user
+        assert "商圈饮品消费调查" in user
+
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
