@@ -111,6 +111,7 @@ export class AudioPlayer {
 
   /**
    * Web 环境：使用浏览器原生 Audio API 播放
+   * 等待播放完成后再返回
    */
   private async playWeb(audioId: string, format: string): Promise<boolean> {
     // 从缓存获取 base64 音频数据
@@ -135,23 +136,32 @@ export class AudioPlayer {
       this.webAudio = audio;
       this.webAudioUrl = url;
 
-      audio.onended = () => {
-        this.playing = false;
-        this.cleanupWebAudio();
-        this.callbacks.onPlayEnd?.();
-      };
-
-      audio.onerror = () => {
-        this.playing = false;
-        this.cleanupWebAudio();
-        this.callbacks.onError?.(new Error('Web audio playback error'));
-      };
-
       this.playing = true;
       this.callbacks.onPlayStart?.();
-      await audio.play();
 
-      return true;
+      // 使用 Promise 等待播放完成
+      return new Promise<boolean>((resolve) => {
+        audio.onended = () => {
+          this.playing = false;
+          this.cleanupWebAudio();
+          this.callbacks.onPlayEnd?.();
+          resolve(true);
+        };
+
+        audio.onerror = () => {
+          this.playing = false;
+          this.cleanupWebAudio();
+          this.callbacks.onError?.(new Error('Web audio playback error'));
+          resolve(false);
+        };
+
+        audio.play().catch((error) => {
+          this.playing = false;
+          this.cleanupWebAudio();
+          this.callbacks.onError?.(error);
+          resolve(false);
+        });
+      });
     } catch (error) {
       console.error(`[AudioPlayer] Web: Failed to play audio ${audioId}`, error);
       this.callbacks.onError?.(error as Error);
@@ -161,6 +171,7 @@ export class AudioPlayer {
 
   /**
    * Native 环境：使用 expo-av 播放文件
+   * 等待播放完成后再返回（使用事件回调，而非轮询）
    */
   private async playNative(audioId: string, format: string): Promise<boolean> {
     // 尝试多种格式查找音频文件
@@ -178,18 +189,55 @@ export class AudioPlayer {
     }
 
     try {
-      // 加载并播放音频
+      // 加载音频（不使用全局回调）
       const { sound } = await Audio.Sound.createAsync(
         { uri: path },
         { shouldPlay: true },
-        this.onPlaybackStatusUpdate
+        undefined
       );
 
       this.sound = sound;
       this.playing = true;
       this.callbacks.onPlayStart?.();
 
-      return true;
+      // 使用 Promise 等待播放完成
+      return new Promise<boolean>((resolve) => {
+        let resolved = false;
+
+        // 设置超时保护
+        const timeoutId = setTimeout(() => {
+          if (!resolved) {
+            console.warn(`[AudioPlayer] Native: Playback timeout for ${audioId}`);
+            resolved = true;
+            this.playing = false;
+            resolve(false);
+          }
+        }, 60000);
+
+        // 设置播放状态回调
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (resolved) return; // 已解决，忽略后续回调
+
+          if (!status.isLoaded) {
+            resolved = true;
+            clearTimeout(timeoutId);
+            this.playing = false;
+            resolve(false);
+            return;
+          }
+
+          this.playing = status.isPlaying;
+
+          // 播放完成
+          if (status.didJustFinish) {
+            resolved = true;
+            clearTimeout(timeoutId);
+            this.playing = false;
+            this.callbacks.onPlayEnd?.();
+            resolve(true);
+          }
+        });
+      });
     } catch (error) {
       console.error(`[AudioPlayer] Native: Failed to play audio: ${audioId}`, error);
       this.callbacks.onError?.(error as Error);

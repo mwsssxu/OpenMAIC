@@ -124,6 +124,8 @@ export async function generateSceneOutlinesFromRequirements(
       '**IMPORTANT: Do NOT include any video mediaGenerations (type: "video") in the outlines. Video generation is disabled. Image generation is allowed.**';
   }
 
+  log.info(`[Outline] Starting generation - requirement length: ${requirements.requirement.length}`);
+
   // 使用简化的提示变量构建提示
   const prompts = buildPrompt(PROMPT_IDS.REQUIREMENTS_TO_OUTLINES, {
     // 简化的变量
@@ -146,6 +148,11 @@ export async function generateSceneOutlinesFromRequirements(
   if (!prompts) {
     return { success: false, error: 'Prompt template not found' };
   }
+
+  // [DEBUG] 打印prompt信息
+  log.info(`[Outline] System prompt length: ${prompts.system.length} chars`);
+  log.info(`[Outline] User prompt length: ${prompts.user.length} chars`);
+  log.info(`[Outline] Total prompt length: ${prompts.system.length + prompts.user.length} chars`);
 
   try {
     // 发送进度回调

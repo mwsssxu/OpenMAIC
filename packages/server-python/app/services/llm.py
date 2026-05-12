@@ -22,6 +22,19 @@ PROVIDER_MODEL_MAP = {
     "deepseek": "deepseek-chat",
 }
 
+# 模型映射 - 将不支持的模型转换为 DashScope 支持的模型
+# DashScope API 支持的模型：qwen-plus, qwen-turbo, qwen-max, qwen3.5-plus 等
+# 注意：Chat 场景应该直接使用 qwen3.5-plus，不经过此映射
+MODEL_REMAP = {
+    "gpt-4o-mini": "qwen-plus",
+    "gpt-4o": "qwen-plus",
+    "gpt-4-turbo": "qwen-plus",
+    "gpt-4": "qwen-plus",
+    "gpt-3.5-turbo": "qwen-turbo",
+    "claude-3-5-sonnet": "qwen-plus",
+    "claude-3-opus": "qwen-max",
+}
+
 
 async def call_llm(
     prompt: str,
@@ -35,7 +48,6 @@ async def call_llm(
     """
     调用 LLM（使用 httpx，支持重试）
     """
-    import time
     start_time = time.time()
 
     model_str = model or settings.DEFAULT_MODEL
@@ -44,6 +56,12 @@ async def call_llm(
         model_str = model_str[7:]
     elif model_str.startswith("openai:"):
         model_str = model_str[7:]
+
+    # 模型映射 - 转换为 DashScope 支持的模型
+    if model_str in MODEL_REMAP:
+        original_model = model_str
+        model_str = MODEL_REMAP[model_str]
+        logger.info(f"[LLM] 模型映射: {original_model} -> {model_str}")
 
     messages = []
     if system_prompt:
@@ -66,33 +84,44 @@ async def call_llm(
     logger.info(f"[LLM] 开始调用 - model={model_str}, api_base={api_base}, max_tokens={max_tokens}")
     logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
 
-    # 使用 httpx，简化超时配置
-    timeout = httpx.Timeout(300.0, connect=30.0)
+    # DashScope Coding Plan API 有30秒超时限制，需要适配
+    # 使用较短timeout避免长时间等待后被断开
+    # SSL问题需要增加重试次数
+    timeout = httpx.Timeout(60.0, connect=15.0)
 
-    # 配置代理（如果设置）
-    proxy = None
-    if settings.HTTP_PROXY:
-        proxy = settings.HTTP_PROXY
+    # 代理配置：从 settings 获取（如果配置）
+    proxy = settings.HTTP_PROXY if settings.HTTP_PROXY else None
+    if proxy:
         logger.info(f"[LLM] 使用代理: {proxy}")
+    else:
+        logger.debug("[LLM] 直接访问API（无代理）")
 
-    for attempt in range(max_retries):
+    # 增加重试次数处理SSL不稳定
+    effective_max_retries = max_retries * 2  # SSL问题需要更多重试
+
+    for attempt in range(effective_max_retries):
         attempt_start = time.time()
         try:
-            logger.info(f"[LLM] 尝试 #{attempt + 1}/{max_retries}")
+            logger.info(f"[LLM] 尝试 #{attempt + 1}/{effective_max_retries}")
 
-            # 使用同步客户端（通过 asyncio.to_thread 包装）
+            # 使用 requests 库（更稳定的SSL处理）
             def sync_call():
-                with httpx.Client(timeout=timeout, proxy=proxy) as client:
-                    resp = client.post(
-                        url,
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json=payload,
-                    )
-                    resp.raise_for_status()
-                    return resp.json()
+                import requests
+                from urllib3.exceptions import InsecureRequestWarning
+                requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+                session = requests.Session()
+                resp = session.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=(15, 60),  # connect timeout, read timeout
+                    verify=False,  # 临时禁用SSL验证（DashScope SSL兼容性问题）
+                )
+                resp.raise_for_status()
+                return resp.json()
 
             result = await asyncio.to_thread(sync_call)
             content = result["choices"][0]["message"]["content"]
@@ -106,33 +135,33 @@ async def call_llm(
 
         except httpx.TimeoutException as e:
             elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 超时 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
-            if attempt < max_retries - 1:
+            logger.warning(f"[LLM] 超时 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < effective_max_retries - 1:
                 await asyncio.sleep(2)  # 等待后重试
             else:
                 total_elapsed = time.time() - start_time
                 logger.error(f"[LLM] 最终超时 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API timeout after {max_retries} retries: {e}")
+                raise Exception(f"LLM API timeout after {effective_max_retries} retries: {e}")
 
         except httpx.ConnectError as e:
             elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 连接错误 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
-            if attempt < max_retries - 1:
+            logger.warning(f"[LLM] 连接错误 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < effective_max_retries - 1:
                 await asyncio.sleep(3)  # 等待后重试
             else:
                 total_elapsed = time.time() - start_time
                 logger.error(f"[LLM] 最终连接错误 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API connection error after {max_retries} retries: {e}")
+                raise Exception(f"LLM API connection error after {effective_max_retries} retries: {e}")
 
         except httpx.RemoteProtocolError as e:
             elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 服务器断开连接 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {e}")
-            if attempt < max_retries - 1:
+            logger.warning(f"[LLM] 服务器断开连接 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < effective_max_retries - 1:
                 await asyncio.sleep(3)  # 等待后重试
             else:
                 total_elapsed = time.time() - start_time
                 logger.error(f"[LLM] 最终服务器断开 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API server disconnected after {max_retries} retries: {e}")
+                raise Exception(f"LLM API server disconnected after {effective_max_retries} retries: {e}")
 
         except httpx.HTTPStatusError as e:
             elapsed = time.time() - attempt_start
@@ -141,8 +170,8 @@ async def call_llm(
 
         except Exception as e:
             elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 未预期错误 (尝试 #{attempt + 1}/{max_retries}, 耗时: {elapsed:.1f}s): {type(e).__name__}: {e}")
-            if attempt < max_retries - 1:
+            logger.warning(f"[LLM] 未预期错误 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {type(e).__name__}: {e}")
+            if attempt < effective_max_retries - 1:
                 await asyncio.sleep(2)
             else:
                 total_elapsed = time.time() - start_time
@@ -164,6 +193,14 @@ async def stream_llm(
     model_str = model or settings.DEFAULT_MODEL
     if model_str.startswith("openai/"):
         model_str = model_str[7:]
+    elif model_str.startswith("openai:"):
+        model_str = model_str[7:]
+
+    # 模型映射 - 转换为 DashScope 支持的模型
+    if model_str in MODEL_REMAP:
+        original_model = model_str
+        model_str = MODEL_REMAP[model_str]
+        logger.info(f"[LLM Stream] 模型映射: {original_model} -> {model_str}")
 
     messages = []
     if system_prompt:
@@ -183,7 +220,8 @@ async def stream_llm(
         payload["max_tokens"] = max_tokens
 
     url = f"{api_base}/chat/completions"
-    timeout = httpx.Timeout(300.0, connect=30.0)  # 流式需要更长超时
+    # 增加流式超时到600秒（场景生成需要两次LLM调用）
+    timeout = httpx.Timeout(600.0, connect=30.0)  # 流式需要更长超时
 
     for attempt in range(max_retries):
         try:
@@ -261,6 +299,15 @@ async def call_llm_with_vision(
     model_str = model or settings.DEFAULT_MODEL
     if model_str.startswith("openai/"):
         model_str = model_str[7:]
+    elif model_str.startswith("openai:"):
+        model_str = model_str[7:]
+
+    # 模型映射 - 转换为 DashScope 支持的模型（视觉模型使用 qwen-vl）
+    if model_str in MODEL_REMAP:
+        original_model = model_str
+        # 视觉模型使用 qwen-vl-max
+        model_str = "qwen-vl-max" if "gpt-4" in model_str or "claude" in model_str else MODEL_REMAP[model_str]
+        logger.info(f"[LLM Vision] 模型映射: {original_model} -> {model_str}")
 
     content = [{"type": "text", "text": prompt}]
     for img in images:

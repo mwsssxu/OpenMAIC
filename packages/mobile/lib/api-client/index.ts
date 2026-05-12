@@ -243,7 +243,7 @@ class ApiClient {
       order_index: orderIndex,
       language: language || 'zh-CN',
     }, {
-      timeout: 120000, // 单个场景生成需要时间
+      timeout: 360000, // 场景生成可能需要 200-300 秒（流式LLM调用）
     });
     return data;
   }
@@ -376,6 +376,7 @@ class ApiClient {
         language,
         agent_ids: agents?.map(a => a.id),
         web_search: webSearch,
+        agents: agents,  // 传递完整agent信息用于构建teacherContext
       }));
     });
   }
@@ -673,6 +674,39 @@ class ApiClient {
         model: 'gpt-4o-mini', // 使用与 Web端一致的模型
       }));
     });
+  }
+
+  /**
+   * 多 Agent 轮流讨论
+   * 调用 /chat/discussion API，依次获取多个 Agent 的回复
+   *
+   * @param topic - 讨论主题
+   * @param agents - Agent ID 列表 ['teacher', 'student', 'assistant']
+   * @param maxTurns - 最大轮次（每个 Agent 发言次数）
+   * @param onResponse - 每个 Agent 回复时的回调
+   */
+  async runMultiAgentDiscussion(
+    topic: string,
+    agents: string[] = ['teacher', 'student', 'assistant'],
+    maxTurns: number = 2,
+    onResponse?: (response: { agent_id: string; agent_role: string; content: string; actions: any[] }) => void,
+  ): Promise<Array<{ agent_id: string; agent_role: string; content: string; actions: any[] }>> {
+    const { data } = await this.client.post('/chat/discussion', {
+      topic,
+      agents,
+      maxTurns,
+    }, {
+      timeout: 120000, // 多 Agent讨论需要更长超时
+    });
+
+    // 依次触发回调
+    if (onResponse && data.responses) {
+      for (const response of data.responses) {
+        onResponse(response);
+      }
+    }
+
+    return data.responses || [];
   }
 
   // Legacy method - 保留向后兼容

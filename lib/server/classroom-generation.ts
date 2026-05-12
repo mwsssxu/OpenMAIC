@@ -289,6 +289,11 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
+  // [DEBUG] 打印大纲生成开始信息
+  const outlineStartTime = Date.now();
+  log.info(`[Outline] Starting outline generation - requirement="${requirement.substring(0, 50)}..."`);
+  log.info(`[Outline] Options: imageGeneration=${input.enableImageGeneration}, videoGeneration=${input.enableVideoGeneration}, researchContext=${researchContext ? 'provided' : 'none'}`);
+
   const outlinesResult = await generateSceneOutlinesFromRequirements(
     requirements,
     pdfText,
@@ -302,6 +307,10 @@ export async function generateClassroom(
       teacherContext,
     },
   );
+
+  // [DEBUG] 打印大纲生成结束信息
+  const outlineElapsed = Date.now() - outlineStartTime;
+  log.info(`[Outline] Generation completed - elapsed=${outlineElapsed}ms, success=${outlinesResult.success}, outlineCount=${outlinesResult.data?.length || 0}`);
 
   if (!outlinesResult.success || !outlinesResult.data) {
     log.error('Failed to generate outlines:', outlinesResult.error);

@@ -29,6 +29,16 @@ import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 
+// 场景大纲类型（用于后台创建）
+interface SceneOutline {
+  id: string;
+  type: 'slide' | 'quiz' | 'interactive' | 'pbl';
+  title: string;
+  description: string;
+  key_points: string[];
+  order: number;
+}
+
 // 本地 Agent 类型（扩展自 lib/types）
 interface Agent extends LibAgent {
   persona?: string;
@@ -40,8 +50,10 @@ interface ClassroomData {
     id: string;
     name: string;
     description?: string;
+    language_directive?: string; // 语言设置
     agent_ids?: string[];
     generatedAgentConfigs?: Agent[];
+    pendingOutlines?: SceneOutline[]; // 待创建的场景大纲（从后端获取）
   };
   scenes: Scene[];
   agents?: Agent[];
@@ -74,13 +86,20 @@ function safeColorWithAlpha(color: string, alpha: string = '20'): string {
 }
 
 export default function ClassroomScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, pendingOutlines, totalScenes, remainingCount } = useLocalSearchParams<{ id: string; pendingOutlines?: string; totalScenes?: string; remainingCount?: string }>();
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<ClassroomData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+
+  // 后台创建场景进度
+  const [backgroundCreating, setBackgroundCreating] = useState(false);
+  const [createdScenesCount, setCreatedScenesCount] = useState(0);
+  const [pendingScenesTotal, setPendingScenesTotal] = useState(0);
+  const [showManualCreateHint, setShowManualCreateHint] = useState(false); // 显示手动创建提示
+  const backgroundCreatingRef = useRef(false); // 防止重复创建
 
   // 教学工具状态
   const [showWhiteboard, setShowWhiteboard] = useState(false);
@@ -92,8 +111,10 @@ export default function ClassroomScreen() {
   const [showChatModal, setShowChatModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [chatMessage, setChatMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string; agentId?: string; actions?: any[] }>>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [discussionMode, setDiscussionMode] = useState(false); // 多 Agent讨论模式
+  const [discussionRunning, setDiscussionRunning] = useState(false); // 讨论进行中
 
   // 语音教学
   const [playbackMode, setPlaybackMode] = useState<EngineMode>('idle');
@@ -204,6 +225,52 @@ export default function ClassroomScreen() {
     ],
   }));
 
+  // 后台创建剩余场景（从API获取大纲 - 更可靠）
+  async function startBackgroundSceneCreationFromAPI(outlines: SceneOutline[]) {
+    if (!id || !outlines || outlines.length === 0 || backgroundCreatingRef.current) return;
+
+    backgroundCreatingRef.current = true;
+    setBackgroundCreating(true);
+    setPendingScenesTotal(outlines.length);
+    setCreatedScenesCount(0);
+
+    console.log(`[Background] 开始创建 ${outlines.length} 个剩余场景（从API获取）`);
+
+    // 获取已有场景数量（在调用此函数时 data 可能还未设置，使用 1 作为默认值）
+    const existingCount = 1;
+
+    // 获取课程语言设置
+    const language = data?.stage?.language_directive || 'zh-CN';
+
+    // 逐个创建剩余场景
+    for (let i = 0; i < outlines.length; i++) {
+      const outline = outlines[i];
+      const orderIndex = existingCount + i + 1;
+      console.log(`[Background] 创建场景 ${orderIndex}/${existingCount + outlines.length}: ${outline.title}`);
+
+      try {
+        await apiClient.createScene(id, outline, orderIndex, language);
+        setCreatedScenesCount(i + 1);
+
+        // 创建成功后刷新课程数据（每 2 个场景刷新一次）
+        if ((i + 1) % 2 === 0 || i === outlines.length - 1) {
+          const updatedData = await apiClient.getClassroom(id);
+          setData(updatedData);
+        }
+      } catch (sceneErr: any) {
+        console.warn(`[Background] 场景 ${outline.title} 创建失败:`, sceneErr.message);
+      }
+    }
+
+    // 最终刷新并清除 pendingOutlines
+    const finalData = await apiClient.getClassroom(id);
+    setData(finalData);
+    console.log(`[Background] 所有场景创建完成`);
+
+    backgroundCreatingRef.current = false;
+    setBackgroundCreating(false);
+  }
+
   async function loadClassroom() {
     if (!id) return;
     setLoading(true);
@@ -215,10 +282,107 @@ export default function ClassroomScreen() {
 
       // 加载智能体配置 - 从 API 获取完整配置
       await loadAgents(classroomData);
+
+      // 如果有待创建的场景，启动后台创建
+      const pendingOutlinesParam = pendingOutlines;
+      const pendingOutlinesFromAPI = classroomData.stage?.pendingOutlines;
+      const remainingCountParam = remainingCount ? parseInt(remainingCount) : 0;
+
+      console.log(`[LoadClassroom] pendingOutlines URL param: ${pendingOutlinesParam ? `exists (${pendingOutlinesParam.length} chars)` : 'undefined'}`);
+      console.log(`[LoadClassroom] pendingOutlines from API: ${pendingOutlinesFromAPI ? `${pendingOutlinesFromAPI.length} outlines` : 'undefined'}`);
+      console.log(`[LoadClassroom] backgroundCreatingRef.current: ${backgroundCreatingRef.current}`);
+
+      // 优先使用从API获取的大纲（更可靠）
+      if (pendingOutlinesFromAPI && pendingOutlinesFromAPI.length > 0 && !backgroundCreatingRef.current) {
+        console.log('[LoadClassroom] Starting background scene creation from API outlines...');
+        setShowManualCreateHint(false);
+        startBackgroundSceneCreationFromAPI(pendingOutlinesFromAPI);
+      } else if (pendingOutlinesParam && !backgroundCreatingRef.current) {
+        // 有完整大纲数据（URL参数），自动后台创建
+        console.log('[LoadClassroom] Starting background scene creation from URL param...');
+        setShowManualCreateHint(false);
+        startBackgroundSceneCreation();
+      } else if (remainingCountParam > 0 && !backgroundCreatingRef.current) {
+        // 只有剩余数量，显示手动创建提示
+        console.log(`[LoadClassroom] ${remainingCountParam} scenes remaining, showing manual create hint`);
+        setPendingScenesTotal(remainingCountParam);
+        setShowManualCreateHint(true);
+      } else {
+        console.log('[LoadClassroom] No pending outlines to create');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // 后台创建剩余场景（优化用户体验）
+  async function startBackgroundSceneCreation() {
+    if (!id || !pendingOutlines || backgroundCreatingRef.current) return;
+
+    try {
+      // 解码 URL 参数
+      const decodedOutlines = decodeURIComponent(pendingOutlines);
+
+      // 解析 JSON（可能失败）
+      let outlines: SceneOutline[];
+      try {
+        outlines = JSON.parse(decodedOutlines);
+      } catch (parseErr) {
+        console.error('[Background] JSON解析失败:', parseErr);
+        setBackgroundCreating(false);
+        return;
+      }
+
+      if (!Array.isArray(outlines) || outlines.length === 0) {
+        console.warn('[Background] 无有效大纲数据');
+        setBackgroundCreating(false);
+        return;
+      }
+
+      backgroundCreatingRef.current = true;
+      setBackgroundCreating(true);
+      setPendingScenesTotal(outlines.length);
+      setCreatedScenesCount(0);
+
+      console.log(`[Background] 开始创建 ${outlines.length} 个剩余场景`);
+
+      // 获取已有场景数量（第一个场景已创建，顺序从 2 开始）
+      const existingCount = 1; // 第一个场景在创建页面已生成
+
+      // 获取课程语言设置
+      const language = data?.stage?.language_directive || 'zh-CN';
+
+      // 逐个创建剩余场景
+      for (let i = 0; i < outlines.length; i++) {
+        const outline = outlines[i];
+        const orderIndex = existingCount + i + 1; // 第一个场景是 1，剩余场景从 2 开始
+        console.log(`[Background] 创建场景 ${orderIndex}/${totalScenes || outlines.length + existingCount}: ${outline.title}`);
+
+        try {
+          await apiClient.createScene(id, outline, orderIndex, language);
+          setCreatedScenesCount(i + 1);
+
+          // 创建成功后刷新课程数据（每 2 个场景刷新一次，避免频繁请求）
+          if ((i + 1) % 2 === 0 || i === outlines.length - 1) {
+            const updatedData = await apiClient.getClassroom(id);
+            setData(updatedData);
+          }
+        } catch (sceneErr: any) {
+          console.warn(`[Background] 场景 ${outline.title} 创建失败:`, sceneErr.message);
+        }
+      }
+
+      // 最终刷新
+      const finalData = await apiClient.getClassroom(id);
+      setData(finalData);
+      console.log(`[Background] 所有场景创建完成`);
+
+    } catch (err) {
+      console.error('[Background] 后台创建失败:', err);
+    } finally {
+      setBackgroundCreating(false);
     }
   }
 
@@ -308,9 +472,10 @@ export default function ClassroomScreen() {
       {
         onSceneChange: (index) => {
           setCurrentSceneIndex(index);
-          // 切换场景时清除视觉效果
+          // 切换场景时清除视觉效果和白板
           setSpotlightElementId(null);
           setLaserElementId(null);
+          setShowWhiteboard(false);
         },
         onModeChange: (mode) => {
           setPlaybackMode(mode);
@@ -328,7 +493,7 @@ export default function ClassroomScreen() {
           console.log('[TTS] Ready', audioId);
         },
         // 视觉效果回调
-        onSpotlight: (elementId, dimness) => {
+        onSpotlight: (elementId, _dimness) => {
           setSpotlightElementId(elementId);
           setLaserElementId(null); // 清除激光笔
         },
@@ -339,6 +504,13 @@ export default function ClassroomScreen() {
         onClearEffects: () => {
           setSpotlightElementId(null);
           setLaserElementId(null);
+        },
+        // 白板回调（与Web端对齐）
+        onWhiteboardAction: (action) => {
+          console.log('[Whiteboard] Action:', action.type);
+        },
+        onWhiteboardOpen: () => {
+          setShowWhiteboard(true);
         },
       },
       ttsConfig
@@ -396,7 +568,7 @@ export default function ClassroomScreen() {
   };
 
   const submitQuiz = async () => {
-    if (!currentScene?.content?.questions) return;
+    if (!(currentScene?.content as any)?.questions) return;
 
     const questions = (currentScene.content as any).questions;
 
@@ -528,7 +700,56 @@ export default function ClassroomScreen() {
   function openAgentChat(agent: Agent) {
     setSelectedAgent(agent);
     setChatHistory([]);
+    setDiscussionMode(false);
     setShowChatModal(true);
+  }
+
+  // 开始多 Agent 讨论
+  async function startMultiAgentDiscussion(topic: string) {
+    setDiscussionMode(true);
+    setDiscussionRunning(true);
+    setShowChatModal(true);
+    setChatHistory([{ agent: '系统', message: `开始讨论：${topic}` }]);
+
+    // 获取参与讨论的 Agent IDs
+    const discussionAgents = agents.slice(0, 3).map(a => a.id);
+    const agentNameMap: Record<string, string> = {};
+    agents.forEach(a => agentNameMap[a.id] = a.name);
+
+    try {
+      await apiClient.runMultiAgentDiscussion(
+        topic,
+        discussionAgents,
+        2, // 每个Agent发言2次
+        (response) => {
+          // 添加每个 Agent 的回复到聊天历史
+          const agentName = agentNameMap[response.agent_id] || response.agent_role;
+          setChatHistory(prev => [...prev, {
+            agent: agentName,
+            agentId: response.agent_id,
+            message: response.content,
+            actions: response.actions,
+          }]);
+
+          // 如果有白板 actions，显示白板
+          if (response.actions && response.actions.length > 0) {
+            const wbActions = response.actions.filter(
+              (a: any) => a.type === 'wb_draw_text' || a.type === 'wb_draw_shape'
+            );
+            if (wbActions.length > 0) {
+              setShowWhiteboard(true);
+            }
+          }
+        }
+      );
+
+      setChatHistory(prev => [...prev, { agent: '系统', message: '讨论结束' }]);
+    } catch (err: any) {
+      console.warn('[Discussion] Failed:', err);
+      setChatHistory(prev => [...prev, { agent: '系统', message: `讨论出错：${err.message || '网络错误'}` }]);
+    } finally {
+      setDiscussionRunning(false);
+    }
   }
 
   // 提取当前场景知识点
@@ -598,6 +819,48 @@ export default function ClassroomScreen() {
   return (
     <GestureDetector gesture={composedGesture}>
       <View style={styles.container}>
+        {/* 后台创建场景进度提示 */}
+        {backgroundCreating && (
+          <View style={styles.backgroundCreatingBanner}>
+            <ActivityIndicator size="small" color={Colors.secondary.info} />
+            <Text style={styles.backgroundCreatingText}>
+              正在创建其他场景 ({createdScenesCount}/{pendingScenesTotal})...
+            </Text>
+          </View>
+        )}
+
+        {/* 手动创建提示（当大纲数据太大无法通过URL传递时） */}
+        {showManualCreateHint && !backgroundCreating && (
+          <View style={styles.manualCreateBanner}>
+            <Ionicons name="information-circle" size={20} color={Colors.accent.main} />
+            <Text style={styles.manualCreateText}>
+              还有 {pendingScenesTotal} 个场景待创建
+            </Text>
+            <TouchableOpacity
+              style={styles.manualCreateBtn}
+              onPress={() => {
+                Alert.alert(
+                  '创建剩余场景',
+                  `将创建 ${pendingScenesTotal} 个场景，预计需要 ${pendingScenesTotal * 3} 分钟`,
+                  [
+                    { text: '取消', style: 'cancel' },
+                    {
+                      text: '开始创建',
+                      onPress: () => {
+                        setShowManualCreateHint(false);
+                        // 跳转回创建页面重新生成（最简单方案）
+                        Alert.alert('提示', '请返回创建页面重新生成课程，或手动添加场景');
+                      }
+                    }
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.manualCreateBtnText}>查看详情</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* 头部：标题 + 返回按钮 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -758,20 +1021,37 @@ export default function ClassroomScreen() {
                   </View>
                 )}
 
-                {/* 开始讨论按钮 */}
+                {/* 多 Agent 讨论按钮 */}
                 <TouchableOpacity
                   style={styles.startDiscussionBtn}
+                  onPress={() => startMultiAgentDiscussion(currentScene?.title || '课程主题')}
+                  disabled={discussionRunning}
+                >
+                  {discussionRunning ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Ionicons name="chatbubbles" size={20} color="white" />
+                  )}
+                  <Text style={styles.startDiscussionText}>
+                    {discussionRunning ? '讨论进行中...' : '开始多Agent讨论'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 单 Agent 对话按钮 */}
+                <TouchableOpacity
+                  style={styles.startSingleChatBtn}
                   onPress={() => {
                     if (agents.length > 0) {
                       const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
                       setSelectedAgent(teacherAgent);
                       setChatHistory([]);
+                      setDiscussionMode(false);
                       setShowChatModal(true);
                     }
                   }}
                 >
-                  <Ionicons name="chatbubbles" size={20} color="white" />
-                  <Text style={styles.startDiscussionText}>开始互动讨论</Text>
+                  <Ionicons name="chatbubble-outline" size={20} color="#10b981" />
+                  <Text style={styles.startSingleChatText}>单Agent对话</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1058,27 +1338,43 @@ export default function ClassroomScreen() {
               ))}
             </ScrollView>
 
-            {/* 输入框 */}
-            <View style={styles.chatInputArea}>
-              <TextInput
-                style={styles.chatInput}
-                placeholder="输入你的问题..."
-                value={chatMessage}
-                onChangeText={setChatMessage}
-                multiline
-              />
-              <TouchableOpacity
-                style={[styles.sendBtn, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]}
-                onPress={sendMessage}
-                disabled={!chatMessage.trim() || sendingMessage}
-              >
-                {sendingMessage ? (
-                  <ActivityIndicator size="small" color="white" />
+            {/* 输入框 - 只在非讨论模式显示 */}
+            {!discussionMode && (
+              <View style={styles.chatInputArea}>
+                <TextInput
+                  style={styles.chatInput}
+                  placeholder="输入你的问题..."
+                  value={chatMessage}
+                  onChangeText={setChatMessage}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={[styles.sendBtn, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]}
+                  onPress={sendMessage}
+                  disabled={!chatMessage.trim() || sendingMessage}
+                >
+                  {sendingMessage ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Ionicons name="send" size={20} color="white" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 讨论模式提示 */}
+            {discussionMode && (
+              <View style={styles.discussionModeHint}>
+                {discussionRunning ? (
+                  <ActivityIndicator size="small" color="#10b981" />
                 ) : (
-                  <Ionicons name="send" size={20} color="white" />
+                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
                 )}
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.discussionModeText}>
+                  {discussionRunning ? 'Agent正在轮流发言...' : '讨论已结束'}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1192,7 +1488,7 @@ export default function ClassroomScreen() {
             </Text>
 
             <ScrollView style={styles.extractResults}>
-              {extractedCards.map((card, index) => (
+              {extractedCards.map((card, _index) => (
                 <View key={card.id} style={styles.extractCardItem}>
                   <Text style={styles.extractCardTitle}>{card.title}</Text>
                   <Text style={styles.extractCardCategory}>
@@ -1222,6 +1518,49 @@ export default function ClassroomScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  // 后台创建进度提示
+  backgroundCreatingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.sm,
+    backgroundColor: Colors.secondary.info + '20',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.secondary.info + '40',
+  },
+  backgroundCreatingText: {
+    marginLeft: Spacing.sm,
+    fontSize: 14,
+    color: Colors.secondary.info,
+  },
+
+  // 手动创建提示
+  manualCreateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.sm,
+    backgroundColor: Colors.accent.main + '20',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accent.main + '40',
+  },
+  manualCreateText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: 14,
+    color: Colors.accent.main,
+  },
+  manualCreateBtn: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    backgroundColor: Colors.accent.main,
+    borderRadius: Rounded.sm,
+  },
+  manualCreateBtnText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
 
   // 头部
   header: {
@@ -1433,6 +1772,18 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   startDiscussionText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: Spacing.sm },
+  startSingleChatBtn: {
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.sm,
+    borderRadius: Rounded.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  startSingleChatText: { color: '#10b981', fontSize: 14, fontWeight: '500', marginLeft: Spacing.sm },
 
   // PBL overlay (for project-based learning scenes)
   pblOverlay: {
@@ -1658,6 +2009,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: '#ccc' },
+
+  // 讨论模式提示
+  discussionModeHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+    backgroundColor: '#f0fdf4',
+    borderRadius: Rounded.md,
+  },
+  discussionModeText: {
+    marginLeft: Spacing.sm,
+    fontSize: 14,
+    color: '#10b981',
+    fontWeight: '500',
+  },
 
   // 错误/登录
   errorText: { color: '#ef4444', fontSize: 16, textAlign: 'center', marginBottom: Spacing.lg },

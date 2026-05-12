@@ -152,33 +152,39 @@ async def generate_persona_response(
 
     # Check if it's a historical persona or course agent
     persona = PERSONAS.get(persona_id)
-    is_course_agent = persona_id in AGENT_SYSTEM_PROMPTS
+    is_known_agent = persona_id in AGENT_SYSTEM_PROMPTS
 
-    if not persona and not is_course_agent:
+    # Dynamic agent mode: has persona_description but not in known lists
+    is_dynamic_agent = not persona and not is_known_agent and persona_description
+
+    if not persona and not is_known_agent and not is_dynamic_agent:
         raise HTTPException(status_code=404, detail="Persona not found")
 
+    # Mode instructions (shared by all agent types)
+    mode_instructions = {
+        "teaching": "详细讲解概念，给出例子。",
+        "discussion": "引导讨论，提出追问让学生思考。",
+        "questioning": "用苏格拉底式提问引导学生发现答案。",
+    }
+
     # Get user info
-    user_info = await db.fetchrow(
-        """
-        SELECT nickname, league_tier, point_balance
-        FROM users WHERE id = $1
-        """,
-        uuid.UUID(user_id)
-    )
-    user_name = user_info["nickname"] if user_info else "学员"
+    try:
+        user_info = await db.fetchrow(
+            """
+            SELECT nickname FROM users WHERE id = $1
+            """,
+            uuid.UUID(user_id)
+        )
+        user_name = user_info["nickname"] if user_info else "学员"
+    except Exception as e:
+        logger.warning(f"[Persona] Failed to get user info: {e}")
+        user_name = "学员"
 
     # Build system prompt based on persona type
-    if is_course_agent:
-        # Course agent mode - use AGENT_SYSTEM_PROMPTS
-        logger.info(f"[Persona] 课程Agent模式 - persona_id={persona_id}")
+    if is_known_agent:
+        # Known course agent mode (teacher/student/assistant)
+        logger.info(f"[Persona] 已知Agent模式 - persona_id={persona_id}")
         base_prompt = AGENT_SYSTEM_PROMPTS[persona_id]
-
-        # Add mode-specific instructions (same as historical personas)
-        mode_instructions = {
-            "teaching": "详细讲解概念，给出例子。",
-            "discussion": "引导讨论，提出追问让学生思考。",
-            "questioning": "用苏格拉底式提问引导学生发现答案。",
-        }
 
         # Add persona description if provided
         if persona_description:
@@ -194,6 +200,29 @@ async def generate_persona_response(
             system_prompt += f"\n\n## 当前场景\n{context}"
 
         system_prompt += f"\n\n当前对话者：{user_name}"
+        quotes = []
+        style_tone = "专业教学"
+    elif is_dynamic_agent:
+        # Dynamic course agent mode - use persona_description with generic template
+        logger.info(f"[Persona] 动态Agent模式 - persona_id={persona_id}, has_description={bool(persona_description)}")
+
+        # Use generic agent prompt template
+        system_prompt = f"""你是一位课程教学助手，为学生提供专业、友好的辅导。
+
+## 你的角色
+你正在帮助学生学习和理解课程内容。
+
+## 你的个性
+{persona_description or '你是一位耐心、专业的老师，善于引导学生思考。'}
+
+## 当前任务
+{mode_instructions.get(mode, mode_instructions['teaching'])}
+
+## 当前场景
+{context or '通用课程场景'}
+
+当前对话者：{user_name}"""
+
         quotes = []
         style_tone = "专业教学"
     else:
@@ -229,10 +258,12 @@ async def generate_persona_response(
 当前对话者：{user_name}"""
 
     # Build user prompt
-    if is_course_agent:
+    if is_known_agent or is_dynamic_agent:
+        # Course agent mode
+        role_name = persona_id.replace("_", " ").title() if is_known_agent else "教学助手"
         user_prompt = f"""学生问题：{user_message}
 
-请以{persona_id}角色的身份回答这个问题。"""
+请以{role_name}的身份回答这个问题。"""
     else:
         user_prompt = f"""学生问题：{user_message}
 
@@ -241,12 +272,16 @@ async def generate_persona_response(
     logger.info(f"[Persona] 系统提示词长度: {len(system_prompt)}")
     logger.debug(f"[Persona] 用户提示词(截断): {user_prompt[:LOG_TRUNCATION_LENGTH]}...")
 
+    # Chat 专用模型（参考Web端，使用 qwen3.5-plus）
+    CHAT_MODEL = "qwen3.5-plus"
+
     try:
-        # 调用 LLM
+        # 调用 LLM（使用 qwen3.5-plus，参考Web端）
         llm_start = time.time()
         response = await call_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
+            model=CHAT_MODEL,  # 直接使用 qwen3.5-plus，不经过模型映射
             temperature=0.8,  # 更高的温度让回答更有个性
             max_tokens=1024,
         )
@@ -272,7 +307,7 @@ async def generate_persona_response(
         logger.error(f"[Persona] LLM调用失败 (耗时: {elapsed:.1f}s): {e}")
 
         # 降级到模拟响应
-        if is_course_agent:
+        if is_known_agent or is_dynamic_agent:
             # Course agent fallback
             role_name = persona_id.replace("_", " ").title()
             if mode == "teaching":
@@ -517,13 +552,16 @@ async def rate_persona_session(
         uuid.UUID(user_id)
     )
 
-    # Give points for feedback
-    await db.execute(
-        """
-        UPDATE users SET point_balance = point_balance + 3 WHERE id = $1
-        """,
-        uuid.UUID(user_id)
-    )
+    # Give points for feedback (if point system exists)
+    try:
+        await db.execute(
+            """
+            UPDATE users SET point_balance = COALESCE(point_balance, 0) + 3 WHERE id = $1
+            """,
+            uuid.UUID(user_id)
+        )
+    except Exception as e:
+        logger.warning(f"[Persona] Failed to update points: {e}")
 
     return {"success": True, "reward": 3}
 

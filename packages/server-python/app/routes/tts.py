@@ -32,9 +32,9 @@ logger = logging.getLogger(__name__)
 class TTSRequest(BaseModel):
     text: str
     provider: Optional[str] = "qwen"
-    voice: Optional[str] = "Cherry"
+    voice: Optional[str] = None  # 默认随机分配
     speed: Optional[float] = 1.0
-    model: Optional[str] = "qwen3-tts-flash"
+    model: Optional[str] = "qwen3-tts-flash"  # DashScope CosyVoice 模型
     audioId: Optional[str] = None
 
 
@@ -50,11 +50,11 @@ async def generate_tts_audio(request: TTSRequest):
     audio_id = request.audioId or f"tts_{uuid.uuid4()}"
 
     try:
-        # 生成 TTS 音频
+        # 生成 TTS 音频（音色随机分配）
         result = await generate_tts(
             text=request.text,
             provider=request.provider or "qwen",
-            voice=request.voice or "Cherry",
+            voice=request.voice,  # None 表示随机分配
             speed=request.speed or 1.0,
             model=request.model or "qwen3-tts-flash",
         )
@@ -62,13 +62,17 @@ async def generate_tts_audio(request: TTSRequest):
         # 转 base64
         base64_audio = encode_audio_base64(result["audio"])
 
-        logger.info(f"[TTS API] Generated audio: {audio_id}, format: {result['format']}, size: {len(result['audio'])} bytes")
+        # 获取实际使用的音色
+        actual_voice = result.get("voice", request.voice or "random")
+
+        logger.info(f"[TTS API] Generated audio: {audio_id}, format: {result['format']}, voice: {actual_voice}, size: {len(result['audio'])} bytes")
 
         return {
             "success": True,
             "audioId": audio_id,
             "base64": base64_audio,
             "format": result["format"],
+            "voice": actual_voice,  # 返回实际使用的音色
         }
     except Exception as e:
         logger.error(f"[TTS API] Generation failed: {e}")
@@ -82,29 +86,19 @@ async def get_available_voices():
     """
     voices = {
         "qwen": [
-            {"id": "Cherry", "name": "芊悦 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Serena", "name": "苏瑶 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Ethan", "name": "晨煦 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Moon", "name": "月白 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Chelsie", "name": "千雪 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Momo", "name": "茉兔 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Vivian", "name": "十三 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Kai", "name": "凯 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Nofish", "name": "不吃鱼 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Bella", "name": "萌宝 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Ryan", "name": "甜茶 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Aiden", "name": "艾登 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Eldric Sage", "name": "沧明子 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Mia", "name": "乖小妹 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Mochi", "name": "沙小弥 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Arthur", "name": "徐大爷 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Nini", "name": "邻家妹妹 (女)", "language": "zh-CN", "gender": "female"},
-            # 方言
-            {"id": "Jada", "name": "上海-阿珍 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Dylan", "name": "北京-晓东 (男)", "language": "zh-CN", "gender": "male"},
-            {"id": "Sunny", "name": "四川-晴儿 (女)", "language": "zh-CN", "gender": "female"},
-            {"id": "Rocky", "name": "粤语-阿强 (男)", "language": "zh-HK", "gender": "male"},
-            {"id": "Kiki", "name": "粤语-阿清 (女)", "language": "zh-HK", "gender": "female"},
+            # CosyVoice 音色（qwen3-tts-flash 模型）
+            {"id": "longxiaochun", "name": "芊悦 (女)", "language": "zh-CN", "gender": "female", "model": "cosyvoice-v2"},
+            {"id": "longxiaoxia", "name": "苏瑶 (女)", "language": "zh-CN", "gender": "female", "model": "cosyvoice-v2"},
+            {"id": "longwanlong", "name": "晨煦 (男)", "language": "zh-CN", "gender": "male", "model": "cosyvoice-v2"},
+            {"id": "longyixuan", "name": "逸轩 (男)", "language": "zh-CN", "gender": "male", "model": "cosyvoice-v2"},
+            {"id": "longshuo", "name": "烁 (男)", "language": "zh-CN", "gender": "male", "model": "cosyvoice-v2"},
+            {"id": "longzhiqi", "name": "知琪 (女)", "language": "zh-CN", "gender": "female", "model": "cosyvoice-v2"},
+            {"id": "longteng", "name": "腾 (男)", "language": "zh-CN", "gender": "male", "model": "cosyvoice-v2"},
+            # Sambert 音色（备用）
+            {"id": "zhichu", "name": "知楚 (女)", "language": "zh-CN", "gender": "female", "model": "sambert-zhichu-v1"},
+            {"id": "zhitian", "name": "知甜 (女)", "language": "zh-CN", "gender": "female", "model": "sambert-zhitian-v1"},
+            {"id": "zhiyan", "name": "知燕 (女)", "language": "zh-CN", "gender": "female", "model": "sambert-zhiyan-v1"},
+            {"id": "zhida", "name": "知达 (男)", "language": "zh-CN", "gender": "male", "model": "sambert-zhida-v1"},
         ],
         "openai": [
             {"id": "alloy", "name": "Alloy", "language": "en", "gender": "neutral"},

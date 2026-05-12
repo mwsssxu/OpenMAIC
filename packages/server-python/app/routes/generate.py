@@ -10,8 +10,11 @@ from app.db.database import get_db
 from app.services.generation.outline_generator import (
     generate_outlines,
     stream_outlines,
+    stream_generate_outlines,
     generate_outline_titles,
+    generate_single_outline,
     generate_smart_default_outlines,
+    uniquify_media_element_ids,
     SceneOutline,
 )
 from app.services.generation.scene_generator import (
@@ -216,13 +219,15 @@ async def generate_outlines_endpoint(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """生成大纲（返回 JSON）"""
+    """生成大纲（使用Web端一致的prompt模板）"""
     requirement = body.get("requirement", "")
     pdf_content = body.get("pdf_content")
     language = body.get("language", "zh-CN")
     model = body.get("model", settings.DEFAULT_MODEL)
     agent_ids = body.get("agent_ids", [])
+    agents = body.get("agents", [])  # 完整agent信息（与Web端一致）
     web_search = body.get("web_search", False)
+    web_search_context = body.get("web_search_context")  # 网络搜索结果
 
     try:
         outlines = await generate_outlines(
@@ -232,7 +237,11 @@ async def generate_outlines_endpoint(
             model=model,
             agent_ids=agent_ids,
             web_search=web_search,
+            web_search_context=web_search_context,
+            agents=agents,  # 传递完整agent信息用于构建teacherContext
         )
+        # 确保mediaGenerations的elementId全局唯一
+        outlines = uniquify_media_element_ids(outlines)
         return {"outlines": [o.model_dump() for o in outlines]}
     except Exception as e:
         # LLM调用失败，返回智能默认大纲
@@ -260,8 +269,12 @@ async def generate_outlines_stream_endpoint(
     language = body.get("language", "zh-CN")
     model = body.get("model", settings.DEFAULT_MODEL)
     agent_ids = body.get("agent_ids", [])
+    agents = body.get("agents", [])  # 完整agent信息（与Web端一致）
+    web_search = body.get("web_search", False)
+    web_search_context = body.get("web_search_context")
 
     logger.info(f"[SSE] 开始生成大纲 - 用户: {current_user_id}, 数量: {total_count}")
+    logger.info(f"[SSE] 参数: agents={len(agents)}, web_search={web_search}")
 
     # Heartbeat 配置
     HEARTBEAT_INTERVAL_MS = 15000  # 15秒心跳
@@ -281,36 +294,36 @@ async def generate_outlines_stream_endpoint(
                 except asyncio.QueueFull:
                     pass
 
-        # Outline producer
+        # Outline producer - 与Web端一致：使用真正的流式LLM调用
         async def outline_producer():
             last_error = None
             try:
                 for attempt in range(1, MAX_STREAM_RETRIES + 2):
                     try:
                         logger.info(f"[SSE] 尝试 #{attempt}/{MAX_STREAM_RETRIES + 1}")
-                        outline_titles = await generate_outline_titles(
-                            requirement, language, model, total_count
-                        )
 
-                        if outline_titles and len(outline_titles) > 0:
-                            elapsed = time.time() - start_time
-                            logger.info(f"[SSE] 标题列表完成 - {len(outline_titles)} 个 (耗时: {elapsed:.1f}s)")
+                        # 使用 stream_generate_outlines 真正流式生成（与Web端一致）
+                        outline_count = 0
+                        async for outline in stream_generate_outlines(
+                            requirement=requirement,
+                            pdf_content=None,
+                            language=language,
+                            model=model,
+                            agent_ids=agent_ids,
+                            web_search=web_search,
+                            web_search_context=web_search_context,
+                            agents=agents,  # 传递完整agent信息用于构建teacherContext
+                        ):
+                            outline_count += 1
+                            parsed_outlines.append(outline)
+                            # 实时发送每个大纲（真正的流式）
+                            await queue.put(f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n")
+                            logger.info(f"[SSE] 大纲 #{outline_count} 发送 - {outline.title}")
 
-                            for i, outline_info in enumerate(outline_titles):
-                                outline = SceneOutline(
-                                    id=str(uuid.uuid4()),
-                                    title=outline_info.get("title", f"场景 {i+1}"),
-                                    type=outline_info.get("type", "slide"),
-                                    description=outline_info.get("description", ""),
-                                    order=i + 1,
-                                    key_points=outline_info.get("key_points", []),
-                                )
-                                parsed_outlines.append(outline)
-                                await queue.put(f"event: outline\ndata: {json.dumps(outline.model_dump())}\n\n")
-
+                        if outline_count > 0:
                             total_elapsed = time.time() - start_time
-                            logger.info(f"[SSE] 完成 - 共 {len(parsed_outlines)} 个大纲 (总耗时: {total_elapsed:.1f}s)")
-                            await queue.put(f"event: done\ndata: {json.dumps({'count': len(parsed_outlines), 'outlines': [o.model_dump() for o in parsed_outlines]})}\n\n")
+                            logger.info(f"[SSE] 完成 - 共 {outline_count} 个大纲 (总耗时: {total_elapsed:.1f}s)")
+                            await queue.put(f"event: done\ndata: {json.dumps({'count': outline_count, 'outlines': [o.model_dump() for o in parsed_outlines]})}\n\n")
                             await queue.put(stop_signal)
                             return
 
@@ -322,7 +335,8 @@ async def generate_outlines_stream_endpoint(
 
                     except Exception as e:
                         last_error = str(e)
-                        logger.warning(f"[SSE] 错误 #{attempt}: {e}")
+                        elapsed = time.time() - start_time
+                        logger.warning(f"[SSE] 错误 #{attempt} (耗时: {elapsed:.1f}s): {e}")
                         if attempt <= MAX_STREAM_RETRIES:
                             await queue.put(f"event: retry\ndata: {json.dumps({'attempt': attempt, 'maxAttempts': MAX_STREAM_RETRIES + 1})}\n\n")
                             await asyncio.sleep(2)
@@ -547,10 +561,10 @@ async def generate_tts_endpoint(
     """
     text = body.get("text", "")
     audio_id = body.get("audio_id", "")
-    provider = body.get("provider", "openai")
-    voice = body.get("voice", "alloy")
+    provider = body.get("provider", "qwen")  # 默认使用 DashScope TTS
+    voice = body.get("voice", "zhichu")  # DashScope Sambert 默认语音
     speed = body.get("speed", 1.0)
-    model = body.get("model", "tts-1")
+    model = body.get("model", "sambert-zhichu-v1")  # DashScope Sambert 模型
 
     # 必填参数验证
     if not text:
@@ -566,7 +580,7 @@ async def generate_tts_endpoint(
         )
 
     # TTS 提供商白名单验证
-    supported_providers = ["openai", "minimax"]
+    supported_providers = ["qwen", "openai", "minimax"]  # qwen 为 DashScope TTS
     if provider not in supported_providers:
         raise HTTPException(
             status_code=400,

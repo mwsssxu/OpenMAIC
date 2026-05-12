@@ -151,7 +151,7 @@ async def run_agent_turn(
         agent_role: 角色（teacher/student/assistant）
         messages: 对话历史
         context: 上下文（场景信息等）
-        model: LLM 模型
+        model: LLM 模型（应直接传入最终模型名如 qwen3.5-plus，不经过模型映射）
 
     Returns:
         Agent 回复
@@ -180,11 +180,14 @@ async def run_agent_turn(
     if not last_user_message:
         last_user_message = context.get("topic", "请开始讲解")
 
+    # 使用指定模型或默认 qwen3.5-plus（不经过模型映射）
+    effective_model = model or "qwen3.5-plus"
+
     # 调用 LLM
     response = await call_llm(
         prompt=last_user_message,
         system_prompt=full_system_prompt,
-        model=model,
+        model=effective_model,
         temperature=0.7,
     )
 
@@ -206,15 +209,21 @@ async def stream_agent_response(
 ):
     """
     流式生成 Agent 回复（用于 SSE）
+
+    注意：model 参数应直接传入最终模型名（如 qwen3.5-plus），
+    不经过模型映射。如果不指定，默认使用 qwen3.5-plus。
     """
     system_prompt = AGENT_SYSTEM_PROMPTS.get(agent_role, AGENT_SYSTEM_PROMPTS["teacher"])
+
+    # 使用指定模型或默认 qwen3.5-plus（不经过模型映射）
+    effective_model = model or "qwen3.5-plus"
 
     # stream_llm 返回完整响应，不是逐字符流
     response = ""
     async for chunk in stream_llm(
         prompt=prompt,
         system_prompt=system_prompt,
-        model=model,
+        model=effective_model,
         temperature=0.7,
     ):
         response += chunk

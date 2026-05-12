@@ -346,6 +346,8 @@ SLIDE_CONTENT_USER_TEMPLATE = """
 描述: {description}
 要点: {key_points}
 
+{teacher_context}
+
 ## 语言
 {language}
 
@@ -354,6 +356,7 @@ SLIDE_CONTENT_USER_TEMPLATE = """
 2. 使用精确排版规则（Canvas规范、高度查表）
 3. 包含背景装饰形状（shape元素）
 4. 内容简洁，符合幻灯片设计哲学
+5. 如果有教师人设信息，设计风格应与教师人设匹配
 
 输出格式:
 ```json

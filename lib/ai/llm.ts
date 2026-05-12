@@ -292,6 +292,15 @@ export async function callLLM<T extends GenerateTextParams>(
   const maxAttempts = (retryOptions?.retries ?? 0) + 1;
   const validate = retryOptions?.validate ?? (maxAttempts > 1 ? DEFAULT_VALIDATE : undefined);
 
+  // [DEBUG] 打印LLM调用信息
+  const startTime = Date.now();
+  const modelId = getModelId(params);
+  log.info(`[LLM] Starting call - source=${source}, model=${modelId}, maxAttempts=${maxAttempts}`);
+
+  const requestInfo = _extractRequestInfo(params);
+  log.info(`[LLM] Request info - systemLen=${requestInfo.system?.length || 0}, promptLen=${requestInfo.prompt?.length || 0}, messagesCount=${requestInfo.messages?.length || 0}`);
+  log.info(`[LLM] Max output tokens: ${requestInfo.maxOutputTokens}`);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let lastResult: GenerateTextResult<any, any> | undefined;
   let lastError: unknown;
@@ -309,6 +318,10 @@ export async function callLLM<T extends GenerateTextParams>(
         generateText(injectedParams),
       );
 
+      // [DEBUG] 打印成功信息
+      const elapsed = Date.now() - startTime;
+      log.info(`[LLM] Call succeeded - source=${source}, attempt=${attempt}/${maxAttempts}, elapsed=${elapsed}ms, responseLen=${result.text?.length || 0}`);
+
       // Validate result (only when retries are configured)
       if (validate && !validate(result.text)) {
         log.warn(
@@ -321,6 +334,10 @@ export async function callLLM<T extends GenerateTextParams>(
       return result;
     } catch (error) {
       lastError = error;
+      const elapsed = Date.now() - startTime;
+
+      // [DEBUG] 打印错误信息
+      log.error(`[LLM] Call failed - source=${source}, attempt=${attempt}/${maxAttempts}, elapsed=${elapsed}ms, error=${error instanceof Error ? error.message : String(error)}`);
 
       if (attempt < maxAttempts) {
         log.warn(`[${source}] Call failed (attempt ${attempt}/${maxAttempts}), retrying...`, error);

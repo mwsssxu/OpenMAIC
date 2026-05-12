@@ -7,10 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-# 配置日志级别
-logging.basicConfig(level=logging.INFO)
-
+# 先导入 settings，再配置日志级别
 from app.core.config import settings
+
+# 配置日志级别（DEBUG模式输出详细日志）
+logging.basicConfig(level=logging.DEBUG if settings.DEBUG else logging.INFO)
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
 from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge

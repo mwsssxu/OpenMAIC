@@ -19,10 +19,11 @@ services:
       # LLM 提供商 - 阿里云百炼
       - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-sp-359fa096d7144a5da564f9af9c73abaf}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-https://coding.dashscope.aliyuncs.com/v1}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai/qwen3.5-plus}
-      - HTTP_PROXY=${HTTP_PROXY:-}  # 代理地址，如 http://host.docker.internal:7890
-      # TTS - 阿里云百炼 (DashScope TTS 专用 endpoint)
-      - TTS_API_KEY=${TTS_API_KEY:-sk-962b539037a94defa87c90c8019b5cf5}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-openai/glm-5}
+      - HTTP_PROXY=  # 禁用代理（DashScope直接访问）
+      # TTS - 阿里云百炼 DashScope 兼容模式 API
+      - TTS_API_KEY=${TTS_API_KEY:-sk-0ad9501ce2d748549007958344430681}
+      - TTS_API_BASE=${TTS_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}

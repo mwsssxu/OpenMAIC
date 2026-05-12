@@ -18,8 +18,8 @@ export interface Agent {
   };
 }
 
-// Action 类型
-export type ActionType = 'speech' | 'spotlight' | 'laser' | 'highlight' | 'gesture';
+// Action 类型 - 与Web端对齐
+export type ActionType = 'speech' | 'spotlight' | 'laser' | 'highlight' | 'gesture' | 'wb_draw_text' | 'wb_draw_shape' | 'wb_open' | 'wb_clear' | 'wb_close';
 
 export interface SpeechActionData {
   text: string;
@@ -42,12 +42,39 @@ export interface LaserActionData {
   duration_ms?: number;
 }
 
+export interface WbDrawTextActionData {
+  text?: string;
+  content?: string;
+  fontSize?: number;
+  color?: string;
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
+}
+
+export interface WbDrawShapeActionData {
+  path?: string;
+  shape?: 'rectangle' | 'circle' | 'triangle' | 'line';
+  width?: number;
+  height?: number;
+  left?: number;
+  top?: number;
+  fill?: string;
+  viewBox?: [number, number];
+}
+
 export interface ActionDataMap {
   speech: SpeechActionData;
   spotlight: SpotlightActionData;
   laser: LaserActionData;
   highlight: SpotlightActionData;
   gesture: Record<string, never>;
+  wb_draw_text: WbDrawTextActionData;
+  wb_draw_shape: WbDrawShapeActionData;
+  wb_open: Record<string, never>;
+  wb_clear: Record<string, never>;
+  wb_close: Record<string, never>;
 }
 
 export interface SceneAction<T extends ActionType = ActionType> {

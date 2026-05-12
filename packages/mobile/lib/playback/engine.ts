@@ -54,6 +54,9 @@ export type PlaybackEngineCallbacks = {
   onSpotlight?: (elementId: string, dimness?: number) => void;
   onLaser?: (elementId: string, color?: string) => void;
   onClearEffects?: () => void;
+  // Whiteboard actions - 自动触发白板显示
+  onWhiteboardAction?: (action: SceneAction) => void;
+  onWhiteboardOpen?: () => void;
 };
 
 /**
@@ -168,6 +171,7 @@ export class PlaybackEngine {
   /**
    * 处理场景的所有 actions
    * 按顺序执行：spotlight/laser非阻塞立即执行，speech阻塞等待播放完成
+   * 白板actions触发白板显示（与Web端对齐）
    */
   private async processSceneActions(scene: Scene): Promise<void> {
     const actions = scene.actions || [];
@@ -191,12 +195,33 @@ export class PlaybackEngine {
       } else if (action.type === 'laser') {
         this.executeLaser(action);
         // 非阻塞，立即继续下一个action
+      } else if (action.type === 'wb_draw_text' || action.type === 'wb_draw_shape') {
+        // 白板绘制action - 触发白板显示（与Web端对齐）
+        this.executeWhiteboard(action);
+        // 非阻塞，立即继续下一个action
+      } else if (action.type === 'wb_open') {
+        // 打开白板
+        this.callbacks.onWhiteboardOpen?.();
+      } else if (action.type === 'wb_clear' || action.type === 'wb_close') {
+        // 清除/关闭白板 - 触发清除
+        this.callbacks.onClearEffects?.();
       } else if (action.type === 'speech') {
         // 阻塞，等待播放完成再继续
         await this.executeSpeech(action as SceneAction<'speech'>);
       }
-      // 其他action类型（wb_draw等）暂不处理
+      // 其他action类型暂不处理
     }
+  }
+
+  /**
+   * 执行白板绘制action（非阻塞）
+   * 触发白板显示和内容绘制
+   */
+  private executeWhiteboard(action: SceneAction): void {
+    // 触发白板action回调
+    this.callbacks.onWhiteboardAction?.(action);
+    // 自动打开白板
+    this.callbacks.onWhiteboardOpen?.();
   }
 
   /**
@@ -245,12 +270,18 @@ export class PlaybackEngine {
     // 先清除之前的视觉效果
     this.callbacks.onClearEffects?.();
 
-    // 处理所有 actions（spotlight/laser 非阻塞）
+    // 处理所有 actions（spotlight/laser/whiteboard 非阻塞）
     for (const action of actions) {
       if (action.type === 'spotlight') {
         this.executeSpotlight(action);
       } else if (action.type === 'laser') {
         this.executeLaser(action);
+      } else if (action.type === 'wb_draw_text' || action.type === 'wb_draw_shape') {
+        this.executeWhiteboard(action);
+      } else if (action.type === 'wb_open') {
+        this.callbacks.onWhiteboardOpen?.();
+      } else if (action.type === 'wb_clear' || action.type === 'wb_close') {
+        this.callbacks.onClearEffects?.();
       } else if (action.type === 'speech') {
         await this.executeSpeechAuto(action as SceneAction<'speech'>);
         return;
@@ -354,17 +385,25 @@ export class PlaybackEngine {
 
   /**
    * 从场景内容中提取文本并朗读（单场景模式）
+   * 与 Web端对齐：提取笔记内容（笔记内容），去除 HTML 标签
    */
   private async speakSceneContent(scene: Scene): Promise<void> {
     let textToSpeak = '';
 
-    if (scene.content?.canvas?.elements) {
-      const textElements = scene.content.canvas.elements
-        .filter((el) => el.type === 'text' && el.content)
-        .map((el) => el.content as string);
+    // 检查是否为 slide 类型内容（与 Web端一致）
+    const slideContent = scene.content as any;
+    if (slideContent?.canvas?.elements) {
+      const textElements = slideContent.canvas.elements
+        .filter((el: any) => el.type === 'text' && el.content)
+        .map((el: any) => {
+          const content = el.content as string;
+          // 去除 HTML 标签，提取纯文本（与 Web端一致）
+          if (content.includes('<p') || content.includes('<')) {
+            return content.replace(/<[^>]+>/g, '');
+          }
+          return content;
+        });
       textToSpeak = textElements.join('\n');
-    } else if (scene.content?.text) {
-      textToSpeak = scene.content.text;
     }
 
     if (textToSpeak && textToSpeak.length > 10) {

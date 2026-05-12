@@ -3,4 +3,4 @@
  */
 
 export { AudioPlayer, AudioPlayerCallback } from './audio-player';
-export { PlaybackEngine, EngineMode, PlaybackEngineCallbacks } from './engine';
+export { PlaybackEngine, EngineMode, PlaybackEngineCallbacks, TTSConfig } from './engine';

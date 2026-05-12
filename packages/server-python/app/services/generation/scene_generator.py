@@ -10,9 +10,9 @@ import re
 import logging
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
-from app.services.llm import call_llm
+from app.services.llm import call_llm, stream_llm
 from app.services.generation.outline_generator import SceneOutline
-from app.services.generation.prompts.slide_content_system import (
+from app.services.generation.prompts.slide_content_simple import (
     SLIDE_CONTENT_SYSTEM_PROMPT,
     SLIDE_CONTENT_USER_TEMPLATE,
     TEXT_HEIGHT_TABLE,
@@ -21,6 +21,38 @@ import uuid
 
 
 logger = logging.getLogger(__name__)
+
+
+def format_teacher_persona_for_prompt(agents: Optional[List[Dict[str, Any]]]) -> str:
+    """
+    格式化教师人设信息用于Prompt（与Web端一致）
+
+    Args:
+        agents: 智能体列表
+
+    Returns:
+        教师人设文本
+    """
+    if not agents or len(agents) == 0:
+        return ""
+
+    # 找到教师智能体
+    teacher_agent = None
+    for agent in agents:
+        if agent.get("role") == "teacher":
+            teacher_agent = agent
+            break
+
+    if not teacher_agent:
+        return ""
+
+    return f"""## Teacher Persona
+The primary teacher for this course is:
+- Name: {teacher_agent.get('name', 'Teacher')}
+- Role: {teacher_agent.get('role', 'teacher')}
+- Persona: {teacher_agent.get('persona', 'A professional teacher')}
+
+Design the course content and teaching style to match this teacher's persona."""
 
 
 def format_elements_info(content: Dict[str, Any]) -> str:
@@ -132,19 +164,24 @@ async def generate_scene_content(
     outline: SceneOutline,
     language: str = "zh-CN",
     model: Optional[str] = None,
+    agents: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
-    生成场景内容（使用精确排版Prompt）
+    生成场景内容（使用精确排版Prompt + 流式调用避免超时）
 
     Args:
         outline: 场景大纲
         language: 语言
         model: LLM 模型
+        agents: 智能体信息列表（用于构建teacherContext）
 
     Returns:
         场景内容（JSON），包含精确坐标格式的元素
     """
     if outline.type == "slide":
+        # 构建教师人设上下文（与Web端一致）
+        teacher_context = format_teacher_persona_for_prompt(agents)
+
         # 使用精确排版Prompt模板
         prompt = SLIDE_CONTENT_USER_TEMPLATE.format(
             title=outline.title,
@@ -152,6 +189,7 @@ async def generate_scene_content(
             description=outline.description,
             key_points=", ".join(outline.key_points or []),
             language=language,
+            teacher_context=teacher_context,
         )
         system_prompt = SLIDE_CONTENT_SYSTEM_PROMPT
     elif outline.type == "quiz":
@@ -166,14 +204,32 @@ async def generate_scene_content(
         return {"type": outline.type, "content": {}}
 
     logger.info(f"[SceneGenerator] Generating content for: {outline.title} ({outline.type})")
+    logger.debug(f"[SceneGenerator] Prompt length: {len(prompt)}, System prompt length: {len(system_prompt)}")
 
-    response = await call_llm(
-        prompt=prompt,
-        system_prompt=system_prompt,
-        model=model,
-        temperature=0.7,
-        max_tokens=4096,
-    )
+    # 使用流式调用避免DashScope 30秒超时问题（与Web端一致）
+    try:
+        chunks = []
+        async for chunk in stream_llm(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            temperature=0.7,
+            max_tokens=4096,
+        ):
+            chunks.append(chunk)
+
+        response = "".join(chunks)
+        logger.info(f"[SceneGenerator] Stream completed, response length: {len(response)}")
+    except Exception as e:
+        logger.warning(f"[SceneGenerator] Stream failed, falling back to non-stream: {e}")
+        # 流式失败时回退到非流式（可能超时）
+        response = await call_llm(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            temperature=0.7,
+            max_tokens=4096,
+        )
 
     # 增强的JSON解析逻辑
     content = parse_json_response(response, outline.type)
@@ -311,72 +367,90 @@ async def generate_scene_actions(
     content: Dict[str, Any],
     language: str = "zh-CN",
     model: Optional[str] = None,
+    agents: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Action]:
     """
-    生成 Agent Actions（讲解行为）
+    生成 Agent Actions（讲解行为）- 使用流式调用避免超时
 
     Args:
         outline: 场景大纲
         content: 场景内容
         language: 语言
         model: LLM 模型
+        agents: 智能体信息列表（用于个性化讲解）
 
     Returns:
         Action 列表
     """
-    ACTIONS_PROMPT = """
-请根据场景内容生成 Agent 讲解行为。
+    # 构建教师人设上下文（与Web端一致）
+    teacher_context = format_teacher_persona_for_prompt(agents)
 
-## 场景信息
-标题：{title}
+    # 构建智能体列表信息（用于讲解风格）
+    agents_info = ""
+    if agents and len(agents) > 0:
+        agents_info = "## 讲解智能体\n" + "\n".join([
+            f"- {a.get('name', 'Agent')} ({a.get('role', 'assistant')}): {a.get('persona', '专业讲师')}"
+            for a in agents[:3]  # 最多3个
+        ])
 
-## 场景元素（带ID）
-{elements_info}
+    ACTIONS_PROMPT = """生成Agent讲解行为:
+标题: {title}
+描述: {description}
+要点: {key_points}
+元素: {elements_info}
+{teacher_context}
+{agents_info}
+语言: {language}
 
-## 语言
-{language}
+行为类型:
+- speech: 讲解文本(必需)
+- spotlight: 聚焦元素(target_element_id)
+- laser: 激光笔(target_element_id,color)
+- wb_draw_text: 白板写字
 
-## 要求
-生成讲解行为序列，包括：
-1. speech - 语音讲解（必需，为每个重要元素生成讲解）
-2. spotlight - 聚焦元素（可选，使用 target_element_id 指定要聚焦的元素ID）
-3. laser - 激光笔指向（可选，使用 target_element_id 指定指向的元素）
-4. wb_draw_text - 白板绘制文字（可选，在白板上展示公式或关键词）
+规则: target_element_id必须是真实元素ID,先聚焦再讲解,讲解内容比幻灯片更丰富(背景知识+举例)
 
-## 重要规则
-- target_element_id 必须是上述场景元素列表中的真实ID
-- 每个元素的讲解应该包含：先spotlight/laser聚焦，再speech讲解
-- speech 的 text 应该是完整的讲解内容，不要直接复制幻灯片文字
-
-输出格式：
-[{{'id': 'action_1', 'type': 'speech', 'data': {{'text': '开场介绍文本'}}}}, {{'id': 'action_2', 'type': 'spotlight', 'data': {{'target_element_id': 'title', 'dim_opacity': 0.7}}}}, {{'id': 'action_3', 'type': 'speech', 'data': {{'text': '标题讲解内容'}}}}, {{'id': 'action_4', 'type': 'laser', 'data': {{'target_element_id': 'point_0', 'color': '#ff3b30'}}}}, {{'id': 'action_5', 'type': 'speech', 'data': {{'text': '要点讲解内容'}}}}]
-
-只输出 JSON 数组。
-"""
+输出:[{{'id':'a1','type':'speech','data':{{'text':'开场'}}}},{{'id':'a2','type':'spotlight','data':{{'target_element_id':'title','dim_opacity':0.7}}}},{{'id':'a3','type':'speech','data':{{'text':'标题讲解'}}}}]
+只输出JSON数组。"""
 
     prompt = ACTIONS_PROMPT.format(
         title=outline.title,
+        description=outline.description or "",
+        key_points=", ".join(outline.key_points or []),
         elements_info=format_elements_info(content),
+        teacher_context=teacher_context,
+        agents_info=agents_info,
         language=language,
     )
 
     logger.info(f"[SceneGenerator] Generating actions for: {outline.title}")
     logger.debug(f"[SceneGenerator] Elements info:\n{format_elements_info(content)}")
 
+    # 使用流式调用避免DashScope 30秒超时问题
     try:
+        chunks = []
+        async for chunk in stream_llm(
+            prompt=prompt,
+            system_prompt="Agent行为设计专家。只输出JSON数组。",
+            model=model,
+            temperature=0.7,
+            max_tokens=2048,
+        ):
+            chunks.append(chunk)
+
+        response = "".join(chunks)
+        logger.info(f"[SceneGenerator] Stream completed, response length: {len(response)}")
+    except Exception as stream_error:
+        logger.warning(f"[SceneGenerator] Stream failed, falling back to non-stream: {stream_error}")
+        # 流式失败时回退到非流式
         response = await call_llm(
             prompt=prompt,
-            system_prompt="你是 Agent 行为设计专家。只输出 JSON 数组。",
+            system_prompt="Agent行为设计专家。只输出JSON数组。",
             model=model,
             temperature=0.7,
             max_tokens=2048,
         )
-
-        logger.info(f"[SceneGenerator] LLM response length: {len(response)}")
-        logger.debug(f"[SceneGenerator] LLM response preview: {response[:200]}...")
-    except Exception as llm_error:
-        logger.error(f"[SceneGenerator] LLM call failed: {llm_error}")
-        raise
+        logger.info(f"[SceneGenerator] Fallback response length: {len(response)}")
 
     try:
         cleaned = response.strip()
@@ -424,12 +498,13 @@ async def generate_full_scene(
     outline: SceneOutline,
     language: str = "zh-CN",
     model: Optional[str] = None,
+    agents: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
-    生成完整场景（内容 + Actions）
+    生成完整场景（内容 + Actions）- 支持智能体信息
     """
-    content = await generate_scene_content(outline, language, model)
-    actions = await generate_scene_actions(outline, content, language, model)
+    content = await generate_scene_content(outline, language, model, agents)
+    actions = await generate_scene_actions(outline, content, language, model, agents)
 
     return {
         "id": str(uuid.uuid4()),

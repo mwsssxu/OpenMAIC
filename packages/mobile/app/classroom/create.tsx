@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +17,14 @@ import { useFeedback } from '@/lib/hooks/use-feedback';
 
 // 步骤定义 - 参考Web端：需求输入 → 大纲生成 → 智能体生成 → 确认创建
 const STEPS = ['需求输入', '大纲生成', '智能体生成', '确认创建'];
+
+// 默认大纲（当生成失败时使用）
+const DEFAULT_OUTLINES: SceneOutline[] = [
+  { id: '1', type: 'slide', title: '课程介绍', description: '介绍课程主题和学习目标', key_points: ['主题概述', '学习目标', '课程安排'], order: 1 },
+  { id: '2', type: 'slide', title: '核心内容', description: '讲解核心知识点', key_points: ['概念定义', '原理说明', '示例演示'], order: 2 },
+  { id: '3', type: 'quiz', title: '知识检测', description: '检验学习效果', key_points: ['基础题目', '进阶题目'], order: 3 },
+  { id: '4', type: 'slide', title: '总结回顾', description: '回顾课程要点', key_points: ['要点总结', '延伸思考', '课后作业'], order: 4 },
+];
 
 interface AgentProfile {
   id: string;
@@ -98,14 +105,74 @@ export default function CreateClassroomScreen() {
     generateOutlines();
   };
 
-  // 步骤2: 大纲确认后，进入智能体生成
-  const handleStep2Next = async () => {
-    setCurrentStep(2);
-    // 大纲生成完成后，自动生成Agent（带着大纲，参考Web端）
-    await generateAgents(outlines);
+  // 生成大纲（与Web端一致：使用流式endpoint，实时显示进度）
+  // 大纲生成完成后自动生成Agent（与Web端一致）
+  const generateOutlines = async () => {
+    setGeneratingOutlines(true);
+    setError(null);
+    setOutlines([]);
+
+    try {
+      // 使用流式endpoint（与Web端一致）
+      // Web端: /api/generate/scene-outlines-stream SSE
+      // 移动端: /generate/outlines-stream SSE
+      await apiClient.generateOutlinesStream(
+        requirement,
+        language,
+        agents.length > 0 ? agents.map(a => ({
+          id: a.id,
+          name: a.name,
+          role: a.role,
+          persona: a.persona || '',
+        })) : undefined,
+        webSearchEnabled,
+        // onOutline: 实时添加每个大纲（真正的流式体验）
+        (outline) => {
+          outlinesRef.current = [...outlinesRef.current, outline];
+          setOutlines(outlinesRef.current);
+        },
+        // onComplete: 生成完成后自动生成Agent（与Web端一致）
+        async (count) => {
+          setGeneratingOutlines(false);
+          if (count > 0) {
+            setError(null);
+            // 自动进入步骤2（Agent生成），不需要用户手动点击
+            setCurrentStep(2);
+            // 自动生成Agent（与Web端一致：大纲生成完成后立即生成Agent）
+            await generateAgents(outlinesRef.current);
+          }
+        },
+        // onError: 错误处理
+        (errorMsg) => {
+          setError(errorMsg);
+          setGeneratingOutlines(false);
+        },
+      );
+
+      // 如果没有生成大纲，使用默认大纲
+      if (outlinesRef.current.length === 0) {
+        outlinesRef.current = DEFAULT_OUTLINES;
+        setOutlines(DEFAULT_OUTLINES);
+        // 默认大纲也自动生成Agent
+        setCurrentStep(2);
+        await generateAgents(DEFAULT_OUTLINES);
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || '大纲生成失败';
+      setError(errorMsg);
+
+      // 失败时使用默认大纲
+      outlinesRef.current = DEFAULT_OUTLINES;
+      setOutlines(DEFAULT_OUTLINES);
+      setGeneratingOutlines(false);
+      // 默认大纲也自动生成Agent
+      setCurrentStep(2);
+      await generateAgents(DEFAULT_OUTLINES);
+    }
   };
 
   // 生成智能体（LLM根据课程信息和大纲生成 - 参考Web端）
+  // Agent生成完成后自动进入步骤3（确认创建）
   const generateAgents = async (outlinesData: SceneOutline[]) => {
     setGeneratingAgents(true);
     setError(null);
@@ -122,78 +189,26 @@ export default function CreateClassroomScreen() {
       );
       const generatedAgents = result.agents || [];
       setAgents(generatedAgents.map((a: AgentProfile) => ({ ...a, enabled: true })));
+      // Agent生成完成后自动进入步骤3（确认创建）
+      setCurrentStep(3);
     } catch (err: any) {
       console.warn('Agent生成失败，使用默认配置:', err);
       // 失败时获取默认配置
       try {
         const defaultResult = await apiClient.getDefaultAgents(language);
         setAgents((defaultResult.agents || []).map((a: AgentProfile) => ({ ...a, enabled: true })));
+        // 即使失败也进入步骤3
+        setCurrentStep(3);
       } catch {
         setAgents([]);
+        setCurrentStep(3);
       }
     } finally {
       setGeneratingAgents(false);
     }
   };
 
-  // 生成大纲（真正的流式生成）- 参考Web端，不依赖agents
-  const generateOutlines = async () => {
-    setGeneratingOutlines(true);
-    setError(null);
-    setOutlines([]);
-    outlinesRef.current = []; // 重置 ref
-
-    try {
-      // 使用真正的 SSE 流式生成（参考Web端，agents还未生成）
-      await apiClient.generateOutlinesStream(
-        requirement,
-        language,
-        [], // agents还未生成，传空数组
-        webSearchEnabled,
-        // 每个大纲生成时的回调
-        (outline) => {
-          outlinesRef.current = [...outlinesRef.current, outline];
-          setOutlines(outlinesRef.current);
-        },
-        // 完成时的回调
-        (count) => {
-          setGeneratingOutlines(false);
-          // 成功完成后清除错误
-          if (count > 0) {
-            setError(null);
-          }
-        },
-        // 错误时的回调（只有在真正失败时才显示）
-        (errorMsg) => {
-          // 如果没有任何大纲生成，说明完全失败
-          if (outlinesRef.current.length === 0) {
-            setError(errorMsg);
-            // 失败时使用默认大纲
-            const defaultOutlines: SceneOutline[] = [
-              { id: '1', type: 'slide', title: '课程介绍', description: '介绍课程主题和学习目标', key_points: ['主题概述', '学习目标', '课程安排'], order: 1 },
-              { id: '2', type: 'slide', title: '核心内容', description: '讲解核心知识点', key_points: ['概念定义', '原理说明', '示例演示'], order: 2 },
-              { id: '3', type: 'quiz', title: '知识检测', description: '检验学习效果', key_points: ['基础题目', '进阶题目'], order: 3 },
-              { id: '4', type: 'slide', title: '总结回顾', description: '回顾课程要点', key_points: ['要点总结', '延伸思考', '课后作业'], order: 4 },
-            ];
-            
-            outlinesRef.current = defaultOutlines;
-            setOutlines(defaultOutlines);
-          }
-          setGeneratingOutlines(false);
-        }
-      );
-    } catch (err: any) {
-      // 错误已在回调中处理
-      setGeneratingOutlines(false);
-    }
-  };
-
-  // 步骤3: Agent确认后，进入创建确认
-  const handleStep3Next = () => {
-    setCurrentStep(3);
-  };
-
-  // 步骤4: 开始创建课程（分开创建场景以避免超时）
+  // 步骤4: 开始创建课程（优化体验：创建第一个场景后立即跳转）
   const handleCreate = async () => {
     setLoading(true);
     setLoadingMessage('正在创建课程记录...');
@@ -223,31 +238,20 @@ export default function CreateClassroomScreen() {
         cleanAgentConfigs
       );
 
-      // 2. 逐个创建场景（避免批量生成超时）
-      let successCount = 0;
-      for (let i = 0; i < outlines.length; i++) {
-        setLoadingMessage(`正在生成场景 ${i + 1}/${outlines.length}...`);
-        try {
-          await apiClient.createScene(result.id, outlines[i], i + 1, language);
-          successCount++;
-        } catch (sceneErr: any) {
-          // 单个场景失败不影响整体流程，继续创建其他场景
-          console.warn(`场景 ${i + 1} 创建失败:`, sceneErr.message);
-        }
+      // 2. 只创建第一个场景，创建完成后立即跳转（优化体验）
+      setLoadingMessage('正在生成第一个场景...');
+      if (outlines.length > 0) {
+        await apiClient.createScene(result.id, outlines[0], 1, language);
       }
 
       setLoadingMessage(null);
       setCreatedClassroomId(result.id);
       onSuccess();
 
-      // 显示成功消息并跳转
-      Alert.alert('成功', `课程创建成功！已生成 ${successCount} 个场景`, [
-        { text: '查看课程', onPress: () => router.replace(`/classroom/${result.id}`) }
-      ]);
+      // 大纲已保存到后端课程记录中，前端从API获取后自动创建
+      // 不再通过URL传递大纲数据（避免长度限制问题）
+      router.replace(`/classroom/${result.id}?totalScenes=${outlines.length}`);
 
-      setTimeout(() => {
-        router.replace(`/classroom/${result.id}`);
-      }, 1000);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || '创建失败');
       onError();
@@ -420,22 +424,23 @@ export default function CreateClassroomScreen() {
 
       {error && !generatingAgents && agents.length > 0 && <Text style={styles.errorText}>{error}</Text>}
 
-      <View style={styles.stepButtons}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(1)}>
-          <Text style={styles.backBtnText}>返回</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.nextBtn, (generatingAgents || agents.length === 0) && styles.btnDisabled]}
-          onPress={handleStep3Next}
-          disabled={generatingAgents || agents.length === 0}
-        >
-          <Text style={styles.nextBtnText}>确认智能体</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Agent生成完成后自动进入步骤3，此步骤不需要手动点击按钮 */}
+      {generatingAgents ? (
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={Colors.secondary.info} />
+          <Text style={styles.generatingText}>正在生成智能体...</Text>
+        </View>
+      ) : (
+        <View style={styles.stepButtons}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(1)}>
+            <Text style={styles.backBtnText}>返回修改大纲</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 
-  // 渲染步骤3: 大纲生成（流式生成）
+  // 渲染步骤1: 大纲生成（流式生成，完成后自动进入Agent生成）
   const renderStepOutline = () => (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>课程大纲</Text>
@@ -492,22 +497,23 @@ export default function CreateClassroomScreen() {
 
       {error && !generatingOutlines && <Text style={styles.errorText}>{error}</Text>}
 
-      <View style={styles.stepButtons}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(0)}>
-          <Text style={styles.backBtnText}>返回</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.nextBtn, (generatingOutlines || outlines.length === 0) && styles.btnDisabled]}
-          onPress={handleStep2Next}
-          disabled={generatingOutlines || outlines.length === 0}
-        >
-          <Text style={styles.nextBtnText}>生成智能体</Text>
-        </TouchableOpacity>
-      </View>
+      {/* 大纲生成完成后自动进入Agent生成，此步骤不需要手动点击按钮 */}
+      {generatingOutlines ? (
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={Colors.secondary.info} />
+          <Text style={styles.generatingText}>大纲生成完成后将自动生成智能体...</Text>
+        </View>
+      ) : (
+        <View style={styles.stepButtons}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentStep(0)}>
+            <Text style={styles.backBtnText}>返回修改需求</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 
-  // 渲染步骤4: 确认创建
+  // 渲染步骤3: 确认创建
   const renderStep4 = () => (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>确认创建</Text>

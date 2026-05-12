@@ -2,6 +2,7 @@
 场景创建服务 - 处理课程场景的生成和存储
 """
 
+import asyncio
 import uuid
 import json
 import logging
@@ -154,6 +155,7 @@ def build_slide_content(
 async def generate_scene_actions_with_tts(
     scene_title: str,
     scene_desc: str,
+    key_points: List[str] = [],
     language: str = "zh-CN",
     content: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
@@ -163,15 +165,17 @@ async def generate_scene_actions_with_tts(
     Args:
         scene_title: 场景标题
         scene_desc: 场景描述
+        key_points: 关键要点列表（用于生成丰富讲解）
         language: 语言设置
-        content: 场景内容（用于提取元素文本）
+        content: 场景内容（用于提取元素文本和生成讲解）
 
     Returns:
         Actions 列表（speech actions + spotlight）
     """
+    import re
     actions = []
 
-    # 1. 标题介绍
+    # 1. 标题介绍（使用描述扩展）
     intro_text = f"现在我们来学习{scene_title}。{scene_desc}" if language == "zh-CN" else f"Now let's learn about {scene_title}. {scene_desc}"
     actions.append({
         "id": str(uuid.uuid4()),
@@ -179,17 +183,45 @@ async def generate_scene_actions_with_tts(
         "data": {"text": intro_text}
     })
 
-    # 2. 从content中提取元素文本，生成详细讲解
-    if content and content.get("canvas", {}).get("elements"):
+    # 2. 使用 key_points 生成详细讲解（优先级高于 canvas 元素）
+    if key_points and len(key_points) > 0:
+        for i, point in enumerate(key_points[:5]):
+            # 清理要点文本（去掉 bullet 符号）
+            clean_point = point.lstrip("• ").strip()
+
+            # 生成扩展讲解（比单纯朗读更丰富）
+            explain_text = f"第{i+1}个要点：{clean_point}。这是本节课程的核心内容之一，请重点关注。" if language == "zh-CN" else f"Point {i+1}: {clean_point}. This is a key concept in this lesson."
+
+            actions.append({
+                "id": str(uuid.uuid4()),
+                "type": "speech",
+                "data": {"text": explain_text}
+            })
+
+            # 添加聚焦效果
+            actions.append({
+                "id": str(uuid.uuid4()),
+                "type": "spotlight",
+                "data": {
+                    "target_element_id": f"point_{i}",
+                    "dim_opacity": 0.7
+                }
+            })
+
+    # 3. 从 content canvas 中提取其他文本元素补充讲解
+    elif content and content.get("canvas", {}).get("elements"):
         elements = content["canvas"]["elements"]
 
         for el in elements[:5]:  # 最多处理5个元素
             if el.get("type") == "text" and el.get("content"):
+                # 跳过标题和描述（已经讲解过）
+                el_id = el.get("id", "")
+                if el_id in ["title", "desc"]:
+                    continue
+
                 # 清理HTML标签
                 text_content = el.get("content", "")
-                if "<p" in text_content:
-                    # 提取纯文本
-                    import re
+                if "<p" in text_content or "<" in text_content:
                     text_content = re.sub(r"<[^>]+>", "", text_content).strip()
 
                 if text_content and len(text_content) > 5:
@@ -222,6 +254,7 @@ async def create_single_scene(
     order_index: int,
     db: Any,
     language: str = "zh-CN",
+    agents: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     创建单个场景
@@ -233,6 +266,7 @@ async def create_single_scene(
         order_index: 场景顺序
         db: 数据库连接
         language: 语言设置
+        agents: 智能体信息列表（用于构建teacherContext）
 
     Returns:
         场景数据字典
@@ -261,37 +295,53 @@ async def create_single_scene(
         order=order_index,
     )
 
-    # 使用 LLM 生成精确排版内容（替代 build_slide_content 简化模板）
+    logger.info(f"[Scene] #{order_index}: 开始生成 - {scene_title}, agents={len(agents) if agents else 0}")
+
+    # 生成内容（第一阶段）
     try:
+        logger.info(f"[Scene] #{order_index}: 开始调用LLM生成内容 - model={settings.DEFAULT_MODEL}")
         content = await generate_scene_content(
             outline_obj,
             language=language,
             model=settings.DEFAULT_MODEL,
+            agents=agents,
         )
-        logger.info(f"[Scene] #{order_index}: LLM生成内容成功 - {scene_title}")
+        # 格式标准化：确保 elements 在 canvas 中
+        if "elements" in content and "canvas" not in content:
+            content = {"type": "slide", "canvas": {"width": 1000, "height": 562.5, "background": {"color": "#ffffff"}, "elements": content["elements"]}}
+        elif "canvas" in content and "elements" not in content["canvas"] and "elements" in content:
+            content["canvas"]["elements"] = content.pop("elements")
+        logger.info(f"[Scene] #{order_index}: 内容生成成功 - elements={len(content.get('canvas', {}).get('elements', []))}")
+    except asyncio.TimeoutError as e:
+        logger.warning(f"[Scene] #{order_index}: 内容生成超时，使用fallback")
+        fallback_content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
+        content = fix_element_format(fallback_content)
     except Exception as e:
-        logger.warning(f"[Scene] #{order_index}: LLM生成失败，使用简化模板 - {e}")
-        # 降级到简化模板，并转换为精确坐标格式
+        logger.warning(f"[Scene] #{order_index}: 内容生成失败 - {type(e).__name__}: {e}")
         fallback_content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
         content = fix_element_format(fallback_content)
 
-    # 使用 LLM 生成讲解动作（包含 speech + spotlight + laser + wb_draw）
-    # 替代 generate_scene_actions_with_tts 简化模板
+    # 生成动作（第二阶段）- 使用实际内容
     try:
+        logger.info(f"[Scene] #{order_index}: 开始调用LLM生成动作")
         actions = await generate_scene_actions(
             outline_obj,
             content,
             language=language,
             model=settings.DEFAULT_MODEL,
+            agents=agents,
         )
-        # 转换 Action model 为 dict
         actions_data = [a.model_dump() for a in actions]
-        logger.info(f"[Scene] #{order_index}: LLM生成Actions成功 ({len(actions_data)}个)")
-    except Exception as e:
-        logger.warning(f"[Scene] #{order_index}: Actions生成失败，使用fallback - {e}")
-        # 降级到fallback，生成完整讲解（包含元素内容）
+        logger.info(f"[Scene] #{order_index}: Actions生成成功 ({len(actions_data)}个)")
+    except asyncio.TimeoutError as e:
+        logger.warning(f"[Scene] #{order_index}: 动作生成超时，使用fallback")
         actions_data = await generate_scene_actions_with_tts(
-            scene_title, scene_desc, language, content  # 传递content
+            scene_title, scene_desc, key_points, language, content
+        )
+    except Exception as e:
+        logger.warning(f"[Scene] #{order_index}: 动作生成失败 - {type(e).__name__}: {e}")
+        actions_data = await generate_scene_actions_with_tts(
+            scene_title, scene_desc, key_points, language, content
         )
 
     # 存储到数据库
@@ -388,7 +438,8 @@ async def create_stage_record(
     language: str,
     agent_ids: List[str],
     db: Any,
-    generated_agent_configs: Optional[List[Dict[str, Any]]] = None
+    generated_agent_configs: Optional[List[Dict[str, Any]]] = None,
+    pending_outlines: Optional[List[Dict[str, Any]]] = None
 ) -> None:
     """
     创建课程记录
@@ -402,6 +453,7 @@ async def create_stage_record(
         agent_ids: 智能体 ID 列表
         db: 数据库连接
         generated_agent_configs: 生成的智能体配置列表
+        pending_outlines: 待创建的场景大纲列表
     """
     now = utcnow()
 
@@ -422,22 +474,30 @@ async def create_stage_record(
             if missing:
                 logger.error(f"[Stage] Agent #{i} missing required fields: {missing}, agent data: {agent}")
                 raise ValueError(f"Agent config missing required fields: {missing}")
-            # 验证role类型
-            if agent['role'] not in valid_roles:
+            # 验证role类型（大小写不敏感）
+            role_lower = agent['role'].lower()
+            if role_lower not in valid_roles:
                 logger.error(f"[Stage] Agent #{i} invalid role: {agent['role']}")
                 raise ValueError(f"Agent role must be one of {valid_roles}, got: {agent['role']}")
+            # 标准化role为小写
+            agent['role'] = role_lower
 
         logger.info(f"[Stage] Agent configs validated successfully, first agent: {generated_agent_configs[0].get('name', 'unknown')}")
     else:
         logger.info(f"[Stage] No agent configs provided (generated_agent_configs is None or empty)")
 
+    # 保存大纲数据（用于后续场景创建）
+    if pending_outlines:
+        logger.info(f"[Stage] Saving {len(pending_outlines)} pending outlines for later scene creation")
+
     agent_ids_json = json.dumps(agent_ids) if agent_ids is not None else None
     agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs is not None else None
+    pending_outlines_json = json.dumps(pending_outlines) if pending_outlines is not None else None
 
     await db.execute(
         """
-        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at, generated_agent_configs)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at, generated_agent_configs, pending_outlines)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         """,
         stage_id,
         user_uuid,
@@ -448,7 +508,8 @@ async def create_stage_record(
         agent_ids_json,
         now,
         now,
-        agent_configs_json
+        agent_configs_json,
+        pending_outlines_json
     )
 
 

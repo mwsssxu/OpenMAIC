@@ -1,5 +1,5 @@
 """
-聊天路由 - SSE 流式 Agent 对话
+聊天路由 - SSE 流式 Agent 对话（参考Web端实现）
 """
 
 from fastapi import APIRouter, Depends
@@ -14,17 +14,19 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Chat 专用模型（参考Web端，使用 qwen3.5-plus）
+CHAT_MODEL = "qwen3.5-plus"
+
 
 @router.post("")
 async def chat(
     body: dict,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """SSE 流式聊天"""
+    """SSE 流式聊天（参考Web端：使用专用模型 qwen3.5-plus）"""
     messages = body.get("messages", [])
     config = body.get("config", {})
     store_state = body.get("storeState", {})
-    model = body.get("model", settings.DEFAULT_MODEL)
 
     # 获取 Agent 配置
     agents = config.get("agentIds", ["teacher", "student"])
@@ -51,14 +53,14 @@ async def chat(
         yield f"event: start\ndata: {json.dumps({'agent_id': first_agent, 'role': role})}\n\n"
 
         try:
-            # 先获取完整响应，再发送
+            # 使用 Chat 专用模型 qwen3.5-plus（参考Web端）
             response_text = ""
             async for event in stream_agent_response(
                 agent_id=first_agent,
                 agent_role=role,
                 prompt=last_user_message,
                 context={"topic": topic, "scene_title": topic},
-                model=model,
+                model=CHAT_MODEL,  # 直接使用 qwen3.5-plus，不经过模型映射
             ):
                 if event["type"] == "response_complete":
                     response_text = event["content"]
@@ -96,13 +98,13 @@ async def start_discussion(
     topic = body.get("topic", "")
     agents = body.get("agents", ["teacher", "student", "assistant"])
     max_turns = body.get("maxTurns", 3)
-    model = body.get("model", settings.DEFAULT_MODEL)
 
+    # 使用 Chat 专用模型
     responses = await run_multi_agent_discussion(
         topic=topic,
         agents=agents,
         max_turns=max_turns,
-        model=model,
+        model=CHAT_MODEL,
     )
 
     return {"responses": responses}

@@ -69,7 +69,7 @@ AGENT_PROMPT_TEMPLATE = """你是课程设计专家。根据课程信息生成�
 描述: {stage_description}
 大纲: {scene_outlines}
 
-输出JSON: {"agents": [...]}
+输出JSON: {{'agents': [...]}}
 规则：
 - 1个teacher(priority=10, #5b9bd5蓝)
 - 1个assistant(priority=7, #10b981绿)

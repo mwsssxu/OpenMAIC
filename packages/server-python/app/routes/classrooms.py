@@ -110,7 +110,7 @@ async def get_classroom(
     # 验证用户所有权
     stage = await db.fetchrow(
         """
-        SELECT id, name, description, language_directive, style, agent_ids, generated_agent_configs, created_at, updated_at
+        SELECT id, name, description, language_directive, style, agent_ids, generated_agent_configs, pending_outlines, created_at, updated_at
         FROM stages
         WHERE id = $1 AND user_id = $2
         """,
@@ -140,6 +140,14 @@ async def get_classroom(
         else:
             generated_agent_configs = stage["generated_agent_configs"]
 
+    # 解析 pending_outlines（待创建的场景大纲）
+    pending_outlines = None
+    if stage["pending_outlines"]:
+        if isinstance(stage["pending_outlines"], str):
+            pending_outlines = json.loads(stage["pending_outlines"])
+        else:
+            pending_outlines = stage["pending_outlines"]
+
     return {
         "stage": {
             "id": str(stage["id"]),
@@ -149,6 +157,7 @@ async def get_classroom(
             "style": stage["style"],
             "agent_ids": stage["agent_ids"],
             "generatedAgentConfigs": generated_agent_configs,
+            "pendingOutlines": pending_outlines,  # 返回待创建的大纲
             "created_at": stage["created_at"].isoformat(),
             "updated_at": stage["updated_at"].isoformat()
         },
@@ -247,7 +256,7 @@ async def create_full_classroom(
 
     stage_id = uuid.uuid4()
 
-    # 创建课程记录（不生成场景）
+    # 创建课程记录（保存大纲用于后续场景创建）
     await create_stage_record(
         stage_id=stage_id,
         user_uuid=user_uuid,
@@ -256,6 +265,7 @@ async def create_full_classroom(
         language=language,
         agent_ids=agent_ids,
         generated_agent_configs=agent_configs,
+        pending_outlines=outlines,  # 保存大纲数据
         db=db
     )
 
@@ -285,15 +295,17 @@ async def create_scene_for_classroom(
     - outline: 场景大纲 (title, type, description, key_points)
     - order_index: 场景顺序
     - language: 语言设置
+    - agents: 智能体列表（可选，如不提供则从课程配置获取）
     """
+    logger.info(f"[SceneCreate] 收到请求 - classroom_id={classroom_id}, outline_title={body.get('outline', {}).get('title')}, order_index={body.get('order_index')}")
     start_time = time.time()
 
     classroom_uuid = validate_uuid(classroom_id, "课程ID")
     user_uuid = validate_uuid(current_user_id, "用户ID")
 
-    # 验证课程所有权
+    # 验证课程所有权，并获取智能体配置
     stage = await db.fetchrow(
-        "SELECT id, name, language_directive FROM stages WHERE id = $1 AND user_id = $2",
+        "SELECT id, name, language_directive, generated_agent_configs FROM stages WHERE id = $1 AND user_id = $2",
         classroom_uuid,
         user_uuid
     )
@@ -305,10 +317,23 @@ async def create_scene_for_classroom(
     order_index = body.get("order_index", 1)
     language = validate_language(body.get("language", stage["language_directive"] or "zh-CN"))
 
+    # 获取智能体配置（优先使用请求体，否则从课程配置获取）
+    agents = body.get("agents")
+    if not agents and stage["generated_agent_configs"]:
+        try:
+            if isinstance(stage["generated_agent_configs"], str):
+                agents = json.loads(stage["generated_agent_configs"])
+            else:
+                agents = stage["generated_agent_configs"]
+            logger.info(f"[Scene] 从课程配置获取 {len(agents)} 个智能体")
+        except Exception as e:
+            logger.warning(f"[Scene] 解析智能体配置失败: {e}")
+            agents = None
+
     if not outline:
         raise HTTPException(status_code=400, detail="场景大纲不能为空")
 
-    logger.info(f"[Scene] 创建场景 - classroom={classroom_id}, title={outline.get('title')}, order={order_index}")
+    logger.info(f"[Scene] 创建场景 - classroom={classroom_id}, title={outline.get('title')}, order={order_index}, agents={len(agents) if agents else 0}")
 
     # 创建单个场景（使用事务确保原子性）
     from app.services.scene_service import create_single_scene, create_fallback_scene
@@ -322,6 +347,7 @@ async def create_scene_for_classroom(
                 order_index=order_index,
                 db=db,
                 language=language,
+                agents=agents,
             )
         except Exception as e:
             logger.warning(f"[Scene] 创建失败，使用降级场景: {e}")
