@@ -9,7 +9,7 @@ import {
   ViewStyle,
   StyleProp,
 } from 'react-native';
-import { Rounded, Spacing } from '@/lib/constants/theme';
+import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 
 interface BottomSheetModalProps {
@@ -53,7 +53,7 @@ export function BottomSheetModal({
     autoHideMs: 2800,
   });
 
-  // 提示的涼入涼出动画
+  // 提示的淡入淡出动画
   const hintOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(hintOpacity, {
@@ -148,9 +148,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   sheet: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     borderTopLeftRadius: Rounded.lg,
     borderTopRightRadius: Rounded.lg,
+    maxHeight: '85%',
+    minHeight: 120,
   },
   handleArea: {
     alignItems: 'center',

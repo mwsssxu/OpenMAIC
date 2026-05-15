@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +41,11 @@ import {
   clearSubmitted,
   type QuestionResult,
 } from '@/lib/quiz/persistence';
+import {
+  parseSSEContent,
+  extractDiscussionTopic,
+  type ParsedContent,
+} from '@/lib/utils/sse-parser';
 
 // 场景大纲类型（用于后台创建）
 interface SceneOutline {
@@ -48,6 +55,16 @@ interface SceneOutline {
   description: string;
   key_points: string[];
   order: number;
+}
+
+// Quiz 内容类型（类型安全）
+interface QuizContent {
+  questions: Array<{
+    id: string;
+    question: string;
+    options: Array<{ value: string; label: string }>;
+    answer: string | string[];
+  }>;
 }
 
 // 本地 Agent 类型（扩展自 lib/types）
@@ -128,10 +145,34 @@ export default function ClassroomScreen() {
   const [showChatModal, setShowChatModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [chatMessage, setChatMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string; agentId?: string; actions?: any[] }>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{ agent: string; message: string; agentId?: string; actions?: any[]; persona?: string }>>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [discussionMode, setDiscussionMode] = useState(false); // 多 Agent讨论模式
   const [discussionRunning, setDiscussionRunning] = useState(false); // 讨论进行中
+
+  // 解析后的内容状态
+  const [pendingThinkingPrompt, setPendingThinkingPrompt] = useState<string | null>(null); // 待处理的引导思考
+  const [whiteboardTextContent, setWhiteboardTextContent] = useState<string | null>(null); // 白板纯文本内容
+  const [speakingAgentId, setSpeakingAgentId] = useState<string | null>(null); // 当前发言的Agent ID
+
+  // Refs for async state access（避免 stale state 问题）
+  const pendingThinkingPromptRef = useRef<string | null>(null);
+  const speakingTimeoutRef = useRef<number | null>(null);
+
+  // 同步更新 ref
+  useEffect(() => {
+    pendingThinkingPromptRef.current = pendingThinkingPrompt;
+  }, [pendingThinkingPrompt]);
+
+  // 清理 speaking timeout（组件卸载或模态框关闭时）
+  useEffect(() => {
+    return () => {
+      if (speakingTimeoutRef.current) {
+        clearTimeout(speakingTimeoutRef.current);
+        speakingTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // 语音教学
   const [playbackMode, setPlaybackMode] = useState<EngineMode>('idle');
@@ -163,6 +204,9 @@ export default function ClassroomScreen() {
   const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, boolean>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
 
+  // ScrollView refs - 用于滚动定位
+  const quizScrollRef = useRef<ScrollView>(null);
+
   // 场景切换动画 - 使用 Reanimated
   const translateX = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -175,6 +219,52 @@ export default function ClassroomScreen() {
       loadClassroom();
     }
   }, [id, authLoading, isAuthenticated]);
+
+  // Quiz场景状态恢复 - 当切换到Quiz场景时加载持久化状态
+  // 注意：必须在所有条件返回之前声明（遵循 React Hooks 规则）
+  useEffect(() => {
+    const scene = data?.scenes?.[currentSceneIndex];
+    if (scene?.type === 'quiz' && scene?.id) {
+      const loadQuizState = async () => {
+        const submittedState = await readSubmittedState(scene.id);
+        if (submittedState) {
+          if (submittedState.kind === 'reviewing') {
+            // 已提交并批改 - 转换类型：QuizAnswers是string | string[]，单选转为string
+            const answers: Record<string, string> = {};
+            Object.entries(submittedState.answers).forEach(([key, value]) => {
+              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            });
+            setSelectedAnswers(answers);
+            const resultsMap: Record<string, boolean> = {};
+            submittedState.results.forEach(r => {
+              resultsMap[r.questionId] = r.correct === true;
+            });
+            setSubmittedAnswers(resultsMap);
+            setQuizSubmitted(true);
+          } else if (submittedState.kind === 'answering') {
+            // 已提交但未批改
+            const answers: Record<string, string> = {};
+            Object.entries(submittedState.answers).forEach(([key, value]) => {
+              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            });
+            setSelectedAnswers(answers);
+            setQuizSubmitted(true);
+          }
+        } else {
+          // 没有提交状态，加载草稿
+          const draft = await readDraft(scene.id);
+          if (draft && Object.keys(draft).length > 0) {
+            const answers: Record<string, string> = {};
+            Object.entries(draft).forEach(([key, value]) => {
+              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            });
+            setSelectedAnswers(answers);
+          }
+        }
+      };
+      loadQuizState();
+    }
+  }, [data, currentSceneIndex]);
 
   // 场景切换函数 - 添加触觉反馈
   const goToNextScene = useCallback(() => {
@@ -305,9 +395,18 @@ export default function ClassroomScreen() {
       const pendingOutlinesFromAPI = classroomData.stage?.pendingOutlines;
       const remainingCountParam = remainingCount ? parseInt(remainingCount) : 0;
 
-      console.log(`[LoadClassroom] pendingOutlines URL param: ${pendingOutlinesParam ? `exists (${pendingOutlinesParam.length} chars)` : 'undefined'}`);
-      console.log(`[LoadClassroom] pendingOutlines from API: ${pendingOutlinesFromAPI ? `${pendingOutlinesFromAPI.length} outlines` : 'undefined'}`);
-      console.log(`[LoadClassroom] backgroundCreatingRef.current: ${backgroundCreatingRef.current}`);
+      // 关键：使用刚获取的 classroomData 判断场景数量
+      const existingSceneCount = classroomData.scenes?.length || 0;
+      const expectedTotal = totalScenes ? parseInt(totalScenes) : (pendingOutlinesFromAPI?.length || 0);
+
+      console.log(`[LoadClassroom] existingSceneCount: ${existingSceneCount}, expectedTotal: ${expectedTotal}`);
+
+      // 检查是否已完成所有场景创建（避免刷新时重复创建）
+      if (expectedTotal > 0 && existingSceneCount >= expectedTotal) {
+        console.log(`[LoadClassroom] 所有场景已创建完成 (${existingSceneCount}/${expectedTotal})，跳过后台创建`);
+        setShowManualCreateHint(false);
+        return;
+      }
 
       // 优先使用从API获取的大纲（更可靠）
       if (pendingOutlinesFromAPI && pendingOutlinesFromAPI.length > 0 && !backgroundCreatingRef.current) {
@@ -568,6 +667,10 @@ export default function ClassroomScreen() {
     };
   }, []);
 
+  // 当前场景（用于各种函数，必须在条件返回之前定义）
+  // 注意：data 可能为 null，所以使用可选链
+  const currentScene = data?.scenes?.[currentSceneIndex];
+
   function goToScene(index: number) {
     if (index !== currentSceneIndex) {
       playbackEngineRef.current?.jumpToScene(index);
@@ -590,9 +693,11 @@ export default function ClassroomScreen() {
   };
 
   const submitQuiz = async () => {
-    if (!(currentScene?.content as any)?.questions) return;
+    const scene = currentScene;
+    if (!scene) return;
+    if (!(scene.content as any)?.questions) return;
 
-    const questions = (currentScene.content as any).questions;
+    const questions = (scene.content as any).questions;
 
     // 检查是否所有问题都已选择答案
     const unanswered = questions.filter((q: any) => !selectedAnswers[q.id]);
@@ -743,34 +848,97 @@ export default function ClassroomScreen() {
     setShowChatModal(true);
   }
 
+  // 构建讨论主题（包含场景上下文）
+  function buildDiscussionTopic(scene: Scene | undefined): string {
+    if (!scene) return '课程主题讨论';
+
+    const title = scene.title;
+    const description = (scene.content as any)?.description || '';
+    const keyPoints = (scene.content as any)?.key_points || [];
+
+    // 构建包含上下文的讨论主题
+    let topic = title;
+    if (description) {
+      topic += `\n背景：${description}`;
+    }
+    if (keyPoints.length > 0) {
+      topic += `\n讨论要点：${keyPoints.join('、')}`;
+    }
+
+    return topic;
+  }
+
   // 开始多 Agent 讨论
   async function startMultiAgentDiscussion(topic: string) {
     setDiscussionMode(true);
     setDiscussionRunning(true);
     setShowChatModal(true);
-    setChatHistory([{ agent: '系统', message: `开始讨论：${topic}` }]);
+    setChatHistory([{ agent: '系统', message: `开始讨论：${topic.split('\n')[0]}` }]);
+    setWhiteboardTextContent(null);
+    setPendingThinkingPrompt(null);
+    pendingThinkingPromptRef.current = null;
 
-    // 获取参与讨论的 Agent IDs
-    const discussionAgents = agents.slice(0, 3).map(a => a.id);
+    // 获取参与讨论的 Agents（带 persona）
+    const discussionAgents = agents.slice(0, 4);
+    const agentIds = discussionAgents.map(a => a.id);
     const agentNameMap: Record<string, string> = {};
-    agents.forEach(a => agentNameMap[a.id] = a.name);
+    const agentPersonaMap: Record<string, string> = {};
+    discussionAgents.forEach(a => {
+      agentNameMap[a.id] = a.name;
+      agentPersonaMap[a.id] = a.persona || '';
+    });
 
     try {
+      // 添加课程上下文提示
+      const contextPrefix = currentScene
+        ? `【${currentScene.title}】场景讨论：`
+        : '';
+      const fullTopic = contextPrefix + topic;
+
       await apiClient.runMultiAgentDiscussion(
-        topic,
-        discussionAgents,
+        fullTopic,
+        agentIds,
         2, // 每个Agent发言2次
         (response) => {
-          // 添加每个 Agent 的回复到聊天历史
           const agentName = agentNameMap[response.agent_id] || response.agent_role;
-          setChatHistory(prev => [...prev, {
-            agent: agentName,
-            agentId: response.agent_id,
-            message: response.content,
-            actions: response.actions,
-          }]);
+          const agentPersona = agentPersonaMap[response.agent_id] || '';
 
-          // 如果有白板 actions，显示白板
+          // 设置当前发言的Agent（带防抖，避免频繁切换）
+          if (speakingTimeoutRef.current) {
+            clearTimeout(speakingTimeoutRef.current);
+          }
+          setSpeakingAgentId(response.agent_id);
+          speakingTimeoutRef.current = setTimeout(() => {
+            setSpeakingAgentId(null);
+          }, 800);
+
+          // 使用 SSE 解析器分段处理内容
+          const parsed: ParsedContent = parseSSEContent(response.content || '');
+
+          // 只将核心文本添加到聊天历史（带 persona 标签）
+          if (parsed.coreText) {
+            setChatHistory(prev => [...prev, {
+              agent: agentName,
+              agentId: response.agent_id,
+              message: parsed.coreText,
+              actions: response.actions,
+              persona: agentPersona,
+            }]);
+          }
+
+          // 如果有白板内容，显示在独立白板
+          if (parsed.hasWhiteboard && parsed.whiteboardContent) {
+            setWhiteboardTextContent(parsed.whiteboardContent);
+            setShowWhiteboard(true);
+          }
+
+          // 如果有引导思考，保存为待处理提示（同时更新 ref）
+          if (parsed.hasThinkingPrompt && parsed.thinkingPrompt) {
+            setPendingThinkingPrompt(parsed.thinkingPrompt);
+            pendingThinkingPromptRef.current = parsed.thinkingPrompt;
+          }
+
+          // 如果有 actions（wb_draw），也显示白板
           if (response.actions && response.actions.length > 0) {
             const wbActions = response.actions.filter(
               (a: any) => a.type === 'wb_draw_text' || a.type === 'wb_draw_shape'
@@ -782,12 +950,28 @@ export default function ClassroomScreen() {
         }
       );
 
-      setChatHistory(prev => [...prev, { agent: '系统', message: '讨论结束' }]);
+      // 使用 ref 检查是否有待处理的引导思考（避免 stale state）
+      const hasThinkingPrompt = pendingThinkingPromptRef.current !== null;
+      setChatHistory(prev => [...prev, {
+        agent: '系统',
+        message: hasThinkingPrompt
+          ? '💡 有讨论话题待参与，点击下方"参与讨论"按钮'
+          : '讨论结束，你可以继续提问或切换场景',
+      }]);
     } catch (err: any) {
       console.warn('[Discussion] Failed:', err);
-      setChatHistory(prev => [...prev, { agent: '系统', message: `讨论出错：${err.message || '网络错误'}` }]);
+      // 添加错误提示和降级方案
+      setChatHistory(prev => [...prev, {
+        agent: '系统',
+        message: `讨论出错：${err.message || '网络错误'}，可以尝试单Agent对话`,
+      }]);
     } finally {
       setDiscussionRunning(false);
+      setSpeakingAgentId(null);
+      if (speakingTimeoutRef.current) {
+        clearTimeout(speakingTimeoutRef.current);
+        speakingTimeoutRef.current = null;
+      }
     }
   }
 
@@ -852,52 +1036,6 @@ export default function ClassroomScreen() {
       </View>
     );
   }
-
-  const currentScene = data.scenes[currentSceneIndex];
-
-  // Quiz场景状态恢复 - 当切换到Quiz场景时加载持久化状态
-  useEffect(() => {
-    if (currentScene?.type === 'quiz' && currentScene?.id) {
-      const loadQuizState = async () => {
-        const submittedState = await readSubmittedState(currentScene.id);
-        if (submittedState) {
-          if (submittedState.kind === 'reviewing') {
-            // 已提交并批改 - 转换类型：QuizAnswers是string | string[]，单选转为string
-            const answers: Record<string, string> = {};
-            Object.entries(submittedState.answers).forEach(([key, value]) => {
-              answers[key] = typeof value === 'string' ? value : value[0] || '';
-            });
-            setSelectedAnswers(answers);
-            const resultsMap: Record<string, boolean> = {};
-            submittedState.results.forEach(r => {
-              resultsMap[r.questionId] = r.correct === true;
-            });
-            setSubmittedAnswers(resultsMap);
-            setQuizSubmitted(true);
-          } else if (submittedState.kind === 'answering') {
-            // 已提交但未批改
-            const answers: Record<string, string> = {};
-            Object.entries(submittedState.answers).forEach(([key, value]) => {
-              answers[key] = typeof value === 'string' ? value : value[0] || '';
-            });
-            setSelectedAnswers(answers);
-            setQuizSubmitted(true);
-          }
-        } else {
-          // 没有提交状态，加载草稿
-          const draft = await readDraft(currentScene.id);
-          if (draft && Object.keys(draft).length > 0) {
-            const answers: Record<string, string> = {};
-            Object.entries(draft).forEach(([key, value]) => {
-              answers[key] = typeof value === 'string' ? value : value[0] || '';
-            });
-            setSelectedAnswers(answers);
-          }
-        }
-      };
-      loadQuizState();
-    }
-  }, [currentScene?.id, currentScene?.type]);
 
   return (
     <GestureDetector gesture={composedGesture}>
@@ -997,27 +1135,41 @@ export default function ClassroomScreen() {
           </View>
         )}
 
-        {/* Quiz 类型：额外显示测验问题 */}
-        {currentScene?.type === 'quiz' && (currentScene.content as any)?.questions && (
-          <View style={styles.quizOverlay}>
-            <ScrollView style={styles.quizScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+        {/* Quiz 类型：额外显示测验问题 - 紧凑布局 */}
+        {currentScene?.type === 'quiz' && (currentScene.content as QuizContent)?.questions && (() => {
+          const quizQuestions = (currentScene.content as QuizContent).questions;
+          const totalQuestions = quizQuestions.length;
+          const correctCount = Object.values(submittedAnswers).filter(v => v).length;
+
+          return (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+            style={styles.quizOverlay}
+          >
+            <ScrollView
+              ref={quizScrollRef}
+              style={styles.quizScroll}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.quizCard}>
                 <View style={styles.quizHeader}>
-                  <Ionicons name="help-circle" size={24} color="#f59e0b" />
+                  <Ionicons name="help-circle" size={20} color="#f59e0b" />
                   <Text style={styles.quizTitle}>测验</Text>
                   {quizSubmitted && (
                     <Text style={styles.quizResult}>
-                      {Object.values(submittedAnswers).filter(v => v).length}/{Object.keys(submittedAnswers).length} 正确
+                      {correctCount}/{totalQuestions} 正确
                     </Text>
                   )}
                 </View>
-                {(currentScene.content as any)?.questions?.map((q: any, idx: number) => {
+                {quizQuestions.map((q, idx) => {
                   const correctAnswer = q.answer?.[0] || q.answer;
 
                   return (
                     <View key={q.id || idx} style={styles.questionContainer}>
                       <Text style={styles.questionText}>{q.question}</Text>
-                      {q.options?.map((opt: any, optIdx: number) => {
+                      {q.options?.map((opt, optIdx) => {
                         const optSelected = selectedAnswers[q.id] === opt.value;
                         const optIsCorrect = opt.value === correctAnswer;
                         const showResult = quizSubmitted && submittedAnswers[q.id] !== undefined;
@@ -1044,40 +1196,42 @@ export default function ClassroomScreen() {
                               optSelected && styles.optionTextSelected,
                             ]}>{opt.label}</Text>
                             {showResult && optIsCorrect && (
-                              <Ionicons name="checkmark-circle" size={18} color="#22c55e" style={styles.optionIcon} />
+                              <Ionicons name="checkmark-circle" size={16} color="#22c55e" style={styles.optionIcon} />
                             )}
                             {showResult && optSelected && !optIsCorrect && (
-                              <Ionicons name="close-circle" size={18} color="#ef4444" style={styles.optionIcon} />
+                              <Ionicons name="close-circle" size={16} color="#ef4444" style={styles.optionIcon} />
                             )}
                           </TouchableOpacity>
                         );
                       })}
                       {quizSubmitted && !submittedAnswers[q.id] && (
                         <Text style={styles.explanationText}>
-                          正确答案：{q.options?.find((o: any) => o.value === correctAnswer)?.label || correctAnswer}
+                          正确答案：{q.options?.find(o => o.value === correctAnswer)?.label || correctAnswer}
                         </Text>
                       )}
                     </View>
                   );
                 })}
-
-                {/* 提交按钮 */}
-                {!quizSubmitted && Object.keys(selectedAnswers).length > 0 && (
-                  <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
-                    <Text style={styles.submitButtonText}>提交答案</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* 重试按钮 */}
-                {quizSubmitted && (
-                  <TouchableOpacity style={styles.resetButton} onPress={resetQuiz}>
-                    <Text style={styles.resetButtonText}>重新作答</Text>
-                  </TouchableOpacity>
-                )}
               </View>
             </ScrollView>
-          </View>
-        )}
+
+            {/* 固定底部按钮区域 */}
+            <View style={styles.quizFooter}>
+              {!quizSubmitted && Object.keys(selectedAnswers).length > 0 && (
+                <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
+                  <Text style={styles.submitButtonText}>提交答案</Text>
+                </TouchableOpacity>
+              )}
+
+              {quizSubmitted && (
+                <TouchableOpacity style={styles.resetButton} onPress={resetQuiz}>
+                  <Text style={styles.resetButtonText}>重新作答</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+          );
+        })()}
 
         {/* Interactive 类型：互动讨论场景 */}
         {currentScene?.type === 'interactive' && (
@@ -1107,7 +1261,7 @@ export default function ClassroomScreen() {
                 {/* 多 Agent 讨论按钮 */}
                 <TouchableOpacity
                   style={styles.startDiscussionBtn}
-                  onPress={() => startMultiAgentDiscussion(currentScene?.title || '课程主题')}
+                  onPress={() => startMultiAgentDiscussion(buildDiscussionTopic(currentScene))}
                   disabled={discussionRunning}
                 >
                   {discussionRunning ? (
@@ -1211,6 +1365,7 @@ export default function ClassroomScreen() {
         actions={(currentScene?.actions as any[])?.filter(
           (a: any) => a.type === 'wb_draw_text' || a.type === 'wb_draw_shape'
         ) || []}
+        textContent={whiteboardTextContent}
         onClose={() => setShowWhiteboard(false)}
       />
 
@@ -1399,23 +1554,75 @@ export default function ClassroomScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* 多人讨论参与者显示 */}
+        {discussionMode && agents.length > 0 && (
+          <View style={styles.participantsBar}>
+            <Text style={styles.participantsLabel}>讨论参与者</Text>
+            <View style={styles.participantsAvatars}>
+              {agents.slice(0, 3).map(agent => {
+                const isCurrentSpeaker = agent.id === speakingAgentId;
+                return (
+                  <View
+                    key={agent.id}
+                    style={[
+                      styles.participantAvatar,
+                      { backgroundColor: agent.color },
+                      isCurrentSpeaker && styles.participantAvatarActive,
+                    ]}
+                  >
+                    <Text style={styles.participantAvatarText}>
+                      {agent.avatar === 'teacher.png' ? '👨‍🏫' :
+                       agent.avatar === 'assistant.png' ? '👨‍💼' :
+                       agent.avatar?.startsWith('student') ? '👨' :
+                       agent.avatar ? '👤' : agent.name[0]}
+                    </Text>
+                    {isCurrentSpeaker && (
+                      <View style={styles.speakingDot}>
+                        <Ionicons name="volume-high" size={10} color="white" />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* 聊天历史 */}
         <ScrollView style={styles.chatHistory}>
           {chatHistory.length === 0 && (
             <Text style={styles.chatHint}>开始提问吧，{selectedAgent?.name} 会帮助你理解课程内容</Text>
           )}
-          {chatHistory.map((item, index) => (
+          {chatHistory.map((item, index) => {
+            const isSpeaking = discussionRunning && item.agentId && item.agentId === speakingAgentId;
+            const stableKey = `${item.agentId || item.agent}-${index}`;
+            return (
             <View
-              key={index}
+              key={stableKey}
               style={[
                 styles.chatBubble,
-                item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent
+                item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent,
+                isSpeaking && styles.chatBubbleSpeaking,
               ]}
             >
-              <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
+              <View style={styles.chatBubbleHeader}>
+                <View style={styles.agentNameRow}>
+                  <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
+                  {item.persona && item.agent !== '我' && item.agent !== '系统' && (
+                    <Text style={styles.chatBubblePersona}>{item.persona.slice(0, 20)}</Text>
+                  )}
+                </View>
+                {isSpeaking && (
+                  <View style={styles.speakingIndicator}>
+                    <Ionicons name="volume-high" size={14} color="#10b981" />
+                    <Text style={styles.speakingText}>正在发言</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.chatBubbleText}>{item.message}</Text>
             </View>
-          ))}
+            );
+          })}
         </ScrollView>
 
         {/* 输入框 - 只在非讨论模式显示 */}
@@ -1454,6 +1661,27 @@ export default function ClassroomScreen() {
               {discussionRunning ? 'Agent正在轮流发言...' : '讨论已结束'}
             </Text>
           </View>
+        )}
+
+        {/* 参与讨论按钮 - 当有待处理的引导思考时显示 */}
+        {!discussionRunning && pendingThinkingPrompt && (
+          <TouchableOpacity
+            style={styles.participateBtn}
+            onPress={() => {
+              const topic = extractDiscussionTopic(pendingThinkingPrompt);
+              setPendingThinkingPrompt(null);
+              // 添加用户参与提示
+              setChatHistory(prev => [...prev, {
+                agent: '系统',
+                message: `你可以针对"${topic}"发表观点，或继续提问`,
+              }]);
+              // 切换到单Agent对话模式让用户输入
+              setDiscussionMode(false);
+            }}
+          >
+            <Ionicons name="chatbubble-ellipses" size={18} color="white" />
+            <Text style={styles.participateBtnText}>参与讨论</Text>
+          </TouchableOpacity>
         )}
       </BottomSheetModal>
 
@@ -1731,45 +1959,52 @@ const styles = StyleSheet.create({
   emptySceneTitle: { fontSize: 18, fontWeight: 'bold', marginTop: Spacing.sm + 3, color: '#333' },
   emptySceneHint: { fontSize: 14, color: '#666', marginTop: Spacing.sm },
 
-  // Quiz overlay (shown above slide when quiz questions exist)
+  // Quiz overlay (shown above slide when quiz questions exist) - 动态高度，支持滚动
   quizOverlay: {
     position: 'absolute',
-    bottom: Spacing.lg,
-    left: Spacing.sm + 3,
-    right: Spacing.sm + 3,
-    maxHeight: 300,
-  },
-  quizScroll: {
-    maxHeight: 280,
-  },
-  quizCard: {
+    bottom: 80,  // 为底部工具栏和智能体栏留出空间
+    left: Spacing.sm,
+    right: Spacing.sm,
+    maxHeight: '75%',  // 增加高度，显示更多内容
     backgroundColor: 'white',
     borderRadius: Rounded.lg,
-    padding: Spacing.lg + 1,
-    width: '100%',
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+  },
+  quizScroll: {
+    maxHeight: '70%',  // 滚动区域高度
+  },
+  quizCard: {
+    padding: Spacing.md,  // 紧凑内边距
+  },
+  quizFooter: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+    backgroundColor: 'white',
   },
   quizHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.sm,  // 减小间距
     borderBottomWidth: 1,
     borderBottomColor: '#f59e0b20',
-    paddingBottom: Spacing.sm + 7,
+    paddingBottom: Spacing.sm,
   },
-  quizTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: Spacing.sm, color: '#333' },
-  questionContainer: { marginVertical: Spacing.sm + 3 },
-  questionText: { fontSize: 16, color: '#333', marginBottom: Spacing.sm, fontWeight: '500' },
+  quizTitle: { fontSize: 18, fontWeight: 'bold', marginLeft: Spacing.sm, color: '#333' },
+  questionContainer: { marginVertical: Spacing.sm },
+  questionText: { fontSize: 15, color: '#333', marginBottom: Spacing.xs, fontWeight: '500' },
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f7fa',
-    padding: Spacing.sm,
+    padding: Spacing.sm - 2,  // 紧凑
     borderRadius: Rounded.sm,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs + 2,  // 减小间距
   },
-  optionLabel: { fontSize: 14, fontWeight: 'bold', color: '#5b9bd5', marginRight: Spacing.sm },
-  optionText: { fontSize: 14, color: '#666' },
+  optionLabel: { fontSize: 13, fontWeight: 'bold', color: '#5b9bd5', marginRight: Spacing.sm },
+  optionText: { fontSize: 13, color: '#666' },
   // Quiz selection states
   optionSelected: { backgroundColor: '#dbeafe', borderColor: '#3b82f6', borderWidth: 2 },
   optionCorrect: { backgroundColor: '#dcfce7', borderColor: '#22c55e', borderWidth: 2 },
@@ -1780,10 +2015,10 @@ const styles = StyleSheet.create({
   optionIcon: { marginLeft: Spacing.sm },
   quizResult: { fontSize: 14, color: '#22c55e', fontWeight: 'bold', marginLeft: Spacing.sm },
   explanationText: { fontSize: 13, color: '#ef4444', marginTop: Spacing.sm, padding: Spacing.sm, backgroundColor: '#fef2f2', borderRadius: Rounded.sm },
-  submitButton: { backgroundColor: '#3b82f6', padding: Spacing.md, borderRadius: Rounded.md, marginTop: Spacing.md, alignItems: 'center' },
-  submitButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-  resetButton: { backgroundColor: '#6b7280', padding: Spacing.md, borderRadius: Rounded.md, marginTop: Spacing.md, alignItems: 'center' },
-  resetButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  submitButton: { backgroundColor: '#3b82f6', padding: Spacing.sm + 2, borderRadius: Rounded.md, alignItems: 'center', flex: 1, marginRight: Spacing.sm },
+  submitButtonText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  resetButton: { backgroundColor: '#6b7280', padding: Spacing.sm + 2, borderRadius: Rounded.md, alignItems: 'center', flex: 1 },
+  resetButtonText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
   quizHintContainer: { marginTop: Spacing.lg },
   quizHintText: { fontSize: 14, color: '#666', marginVertical: Spacing.xs + 1 },
   quizHint: { fontSize: 14, color: '#666', textAlign: 'center' },
@@ -1824,17 +2059,20 @@ const styles = StyleSheet.create({
   },
   startInteractiveText: { color: 'white', fontSize: 16, fontWeight: '600', marginLeft: Spacing.sm },
 
-  // Interactive overlay (for interactive scenes)
+  // Interactive overlay (for interactive scenes) - 紧凑布局
   interactiveOverlay: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 80,  // 为底部工具栏留出空间
     left: Spacing.sm,
     right: Spacing.sm,
-    maxHeight: 200,
+    maxHeight: '35%',
+    backgroundColor: 'white',
+    borderRadius: Rounded.lg,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
   },
   interactiveScroll: { flex: 1 },
-  interactiveTopic: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: Spacing.sm },
-  interactiveDesc: { fontSize: 14, color: '#666', marginBottom: Spacing.md },
+  interactiveTopic: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: Spacing.xs },
+  interactiveDesc: { fontSize: 13, color: '#666', marginBottom: Spacing.sm },
   discussionPoints: { marginBottom: Spacing.md },
   discussionLabel: { fontSize: 14, fontWeight: '600', color: '#10b981', marginBottom: Spacing.sm },
   discussionItem: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.xs },
@@ -1862,16 +2100,19 @@ const styles = StyleSheet.create({
   },
   startSingleChatText: { color: '#10b981', fontSize: 14, fontWeight: '500', marginLeft: Spacing.sm },
 
-  // PBL overlay (for project-based learning scenes)
+  // PBL overlay (for project-based learning scenes) - 紧凑布局
   pblOverlay: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 80,  // 为底部工具栏留出空间
     left: Spacing.sm,
     right: Spacing.sm,
-    maxHeight: 200,
+    maxHeight: '35%',
+    backgroundColor: 'white',
+    borderRadius: Rounded.lg,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
   },
   pblScroll: { flex: 1 },
-  pblTask: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: Spacing.sm },
+  pblTask: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: Spacing.xs },
   projectSteps: { marginBottom: Spacing.md },
   projectStep: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.sm },
   stepNumber: {
@@ -2037,8 +2278,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: Rounded.lg,
     padding: Spacing.lg,
-    maxHeight: '80%',
-    minHeight: '50%',
+    maxHeight: '70%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2054,8 +2294,60 @@ const styles = StyleSheet.create({
   },
   modalTitle: { flex: 1, fontSize: 18, fontWeight: 'bold', marginLeft: Spacing.sm },
 
+  // 讨论参与者
+  participantsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: '#f5f7fa',
+    borderRadius: Rounded.sm,
+    marginBottom: Spacing.sm,
+  },
+  participantsLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginRight: Spacing.sm,
+  },
+  participantsAvatars: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  participantAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  participantAvatarActive: {
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  participantAvatarText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  speakingDot: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   // 聊天
-  chatHistory: { flex: 1, marginBottom: Spacing.sm + 3 },
+  chatHistory: { flex: 1, maxHeight: 280, marginBottom: Spacing.sm + 3 },
   chatHint: { color: '#999', textAlign: 'center', padding: Spacing.lg },
   chatBubble: {
     padding: Spacing.sm,
@@ -2065,7 +2357,42 @@ const styles = StyleSheet.create({
   },
   chatBubbleUser: { backgroundColor: '#5b9bd5', alignSelf: 'flex-end' },
   chatBubbleAgent: { backgroundColor: '#f5f7fa', alignSelf: 'flex-start' },
-  chatBubbleAgentName: { fontSize: 12, color: '#666', marginBottom: Spacing.xs - 1 },
+  chatBubbleSpeaking: {
+    borderWidth: 2,
+    borderColor: '#10b981',
+    backgroundColor: '#f0fdf4',
+  },
+  chatBubbleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xs - 1,
+  },
+  chatBubbleAgentName: { fontSize: 12, color: '#666', fontWeight: '600' },
+  agentNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  chatBubblePersona: {
+    fontSize: 10,
+    color: '#999',
+    marginLeft: Spacing.xs,
+    fontStyle: 'italic',
+  },
+  speakingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm - 2,
+    paddingVertical: 2,
+    backgroundColor: '#10b98120',
+    borderRadius: Rounded.sm,
+  },
+  speakingText: {
+    fontSize: 11,
+    color: '#10b981',
+    marginLeft: 2,
+    fontWeight: '500',
+  },
   chatBubbleText: { fontSize: 14, color: '#333' },
   chatInputArea: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   chatInput: {
@@ -2101,6 +2428,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#10b981',
     fontWeight: '500',
+  },
+
+  // 参与讨论按钮
+  participateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    padding: Spacing.sm + 2,
+    borderRadius: Rounded.md,
+    marginTop: Spacing.sm,
+  },
+  participateBtnText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: Spacing.sm,
   },
 
   // 错误/登录

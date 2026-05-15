@@ -28,6 +28,7 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
 import { summarizeScenes, encouragementKey } from '@/lib/classroom/complete-summary';
 import type { Scene, SceneType } from '@/lib/types/scene';
+import { Colors } from '@/lib/constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -509,7 +510,7 @@ const styles = StyleSheet.create({
     width: 100,
     padding: 16,
     borderRadius: 16,
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     alignItems: 'center',
     shadowColor: '#f59e0b',
     shadowOffset: { width: 0, height: 2 },

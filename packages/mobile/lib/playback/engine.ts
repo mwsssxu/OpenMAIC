@@ -43,7 +43,7 @@ const DEFAULT_TTS_CONFIG: TTSConfig = {
 const NON_SPEECH_SCENE_TYPES = ['quiz', 'interactive', 'pbl'];
 
 export type PlaybackEngineCallbacks = {
-  onSceneChange?: (index: number, scene: Scene) => void;
+  onSceneChange?: (index: number, scene: Scene | null) => void;
   onActionExecute?: (action: SceneAction) => void;
   onComplete?: () => void;
   onModeChange?: (mode: EngineMode) => void;

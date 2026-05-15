@@ -5,7 +5,7 @@
  * Used during teaching and interactive scenes to display formulas and key points.
  */
 
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 
@@ -33,10 +33,12 @@ interface WhiteboardAction {
 interface WhiteboardOverlayProps {
   visible: boolean;
   actions: WhiteboardAction[];
+  /** 纯文本图表内容（从 SSE 解析提取） */
+  textContent?: string | null;
   onClose: () => void;
 }
 
-export function WhiteboardOverlay({ visible, actions, onClose }: WhiteboardOverlayProps) {
+export function WhiteboardOverlay({ visible, actions, textContent, onClose }: WhiteboardOverlayProps) {
   // Calculate scale based on screen width (match Web端 1000px viewport)
   const screenWidth = Dimensions.get('window').width;
   const whiteboardWidth = Math.min(screenWidth * 0.9, 400);
@@ -62,12 +64,19 @@ export function WhiteboardOverlay({ visible, actions, onClose }: WhiteboardOverl
 
           {/* Whiteboard content area */}
           <View style={styles.contentArea}>
-            {actions.length === 0 ? (
+            {actions.length === 0 && !textContent ? (
               <View style={styles.emptyState}>
                 <Ionicons name="document-text-outline" size={48} color="#ccc" />
                 <Text style={styles.emptyText}>暂无白板内容</Text>
                 <Text style={styles.emptyHint}>Agent讲解时会在这里绘制知识点</Text>
               </View>
+            ) : textContent ? (
+              /* 纯文本图表显示 - 使用 ScrollView 支持大内容 */
+              <ScrollView style={styles.textScrollView} contentContainerStyle={styles.textScrollContent}>
+                <View style={styles.textDiagramContainer}>
+                  <Text style={styles.textDiagram}>{textContent.replace(/```[\w]*\n?/g, '').replace(/```$/g, '')}</Text>
+                </View>
+              </ScrollView>
             ) : (
               <View style={styles.canvas}>
                 {actions.map((action) => {
@@ -123,8 +132,8 @@ export function WhiteboardOverlay({ visible, actions, onClose }: WhiteboardOverl
           {/* Footer hint */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              {actions.length > 0
-                ? `已绘制 ${actions.length} 个内容`
+              {textContent || actions.length > 0
+                ? `已绘制内容`
                 : '点击关闭等待讲解'}
             </Text>
           </View>
@@ -216,5 +225,25 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 12,
     color: Colors.neutral.textSecondary,
+  },
+  // 文本图表样式
+  textScrollView: {
+    flex: 1,
+    maxHeight: 250, // 限制最大高度，避免内容过多时白板过大
+  },
+  textScrollContent: {
+    padding: Spacing.md,
+  },
+  textDiagramContainer: {
+    backgroundColor: '#f0f4f8',
+    borderRadius: Rounded.md,
+    padding: Spacing.md,
+  },
+  textDiagram: {
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: '#333',
+    lineHeight: 20,
+    textAlign: 'left',
   },
 });

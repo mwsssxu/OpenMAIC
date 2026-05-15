@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors } from '@/lib/constants/theme';
 
 interface Question {
   id: string;
@@ -246,29 +247,29 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { flex: 1, padding: 16 },
-  header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  header: { padding: 16, backgroundColor: Colors.neutral.card, borderBottomWidth: 1, borderBottomColor: '#eee' },
   title: { fontSize: 20, fontWeight: 'bold' },
   progress: { fontSize: 14, color: '#666', marginTop: 4 },
   progressBar: { height: 4, backgroundColor: '#eee', marginHorizontal: 16 },
   progressFill: { height: 4, backgroundColor: '#3b82f6' },
   headerTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
   headerDesc: { fontSize: 14, color: '#666', marginBottom: 24 },
-  typeCard: { backgroundColor: '#fff', padding: 16, borderRadius: 8, marginBottom: 12 },
+  typeCard: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, marginBottom: 12 },
   typeName: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
   typeDesc: { fontSize: 14, color: '#666', marginBottom: 8 },
   typeInfo: { fontSize: 12, color: '#888' },
-  questionCard: { backgroundColor: '#fff', padding: 16, borderRadius: 8, marginBottom: 16 },
+  questionCard: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, marginBottom: 16 },
   difficulty: { fontSize: 12, color: '#3b82f6', marginBottom: 8 },
   questionContent: { fontSize: 16, lineHeight: 24 },
-  optionButton: { backgroundColor: '#fff', padding: 16, borderRadius: 8, marginBottom: 8 },
+  optionButton: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, marginBottom: 8 },
   optionSelected: { backgroundColor: '#dbeafe', borderWidth: 2, borderColor: '#3b82f6' },
   optionText: { fontSize: 14 },
-  footer: { padding: 16, backgroundColor: '#fff', flexDirection: 'row', justifyContent: 'space-between' },
+  footer: { padding: 16, backgroundColor: Colors.neutral.card, flexDirection: 'row', justifyContent: 'space-between' },
   navButton: { padding: 12, borderRadius: 8, backgroundColor: '#f0f0f0' },
   navButtonText: { fontSize: 14 },
   submitButton: { padding: 12, borderRadius: 8, backgroundColor: '#3b82f6' },
   submitButtonText: { fontSize: 14, color: '#fff' },
-  resultCard: { backgroundColor: '#fff', padding: 24, borderRadius: 8, alignItems: 'center', marginBottom: 16 },
+  resultCard: { backgroundColor: Colors.neutral.card, padding: 24, borderRadius: 8, alignItems: 'center', marginBottom: 16 },
   scoreText: { fontSize: 48, fontWeight: 'bold', color: '#3b82f6' },
   masteryText: { fontSize: 20, color: '#666', marginTop: 8 },
   passText: { fontSize: 16, marginTop: 12 },
@@ -276,8 +277,8 @@ const styles = StyleSheet.create({
   statItem: { fontSize: 14, marginHorizontal: 12 },
   pointsText: { fontSize: 14, color: '#f59e0b', marginTop: 16 },
   button: { backgroundColor: '#3b82f6', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
-  buttonOutline: { backgroundColor: '#fff', padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#3b82f6' },
+  buttonOutline: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#3b82f6' },
   buttonText: { fontSize: 16, color: '#fff' },
-  backButton: { padding: 16, backgroundColor: '#fff', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee' },
+  backButton: { padding: 16, backgroundColor: Colors.neutral.card, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee' },
   backButtonText: { fontSize: 16 },
 });

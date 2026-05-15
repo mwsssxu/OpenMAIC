@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>EduDash - Modern Institution Management</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&amp;display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ec5b13",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#221610",
+                    },
+                    fontFamily: {
+                        "display": ["Public Sans"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen pb-20">
+    <!-- Background Decoration -->
+    <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div class="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px]"></div>
+        <div class="absolute top-[20%] -right-[5%] w-[30%] h-[30%] bg-blue-500/10 rounded-full blur-[100px]"></div>
+        <div class="absolute bottom-[10%] left-[20%] w-[25%] h-[25%] bg-green-500/10 rounded-full blur-[80px]"></div>
+    </div>
+    <!-- Top Navigation Bar -->
+    <header
+        class="sticky top-0 z-50 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-primary/10 p-2 rounded-lg">
+                    <span class="material-symbols-outlined text-primary text-2xl">school</span>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">EduDash</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <button
+                    class="relative p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                    <span class="material-symbols-outlined">notifications</span>
+                    <span class="absolute top-2 right-2 flex h-2 w-2">
+                        <span
+                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                    </span>
+                </button>
+                <div
+                    class="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden border-2 border-primary/20">
+                    <img class="w-full h-full object-cover"
+                        data-alt="User profile avatar showing professional administrator"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuAoBeCiFxBJkyl4yuLj2821-RMpi1a429UqJ-T4jAg6KtXJugWKFr7cxBcvFg5pvnAa8k8L51aK-rPUG8yFnGhRa3XKNVRgfpaIiFRgncrngRMVh7n8FOdxlFc8m9jh7hctUcbku4-hrvx9oPVMqbjhObLNpMmxIjGmK7qibnN1y3QeOTkIVGXMmZ40ydx1_Jij6RzuCxJLg_fKojRnyIvbjj94IWI8zXhBp_x5KkB0XcFbn0bwmBSXE0CySCizcZxN8A3r59QvM5O5" />
+                </div>
+            </div>
+        </div>
+    </header>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <!-- Welcome & Search Section -->
+        <section class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+                <p class="text-primary font-semibold text-sm uppercase tracking-wider mb-1">Overview</p>
+                <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white">Good Morning, Admin 👋</h2>
+                <p class="text-slate-500 dark:text-slate-400 mt-1">Here is what's happening at Global Education
+                    Institute today.</p>
+            </div>
+            <div class="w-full md:max-w-md">
+                <div class="relative group">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span
+                            class="material-symbols-outlined text-slate-400 group-focus-within:text-primary transition-colors">search</span>
+                    </div>
+                    <input
+                        class="block w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 border-none rounded-xl shadow-sm focus:ring-2 focus:ring-primary/50 text-slate-900 dark:text-white placeholder-slate-400"
+                        placeholder="Search students, courses, or IDs..." type="text" />
+                </div>
+            </div>
+        </section>
+        <!-- Stats Grid -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-4 group hover:border-primary/30 transition-all">
+                <div class="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-xl">
+                    <span class="material-symbols-outlined text-blue-600 dark:text-blue-400">group</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total Students</p>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold text-slate-900 dark:text-white">1,284</span>
+                        <span class="text-xs font-bold text-green-500">+12%</span>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-4 group hover:border-primary/30 transition-all">
+                <div class="bg-orange-100 dark:bg-orange-900/30 p-3 rounded-xl">
+                    <span class="material-symbols-outlined text-orange-600 dark:text-orange-400">schedule</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Class Hours</p>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold text-slate-900 dark:text-white">452h</span>
+                        <span class="text-xs font-bold text-green-500">+5%</span>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-4 group hover:border-primary/30 transition-all">
+                <div class="bg-green-100 dark:bg-green-900/30 p-3 rounded-xl">
+                    <span class="material-symbols-outlined text-green-600 dark:text-green-400">autorenew</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Renewal Rate</p>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold text-slate-900 dark:text-white">92%</span>
+                        <span class="text-xs font-bold text-red-500">-2%</span>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-4 group hover:border-primary/30 transition-all">
+                <div class="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-xl">
+                    <span class="material-symbols-outlined text-purple-600 dark:text-purple-400">trending_down</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Loss Rate</p>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold text-slate-900 dark:text-white">4.5%</span>
+                        <span class="text-xs font-bold text-red-500">-1%</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Management Features Grid -->
+        <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-6">Quick Management</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">meeting_room</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Class</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">person</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Student</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center group-hover:bg-teal-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">menu_book</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Course</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">how_to_reg</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Attend</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-orange-500/10 text-orange-600 flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">assignment</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Homework</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-red-500/10 text-red-600 flex items-center justify-center group-hover:bg-red-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">quiz</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Exam</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-pink-500/10 text-pink-600 flex items-center justify-center group-hover:bg-pink-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">monitoring</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Perform</span>
+                </button>
+                <button
+                    class="flex flex-col items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-primary/40 transition-all active:scale-95 group">
+                    <div
+                        class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">description</span>
+                    </div>
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Report</span>
+                </button>
+            </div>
+        </section>
+        <!-- Tasks and Activity Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Today's Tasks -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-white">Today's Tasks</h3>
+                    <button class="text-sm font-semibold text-primary hover:underline">View All</button>
+                </div>
+                <div
+                    class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+                    <div class="divide-y divide-slate-100 dark:divide-slate-700">
+                        <div
+                            class="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                            <div
+                                class="flex-shrink-0 w-12 h-12 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-xl flex items-center justify-center font-bold text-xs flex-col">
+                                <span>09:30</span>
+                                <span>AM</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h4 class="text-sm font-bold text-slate-900 dark:text-white truncate">Staff Meeting:
+                                    Curriculum Review</h4>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">Conference Room A • 45 mins</p>
+                            </div>
+                            <span
+                                class="px-2 py-1 bg-red-500 text-white text-[10px] font-bold uppercase rounded-full">Urgent</span>
+                        </div>
+                        <div
+                            class="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                            <div
+                                class="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/20 text-blue-600 rounded-xl flex items-center justify-center font-bold text-xs flex-col">
+                                <span>11:00</span>
+                                <span>AM</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h4 class="text-sm font-bold text-slate-900 dark:text-white truncate">New Student
+                                    Orientation</h4>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">Main Hall • 60 mins</p>
+                            </div>
+                            <span
+                                class="px-2 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase rounded-full">Routine</span>
+                        </div>
+                        <div
+                            class="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                            <div
+                                class="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/20 text-green-600 rounded-xl flex items-center justify-center font-bold text-xs flex-col">
+                                <span>02:15</span>
+                                <span>PM</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h4 class="text-sm font-bold text-slate-900 dark:text-white truncate">Finalize Monthly
+                                    Reports</h4>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">Admin Office • 120 mins</p>
+                            </div>
+                            <span
+                                class="px-2 py-1 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase rounded-full">Ongoing</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Side Card: Quick Insight -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white">Active Courses</h3>
+                <div
+                    class="bg-gradient-to-br from-primary to-orange-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden group">
+                    <div
+                        class="absolute -right-4 -top-4 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                        <span class="material-symbols-outlined text-[120px]">auto_stories</span>
+                    </div>
+                    <p class="text-sm font-medium text-white/80">Active Students</p>
+                    <p class="text-4xl font-extrabold mt-1">864</p>
+                    <div class="mt-6 pt-6 border-t border-white/20">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium">Monthly Target Reached</span>
+                            <span class="text-xs font-bold">78%</span>
+                        </div>
+                        <div class="w-full bg-white/20 rounded-full h-2">
+                            <div class="bg-white h-2 rounded-full" style="width: 78%"></div>
+                        </div>
+                    </div>
+                    <button
+                        class="mt-6 w-full py-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl text-sm font-bold transition-colors">
+                        Download Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+    <!-- Floating Action Button -->
+    <div class="fixed bottom-8 right-8 z-[100]">
+        <button
+            class="group relative flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-xl hover:scale-110 transition-all hover:rotate-90">
+            <span class="material-symbols-outlined text-3xl">add</span>
+            <!-- Tooltip menu (simplified) -->
+            <div
+                class="absolute bottom-20 right-0 flex flex-col items-end gap-3 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity pb-4">
+            </div>
+        </button><button
+            class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-white rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 whitespace-nowrap">
+            <span class="text-sm font-bold">New Student</span>
+            <span class="material-symbols-outlined text-blue-500">person_add</span>
+        </button>
+        <button
+            class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-white rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 whitespace-nowrap">
+            <span class="text-sm font-bold">Schedule Class</span>
+            <span class="material-symbols-outlined text-orange-500">event_note</span>
+        </button>
+    </div>
+</body>
+
+</html>

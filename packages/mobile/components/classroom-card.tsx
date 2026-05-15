@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Colors } from '@/lib/constants/theme';
 
 interface ClassroomCardProps {
   classroom: {
@@ -75,7 +76,7 @@ export function ClassroomCard({ classroom, onPress, onLongPress, thumbnail }: Cl
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#000',

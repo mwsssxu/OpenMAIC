@@ -16,6 +16,7 @@ import {
   StyleProp,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface HintToastProps {
   visible: boolean;
@@ -40,8 +41,17 @@ export function HintToast({
 }: HintToastProps) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translate = useRef(new Animated.Value(20)).current;
+  const insets = useSafeAreaInsets();
 
   const [mounted, setMounted] = useState(visible);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -71,7 +81,7 @@ export function HintToast({
           useNativeDriver: true,
         }),
       ]).start(({ finished }) => {
-        if (finished) setMounted(false);
+        if (finished && isMountedRef.current) setMounted(false);
       });
     }
   }, [visible, opacity, translate]);
@@ -80,10 +90,10 @@ export function HintToast({
 
   const positionStyle: ViewStyle =
     position === 'top'
-      ? { top: 80 }
+      ? { top: insets.top + 12 }
       : position === 'center'
         ? { top: '45%' }
-        : { bottom: 100 };
+        : { bottom: insets.bottom + 88 };
 
   return (
     <Animated.View

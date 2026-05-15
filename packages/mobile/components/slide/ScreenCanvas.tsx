@@ -104,13 +104,34 @@ export function ScreenCanvas({
     return VIEWPORT_SIZE * canvasScaleX;
   }, [layoutMode, containerSize.width, canvasScaleX]);
 
-  // 精确格式：固定高度（双轴缩放）
+  // 计算元素所需的最小高度（防止内容溢出）
+  const minContentHeight = useMemo(() => {
+    if (elements.length === 0) return VIEWPORT_HEIGHT;
+    const maxBottom = elements.reduce((max, el) => {
+      // line元素没有height，用start/end坐标计算
+      const elHeight = isLineElement(el)
+        ? Math.abs(el.end[1] - el.start[1])
+        : (el.height || 50);
+      const bottom = el.top + elHeight;
+      return Math.max(max, bottom);
+    }, 0);
+    return Math.max(VIEWPORT_HEIGHT, maxBottom + 20); // 加20px边距
+  }, [elements]);
+
+  // 精确格式：根据容器高度和内容高度计算，确保覆盖所有元素
   const canvasHeight = useMemo(() => {
     if (layoutMode === 'simplified') {
       return undefined; // 简化格式自适应高度
     }
-    return VIEWPORT_HEIGHT * canvasScaleY;
-  }, [layoutMode, containerSize.height, canvasScaleY]);
+    if (containerSize.height === 0) return undefined;
+
+    // 直接使用容器可用高度，确保白背景覆盖整个可视区域
+    const availableHeight = containerSize.height - CANVAS_MARGIN_SIMPLIFIED;
+    // 同时考虑元素所需高度（缩放后）
+    const contentNeededHeight = minContentHeight * canvasScaleY;
+    // 取两者最大值
+    return Math.max(availableHeight, contentNeededHeight);
+  }, [layoutMode, containerSize.height, canvasScaleY, minContentHeight]);
 
   // Canvas位置
   const viewportLeft = 10;
@@ -261,6 +282,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     borderRadius: 8,
-    overflow: 'hidden',
+    overflow: 'visible',  // 允许内容溢出可见
   },
 });

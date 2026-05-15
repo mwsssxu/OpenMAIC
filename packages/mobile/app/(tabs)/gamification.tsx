@@ -1,9 +1,9 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, Animated } from 'react-native';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { CelebrationPopup } from '@/components/common/CelebrationPopup';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
-import { useFeedback } from '@/lib/hooks/use-feedback';
+import { useHaptics } from '@/lib/hooks/use-haptics';
 
 interface DailyTask {
   id: string;
@@ -45,7 +45,7 @@ interface CelebrationConfig {
 }
 
 export default function GamificationScreen() {
-  const { onSuccess, onError } = useFeedback();
+  const haptics = useHaptics();
   const [league, setLeague] = useState<LeagueInfo | null>(null);
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [streakInfo, setStreakInfo] = useState<any>(null);
@@ -105,9 +105,11 @@ export default function GamificationScreen() {
   }, []);
 
   const completeTask = async (taskId: string) => {
+    haptics.medium();
     try {
       const result = await apiClient.completeTaskWithCelebration(taskId, 1);
       if (result.reward_issued && result.celebration) {
+        haptics.success();
         // 显示庆典效果
         setCelebrationConfig(result.celebration);
         setCelebrationPoints(result.reward_points);
@@ -116,18 +118,22 @@ export default function GamificationScreen() {
         // 刷新数据
         loadData();
       } else if (result.completed) {
+        haptics.success();
         Alert.alert('任务完成', `获得 ${result.reward_points} 积分！`);
         loadData();
       }
     } catch (error) {
+      haptics.error();
       Alert.alert('失败', '操作失败，请稍后重试');
     }
   };
 
   const checkHiddenAchievements = async (triggerType: string) => {
+    haptics.light();
     try {
       const result = await apiClient.checkHiddenAchievements(triggerType, {});
       if (result.unlocked_count > 0) {
+        haptics.success();
         // 显示隐藏成就庆典
         const achievement = result.unlocked_achievements[0];
         setCelebrationConfig(achievement.celebration);
@@ -136,6 +142,7 @@ export default function GamificationScreen() {
         loadData();
       }
     } catch (error) {
+      haptics.error();
       console.error('Check hidden achievements error:', error);
     }
   };
@@ -376,6 +383,7 @@ const styles = StyleSheet.create({
     borderRadius: Rounded.lg,
     marginBottom: Spacing.sm,
     alignItems: 'center',
+    backgroundColor: Colors.primary.main,
   },
   leagueIcon: { fontSize: 40 },
   leagueName: { fontSize: 24, fontWeight: 'bold', color: 'white' },
@@ -392,7 +400,7 @@ const styles = StyleSheet.create({
   },
   nextTierProgress: {
     height: 8,
-    backgroundColor: 'white',
+    backgroundColor: Colors.neutral.card,
     borderRadius: Rounded.sm - 2,
   },
   nextTier: { fontSize: 14, color: '#ddd', marginTop: 5 },
@@ -452,7 +460,6 @@ const styles = StyleSheet.create({
   milestoneList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.sm,
   },
   milestoneCard: {
     backgroundColor: Colors.neutral.card,
@@ -461,6 +468,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     width: 150,
+    marginRight: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   milestoneIcon: {
     fontSize: 30,

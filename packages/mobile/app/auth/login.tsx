@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,16 +16,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
-
-// Web端使用window.alert，Mobile端使用Alert.alert
-const showAlert = (title: string, message: string) => {
-  if (Platform.OS === 'web') {
-    window.alert(`${title}\n\n${message}`);
-  } else {
-    const Alert = require('react-native').Alert;
-    Alert.alert(title, message);
-  }
-};
+import { showAlert } from '@/lib/utils/alert';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -38,15 +29,17 @@ export default function LoginScreen() {
   const [policyAgreed, setPolicyAgreed] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
   // 使用 ref 实现邮箱 → 密码的键盘回车跳转
   const passwordInputRef = useRef<TextInput>(null);
 
-  // 登录成功后自动跳转
-  if (isAuthenticated && !loggingIn) {
-    router.replace('/');
-    return null;
-  }
+  // 登录成功后自动跳转（用 effect 避免在 render 期间触发副作用）
+  useEffect(() => {
+    if (isAuthenticated && !loggingIn) {
+      router.replace('/');
+    }
+  }, [isAuthenticated, loggingIn, router]);
 
   const handleLogin = async () => {
     setError(null);
@@ -94,10 +87,15 @@ export default function LoginScreen() {
 
         <View style={styles.form}>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              focusedInput === 'email' && styles.inputFocused
+            ]}
             placeholder="邮箱"
             value={email}
             onChangeText={setEmail}
+            onFocus={() => setFocusedInput('email')}
+            onBlur={() => setFocusedInput(null)}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
@@ -105,20 +103,28 @@ export default function LoginScreen() {
             returnKeyType="next"
             onSubmitEditing={() => passwordInputRef.current?.focus()}
             blurOnSubmit={false}
+            placeholderTextColor={Colors.neutral.textMuted}
           />
           <View style={styles.passwordRow}>
             <TextInput
               ref={passwordInputRef}
-              style={[styles.input, styles.passwordInput]}
+              style={[
+                styles.input,
+                styles.passwordInput,
+                focusedInput === 'password' && styles.inputFocused
+              ]}
               placeholder="密码"
               value={password}
               onChangeText={setPassword}
+              onFocus={() => setFocusedInput('password')}
+              onBlur={() => setFocusedInput(null)}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoComplete="password"
               textContentType="password"
               returnKeyType="done"
               onSubmitEditing={handleLogin}
+              placeholderTextColor={Colors.neutral.textMuted}
             />
             <TouchableOpacity
               style={styles.passwordToggle}
@@ -209,6 +215,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral.card,
     color: Colors.neutral.textPrimary,
   },
+  inputFocused: {
+    borderColor: Colors.primary.main,
+    borderWidth: 1.5,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   passwordRow: {
     position: 'relative',
     justifyContent: 'center',
@@ -247,11 +262,12 @@ const styles = StyleSheet.create({
   link: { color: Colors.primary.main, textAlign: 'center', marginTop: Spacing.md, fontSize: 16, fontWeight: '500' },
   oauthSection: { marginTop: Spacing.xxl + 8 },
   oauthTitle: { textAlign: 'center', color: Colors.neutral.textSecondary },
-  oauthButtons: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.md, gap: Spacing.sm },
+  oauthButtons: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.md },
   oauthButton: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: Rounded.sm,
+    marginLeft: Spacing.sm,
   },
   oauthButtonText: { color: Colors.neutral.white, fontWeight: '600' },
 });

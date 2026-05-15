@@ -1,18 +1,18 @@
 // packages/mobile/lib/constants/theme.ts
 
 /**
- * Palansoft 品牌设计系统
- * 专业、可信赖的企业级软件品牌
- * 以蓝色为主色调传递科技感，琥珀色点缀用于关键操作
+ * EduDash 品牌设计系统
+ * 以橙色为主色调传递活力与热情
+ * 参考 packages/mobile/html/index.html 设计
  */
 
 export const Colors = {
-  // 主色系 - 深蓝品牌色
+  // 主色系 - EduDash 橙色品牌色
   primary: {
-    main: '#1E40AF',
-    light: '#2563EB',  // 亮蓝 - 悬停状态
-    dark: '#1E3A8A',
-    transparent: 'rgba(30, 64, 175, 0.1)',
+    main: '#ec5b13',
+    light: '#f97316',  // 亮橙 - 悬停状态
+    dark: '#ea580c',
+    transparent: 'rgba(236, 91, 19, 0.1)',
   },
 
   // 辅助色系
@@ -37,18 +37,32 @@ export const Colors = {
 
   // 背景与中性色
   neutral: {
-    background: '#F8FAFC',     // 冷白灰背景
+    background: '#f8f6f6',     // EduDash 浅色背景
     backgroundAlt: '#FFFFFF',  // 纯白备用背景
+    backgroundDark: '#221610', // 深色背景
     card: '#FFFFFF',           // 卡片白色
-    border: '#E2E8F0',         // 浅灰边框
-    borderAlt: '#CBD5E1',
-    textPrimary: '#0F172A',    // 深色文字
-    textSecondary: '#475569',  // 辅助文字
-    textMuted: '#94A3B8',      // 淡化文字
+    border: '#f1f5f9',         // 浅灰边框
+    borderAlt: '#e2e8f0',
+    textPrimary: '#0f172a',    // 深色文字 (slate-900)
+    textSecondary: '#64748b',  // 辅助文字 (slate-500)
+    textMuted: '#94a3b8',      // 淡化文字 (slate-400)
     textInverse: '#FFFFFF',    // 反色文字（深色背景上）
     white: '#FFFFFF',
-    disabled: '#E2E8F0',
-    disabledText: '#94A3B8',
+    disabled: '#e2e8f0',
+    disabledText: '#94a3b8',
+  },
+
+  // 语义颜色 - 用于统计卡片、功能入口等
+  semantic: {
+    blue: '#2563eb',      // 学生/信息
+    orange: '#f59e0b',    // 时间/作业
+    green: '#10b981',     // 成功/续费
+    purple: '#8b5cf6',    // 损失指标
+    red: '#ef4444',       // 紧急/考试
+    teal: '#14b8a6',      // 课程
+    indigo: '#6366f1',    // 考勤
+    pink: '#ec4899',      // 性能监控
+    amber: '#f59e0b',     // 报告/进行中
   },
 
   // 结果反馈色
@@ -74,11 +88,12 @@ export const Colors = {
   },
 };
 
-// 圆角规范
+// 圆角规范 - EduDash 设计
 export const Rounded = {
-  sm: 6,      // 按钮、输入框
-  md: 10,     // 卡片
-  lg: 16,     // 大卡片/模态框
+  sm: 8,      // 小按钮、输入框 (xl in Tailwind)
+  md: 12,     // 卡片 (2xl in Tailwind)
+  lg: 16,     // 大卡片/功能按钮
+  xl: 24,     // 特大圆角
   full: 9999, // 徽章/标签（胶囊形）
 };
 
@@ -135,19 +150,26 @@ export const Typography = {
   },
 };
 
-// 预设的辅助色映射（用于功能图标等）
+// 预设的辅助色映射（用于功能图标等）- EduDash 语义颜色
 export const SecondaryColorMap: Record<string, string> = {
-  courses: Colors.primary.main,
-  questions: Colors.secondary.info,
-  notes: Colors.secondary.success,
-  buddy: Colors.accent.main,
-  matching: Colors.primary.light,
-  gamification: Colors.accent.main,
-  invite: Colors.secondary.info,
-  payment: Colors.secondary.success,
-  wallet: Colors.primary.dark,
-  enterprise: Colors.primary.main,
-  knowledge: Colors.primary.main,
+  courses: Colors.semantic.teal,       // 课程 - 青色
+  questions: Colors.semantic.blue,     // 问答 - 蓝色
+  notes: Colors.semantic.green,        // 笔记 - 绿色
+  buddy: Colors.semantic.orange,       // 学习搭子 - 橙色
+  matching: Colors.semantic.indigo,    // 学习匹配 - 紫蓝色
+  gamification: Colors.primary.main,   // 成长体系 - 主色
+  invite: Colors.semantic.pink,        // 邀请奖励 - 粉色
+  payment: Colors.semantic.amber,      // 充值中心 -琥珀色
+  wallet: Colors.semantic.purple,      // 钱包 - 紫色
+  enterprise: Colors.semantic.blue,    // 企业服务 - 蓝色
+  knowledge: Colors.semantic.teal,     // 知识 - 青色
+  class: Colors.primary.main,          // 课堂 - 主色
+  student: Colors.semantic.blue,       // 学生 - 蓝色
+  homework: Colors.semantic.orange,    // 作业 - 橙色
+  exam: Colors.semantic.red,           // 考试 - 红色
+  performance: Colors.semantic.pink,   // 性能 - 粉色
+  report: Colors.semantic.amber,       // 报告 - 琥珀色
+  attend: Colors.semantic.indigo,      // 考勤 - 紫蓝色
 };
 
 // 获取对应颜色的透明背景

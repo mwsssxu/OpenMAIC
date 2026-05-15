@@ -23,6 +23,7 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 import { HintToast } from '@/components/common/HintToast';
+import { Colors } from '@/lib/constants/theme';
 import {
   readDraft,
   writeDraft,
@@ -391,7 +392,7 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: Colors.neutral.card },
   progress: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   progressText: { fontSize: 14, color: '#666', marginBottom: 8 },
   progressBar: { height: 4, backgroundColor: '#eee', borderRadius: 2 },

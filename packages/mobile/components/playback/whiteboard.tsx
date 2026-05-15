@@ -13,6 +13,7 @@ import {
   GestureResponderEvent,
 } from 'react-native';
 import { useI18n } from '@/lib/i18n';
+import { Colors } from '@/lib/constants/theme';
 
 interface WhiteboardElement {
   id: string;
@@ -244,7 +245,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 4,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.neutral.card,
     borderWidth: 1,
     borderColor: '#ddd',
   },

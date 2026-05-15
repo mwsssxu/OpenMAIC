@@ -228,7 +228,7 @@ export default function CreateClassroomScreen() {
         voiceConfig: a.voiceConfig,
       }));
 
-      // 1. 创建课程记录（不生成场景）
+      // 1. 创建课程记录（不生成场景，后端将全部大纲存入 pending_outlines）
       const result = await apiClient.createFullClassroom(
         requirement.slice(0, 50),
         requirement,
@@ -237,19 +237,13 @@ export default function CreateClassroomScreen() {
         language,
         cleanAgentConfigs
       );
-
-      // 2. 只创建第一个场景，创建完成后立即跳转（优化体验）
-      setLoadingMessage('正在生成第一个场景...');
-      if (outlines.length > 0) {
-        await apiClient.createScene(result.id, outlines[0], 1, language);
-      }
-
+      
+      // 2. 立即跳转到课堂页，由 classroom 页面接管所有场景生成（用户不再等待 200-300s 首场景生成）
       setLoadingMessage(null);
       setCreatedClassroomId(result.id);
       onSuccess();
-
-      // 大纲已保存到后端课程记录中，前端从API获取后自动创建
-      // 不再通过URL传递大纲数据（避免长度限制问题）
+      
+      // classroom 页通过 getClassroom 拿到 stage.pendingOutlines 后自动启动后台创建
       router.replace(`/classroom/${result.id}?totalScenes=${outlines.length}`);
 
     } catch (err: any) {

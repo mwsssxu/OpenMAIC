@@ -1,0 +1,271 @@
+/**
+ * EduDash CSS 变量定义
+ * 提取自 packages/mobile/html/index.html
+ */
+
+:root {
+  /* Primary Colors */
+  --color-primary: #ec5b13;
+
+  /* Background Colors */
+  --color-background-light: #f8f6f6;
+  --color-background-dark: #221610;
+
+  /* Semantic Colors - Stats */
+  --color-blue: #2563EB;
+  --color-orange: #F59E0B;
+  --color-green: #10B981;
+  --color-purple: #8B5CF6;
+  --color-red: #EF4444;
+  --color-teal: #14B8A6;
+  --color-indigo: #6366F1;
+  --color-pink: #EC4899;
+  --color-amber: #F59E0B;
+
+  /* Border Radius */
+  --radius-sm: 0.25rem;   /* 4px */
+  --radius-md: 0.5rem;    /* 8px */
+  --radius-lg: 0.75rem;   /* 12px */
+  --radius-xl: 1rem;      /* 16px */
+  --radius-2xl: 1.5rem;   /* 24px */
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+}
+
+/* Dark Mode Variables */
+.dark {
+  --color-background: var(--color-background-dark);
+}
+
+/* Light Mode Variables */
+.light {
+  --color-background: var(--color-background-light);
+}
+
+/* Font Family */
+.font-display {
+  font-family: 'Public Sans', sans-serif;
+}
+
+/* Material Symbols Icon Font */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+}
+
+/* Background Decorations */
+.bg-decoration-primary {
+  background: var(--color-primary);
+  opacity: 0.1;
+  filter: blur(120px);
+}
+
+.bg-decoration-blue {
+  background: var(--color-blue);
+  opacity: 0.1;
+  filter: blur(100px);
+}
+
+.bg-decoration-green {
+  background: var(--color-green);
+  opacity: 0.1;
+  filter: blur(80px);
+}
+
+/* Component Presets */
+
+/* Header/Navigation */
+.header-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid #e2e8f0;
+  height: 64px;
+}
+
+.dark .header-nav {
+  background: rgba(34, 22, 16, 0.8);
+  border-bottom-color: #1e293b;
+}
+
+/* Card Styles */
+.card {
+  background: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid #f1f5f9;
+  padding: 24px;
+}
+
+.dark .card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.card-hover {
+  transition: all 0.2s;
+}
+
+.card-hover:hover {
+  border-color: rgba(236, 91, 19, 0.3);
+}
+
+/* Stat Card */
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-icon-container {
+  padding: 12px;
+  border-radius: var(--radius-xl);
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.stat-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+/* Feature Button */
+.feature-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #ffffff;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid #f1f5f9;
+  transition: all 0.2s;
+}
+
+.feature-btn:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(236, 91, 19, 0.4);
+}
+
+.feature-btn:active {
+  transform: scale(0.95);
+}
+
+.feature-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* FAB Button */
+.fab {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 100;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-xl);
+  transition: all 0.2s;
+}
+
+.fab:hover {
+  transform: scale(1.1) rotate(90deg);
+}
+
+/* Badge Styles */
+.badge {
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: var(--radius-full);
+}
+
+.badge-urgent {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.badge-routine {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.dark .badge-routine {
+  background: rgba(37, 99, 235, 0.5);
+  color: #60a5fa;
+}
+
+.badge-ongoing {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.dark .badge-ongoing {
+  background: rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+/* Gradient Card */
+.gradient-card {
+  background: linear-gradient(135deg, var(--color-primary), #ea580c);
+  border-radius: var(--radius-2xl);
+  padding: 24px;
+  color: #ffffff;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Progress Bar */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.progress-fill {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: #ffffff;
+}
+
+/* Animation */
+.animate-ping {
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}

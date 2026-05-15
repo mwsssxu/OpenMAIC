@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { apiClient } from '@/lib/api-client';
+import { Colors } from '@/lib/constants/theme';
 
 type PolicyType = 'user-agreement' | 'privacy-policy';
 
@@ -150,7 +151,7 @@ OpenMAIC 是一个 AI 交互式教学平台，为用户提供智能课程生成�
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: Colors.neutral.card },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

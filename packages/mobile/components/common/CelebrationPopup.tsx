@@ -39,10 +39,11 @@ export function CelebrationPopup({ visible, config, rewardPoints, onClose }: Cel
 
       // 生成粒子
       if (config.particles) {
-        const newParticles = Array.from({ length: config.particles.count }, (_, i) => ({
+        const particlesCfg = config.particles;
+        const newParticles = Array.from({ length: particlesCfg.count }, (_, i) => ({
           x: Math.random() * SCREEN_WIDTH,
-          y: SCREEN_HEIGHT * config.particles.origin.y,
-          color: config.particles.colors[i % config.particles.colors.length],
+          y: SCREEN_HEIGHT * particlesCfg.origin.y,
+          color: particlesCfg.colors[i % particlesCfg.colors.length],
         }));
         setParticles(newParticles);
 

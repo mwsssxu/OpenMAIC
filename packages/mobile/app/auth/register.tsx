@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,23 +16,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
-
-// Web端使用window.alert，Mobile端使用Alert.alert
-const showAlert = (title: string, message: string, buttons?: any[]) => {
-  if (Platform.OS === 'web') {
-    if (buttons && buttons.length > 0) {
-      const confirm = window.confirm(`${title}\n\n${message}\n\n点击确定继续`);
-      if (confirm && buttons[0].onPress) {
-        buttons[0].onPress();
-      }
-    } else {
-      window.alert(`${title}\n\n${message}`);
-    }
-  } else {
-    const Alert = require('react-native').Alert;
-    Alert.alert(title, message, buttons);
-  }
-};
+import { showAlert } from '@/lib/utils/alert';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -46,16 +30,18 @@ export default function RegisterScreen() {
   const [policyAgreed, setPolicyAgreed] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
   // 键盘顺序跳转
   const passwordInputRef = useRef<TextInput>(null);
   const nicknameInputRef = useRef<TextInput>(null);
 
-  // 注册成功后自动跳转
-  if (isAuthenticated && !registering) {
-    router.replace('/');
-    return null;
-  }
+  // 注册成功后自动跳转（用 effect 避免在 render 期间触发副作用）
+  useEffect(() => {
+    if (isAuthenticated && !registering) {
+      router.replace('/');
+    }
+  }, [isAuthenticated, registering, router]);
 
   const handleRegister = async () => {
     setError(null);
@@ -104,10 +90,15 @@ export default function RegisterScreen() {
 
         <View style={styles.form}>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              focusedInput === 'email' && styles.inputFocused
+            ]}
             placeholder="邮箱"
             value={email}
             onChangeText={setEmail}
+            onFocus={() => setFocusedInput('email')}
+            onBlur={() => setFocusedInput(null)}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
@@ -115,14 +106,21 @@ export default function RegisterScreen() {
             returnKeyType="next"
             onSubmitEditing={() => passwordInputRef.current?.focus()}
             blurOnSubmit={false}
+            placeholderTextColor={Colors.neutral.textMuted}
           />
           <View style={styles.passwordRow}>
             <TextInput
               ref={passwordInputRef}
-              style={[styles.input, styles.passwordInput]}
+              style={[
+                styles.input,
+                styles.passwordInput,
+                focusedInput === 'password' && styles.inputFocused
+              ]}
               placeholder="密码（至少 6 位）"
               value={password}
               onChangeText={setPassword}
+              onFocus={() => setFocusedInput('password')}
+              onBlur={() => setFocusedInput(null)}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoComplete="new-password"
@@ -130,6 +128,7 @@ export default function RegisterScreen() {
               returnKeyType="next"
               onSubmitEditing={() => nicknameInputRef.current?.focus()}
               blurOnSubmit={false}
+              placeholderTextColor={Colors.neutral.textMuted}
             />
             <TouchableOpacity
               style={styles.passwordToggle}
@@ -146,13 +145,19 @@ export default function RegisterScreen() {
           </View>
           <TextInput
             ref={nicknameInputRef}
-            style={styles.input}
+            style={[
+              styles.input,
+              focusedInput === 'nickname' && styles.inputFocused
+            ]}
             placeholder="昵称（可选）"
             value={nickname}
             onChangeText={setNickname}
+            onFocus={() => setFocusedInput('nickname')}
+            onBlur={() => setFocusedInput(null)}
             textContentType="nickname"
             returnKeyType="done"
             onSubmitEditing={handleRegister}
+            placeholderTextColor={Colors.neutral.textMuted}
           />
 
           <PolicyAgreement checked={policyAgreed} onCheck={setPolicyAgreed} />
@@ -203,6 +208,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: Colors.neutral.card,
     color: Colors.neutral.textPrimary,
+  },
+  inputFocused: {
+    borderColor: Colors.primary.main,
+    borderWidth: 1.5,
+    shadowColor: Colors.primary.main,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   passwordRow: {
     position: 'relative',
