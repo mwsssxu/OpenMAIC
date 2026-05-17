@@ -43,6 +43,15 @@ import {
   type QuestionResult,
 } from '@/lib/quiz/persistence';
 import {
+  readChatHistory,
+  saveChatHistory,
+  appendChatEntry,
+  clearChatHistory,
+  readDiscussionHistory,
+  saveDiscussionHistory,
+  type ChatEntry,
+} from '@/lib/chat/persistence';
+import {
   parseSSEContent,
   extractDiscussionTopic,
   extractWhiteboardText,
@@ -266,6 +275,27 @@ export default function ClassroomScreen() {
         }
       };
       loadQuizState();
+    }
+  }, [data, currentSceneIndex]);
+
+  // 聊天历史恢复 - 当切换场景时加载聊天历史
+  useEffect(() => {
+    const scene = data?.scenes?.[currentSceneIndex];
+    if (scene?.id) {
+      const loadChatHistory = async () => {
+        try {
+          const history = await readChatHistory(scene.id);
+          if (history.length > 0) {
+            setChatHistory(history);
+            console.log('[Chat] Loaded history:', history.length, 'entries');
+          } else {
+            setChatHistory([]); // 清空历史
+          }
+        } catch (err) {
+          console.warn('[Chat] Failed to load history:', err);
+        }
+      };
+      loadChatHistory();
     }
   }, [data, currentSceneIndex]);
 
@@ -892,6 +922,20 @@ export default function ClassroomScreen() {
               console.log('[TTS] Speaking agent text:', textToSpeak.slice(0, 50));
               Speech.speak(textToSpeak, { language: 'zh-CN', rate: 1.0 });
             }
+            // 保存聊天记录
+            if (currentScene && textToSpeak) {
+              const entry: ChatEntry = {
+                id: `${Date.now()}-${agentId}`,
+                agent: agentInfoMap[agentId]?.name || agentId,
+                agentId,
+                message: textToSpeak,
+                persona: agentInfoMap[agentId]?.persona,
+                timestamp: Date.now(),
+              };
+              appendChatEntry(currentScene.id, entry).catch(err => {
+                console.warn('[Chat] Failed to save history:', err);
+              });
+            }
           }
         },
         // onComplete
@@ -1085,6 +1129,20 @@ export default function ClassroomScreen() {
             if (textToSpeak) {
               console.log('[TTS] Speaking discussion text:', textToSpeak.slice(0, 50));
               Speech.speak(textToSpeak, { language: 'zh-CN', rate: 1.0 });
+            }
+            // 保存讨论记录
+            if (currentScene && textToSpeak) {
+              const entry: ChatEntry = {
+                id: `${Date.now()}-${agentId}`,
+                agent: agentInfoMap[agentId]?.name || agentId,
+                agentId,
+                message: textToSpeak,
+                persona: agentInfoMap[agentId]?.persona,
+                timestamp: Date.now(),
+              };
+              appendChatEntry(currentScene.id, entry).catch(err => {
+                console.warn('[Discussion] Failed to save history:', err);
+              });
             }
           }
         },
