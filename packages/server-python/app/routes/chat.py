@@ -201,6 +201,7 @@ async def chat(
             discussion_question = discussion_prompt or discussion_topic or f"请讨论：{scene_title}"
 
             # 依次让每个 Agent 发言
+            previous_responses = []  # 记录前面Agent的发言
             for turn in range(max_turns):
                 logger.info(f"[Chat] Starting discussion turn {turn+1}/{max_turns}")
                 for i, agent_id in enumerate(discussion_agents):
@@ -229,13 +230,21 @@ async def chat(
                         "agentColor": agent_colors.get(role, "#888888"),
                     })
 
-                    # 构建发言提示
+                    # 构建发言提示 - 所有Agent都收到场景上下文
+                    prompt = f"{context_section}\n## 讨论问题\n{discussion_question}\n\n"
+
                     if turn == 0 and i == 0:
                         # 第一个 Agent 开场
-                        prompt = f"{context_section}\n## 讨论问题\n{discussion_question}\n\n请开始讨论，结合场景要点发表观点。"
+                        prompt += "请开始讨论，结合场景要点发表观点，引导讨论。"
                     else:
-                        # 后续发言：基于前面的讨论继续
-                        prompt = f"请继续讨论，补充观点或回应其他人的发言。"
+                        # 后续发言：包含前面Agent的发言摘要
+                        if previous_responses:
+                            prompt += "## 前面同学的发言\n"
+                            for resp in previous_responses[-3:]:  # 只取最近3条
+                                prompt += f"- **{resp['agent']}**: {resp['content'][:200]}...\n"
+                            prompt += "\n请继续讨论，结合场景要点补充观点或回应其他人的发言。"
+                        else:
+                            prompt += "请继续讨论，结合场景要点补充观点。"
 
                     try:
                         # 流式生成
@@ -297,6 +306,13 @@ async def chat(
                                 total_actions += 1
 
                         logger.info(f"[Chat] Discussion turn {turn+1} - {agent_id}: {len(full_response)} chars, {len(actions)} actions")
+
+                        # 记录发言内容供后续Agent参考
+                        previous_responses.append({
+                            'agent': agent_name,
+                            'role': role,
+                            'content': display_text[:500]  # 只保存摘要
+                        })
 
                     except Exception as e:
                         logger.error(f"[Chat] Discussion error for {agent_id}: {e}")

@@ -968,12 +968,22 @@ export default function ClassroomScreen() {
     }
   }
 
-  // 打开智能体聊天
-  function openAgentChat(agent: Agent) {
+  // 打开智能体聊天 - 加载历史记录
+  async function openAgentChat(agent: Agent) {
     setSelectedAgent(agent);
-    setChatHistory([]);
     setDiscussionMode(false);
     setShowChatModal(true);
+    // 加载当前场景的聊天历史
+    if (currentScene?.id) {
+      try {
+        const history = await readChatHistory(currentScene.id);
+        setChatHistory(history);
+        console.log('[Chat] Loaded history for scene:', currentScene.id, history.length, 'entries');
+      } catch (err) {
+        console.warn('[Chat] Failed to load history:', err);
+        setChatHistory([]);
+      }
+    }
   }
 
   // 构建讨论主题（包含场景上下文）
