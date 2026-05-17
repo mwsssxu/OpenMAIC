@@ -177,12 +177,13 @@ async def chat(
         # 讨论模式：多个 Agent 依次发言
         if session_type == "discussion" and len(agents) > 1:
             logger.info(f"[Chat] Discussion mode - agents={agents}, topic={discussion_topic[:50]}")
-            logger.info(f"[Chat] Discussion config - max_turns={max_turns}, discussion_agents={discussion_agents}")
-            logger.info(f"[Chat] Scene context - title={scene_title}, key_points={key_points}")
 
             # 讨论轮次（默认 2 轮）
             max_turns = 2
             discussion_agents = agents[:3]  # 最多 3 个 Agent 参与
+
+            logger.info(f"[Chat] Discussion config - max_turns={max_turns}, discussion_agents={discussion_agents}")
+            logger.info(f"[Chat] Scene context - title={scene_title}, key_points={key_points}")
 
             # 构建场景上下文
             context_section = ""
