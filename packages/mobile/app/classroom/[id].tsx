@@ -160,6 +160,7 @@ export default function ClassroomScreen() {
   // Refs for async state access（避免 stale state 问题）
   const pendingThinkingPromptRef = useRef<string | null>(null);
   const speakingTimeoutRef = useRef<number | null>(null);
+  const currentAgentTextRef = useRef<string>(''); // 当前Agent累积文本（用于TTS）
 
   // 同步更新 ref
   useEffect(() => {
@@ -805,9 +806,9 @@ export default function ClassroomScreen() {
       };
 
       // 建立角色 ID 到 Agent 信息映射
-      const agentInfoMap: Record<string, { name: string; persona: string; color: string }> = {};
+      const agentInfoMap: Record<string, { name: string; persona: string; color: string; voiceConfig?: { providerId: string; voiceId: string } }> = {};
       agents.slice(0, 3).forEach(a => {
-        agentInfoMap[a.role] = { name: a.name, persona: a.persona || '', color: a.color };
+        agentInfoMap[a.role] = { name: a.name, persona: a.persona || '', color: a.color, voiceConfig: a.voiceConfig };
       });
 
       // 构建上下文
@@ -831,6 +832,7 @@ export default function ClassroomScreen() {
             const agentId = event.agentId || '';
             const agentInfo = agentInfoMap[agentId];
             setSpeakingAgentId(agentId);
+            currentAgentTextRef.current = ''; // 清空累积文本
             setChatHistory(prev => [...prev, {
               agent: agentInfo?.name || agentId,
               agentId: agentId,
@@ -841,6 +843,7 @@ export default function ClassroomScreen() {
             const chunk = event.content || '';
             const eventAgentId: string = event.agentId ?? (speakingAgentId || '');
             if (!chunk) return;
+            currentAgentTextRef.current += chunk; // 累积文本
             setChatHistory(prev => {
               const lastEntry = prev[prev.length - 1];
               if (lastEntry && lastEntry.agentId === eventAgentId) {
@@ -881,7 +884,14 @@ export default function ClassroomScreen() {
               setShowWhiteboard(true);
             }
           } else if (event.type === 'agent_end') {
+            const agentId = event.agentId || '';
             setSpeakingAgentId(null);
+            // TTS播放Agent发言
+            const textToSpeak = currentAgentTextRef.current.trim();
+            if (textToSpeak) {
+              console.log('[TTS] Speaking agent text:', textToSpeak.slice(0, 50));
+              Speech.speak(textToSpeak, { language: 'zh-CN', rate: 1.0 });
+            }
           }
         },
         // onComplete
@@ -975,10 +985,10 @@ export default function ClassroomScreen() {
     console.log('[Discussion] FinalRoles:', finalRoles);
 
     // 建立角色ID到 Agent 信息映射
-    const agentInfoMap: Record<string, { name: string; persona: string; color: string }> = {};
+    const agentInfoMap: Record<string, { name: string; persona: string; color: string; voiceConfig?: { providerId: string; voiceId: string } }> = {};
     discussionAgents.forEach(a => {
-      agentInfoMap[a.role] = { name: a.name, persona: a.persona || '', color: a.color };
-      agentInfoMap[a.id] = { name: a.name, persona: a.persona || '', color: a.color };
+      agentInfoMap[a.role] = { name: a.name, persona: a.persona || '', color: a.color, voiceConfig: a.voiceConfig };
+      agentInfoMap[a.id] = { name: a.name, persona: a.persona || '', color: a.color, voiceConfig: a.voiceConfig };
     });
 
     try {
@@ -1014,6 +1024,7 @@ export default function ClassroomScreen() {
             const agentInfo = agentInfoMap[agentId];
             console.log('[Discussion] Agent start:', agentId);
             setSpeakingAgentId(agentId);
+            currentAgentTextRef.current = ''; // 清空累积文本
             setChatHistory(prev => [...prev, {
               agent: agentInfo?.name || agentId,
               agentId: agentId,
@@ -1024,6 +1035,7 @@ export default function ClassroomScreen() {
             // 增量文本
             const chunk = event.content || '';
             if (!chunk) return;
+            currentAgentTextRef.current += chunk; // 累积文本
             setChatHistory(prev => {
               const lastEntry = prev[prev.length - 1];
               if (lastEntry && lastEntry.agentId === speakingAgentId) {
@@ -1068,6 +1080,12 @@ export default function ClassroomScreen() {
             const agentId = event.agentId || '';
             console.log('[Discussion] Agent end:', agentId);
             setSpeakingAgentId(null); // 立即清除发言标识
+            // TTS播放Agent发言
+            const textToSpeak = currentAgentTextRef.current.trim();
+            if (textToSpeak) {
+              console.log('[TTS] Speaking discussion text:', textToSpeak.slice(0, 50));
+              Speech.speak(textToSpeak, { language: 'zh-CN', rate: 1.0 });
+            }
           }
         },
         // onComplete -讨论 结束
