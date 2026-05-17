@@ -892,7 +892,7 @@ export default function ClassroomScreen() {
         },
         // onError
         (error) => {
-          console.warn('[Chat] Error:', error);
+          console.error('[Chat] Error:', error);
           setSendingMessage(false);
           setDiscussionRunning(false);
           setDiscussionMode(false);
@@ -903,7 +903,7 @@ export default function ClassroomScreen() {
         }
       );
     } catch (err: any) {
-      console.warn('[Chat] Failed:', err);
+      console.error('[Chat] Failed:', err);
       setSendingMessage(false);
       setDiscussionRunning(false);
       setDiscussionMode(false);
@@ -1081,7 +1081,7 @@ export default function ClassroomScreen() {
         },
         // onError
         (error) => {
-          console.warn('[Discussion] SSE error:', error);
+          console.error('[Discussion] SSE error:', error);
           setDiscussionRunning(false);
           setChatHistory(prev => [...prev, {
             agent: '系统',
@@ -1090,7 +1090,7 @@ export default function ClassroomScreen() {
         }
       );
     } catch (err: any) {
-      console.warn('[Discussion] Failed:', err);
+      console.error('[Discussion] Failed:', err);
       setDiscussionRunning(false);
       setChatHistory(prev => [...prev, {
         agent: '系统',

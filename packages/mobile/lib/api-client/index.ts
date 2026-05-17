@@ -703,7 +703,7 @@ class ApiClient {
         reject(new Error('请求超时'));
       };
 
-      xhr.timeout = 60000; // 60秒超时
+      xhr.timeout = 180000; // 180秒超时（多Agent讨论需要更长时间）
 
       // 发送请求（格式与 Web端一致）
       xhr.send(JSON.stringify({
