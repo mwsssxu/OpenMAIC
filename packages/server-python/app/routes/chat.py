@@ -177,6 +177,8 @@ async def chat(
         # 讨论模式：多个 Agent 依次发言
         if session_type == "discussion" and len(agents) > 1:
             logger.info(f"[Chat] Discussion mode - agents={agents}, topic={discussion_topic[:50]}")
+            logger.info(f"[Chat] Discussion config - max_turns={max_turns}, discussion_agents={discussion_agents}")
+            logger.info(f"[Chat] Scene context - title={scene_title}, key_points={key_points}")
 
             # 讨论轮次（默认 2 轮）
             max_turns = 2
@@ -199,7 +201,10 @@ async def chat(
 
             # 依次让每个 Agent 发言
             for turn in range(max_turns):
+                logger.info(f"[Chat] Starting discussion turn {turn+1}/{max_turns}")
                 for i, agent_id in enumerate(discussion_agents):
+                    logger.info(f"[Chat] Turn {turn+1} - Agent {i+1}/{len(discussion_agents)}: {agent_id}")
+
                     # 提取角色类型
                     role = agent_id.lower()
                     if "student" in role:
@@ -208,6 +213,7 @@ async def chat(
                         role = "assistant"
                     else:
                         role = "teacher"
+                    logger.info(f"[Chat] Agent {agent_id} role determined as: {role}")
 
                     message_id = f"msg-{uuid.uuid4().hex[:8]}"
 
@@ -233,7 +239,11 @@ async def chat(
                     try:
                         # 流式生成
                         system_prompt = get_agent_system_prompt(role)
+                        logger.info(f"[Chat] Agent {agent_id} - system_prompt length: {len(system_prompt)} chars")
+                        logger.info(f"[Chat] Agent {agent_id} - prompt: {prompt[:100]}...")
+
                         full_response = ""
+                        chunk_count = 0
                         async for chunk in stream_llm(
                             prompt=prompt,
                             system_prompt=system_prompt,
@@ -241,47 +251,67 @@ async def chat(
                             temperature=0.7,
                         ):
                             full_response += chunk
-                        # 先收集完整响应，不发送原始流（避免显示 JSON）
+                            chunk_count += 1
+                            if chunk_count % 10 == 0:
+                                logger.debug(f"[Chat] Agent {agent_id} - received {chunk_count} chunks, {len(full_response)} chars")
+
+                        logger.info(f"[Chat] Agent {agent_id} - LLM completed: {len(full_response)} chars total, {chunk_count} chunks")
 
                         # 解析 actions（分离纯文本和 actions）
                         display_text, actions = parse_agent_actions(full_response)
+                        logger.info(f"[Chat] Agent {agent_id} - parsed: display_text={len(display_text)} chars, actions={len(actions)}")
+                        if actions:
+                            logger.info(f"[Chat] Agent {agent_id} - actions detail: {[a.get('name', 'unknown') for a in actions]}")
 
                         # 发送纯文本作为 text_delta（分段发送模拟流式效果）
                         if display_text:
+                            logger.info(f"[Chat] Agent {agent_id} - sending text_delta in chunks")
                             # 分段发送（每 50 字符一段）
+                            chunks_sent = 0
                             for i in range(0, len(display_text), 50):
                                 chunk = display_text[i:i+50]
                                 yield sse_event("text_delta", {
                                     "messageId": message_id,
                                     "content": chunk,
                                 })
+                                chunks_sent += 1
+                            logger.info(f"[Chat] Agent {agent_id} - sent {chunks_sent} text_delta events")
+                        else:
+                            logger.warning(f"[Chat] Agent {agent_id} - no display_text to send")
 
                         # 发送 action 事件
-                        for action in actions:
-                            action_id = f"action-{uuid.uuid4().hex[:8]}"
-                            action_name = action.get("name", "unknown")
-                            yield sse_event("action", {
-                                "messageId": message_id,
-                                "actionId": action_id,
-                                "actionName": action_name,
-                                "params": action.get("params", {}),
-                                "agentId": agent_id,
-                            })
-                            total_actions += 1
+                        if actions:
+                            logger.info(f"[Chat] Agent {agent_id} - sending {len(actions)} action events")
+                            for action in actions:
+                                action_id = f"action-{uuid.uuid4().hex[:8]}"
+                                action_name = action.get("name", "unknown")
+                                logger.info(f"[Chat] Agent {agent_id} - action: {action_name}")
+                                yield sse_event("action", {
+                                    "messageId": message_id,
+                                    "actionId": action_id,
+                                    "actionName": action_name,
+                                    "params": action.get("params", {}),
+                                    "agentId": agent_id,
+                                })
+                                total_actions += 1
 
                         logger.info(f"[Chat] Discussion turn {turn+1} - {agent_id}: {len(full_response)} chars, {len(actions)} actions")
 
                     except Exception as e:
                         logger.error(f"[Chat] Discussion error for {agent_id}: {e}")
+                        import traceback
+                        logger.error(f"[Chat] Traceback: {traceback.format_exc()}")
                         yield sse_event("error", {"message": str(e)})
 
                     # 发送 agent_end 事件
+                    logger.info(f"[Chat] Agent {agent_id} - sending agent_end")
                     yield sse_event("agent_end", {
                         "messageId": message_id,
                         "agentId": agent_id,
                     })
 
             # 发送 done 事件
+            logger.info(f"[Chat] Discussion complete - total_agents={len(discussion_agents) * max_turns}, total_actions={total_actions}")
             yield sse_event("done", {
                 "totalAgents": len(discussion_agents) * max_turns,
                 "totalActions": total_actions,
