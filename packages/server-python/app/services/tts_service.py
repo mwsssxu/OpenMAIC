@@ -141,6 +141,14 @@ async def _generate_qwen_tts(
         logger.info(f"[TTS] Random voice assigned: {voice}")
 
     # 根据模型类型选择不同的调用方式
+    # CosyVoice 不支持 speed 参数，当用户调整语速时直接使用 Sambert
+    if actual_model.startswith("cosyvoice") and speed != 1.0:
+        logger.info(f"[TTS] Speed={speed} requested, using Sambert instead of CosyVoice (不支持speed)")
+        actual_model = "sambert-zhichu-v1"
+        if voice is None or voice in COSYVOICE_VOICES:
+            voice = random.choice(SAMBERT_VOICES)
+            logger.info(f"[TTS] Voice reassigned to Sambert: {voice}")
+
     if actual_model.startswith("cosyvoice"):
         # CosyVoice 模型（使用 tts_v2）
         from dashscope.audio.tts_v2.speech_synthesizer import SpeechSynthesizer as CosyVoiceSynthesizer

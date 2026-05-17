@@ -573,12 +573,34 @@ class ApiClient {
   /**
    * SSE 流式 Agent 对话（与Web端一致的实现）
    * 使用 /chat API，支持多 Agent 讨论
+   *
+   * SSE 事件格式（与Web端一致）:
+   * - data: {"type":"agent_start","data":{"messageId":"...","agentId":"..."}}
+   * - data: {"type":"text_delta","data":{"messageId":"...","content":"..."}}
+   * - data: {"type":"agent_end","data":{"messageId":"...","agentId":"..."}}
+   * - data: {"type":"done","data":{...}}
    */
   async streamAgentChat(
-    messages: Array<{ role: string; content: string }>,
-    config: { agentIds?: string[]; agentPersonas?: Record<string, string> },
-    storeState: { stage?: { name: string }; scene?: { title: string } },
-    onEvent?: (event: { type: string; agent_id?: string; text?: string; content?: string }) => void,
+    messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>,
+    config: {
+      agentIds?: string[];
+      agentPersonas?: Record<string, string>;
+      sessionType?: 'chat' | 'discussion';
+      discussionTopic?: string;
+      discussionPrompt?: string;
+    },
+    storeState: { stage?: { name: string }; scene?: { title: string; content?: any } },
+    onEvent?: (event: {
+      type: string;
+      messageId?: string;
+      agentId?: string;
+      content?: string;
+      text?: string;
+      // Action event fields
+      actionId?: string;
+      actionName?: string;
+      params?: Record<string, any>;
+    }) => void,
     onComplete?: (response: string) => void,
     onError?: (error: string) => void,
   ): Promise<void> {
@@ -599,8 +621,9 @@ class ApiClient {
       xhr.setRequestHeader('Cache-Control', 'no-cache');
 
       let lastProcessedLength = 0;
-      let currentEvent = '';
       let fullResponse = '';
+      let currentMessageId: string | undefined = undefined;
+      let currentAgentId: string | undefined = undefined;
 
       xhr.onreadystatechange = () => {
         if (xhr.readyState >= 3) {
@@ -620,34 +643,50 @@ class ApiClient {
           const newText = fullText.slice(lastProcessedLength);
           lastProcessedLength = fullText.length;
 
+          // 解析 SSE 数据（Web端格式：`data: {JSON}\n\n`）
           const lines = newText.split('\n');
           for (const line of lines) {
             const trimmedLine = line.trim();
-            if (trimmedLine.startsWith('event:')) {
-              currentEvent = trimmedLine.slice(6).trim();
-            } else if (trimmedLine.startsWith('data:')) {
-              const dataStr = trimmedLine.slice(5).trim();
+            // Web端格式：`data: {JSON}`（不带 event: 字段）
+            if (trimmedLine.startsWith('data: ')) {
+              const dataStr = trimmedLine.slice(6).trim();
               if (!dataStr) continue;
               try {
-                const data = JSON.parse(dataStr);
+                const event = JSON.parse(dataStr);
+                const eventType = event.type;
+                const eventData = event.data || {};
 
-                if (currentEvent === 'start') {
-                  if (onEvent) onEvent({ type: 'start', agent_id: data.agent_id });
-                } else if (currentEvent === 'text_delta') {
-                  fullResponse = data.text || '';
-                  if (onEvent) onEvent({ type: 'text_delta', agent_id: data.agent_id, text: data.text });
-                } else if (currentEvent === 'response_complete') {
-                  fullResponse = data.content || fullResponse;
-                  if (onEvent) onEvent({ type: 'response_complete', agent_id: data.agent_id, content: data.content });
-                } else if (currentEvent === 'end') {
+                if (eventType === 'agent_start') {
+                  currentMessageId = eventData.messageId;
+                  currentAgentId = eventData.agentId;
+                  if (onEvent) onEvent({ type: 'agent_start', messageId: eventData.messageId, agentId: eventData.agentId });
+                } else if (eventType === 'text_delta') {
+                  // 增量文本（真正的流式）
+                  const chunk = eventData.content || '';
+                  fullResponse += chunk;
+                  const messageId = eventData.messageId || currentMessageId;
+                  if (onEvent) onEvent({ type: 'text_delta', messageId, content: chunk, agentId: currentAgentId });
+                } else if (eventType === 'action') {
+                  // 白板/spotlight/laser等动作
+                  if (onEvent) onEvent({
+                    type: 'action',
+                    messageId: eventData.messageId || currentMessageId,
+                    actionId: eventData.actionId,
+                    actionName: eventData.actionName,
+                    params: eventData.params,
+                    agentId: eventData.agentId || currentAgentId,
+                  });
+                } else if (eventType === 'agent_end') {
+                  if (onEvent) onEvent({ type: 'agent_end', messageId: eventData.messageId, agentId: eventData.agentId });
+                } else if (eventType === 'done') {
                   if (onComplete) onComplete(fullResponse);
                   resolve();
-                } else if (currentEvent === 'error') {
-                  if (onError) onError(data.error || '对话失败');
-                  reject(new Error(data.error));
+                } else if (eventType === 'error') {
+                  if (onError) onError(eventData.message || '对话失败');
+                  reject(new Error(eventData.message));
                 }
               } catch (e) {
-                // JSON 解析失败，跳过
+                // JSON 解析失败，跳过（可能是 heartbeat 注释）
               }
             }
           }
@@ -671,7 +710,6 @@ class ApiClient {
         messages,
         config,
         storeState,
-        model: 'gpt-4o-mini', // 使用与 Web端一致的模型
       }));
     });
   }
@@ -683,18 +721,27 @@ class ApiClient {
    * @param topic - 讨论主题
    * @param agents - Agent ID 列表 ['teacher', 'student', 'assistant']
    * @param maxTurns - 最大轮次（每个 Agent 发言次数）
+   * @param context - 场景上下文（标题、内容、要点等）
    * @param onResponse - 每个 Agent 回复时的回调
    */
   async runMultiAgentDiscussion(
     topic: string,
     agents: string[] = ['teacher', 'student', 'assistant'],
     maxTurns: number = 2,
+    context?: {
+      scene_title?: string;
+      scene_type?: string;
+      scene_content?: any;
+      key_points?: string[];
+      description?: string;
+    },
     onResponse?: (response: { agent_id: string; agent_role: string; content: string; actions: any[] }) => void,
   ): Promise<Array<{ agent_id: string; agent_role: string; content: string; actions: any[] }>> {
     const { data } = await this.client.post('/chat/discussion', {
       topic,
       agents,
       maxTurns,
+      context, // 传递场景上下文
     }, {
       timeout: 120000, // 多 Agent讨论需要更长超时
     });

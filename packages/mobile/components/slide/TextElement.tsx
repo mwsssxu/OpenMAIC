@@ -68,33 +68,34 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
   }, [element.content]);
 
   // Calculate font size
-  // 使用scaleY计算（垂直方向填充更多），字体相应放大
+  // 使用较小的缩放因子（基于宽度），确保内容不溢出容器
+  const effectiveScale = Math.min(scaleX, scaleY);
   const fontSize = useMemo(() => {
     // 优先从style对象获取fontSize（Web端格式）
     if ((element as any).style?.fontSize) {
       const styleFontSize = (element as any).style.fontSize;
-      return Math.max(16, styleFontSize * scaleY);
+      return Math.max(12, Math.min(28, styleFontSize * effectiveScale));
     }
 
     // 从HTML提取fontSize
     const htmlFontSizeMatch = element.content?.match(/font-size:\s*(\d+)px/i);
     if (htmlFontSizeMatch) {
       const htmlFontSize = parseInt(htmlFontSizeMatch[1], 10);
-      return Math.max(16, htmlFontSize * scaleY);
+      return Math.max(12, Math.min(28, htmlFontSize * effectiveScale));
     }
 
-    // 根据元素类型计算
+    // 根据元素类型计算（字体更小以适应窄屏）
     let baseFontSize;
     if (position.height >= 60) {
-      baseFontSize = 36; // 标题
+      baseFontSize = 24; // 标题（原36）
     } else if (position.height >= 50) {
-      baseFontSize = 24; // 描述
+      baseFontSize = 16; // 描述（原24）
     } else {
-      baseFontSize = 18; // 内容
+      baseFontSize = 12; // 内容（原18）
     }
 
-    return Math.max(14, baseFontSize * scaleY);
-  }, [element, position.height, scaleY]);
+    return Math.max(10, Math.min(24, baseFontSize * effectiveScale));
+  }, [element, position.height, effectiveScale]);
 
   // Get color from style or defaultColor
   const textColor = useMemo(() => {
@@ -129,11 +130,11 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
   // 精确格式数据自带fill属性，无需自动装饰
   const textWrapperStyle = useMemo(() => ({
     flex: 1,
-    padding: 10 * Math.min(scaleX, scaleY),
+    padding: Math.max(4, 10 * effectiveScale), // 缩小padding以适应窄屏
     justifyContent: 'flex-start' as const,
     backgroundColor: element.fill || 'transparent',
     opacity: element.opacity || 1,
-  }), [scaleX, scaleY, element.fill, element.opacity]);
+  }), [effectiveScale, element.fill, element.opacity]);
 
   // Text style
   const textStyle = useMemo(() => ({

@@ -35,6 +35,12 @@ PROMPT_IDS = {
     "VISUALIZATION3D_CONTENT": "visualization3d-content",
     "PBL_ACTIONS": "pbl-actions",
     "WEB_SEARCH_QUERY_REWRITE": "web-search-query-rewrite",
+    # Agent 系统提示词（白板角色）
+    "AGENT_SYSTEM_WB_TEACHER": "agent-system-wb-teacher",
+    "AGENT_SYSTEM_WB_ASSISTANT": "agent-system-wb-assistant",
+    "AGENT_SYSTEM_WB_STUDENT": "agent-system-wb-student",
+    # Director 路由模板
+    "DIRECTOR": "director",
 }
 
 

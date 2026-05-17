@@ -362,6 +362,33 @@ async def create_scene_for_classroom(
     total_elapsed = time.time() - start_time
     logger.info(f"[Scene] 场景创建完成 (耗时: {total_elapsed:.2f}s)")
 
+    # 从 pending_outlines 中移除已创建的大纲（基于 title 匹配）
+    pending_outlines_data = await db.fetchval(
+        "SELECT pending_outlines FROM stages WHERE id = $1", classroom_uuid
+    )
+    if pending_outlines_data:
+        try:
+            pending_list = json.loads(pending_outlines_data) if isinstance(pending_outlines_data, str) else pending_outlines_data
+            # 移除匹配的大纲（按 title 匹配）
+            remaining_outlines = [o for o in pending_list if o.get("title") != outline.get("title")]
+
+            if len(remaining_outlines) == 0:
+                # 所有大纲都已创建，清除 pending_outlines
+                logger.info(f"[Scene] 所有场景已创建完成，清除 pending_outlines")
+                await db.execute(
+                    "UPDATE stages SET pending_outlines = NULL WHERE id = $1", classroom_uuid
+                )
+            elif len(remaining_outlines) < len(pending_list):
+                # 更新剩余大纲
+                logger.info(f"[Scene] 更新 pending_outlines，剩余 {len(remaining_outlines)} 个")
+                await db.execute(
+                    "UPDATE stages SET pending_outlines = $1 WHERE id = $2",
+                    json.dumps(remaining_outlines),
+                    classroom_uuid
+                )
+        except Exception as e:
+            logger.warning(f"[Scene] 更新pending_outlines失败: {e}")
+
     return {
         "id": scene["id"],
         "title": scene["title"],

@@ -60,21 +60,31 @@ export class AISdkLangGraphAdapter extends BaseChatModel {
 
   /**
    * Convert LangChain messages to AI SDK message format
+   * Only handles user/assistant messages — system is passed separately.
    */
   private convertMessages(
     messages: BaseMessage[],
-  ): { role: 'system' | 'user' | 'assistant'; content: string }[] {
-    return messages.map((msg) => {
-      if (msg instanceof HumanMessage) {
-        return { role: 'user' as const, content: msg.content as string };
-      } else if (msg instanceof AIMessage) {
-        return { role: 'assistant' as const, content: msg.content as string };
-      } else if (msg instanceof SystemMessage) {
-        return { role: 'system' as const, content: msg.content as string };
-      } else {
-        return { role: 'user' as const, content: msg.content as string };
-      }
-    });
+  ): { role: 'user' | 'assistant'; content: string }[] {
+    return messages
+      .filter((msg) => !(msg instanceof SystemMessage))
+      .map((msg) => {
+        if (msg instanceof HumanMessage) {
+          return { role: 'user' as const, content: msg.content as string };
+        } else if (msg instanceof AIMessage) {
+          return { role: 'assistant' as const, content: msg.content as string };
+        } else {
+          return { role: 'user' as const, content: msg.content as string };
+        }
+      });
+  }
+
+  /**
+   * Extract system prompt from messages array.
+   * Returns the content of the first SystemMessage, or undefined.
+   */
+  private extractSystemPrompt(messages: BaseMessage[]): string | undefined {
+    const systemMessage = messages.find((m) => m instanceof SystemMessage);
+    return systemMessage ? (systemMessage.content as string) : undefined;
   }
 
   async _generate(
@@ -82,12 +92,15 @@ export class AISdkLangGraphAdapter extends BaseChatModel {
     _options?: this['ParsedCallOptions'],
     _runManager?: CallbackManagerForLLMRun,
   ): Promise<ChatResult> {
+    // Extract system prompt and pass separately to AI SDK
+    const systemPrompt = this.extractSystemPrompt(messages);
     const aiMessages = this.convertMessages(messages);
 
     try {
       const result = await callLLM(
         {
           model: this.languageModel,
+          system: systemPrompt,
           messages: aiMessages,
         },
         'chat-adapter',
@@ -129,11 +142,14 @@ export class AISdkLangGraphAdapter extends BaseChatModel {
     messages: BaseMessage[],
     options?: { tools?: Record<string, unknown>; signal?: AbortSignal },
   ): AsyncGenerator<StreamChunk> {
+    // Extract system prompt and pass separately to AI SDK
+    const systemPrompt = this.extractSystemPrompt(messages);
     const aiMessages = this.convertMessages(messages);
 
     const result = streamLLM(
       {
         model: this.languageModel,
+        system: systemPrompt,
         messages: aiMessages,
         abortSignal: options?.signal,
       },

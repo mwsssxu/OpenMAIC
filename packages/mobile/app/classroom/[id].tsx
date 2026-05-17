@@ -15,6 +15,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -44,6 +45,7 @@ import {
 import {
   parseSSEContent,
   extractDiscussionTopic,
+  extractWhiteboardText,
   type ParsedContent,
 } from '@/lib/utils/sse-parser';
 
@@ -765,78 +767,150 @@ export default function ClassroomScreen() {
     // 添加用户消息
     setChatHistory(prev => [...prev, { agent: '我', message: userMessage }]);
 
-    try {
-      // 使用 SSE 流式对话（与Web端一致）
-      // 构建消息格式
-      const messages = [{ role: 'user', content: userMessage }];
+    // 切换到讨论模式（多个 Agent 自动参与）
+    setDiscussionMode(true);
+    setDiscussionRunning(true);
 
-      // 构建配置 - 包含 agent IDs 和 personas
-      const agentPersonas: Record<string, string> = {};
-      if (selectedAgent.persona) {
-        agentPersonas[selectedAgent.id] = selectedAgent.persona;
+    try {
+      // 构建配置 - 使用 discussion 模式，让多个 Agent 参与
+      const agentRoleIds = agents.slice(0, 3).map(a => a.role);
+      console.log('[Chat] Agents:', agents.slice(0, 3).map(a => ({ id: a.id, name: a.name, role: a.role })));
+      console.log('[Chat] AgentRoleIds:', agentRoleIds);
+
+      // 确保角色不重复，并补齐缺失的角色
+      const uniqueRoles = [...new Set(agentRoleIds)];
+      const requiredRoles = ['teacher', 'student', 'assistant'];
+      const finalRoles: string[] = [];
+
+      // 先添加已有的角色
+      uniqueRoles.forEach(r => {
+        if (requiredRoles.includes(r)) finalRoles.push(r);
+      });
+
+      // 补齐缺失的角色
+      requiredRoles.forEach(r => {
+        if (!finalRoles.includes(r) && finalRoles.length < 3) finalRoles.push(r);
+      });
+
+      if (uniqueRoles.length !== agentRoleIds.length) {
+        console.warn('[Chat] Duplicate roles detected, fixed to:', finalRoles);
       }
+      console.log('[Chat] FinalRoles:', finalRoles);
 
       const config = {
-        agentIds: [selectedAgent.id],
-        agentPersonas,
+        sessionType: 'discussion' as const,
+        agentIds: finalRoles,
+        discussionTopic: userMessage,
+        discussionPrompt: userMessage,
       };
+
+      // 建立角色 ID 到 Agent 信息映射
+      const agentInfoMap: Record<string, { name: string; persona: string; color: string }> = {};
+      agents.slice(0, 3).forEach(a => {
+        agentInfoMap[a.role] = { name: a.name, persona: a.persona || '', color: a.color };
+      });
 
       // 构建上下文
       const storeState = {
         stage: { name: data?.stage?.name || '' },
-        scene: { title: currentScene?.title || '' },
+        scene: {
+          title: currentScene?.title || '',
+          content: currentScene?.content || {},
+        },
       };
 
+      console.log('[Chat] Starting discussion:', { agentIds: agentRoleIds, topic: userMessage.slice(0, 30) });
+
       await apiClient.streamAgentChat(
-        messages,
+        [], // 讨论模式不需要 messages
         config,
         storeState,
-        // onEvent - 流式更新（可用于实时显示）
+        // onEvent - 处理 SSE 事件
         (event) => {
-          if (event.type === 'text_delta' && event.text) {
-            // 可在此处实现实时流式显示（可选优化）
+          if (event.type === 'agent_start') {
+            const agentId = event.agentId || '';
+            const agentInfo = agentInfoMap[agentId];
+            setSpeakingAgentId(agentId);
+            setChatHistory(prev => [...prev, {
+              agent: agentInfo?.name || agentId,
+              agentId: agentId,
+              message: '',
+              persona: agentInfo?.persona,
+            }]);
+          } else if (event.type === 'text_delta') {
+            const chunk = event.content || '';
+            const eventAgentId: string = event.agentId ?? (speakingAgentId || '');
+            if (!chunk) return;
+            setChatHistory(prev => {
+              const lastEntry = prev[prev.length - 1];
+              if (lastEntry && lastEntry.agentId === eventAgentId) {
+                return [...prev.slice(0, -1), {
+                  ...lastEntry,
+                  message: lastEntry.message + chunk,
+                }];
+              }
+              // 如果找不到对应的 agent，创建一个新的
+              const agentInfo = agentInfoMap[eventAgentId];
+              if (agentInfo) {
+                return [...prev, {
+                  agent: agentInfo.name,
+                  agentId: eventAgentId,
+                  message: chunk,
+                  persona: agentInfo.persona,
+                }];
+              }
+              return prev;
+            });
+          } else if (event.type === 'action') {
+            const actionName = event.actionName || '';
+            const params = event.params || {};
+            console.log('[Chat] Action:', actionName);
+
+            if (actionName === 'wb_open') {
+              setShowWhiteboard(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } else if (actionName === 'wb_draw_text' && params.content) {
+              setWhiteboardTextContent(params.content);
+              setShowWhiteboard(true);
+            } else if (actionName === 'wb_draw_table' && params.data) {
+              let tableText = '';
+              (params.data as any[]).forEach((row: any[]) => {
+                tableText += row.map(cell => String(cell)).join(' | ') + '\n';
+              });
+              setWhiteboardTextContent(tableText);
+              setShowWhiteboard(true);
+            }
+          } else if (event.type === 'agent_end') {
+            setSpeakingAgentId(null);
           }
         },
-        // onComplete - 完成时添加到历史
-        (response) => {
-          setChatHistory(prev => [...prev, {
-            agent: selectedAgent.name,
-            message: response || '让我来为你讲解...'
-          }]);
+        // onComplete
+        () => {
           setSendingMessage(false);
+          setDiscussionRunning(false);
+          setDiscussionMode(false);
         },
         // onError
         (error) => {
-          console.warn('[Agent Chat] SSE error:', error);
-          // 降级回复
-          setChatHistory(prev => [...prev, {
-            agent: selectedAgent.name,
-            message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！让我来为你讲解...' : '我也有同样的疑问，让我们一起探讨...'}`
-          }]);
+          console.warn('[Chat] Error:', error);
           setSendingMessage(false);
+          setDiscussionRunning(false);
+          setDiscussionMode(false);
+          setChatHistory(prev => [...prev, {
+            agent: '系统',
+            message: `对话出错：${error}`,
+          }]);
         }
       );
     } catch (err: any) {
-      // SSE 失败时降级到 REST API
-      console.warn('[Agent Chat] SSE failed, using REST fallback:', err);
-      try {
-        const response = await apiClient.chatWithPersona(
-          selectedAgent.id,
-          userMessage,
-          currentScene?.title,
-          'teaching',
-          selectedAgent.persona
-        );
-        const agentResponse = response.response || '收到你的问题了，让我思考一下...';
-        setChatHistory(prev => [...prev, { agent: selectedAgent.name, message: agentResponse }]);
-      } catch (fallbackErr: any) {
-        setChatHistory(prev => [...prev, {
-          agent: selectedAgent.name,
-          message: `${selectedAgent.role === 'teacher' ? '这是一个很好的问题！让我来为你讲解...' : '我也有同样的疑问，让我们一起探讨...'}`
-        }]);
-      } finally {
-        setSendingMessage(false);
-      }
+      console.warn('[Chat] Failed:', err);
+      setSendingMessage(false);
+      setDiscussionRunning(false);
+      setDiscussionMode(false);
+      setChatHistory(prev => [...prev, {
+        agent: '系统',
+        message: `对话出错：${err.message || '网络错误'}`,
+      }]);
     }
   }
 
@@ -868,7 +942,7 @@ export default function ClassroomScreen() {
     return topic;
   }
 
-  // 开始多 Agent 讨论
+  // 开始多 Agent 讨论（使用 SSE 流式，参考 Web端实现）
   async function startMultiAgentDiscussion(topic: string) {
     setDiscussionMode(true);
     setDiscussionRunning(true);
@@ -878,89 +952,146 @@ export default function ClassroomScreen() {
     setPendingThinkingPrompt(null);
     pendingThinkingPromptRef.current = null;
 
-    // 获取参与讨论的 Agents（带 persona）
-    const discussionAgents = agents.slice(0, 4);
-    const agentIds = discussionAgents.map(a => a.id);
-    const agentNameMap: Record<string, string> = {};
-    const agentPersonaMap: Record<string, string> = {};
+    // 获取参与讨论的 Agents
+    const discussionAgents = agents.slice(0, 3);
+    const agentRoleIds = discussionAgents.map(a => a.role);
+
+    // 确保角色不重复，并补齐缺失的角色
+    const uniqueRoles = [...new Set(agentRoleIds)];
+    const requiredRoles = ['teacher', 'student', 'assistant'];
+    const finalRoles: string[] = [];
+
+    // 先添加已有的角色
+    uniqueRoles.forEach(r => {
+      if (requiredRoles.includes(r)) finalRoles.push(r);
+    });
+
+    // 补齐缺失的角色
+    requiredRoles.forEach(r => {
+      if (!finalRoles.includes(r) && finalRoles.length < 3) finalRoles.push(r);
+    });
+
+    console.log('[Discussion] Agents:', discussionAgents.map(a => ({ id: a.id, name: a.name, role: a.role })));
+    console.log('[Discussion] FinalRoles:', finalRoles);
+
+    // 建立角色ID到 Agent 信息映射
+    const agentInfoMap: Record<string, { name: string; persona: string; color: string }> = {};
     discussionAgents.forEach(a => {
-      agentNameMap[a.id] = a.name;
-      agentPersonaMap[a.id] = a.persona || '';
+      agentInfoMap[a.role] = { name: a.name, persona: a.persona || '', color: a.color };
+      agentInfoMap[a.id] = { name: a.name, persona: a.persona || '', color: a.color };
     });
 
     try {
-      // 添加课程上下文提示
-      const contextPrefix = currentScene
-        ? `【${currentScene.title}】场景讨论：`
-        : '';
-      const fullTopic = contextPrefix + topic;
+      // 构建场景上下文
+      const storeState = {
+        stage: { name: data?.stage?.name || '' },
+        scene: {
+          title: currentScene?.title || '',
+          content: currentScene?.content || {},
+        },
+      };
 
-      await apiClient.runMultiAgentDiscussion(
-        fullTopic,
-        agentIds,
-        2, // 每个Agent发言2次
-        (response) => {
-          const agentName = agentNameMap[response.agent_id] || response.agent_role;
-          const agentPersona = agentPersonaMap[response.agent_id] || '';
+      // SSE 配置（参考 Web端 discussion 配置）
+      const config = {
+        sessionType: 'discussion' as const,
+        agentIds: finalRoles,
+        discussionTopic: topic,
+        discussionPrompt: topic, // 讨论提示
+      };
 
-          // 设置当前发言的Agent（带防抖，避免频繁切换）
-          if (speakingTimeoutRef.current) {
-            clearTimeout(speakingTimeoutRef.current);
-          }
-          setSpeakingAgentId(response.agent_id);
-          speakingTimeoutRef.current = setTimeout(() => {
-            setSpeakingAgentId(null);
-          }, 800);
+      console.log('[Discussion] Starting SSE discussion:', { agentIds: finalRoles, topic: topic.slice(0, 50) });
 
-          // 使用 SSE 解析器分段处理内容
-          const parsed: ParsedContent = parseSSEContent(response.content || '');
-
-          // 只将核心文本添加到聊天历史（带 persona 标签）
-          if (parsed.coreText) {
+      // 使用 SSE 流式讨论（与 Web端一致）
+      await apiClient.streamAgentChat(
+        [], // 讨论模式不需要 messages
+        config,
+        storeState,
+        // onEvent - 处理 SSE 事件
+        (event) => {
+          if (event.type === 'agent_start') {
+            // Agent 开始发言
+            const agentId = event.agentId || '';
+            const agentInfo = agentInfoMap[agentId];
+            console.log('[Discussion] Agent start:', agentId);
+            setSpeakingAgentId(agentId);
             setChatHistory(prev => [...prev, {
-              agent: agentName,
-              agentId: response.agent_id,
-              message: parsed.coreText,
-              actions: response.actions,
-              persona: agentPersona,
+              agent: agentInfo?.name || agentId,
+              agentId: agentId,
+              message: '', // 初始为空，等待 text_delta
+              persona: agentInfo?.persona,
             }]);
-          }
+          } else if (event.type === 'text_delta') {
+            // 增量文本
+            const chunk = event.content || '';
+            if (!chunk) return;
+            setChatHistory(prev => {
+              const lastEntry = prev[prev.length - 1];
+              if (lastEntry && lastEntry.agentId === speakingAgentId) {
+                return [...prev.slice(0, -1), {
+                  ...lastEntry,
+                  message: lastEntry.message + chunk,
+                }];
+              }
+              return prev;
+            });
+          } else if (event.type === 'action') {
+            // 执行白板操作
+            const actionName = event.actionName || '';
+            const params = event.params || {};
+            console.log('[Discussion] Action:', actionName, params);
 
-          // 如果有白板内容，显示在独立白板
-          if (parsed.hasWhiteboard && parsed.whiteboardContent) {
-            setWhiteboardTextContent(parsed.whiteboardContent);
-            setShowWhiteboard(true);
-          }
-
-          // 如果有引导思考，保存为待处理提示（同时更新 ref）
-          if (parsed.hasThinkingPrompt && parsed.thinkingPrompt) {
-            setPendingThinkingPrompt(parsed.thinkingPrompt);
-            pendingThinkingPromptRef.current = parsed.thinkingPrompt;
-          }
-
-          // 如果有 actions（wb_draw），也显示白板
-          if (response.actions && response.actions.length > 0) {
-            const wbActions = response.actions.filter(
-              (a: any) => a.type === 'wb_draw_text' || a.type === 'wb_draw_shape'
-            );
-            if (wbActions.length > 0) {
+            if (actionName === 'wb_open') {
               setShowWhiteboard(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } else if (actionName === 'wb_draw_text' && params.content) {
+              setWhiteboardTextContent(params.content);
+              setShowWhiteboard(true);
+            } else if (actionName === 'wb_draw_table' && params.data) {
+              let tableText = '';
+              (params.data as any[]).forEach((row: any[]) => {
+                tableText += row.map(cell => String(cell)).join(' | ') + '\n';
+              });
+              setWhiteboardTextContent(tableText);
+              setShowWhiteboard(true);
+            } else if (actionName === 'wb_draw_code' && (params.code || params.content)) {
+              setWhiteboardTextContent(params.code || params.content);
+              setShowWhiteboard(true);
+            } else if (actionName === 'spotlight' && params.elementId) {
+              setSpotlightElementId(params.elementId);
+              setLaserElementId(null);
+            } else if (actionName === 'laser' && params.elementId) {
+              setLaserElementId(params.elementId);
+              setLaserOptions({ color: params.color || '#ff3b30' });
             }
+          } else if (event.type === 'agent_end') {
+            // Agent 发言结束
+            const agentId = event.agentId || '';
+            console.log('[Discussion] Agent end:', agentId);
+            setSpeakingAgentId(null); // 立即清除发言标识
           }
+        },
+        // onComplete -讨论 结束
+        () => {
+          console.log('[Discussion] Discussion complete');
+          setDiscussionRunning(false);
+          setChatHistory(prev => [...prev, {
+            agent: '系统',
+            message: '讨论结束，你可以继续提问或切换场景',
+          }]);
+        },
+        // onError
+        (error) => {
+          console.warn('[Discussion] SSE error:', error);
+          setDiscussionRunning(false);
+          setChatHistory(prev => [...prev, {
+            agent: '系统',
+            message: `讨论出错：${error}`,
+          }]);
         }
       );
-
-      // 使用 ref 检查是否有待处理的引导思考（避免 stale state）
-      const hasThinkingPrompt = pendingThinkingPromptRef.current !== null;
-      setChatHistory(prev => [...prev, {
-        agent: '系统',
-        message: hasThinkingPrompt
-          ? '💡 有讨论话题待参与，点击下方"参与讨论"按钮'
-          : '讨论结束，你可以继续提问或切换场景',
-      }]);
     } catch (err: any) {
       console.warn('[Discussion] Failed:', err);
-      // 添加错误提示和降级方案
+      setDiscussionRunning(false);
       setChatHistory(prev => [...prev, {
         agent: '系统',
         message: `讨论出错：${err.message || '网络错误'}，可以尝试单Agent对话`,
@@ -968,6 +1099,7 @@ export default function ClassroomScreen() {
     } finally {
       setDiscussionRunning(false);
       setSpeakingAgentId(null);
+      Speech.stop();
       if (speakingTimeoutRef.current) {
         clearTimeout(speakingTimeoutRef.current);
         speakingTimeoutRef.current = null;
@@ -1096,19 +1228,27 @@ export default function ClassroomScreen() {
           </View>
         </View>
 
-        {/* 场景内容 */}
-        <Animated.View style={[styles.content, animatedStyle]}>
-        {/* Slide类型：使用 ScreenCanvas 渲染 */}
-        {currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (
-          <ScreenCanvas
-            elements={(currentScene.content as any)?.canvas?.elements || []}
-            background={convertToSlideBackground((currentScene.content as any)?.canvas?.background)}
-            theme={undefined}
-            spotlightElementId={spotlightElementId}
-            laserElementId={laserElementId}
-            laserOptions={laserOptions}
-          />
-        ) : (
+        {/* 场景内容 - 可滚动查看完整内容 */}
+        <ScrollView
+          style={styles.contentScroll}
+          contentContainerStyle={styles.contentScrollContent}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+        >
+          <Animated.View style={[styles.contentInner, animatedStyle]}>
+            {/* Slide类型：使用 ScreenCanvas 渲染 */}
+            {currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (
+              <ScreenCanvas
+                elements={(currentScene.content as any)?.canvas?.elements || []}
+                background={convertToSlideBackground((currentScene.content as any)?.canvas?.background)}
+                theme={undefined}
+                spotlightElementId={spotlightElementId}
+                laserElementId={laserElementId}
+                laserOptions={laserOptions}
+                scrollable={true}  // 启用滚动模式，计算完整内容高度
+              />
+            ) : (
           /* 没有 canvas 内容时的降级显示 */
           <View style={styles.emptySceneContainer}>
             <View style={styles.emptySceneCard}>
@@ -1135,88 +1275,75 @@ export default function ClassroomScreen() {
           </View>
         )}
 
-        {/* Quiz 类型：额外显示测验问题 - 紧凑布局 */}
+        {/* Quiz 类型：测验问题 - 跟随滚动 */}
         {currentScene?.type === 'quiz' && (currentScene.content as QuizContent)?.questions && (() => {
           const quizQuestions = (currentScene.content as QuizContent).questions;
           const totalQuestions = quizQuestions.length;
           const correctCount = Object.values(submittedAnswers).filter(v => v).length;
 
           return (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-            style={styles.quizOverlay}
-          >
-            <ScrollView
-              ref={quizScrollRef}
-              style={styles.quizScroll}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.quizCard}>
-                <View style={styles.quizHeader}>
-                  <Ionicons name="help-circle" size={20} color="#f59e0b" />
-                  <Text style={styles.quizTitle}>测验</Text>
-                  {quizSubmitted && (
-                    <Text style={styles.quizResult}>
-                      {correctCount}/{totalQuestions} 正确
-                    </Text>
-                  )}
-                </View>
-                {quizQuestions.map((q, idx) => {
-                  const correctAnswer = q.answer?.[0] || q.answer;
-
-                  return (
-                    <View key={q.id || idx} style={styles.questionContainer}>
-                      <Text style={styles.questionText}>{q.question}</Text>
-                      {q.options?.map((opt, optIdx) => {
-                        const optSelected = selectedAnswers[q.id] === opt.value;
-                        const optIsCorrect = opt.value === correctAnswer;
-                        const showResult = quizSubmitted && submittedAnswers[q.id] !== undefined;
-
-                        return (
-                          <TouchableOpacity
-                            key={opt.value ?? optIdx}
-                            style={[
-                              styles.optionButton,
-                              optSelected && styles.optionSelected,
-                              showResult && optIsCorrect && styles.optionCorrect,
-                              showResult && optSelected && !optIsCorrect && styles.optionWrong,
-                            ]}
-                            onPress={() => !quizSubmitted && selectAnswer(q.id, opt.value)}
-                            disabled={quizSubmitted}
-                          >
-                            <Text style={[
-                              styles.optionLabel,
-                              optSelected && styles.optionLabelSelected,
-                              showResult && optIsCorrect && styles.optionLabelCorrect,
-                            ]}>{String.fromCharCode(65 + optIdx)}.</Text>
-                            <Text style={[
-                              styles.optionText,
-                              optSelected && styles.optionTextSelected,
-                            ]}>{opt.label}</Text>
-                            {showResult && optIsCorrect && (
-                              <Ionicons name="checkmark-circle" size={16} color="#22c55e" style={styles.optionIcon} />
-                            )}
-                            {showResult && optSelected && !optIsCorrect && (
-                              <Ionicons name="close-circle" size={16} color="#ef4444" style={styles.optionIcon} />
-                            )}
-                          </TouchableOpacity>
-                        );
-                      })}
-                      {quizSubmitted && !submittedAnswers[q.id] && (
-                        <Text style={styles.explanationText}>
-                          正确答案：{q.options?.find(o => o.value === correctAnswer)?.label || correctAnswer}
-                        </Text>
-                      )}
-                    </View>
-                  );
-                })}
+          <View style={styles.quizOverlay}>
+            <View style={styles.quizCard}>
+              <View style={styles.quizHeader}>
+                <Ionicons name="help-circle" size={20} color="#f59e0b" />
+                <Text style={styles.quizTitle}>测验</Text>
+                {quizSubmitted && (
+                  <Text style={styles.quizResult}>
+                    {correctCount}/{totalQuestions} 正确
+                  </Text>
+                )}
               </View>
-            </ScrollView>
+              {quizQuestions.map((q, idx) => {
+                const correctAnswer = q.answer?.[0] || q.answer;
 
-            {/* 固定底部按钮区域 */}
-            <View style={styles.quizFooter}>
+                return (
+                  <View key={q.id || idx} style={styles.questionContainer}>
+                    <Text style={styles.questionText}>{q.question}</Text>
+                    {q.options?.map((opt, optIdx) => {
+                      const optSelected = selectedAnswers[q.id] === opt.value;
+                      const optIsCorrect = opt.value === correctAnswer;
+                      const showResult = quizSubmitted && submittedAnswers[q.id] !== undefined;
+
+                      return (
+                        <TouchableOpacity
+                          key={opt.value ?? optIdx}
+                          style={[
+                            styles.optionButton,
+                            optSelected && styles.optionSelected,
+                            showResult && optIsCorrect && styles.optionCorrect,
+                            showResult && optSelected && !optIsCorrect && styles.optionWrong,
+                          ]}
+                          onPress={() => !quizSubmitted && selectAnswer(q.id, opt.value)}
+                          disabled={quizSubmitted}
+                        >
+                          <Text style={[
+                            styles.optionLabel,
+                            optSelected && styles.optionLabelSelected,
+                            showResult && optIsCorrect && styles.optionLabelCorrect,
+                          ]}>{String.fromCharCode(65 + optIdx)}.</Text>
+                          <Text style={[
+                            styles.optionText,
+                            optSelected && styles.optionTextSelected,
+                          ]}>{opt.label}</Text>
+                          {showResult && optIsCorrect && (
+                            <Ionicons name="checkmark-circle" size={16} color="#22c55e" style={styles.optionIcon} />
+                          )}
+                          {showResult && optSelected && !optIsCorrect && (
+                            <Ionicons name="close-circle" size={16} color="#ef4444" style={styles.optionIcon} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                    {quizSubmitted && !submittedAnswers[q.id] && (
+                      <Text style={styles.explanationText}>
+                        正确答案：{q.options?.find(o => o.value === correctAnswer)?.label || correctAnswer}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+
+              {/* 提交按钮区域 */}
               {!quizSubmitted && Object.keys(selectedAnswers).length > 0 && (
                 <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
                   <Text style={styles.submitButtonText}>提交答案</Text>
@@ -1229,7 +1356,7 @@ export default function ClassroomScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          </KeyboardAvoidingView>
+          </View>
           );
         })()}
 
@@ -1358,8 +1485,9 @@ export default function ClassroomScreen() {
           </View>
         )}
       </Animated.View>
+    </ScrollView>
 
-      {/* 白板覆盖层 - 从 scene.actions 中获取 wb_draw actions */}
+    {/* 白板区域 - 使用 absolute 定位，与聊天同时显示 */}
       <WhiteboardOverlay
         visible={showWhiteboard}
         actions={(currentScene?.actions as any[])?.filter(
@@ -1367,6 +1495,7 @@ export default function ClassroomScreen() {
         ) || []}
         textContent={whiteboardTextContent}
         onClose={() => setShowWhiteboard(false)}
+        useAbsolute={showChatModal} // 聊天打开时使用 absolute 模式
       />
 
       {/* 场景缩略图导航（可展开） */}
@@ -1533,157 +1662,165 @@ export default function ClassroomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 智能体聊天模态框 */}
-      <BottomSheetModal
-        visible={showChatModal}
-        onClose={() => setShowChatModal(false)}
-        contentStyle={styles.modalContent}
-      >
-        {/* 模态框头部 */}
-        <View style={styles.modalHeader}>
-          {selectedAgent && (
-            <View style={[styles.modalAgentAvatar, { backgroundColor: safeColorWithAlpha(selectedAgent.color, '20') }]}>
-              <Ionicons name="person" size={32} color={selectedAgent.color} />
-            </View>
-          )}
-          <Text style={styles.modalTitle}>
-            {selectedAgent ? `与 ${selectedAgent.name} 对话` : '智能体对话'}
-          </Text>
-          <TouchableOpacity onPress={() => setShowChatModal(false)}>
-            <Ionicons name="close" size={24} color="#666" />
-          </TouchableOpacity>
-        </View>
-
-        {/* 多人讨论参与者显示 */}
-        {discussionMode && agents.length > 0 && (
-          <View style={styles.participantsBar}>
-            <Text style={styles.participantsLabel}>讨论参与者</Text>
-            <View style={styles.participantsAvatars}>
-              {agents.slice(0, 3).map(agent => {
-                const isCurrentSpeaker = agent.id === speakingAgentId;
-                return (
-                  <View
-                    key={agent.id}
-                    style={[
-                      styles.participantAvatar,
-                      { backgroundColor: agent.color },
-                      isCurrentSpeaker && styles.participantAvatarActive,
-                    ]}
-                  >
-                    <Text style={styles.participantAvatarText}>
-                      {agent.avatar === 'teacher.png' ? '👨‍🏫' :
-                       agent.avatar === 'assistant.png' ? '👨‍💼' :
-                       agent.avatar?.startsWith('student') ? '👨' :
-                       agent.avatar ? '👤' : agent.name[0]}
-                    </Text>
-                    {isCurrentSpeaker && (
-                      <View style={styles.speakingDot}>
-                        <Ionicons name="volume-high" size={10} color="white" />
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* 聊天历史 */}
-        <ScrollView style={styles.chatHistory}>
-          {chatHistory.length === 0 && (
-            <Text style={styles.chatHint}>开始提问吧，{selectedAgent?.name} 会帮助你理解课程内容</Text>
-          )}
-          {chatHistory.map((item, index) => {
-            const isSpeaking = discussionRunning && item.agentId && item.agentId === speakingAgentId;
-            const stableKey = `${item.agentId || item.agent}-${index}`;
-            return (
-            <View
-              key={stableKey}
-              style={[
-                styles.chatBubble,
-                item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent,
-                isSpeaking && styles.chatBubbleSpeaking,
-              ]}
-            >
-              <View style={styles.chatBubbleHeader}>
-                <View style={styles.agentNameRow}>
-                  <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
-                  {item.persona && item.agent !== '我' && item.agent !== '系统' && (
-                    <Text style={styles.chatBubblePersona}>{item.persona.slice(0, 20)}</Text>
-                  )}
-                </View>
-                {isSpeaking && (
-                  <View style={styles.speakingIndicator}>
-                    <Ionicons name="volume-high" size={14} color="#10b981" />
-                    <Text style={styles.speakingText}>正在发言</Text>
-                  </View>
-                )}
+      {/* 智能体聊天面板 - 白板打开时使用固定底部布局 */}
+      {showChatModal && showWhiteboard ? (
+        <View style={styles.chatPanelFixed}>
+          {/* 头部 */}
+          <View style={styles.chatPanelHeader}>
+            {selectedAgent && (
+              <View style={[styles.modalAgentAvatarSmall, { backgroundColor: selectedAgent.color }]}>
+                <Text style={styles.modalAgentAvatarText}>
+                  {selectedAgent.avatar === 'teacher.png' ? '👨‍🏫' :
+                   selectedAgent.avatar === 'assistant.png' ? '👨‍💼' :
+                   selectedAgent.avatar?.startsWith('student') ? '👨' :
+                   selectedAgent.avatar ? '👤' : selectedAgent.name[0]}
+                </Text>
               </View>
-              <Text style={styles.chatBubbleText}>{item.message}</Text>
-            </View>
-            );
-          })}
-        </ScrollView>
-
-        {/* 输入框 - 只在非讨论模式显示 */}
-        {!discussionMode && (
-          <View style={styles.chatInputArea}>
-            <TextInput
-              style={styles.chatInput}
-              placeholder="输入你的问题..."
-              value={chatMessage}
-              onChangeText={setChatMessage}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]}
-              onPress={sendMessage}
-              disabled={!chatMessage.trim() || sendingMessage}
-            >
-              {sendingMessage ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Ionicons name="send" size={20} color="white" />
-              )}
+            )}
+            <Text style={styles.chatPanelTitle}>{selectedAgent?.name || '对话'}</Text>
+            <TouchableOpacity onPress={() => { setShowChatModal(false); Speech.stop(); }}>
+              <Ionicons name="close" size={22} color="#666" />
             </TouchableOpacity>
           </View>
-        )}
 
-        {/* 讨论模式提示 */}
-        {discussionMode && (
-          <View style={styles.discussionModeHint}>
-            {discussionRunning ? (
-              <ActivityIndicator size="small" color="#10b981" />
-            ) : (
-              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+          {/* 讨论参与者 */}
+          {discussionMode && agents.length > 0 && (
+            <View style={styles.participantsBarCompact}>
+              <Text style={styles.participantsLabel}>参与者</Text>
+              <View style={styles.participantsAvatars}>
+                {agents.slice(0, 3).map(agent => {
+                  const isCurrentSpeaker = agent.id === speakingAgentId;
+                  return (
+                    <View key={agent.id} style={[styles.participantAvatar, { backgroundColor: agent.color }, isCurrentSpeaker && styles.participantAvatarActive]}>
+                      <Text style={styles.participantAvatarText}>
+                        {agent.avatar === 'teacher.png' ? '👨‍🏫' : agent.avatar === 'assistant.png' ? '👨‍💼' : agent.avatar?.startsWith('student') ? '👨' : agent.avatar ? '👤' : agent.name[0]}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* 聊天历史 */}
+          <ScrollView style={styles.chatHistoryCompact}>
+            {chatHistory.map((item, index) => {
+              const isSpeaking = discussionRunning && item.agentId && item.agentId === speakingAgentId;
+              const stableKey = `${item.agentId || item.agent}-${index}`;
+              const displayText = item.message.replace('[白板内容已显示]', '').replace('[引导思考待参与]', '').trim();
+              return (
+                <View key={stableKey} style={[styles.chatBubble, item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent, isSpeaking && styles.chatBubbleSpeaking]}>
+                  <View style={styles.chatBubbleHeader}>
+                    <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
+                    {isSpeaking && <Ionicons name="volume-high" size={12} color="#10b981" />}
+                  </View>
+                  {displayText && <Text style={styles.chatBubbleText}>{displayText}</Text>}
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* 输入框 */}
+          {!discussionMode && (
+            <View style={styles.chatInputAreaFixed}>
+              <TextInput style={styles.chatInputFixed} placeholder="输入问题..." value={chatMessage} onChangeText={setChatMessage} />
+              <TouchableOpacity style={[styles.sendBtnFixed, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]} onPress={sendMessage} disabled={!chatMessage.trim() || sendingMessage}>
+                {sendingMessage ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="send" size={18} color="white" />}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* 讨论模式提示 */}
+          {discussionMode && (
+            <View style={styles.discussionModeHintCompact}>
+              {discussionRunning ? <ActivityIndicator size="small" color="#10b981" /> : <Ionicons name="checkmark-circle" size={16} color="#10b981" />}
+              <Text style={styles.discussionModeTextSmall}>{discussionRunning ? '讨论中...' : '已结束'}</Text>
+            </View>
+          )}
+        </View>
+      ) : showChatModal ? (
+        // 常规 BottomSheetModal（无白板时）
+        <BottomSheetModal
+          visible={showChatModal}
+          onClose={() => { setShowChatModal(false); Speech.stop(); }}
+          contentStyle={styles.modalContentCompact}
+        >
+          {/* 模态框头部 */}
+          <View style={styles.modalHeaderCompact}>
+            {selectedAgent && (
+              <View style={[styles.modalAgentAvatarSmall, { backgroundColor: selectedAgent.color }]}>
+                <Text style={styles.modalAgentAvatarText}>
+                  {selectedAgent.avatar === 'teacher.png' ? '👨‍🏫' :
+                   selectedAgent.avatar === 'assistant.png' ? '👨‍💼' :
+                   selectedAgent.avatar?.startsWith('student') ? '👨' :
+                   selectedAgent.avatar ? '👤' : selectedAgent.name[0]}
+                </Text>
+              </View>
             )}
-            <Text style={styles.discussionModeText}>
-              {discussionRunning ? 'Agent正在轮流发言...' : '讨论已结束'}
-            </Text>
+            <Text style={styles.modalTitleCompact}>{selectedAgent?.name || '对话'}</Text>
+            <TouchableOpacity onPress={() => { setShowChatModal(false); Speech.stop(); }}>
+              <Ionicons name="close" size={22} color="#666" />
+            </TouchableOpacity>
           </View>
-        )}
 
-        {/* 参与讨论按钮 - 当有待处理的引导思考时显示 */}
-        {!discussionRunning && pendingThinkingPrompt && (
-          <TouchableOpacity
-            style={styles.participateBtn}
-            onPress={() => {
-              const topic = extractDiscussionTopic(pendingThinkingPrompt);
-              setPendingThinkingPrompt(null);
-              // 添加用户参与提示
-              setChatHistory(prev => [...prev, {
-                agent: '系统',
-                message: `你可以针对"${topic}"发表观点，或继续提问`,
-              }]);
-              // 切换到单Agent对话模式让用户输入
-              setDiscussionMode(false);
-            }}
-          >
-            <Ionicons name="chatbubble-ellipses" size={18} color="white" />
-            <Text style={styles.participateBtnText}>参与讨论</Text>
-          </TouchableOpacity>
-        )}
-      </BottomSheetModal>
+          {/* 讨论参与者 */}
+          {discussionMode && agents.length > 0 && (
+            <View style={styles.participantsBar}>
+              <Text style={styles.participantsLabel}>讨论参与者</Text>
+              <View style={styles.participantsAvatars}>
+                {agents.slice(0, 3).map(agent => {
+                  const isCurrentSpeaker = agent.id === speakingAgentId;
+                  return (
+                    <View key={agent.id} style={[styles.participantAvatar, { backgroundColor: agent.color }, isCurrentSpeaker && styles.participantAvatarActive]}>
+                      <Text style={styles.participantAvatarText}>
+                        {agent.avatar === 'teacher.png' ? '👨‍🏫' : agent.avatar === 'assistant.png' ? '👨‍💼' : agent.avatar?.startsWith('student') ? '👨' : agent.avatar ? '👤' : agent.name[0]}
+                      </Text>
+                      {isCurrentSpeaker && <View style={styles.speakingDot}><Ionicons name="volume-high" size={10} color="white" /></View>}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* 聊天历史 */}
+          <ScrollView style={styles.chatHistory}>
+            {chatHistory.length === 0 && <Text style={styles.chatHint}>开始提问吧</Text>}
+            {chatHistory.map((item, index) => {
+              const isSpeaking = discussionRunning && item.agentId && item.agentId === speakingAgentId;
+              const stableKey = `${item.agentId || item.agent}-${index}`;
+              const displayText = item.message.replace('[白板内容已显示]', '').replace('[引导思考待参与]', '').trim();
+              return (
+                <View key={stableKey} style={[styles.chatBubble, item.agent === '我' ? styles.chatBubbleUser : styles.chatBubbleAgent, isSpeaking && styles.chatBubbleSpeaking]}>
+                  <View style={styles.chatBubbleHeader}>
+                    <Text style={styles.chatBubbleAgentName}>{item.agent}</Text>
+                    {isSpeaking && <View style={styles.speakingIndicator}><Ionicons name="volume-high" size={14} color="#10b981" /><Text style={styles.speakingText}>发言中</Text></View>}
+                  </View>
+                  {displayText && <Text style={styles.chatBubbleText}>{displayText}</Text>}
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* 输入框 */}
+          {!discussionMode && (
+            <View style={styles.chatInputArea}>
+              <TextInput style={styles.chatInput} placeholder="输入问题..." value={chatMessage} onChangeText={setChatMessage} multiline />
+              <TouchableOpacity style={[styles.sendBtn, (!chatMessage.trim() || sendingMessage) && styles.sendBtnDisabled]} onPress={sendMessage} disabled={!chatMessage.trim() || sendingMessage}>
+                {sendingMessage ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="send" size={20} color="white" />}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* 讨论模式提示 */}
+          {discussionMode && (
+            <View style={styles.discussionModeHint}>
+              {discussionRunning ? <ActivityIndicator size="small" color="#10b981" /> : <Ionicons name="checkmark-circle" size={20} color="#10b981" />}
+              <Text style={styles.discussionModeText}>{discussionRunning ? '讨论中...' : '已结束'}</Text>
+            </View>
+          )}
+        </BottomSheetModal>
+      ) : null}
 
       {/* TTS 设置模态框 */}
       <BottomSheetModal
@@ -1900,6 +2037,19 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     overflow: 'hidden',
   },
+  contentScroll: {
+    flex: 1,
+  },
+  contentScrollContent: {
+    flexGrow: 1,  // 让内容填充可用空间
+    paddingHorizontal: Spacing.sm + 3,
+    paddingBottom: Spacing.md, // 底部留出滚动空间
+  },
+  contentInner: {
+    width: '100%',  // 明确设置宽度为100%
+    maxWidth: '100%',  // 限制最大宽度
+    alignSelf: 'center',  // 居中显示
+  },
   slideScroll: { flex: 1 },
   slideContainer: { flex: 1, alignItems: 'center' },
   slideCard: {
@@ -1959,19 +2109,16 @@ const styles = StyleSheet.create({
   emptySceneTitle: { fontSize: 18, fontWeight: 'bold', marginTop: Spacing.sm + 3, color: '#333' },
   emptySceneHint: { fontSize: 14, color: '#666', marginTop: Spacing.sm },
 
-  // Quiz overlay (shown above slide when quiz questions exist) - 动态高度，支持滚动
+  // Quiz overlay - 非绝对定位，跟随滚动内容
   quizOverlay: {
-    position: 'absolute',
-    bottom: 80,  // 为底部工具栏和智能体栏留出空间
-    left: Spacing.sm,
-    right: Spacing.sm,
-    maxHeight: '75%',  // 增加高度，显示更多内容
     backgroundColor: 'white',
     borderRadius: Rounded.lg,
+    marginTop: Spacing.md,  // 与上方内容留出间距
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    width: '100%',
   },
   quizScroll: {
-    maxHeight: '70%',  // 滚动区域高度
+    // 不需要单独滚动，跟随主 ScrollView
   },
   quizCard: {
     padding: Spacing.md,  // 紧凑内边距
@@ -2280,6 +2427,40 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     maxHeight: '70%',
   },
+  // 凑版模态框样式 - 减少空白
+  modalContentCompact: {
+    backgroundColor: 'white',
+    borderRadius: Rounded.lg,
+    padding: Spacing.sm, // 减少 padding
+    maxHeight: '50%', // 占屏幕 50%
+    minHeight: 200,
+  },
+  modalHeaderCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xs, // 减少 margin
+    paddingBottom: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalAgentAvatarSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalAgentAvatarText: {
+    fontSize: 14,
+    color: 'white',
+  },
+  modalTitleCompact: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: Spacing.sm,
+    color: '#333',
+  },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2347,7 +2528,12 @@ const styles = StyleSheet.create({
   },
 
   // 聊天
-  chatHistory: { flex: 1, maxHeight: 280, marginBottom: Spacing.sm + 3 },
+  chatHistory: {
+    flex: 1,
+    minHeight: 120,
+    maxHeight: 400, // 设置上限，避免内容太多时撑满
+    marginBottom: Spacing.sm,
+  },
   chatHint: { color: '#999', textAlign: 'center', padding: Spacing.lg },
   chatBubble: {
     padding: Spacing.sm,
@@ -2394,7 +2580,29 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   chatBubbleText: { fontSize: 14, color: '#333' },
-  chatInputArea: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  actionHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    padding: Spacing.sm,
+    backgroundColor: '#f5f7fa',
+    borderRadius: Rounded.sm,
+  },
+  actionHintText: {
+    fontSize: 12,
+    color: '#5b9bd5',
+    marginLeft: Spacing.sm,
+    fontWeight: '500',
+  },
+  chatInputArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: 'white',
+  },
   chatInput: {
     flex: 1,
     borderWidth: 1,
@@ -2413,6 +2621,86 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: '#ccc' },
+
+  // 固定底部聊天面板样式（白板打开时使用）
+  chatPanelFixed: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '33%', // 占屏幕 1/3
+    backgroundColor: 'white',
+    borderTopLeftRadius: Rounded.lg,
+    borderTopRightRadius: Rounded.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 20,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  chatPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  chatPanelTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: Spacing.sm,
+    color: '#333',
+  },
+  participantsBarCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  chatHistoryCompact: {
+    flex: 1,
+    marginBottom: Spacing.sm,
+  },
+  chatInputAreaFixed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingBottom: Spacing.sm,
+  },
+  chatInputFixed: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: Rounded.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    height: 36,
+  },
+  sendBtnFixed: {
+    width: 36,
+    height: 36,
+    borderRadius: Rounded.full,
+    backgroundColor: '#5b9bd5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  discussionModeHintCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.sm,
+    backgroundColor: '#f0fdf4',
+    borderRadius: Rounded.sm,
+  },
+  discussionModeTextSmall: {
+    marginLeft: Spacing.xs,
+    fontSize: 12,
+    color: '#10b981',
+  },
 
   // 讨论模式提示
   discussionModeHint: {
@@ -2444,6 +2732,25 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+    marginLeft: Spacing.sm,
+  },
+
+  // 邀请讨论按钮
+  inviteDiscussionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e8f4fd',
+    borderWidth: 1,
+    borderColor: '#10b981',
+    padding: Spacing.sm,
+    borderRadius: Rounded.md,
+    marginTop: Spacing.sm,
+  },
+  inviteDiscussionText: {
+    color: '#10b981',
+    fontSize: 14,
+    fontWeight: '500',
     marginLeft: Spacing.sm,
   },
 

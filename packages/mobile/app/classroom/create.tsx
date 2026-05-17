@@ -339,7 +339,7 @@ export default function CreateClassroomScreen() {
       {error && <Text style={styles.errorText}>{error}</Text>}
 
       <TouchableOpacity style={styles.nextBtn} onPress={handleStep1Next}>
-        <Text style={styles.nextBtnText}>生成智能体</Text>
+        <Text style={styles.nextBtnText}>🚀 生成大纲和智能体</Text>
       </TouchableOpacity>
     </View>
   );
@@ -380,17 +380,18 @@ export default function CreateClassroomScreen() {
                 <Text style={styles.agentName}>{agent.name}</Text>
                 <View style={styles.agentRoleRow}>
                   <Text style={styles.agentRoleType}>
-                    {agent.role === 'teacher' ? '主讲老师' :
-                     agent.role === 'assistant' ? '助教' : '学生'}
+                    {agent.role === 'teacher' ? '👨‍🏫 主讲老师' :
+                     agent.role === 'assistant' ? '👨‍💼 助教' : '👨‍🎓 学生'}
                   </Text>
                   {agent.voiceConfig && (
                     <View style={styles.voiceBadge}>
                       <Ionicons name="volume-high" size={12} color={Colors.secondary.success} />
-                      <Text style={styles.voiceBadgeText}>语音已配置</Text>
+                      <Text style={styles.voiceBadgeText}>已配置语音</Text>
                     </View>
                   )}
                 </View>
-                <Text style={styles.agentPersona} numberOfLines={2}>{agent.persona}</Text>
+                {/* 完整展示persona描述（与Web端对齐） */}
+                <Text style={styles.agentPersonaFull}>{agent.persona}</Text>
                 {agent.priority && (
                   <Text style={styles.agentPriority}>优先级: {agent.priority}</Text>
                 )}
@@ -695,7 +696,7 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
   },
   voiceBadgeText: { fontSize: 10, color: Colors.secondary.success, marginLeft: Spacing.xs },
-  agentPersona: { fontSize: 13, color: '#666', marginTop: Spacing.xs },
+  agentPersonaFull: { fontSize: 13, color: '#666', marginTop: Spacing.xs, lineHeight: 18 },
   agentPriority: { fontSize: 11, color: '#888', marginTop: Spacing.xs },
   agentCheckbox: {
     width: 24,

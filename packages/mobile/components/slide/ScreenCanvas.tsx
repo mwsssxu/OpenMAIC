@@ -16,7 +16,7 @@
  */
 
 import React, { useRef, useMemo, useCallback, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Dimensions } from 'react-native';
 import { ScreenElement } from './ScreenElement';
 import { SpotlightOverlay } from './SpotlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
@@ -46,6 +46,8 @@ interface ScreenCanvasProps {
   laserElementId?: string | null;
   /** Laser options */
   laserOptions?: { color?: string; duration?: number };
+  /** Enable scrollable mode - calculates full content height */
+  scrollable?: boolean;
 }
 
 /**
@@ -59,9 +61,13 @@ export function ScreenCanvas({
   spotlightOptions,
   laserElementId,
   laserOptions,
+  scrollable = false,
 }: ScreenCanvasProps) {
   const containerRef = useRef<View>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  // 获取屏幕宽度作为 fallback（用于 scrollable 模式）
+  const screenWidth = useMemo(() => Dimensions.get('window').width, []);
 
   // 与Web端完全一致的scale计算逻辑
   // 参考：components/slide-renderer/Editor/Canvas/hooks/useViewportSize.ts
@@ -82,11 +88,21 @@ export function ScreenCanvas({
   const layoutMode = useMemo(() => detectLayoutMode(elements), [elements]);
 
   // 精确格式：双轴缩放
+  // scrollable 模式下使用屏幕宽度，非 scrollable 使用 containerSize
+  const effectiveWidth = useMemo(() => {
+    if (scrollable) {
+      // scrollable 模式：使用屏幕宽度减去 padding
+      return screenWidth - 40; // 左右各 20 padding
+    }
+    // 非 scrollable 模式：使用 containerSize
+    return containerSize.width > 0 ? containerSize.width : screenWidth - 40;
+  }, [scrollable, containerSize.width, screenWidth]);
+
   const canvasScaleX = useMemo(() => {
     if (layoutMode !== 'precise') return 1;
-    if (containerSize.width === 0) return 1;
-    return (containerSize.width - CANVAS_MARGIN_PRECISE) / VIEWPORT_SIZE;
-  }, [layoutMode, containerSize.width]);
+    if (effectiveWidth === 0) return 1;
+    return (effectiveWidth - CANVAS_MARGIN_PRECISE) / VIEWPORT_SIZE;
+  }, [layoutMode, effectiveWidth]);
 
   const canvasScaleY = useMemo(() => {
     if (layoutMode !== 'precise') return 1;
@@ -97,41 +113,56 @@ export function ScreenCanvas({
 
   // Canvas尺寸计算
   // 简化格式：宽度固定，高度自适应（内容撑开）
+  // scrollable 模式：使用 effectiveWidth（屏幕宽度）
   const canvasWidth = useMemo(() => {
     if (layoutMode === 'simplified') {
-      return containerSize.width - CANVAS_MARGIN_PRECISE;
+      return effectiveWidth - CANVAS_MARGIN_PRECISE;
     }
-    return VIEWPORT_SIZE * canvasScaleX;
-  }, [layoutMode, containerSize.width, canvasScaleX]);
+    // 精确格式：使用有效宽度计算
+    return effectiveWidth - CANVAS_MARGIN_PRECISE;
+  }, [layoutMode, effectiveWidth]);
 
   // 计算元素所需的最小高度（防止内容溢出）
+  // scrollable模式下计算完整高度，精确模式下也需要考虑所有元素
   const minContentHeight = useMemo(() => {
     if (elements.length === 0) return VIEWPORT_HEIGHT;
-    const maxBottom = elements.reduce((max, el) => {
-      // line元素没有height，用start/end坐标计算
+
+    // 遍历所有元素计算最大底部坐标
+    let maxBottom = 0;
+    elements.forEach(el => {
+      // 获取元素位置（支持嵌套的position对象）
+      const elTop = el.top || (el as any).position?.top || 0;
       const elHeight = isLineElement(el)
         ? Math.abs(el.end[1] - el.start[1])
-        : (el.height || 50);
-      const bottom = el.top + elHeight;
-      return Math.max(max, bottom);
-    }, 0);
-    return Math.max(VIEWPORT_HEIGHT, maxBottom + 20); // 加20px边距
-  }, [elements]);
+        : (el.height || (el as any).position?.height || 50);
+      const bottom = elTop + elHeight;
+      maxBottom = Math.max(maxBottom, bottom);
+    });
 
-  // 精确格式：根据容器高度和内容高度计算，确保覆盖所有元素
+    // 基础高度：至少VIEWPORT_HEIGHT，加上底部边距
+    // scrollable模式：使用实际内容高度（更宽松）
+    const padding = scrollable ? 40 : 20;
+    const baseHeight = scrollable ? maxBottom : VIEWPORT_HEIGHT;
+    return Math.max(baseHeight, maxBottom + padding);
+  }, [elements, scrollable]);
+
+  // 精确格式：根据内容高度计算canvas尺寸
   const canvasHeight = useMemo(() => {
     if (layoutMode === 'simplified') {
       return undefined; // 简化格式自适应高度
     }
     if (containerSize.height === 0) return undefined;
 
-    // 直接使用容器可用高度，确保白背景覆盖整个可视区域
+    // scrollable模式：使用完整内容高度
+    if (scrollable) {
+      return minContentHeight * canvasScaleY;
+    }
+
+    // 非滚动模式：使用容器可用高度
     const availableHeight = containerSize.height - CANVAS_MARGIN_SIMPLIFIED;
-    // 同时考虑元素所需高度（缩放后）
     const contentNeededHeight = minContentHeight * canvasScaleY;
-    // 取两者最大值
     return Math.max(availableHeight, contentNeededHeight);
-  }, [layoutMode, containerSize.height, canvasScaleY, minContentHeight]);
+  }, [layoutMode, containerSize.height, canvasScaleY, minContentHeight, scrollable]);
 
   // Canvas位置
   const viewportLeft = 10;

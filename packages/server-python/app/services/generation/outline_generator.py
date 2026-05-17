@@ -192,7 +192,7 @@ type可选：slide/quiz/interactive/pbl
         # 返回智能默认大纲
         return generate_smart_default_outlines(requirement, language, agent_ids)
 
-    # 解析JSON
+    # 解析JSON（新格式：包含 languageDirective 和 outlines）
     try:
         cleaned = response.strip()
         # 去除markdown包装
@@ -204,8 +204,25 @@ type可选：slide/quiz/interactive/pbl
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
 
-        outlines_data = json.loads(cleaned)
-        logger.info(f"[Outline] JSON解析成功 - {len(outlines_data)} 个大纲")
+        # 尝试解析为对象（新格式）
+        parsed_data = json.loads(cleaned)
+
+        # 提取 languageDirective
+        language_directive = None
+        outlines_data = None
+
+        if isinstance(parsed_data, dict):
+            # 新格式：{"languageDirective": "...", "outlines": [...]}
+            language_directive = parsed_data.get("languageDirective")
+            outlines_data = parsed_data.get("outlines", [])
+            logger.info(f"[Outline] 新格式解析成功 - languageDirective存在: {language_directive is not None}, {len(outlines_data)} 个大纲")
+        elif isinstance(parsed_data, list):
+            # 旧格式：直接返回数组
+            outlines_data = parsed_data
+            logger.info(f"[Outline] 旧格式解析成功 - {len(outlines_data)} 个大纲")
+        else:
+            logger.warning(f"[Outline] 无法识别的JSON格式")
+            return generate_smart_default_outlines(requirement, language, agent_ids)
 
         # 转换为SceneOutline
         outlines = []
@@ -216,7 +233,7 @@ type可选：slide/quiz/interactive/pbl
                 type=item.get("type", "slide"),
                 description=item.get("description", ""),
                 order=item.get("order", i+1),
-                key_points=item.get("key_points", []),
+                key_points=item.get("key_points", item.get("keyPoints", [])),  # 兼容两种命名
                 estimated_duration=item.get("estimated_duration"),
                 media_generations=item.get("media_generations"),
                 suggested_image_ids=item.get("suggestedImageIds"),
@@ -227,11 +244,16 @@ type可选：slide/quiz/interactive/pbl
                 widget_type=item.get("widgetType"),
                 widget_outline=item.get("widgetOutline"),
             )
+            # 存储 languageDirective 到大纲对象（传递给后续生成）
+            if language_directive and i == 0:
+                outline.language_directive = language_directive
             outlines.append(outline)
 
         total_elapsed = time.time() - start_time
         logger.info(f"[Outline] 完成 - {len(outlines)} 个大纲 (总耗时: {total_elapsed:.1f}s)")
 
+        # 返回大纲列表，附带 languageDirective
+        # 注：将 languageDirective 存储在第一个大纲的属性中
         return outlines
 
     except json.JSONDecodeError as e:
@@ -334,11 +356,12 @@ Design the course content and teaching style to match this teacher's persona."""
                     type=outline_data.get("type", "slide"),
                     description=outline_data.get("description", ""),
                     order=outline_data.get("order", parsed_count),
-                    key_points=outline_data.get("key_points", []),
+                    key_points=outline_data.get("key_points", outline_data.get("keyPoints", [])),  # 兼容两种命名
                     estimated_duration=outline_data.get("estimated_duration"),
                     media_generations=outline_data.get("media_generations"),
                     quiz_config=outline_data.get("quizConfig"),
                     interactive_config=outline_data.get("interactiveConfig"),
+                    pbl_config=outline_data.get("pblConfig"),
                     # Widget字段（Web端新功能）
                     widget_type=outline_data.get("widgetType"),
                     widget_outline=outline_data.get("widgetOutline"),

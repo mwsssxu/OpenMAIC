@@ -10,6 +10,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    restart: unless-stopped  # 自动重启策略
     environment:
       - DATABASE_URL=postgres://postgres:0okm9ijn@postgres:5432/postgres
       - REDIS_URL=redis://:re2019@redis:6379

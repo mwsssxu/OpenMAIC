@@ -112,7 +112,6 @@ export function SimplifiedTextElement({
           fontWeight: fontWeight as any,
           lineHeight: fontSize * 1.5,
         }}
-        numberOfLines={5}
       >
         {textContent}
       </Text>
