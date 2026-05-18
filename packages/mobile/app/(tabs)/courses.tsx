@@ -34,9 +34,9 @@ interface Classroom {
   id: string;
   name: string;
   description?: string;
+  language_directive?: string;
   created_at: string;
   updated_at?: string;
-  scene_count?: number;
 }
 
 // 模拟课程进度和状态数据（后续可接入真实数据）
@@ -47,6 +47,21 @@ const mockCourseData = {
   totalSections: Math.floor(Math.random() * 30) + 10,
   completedSections: Math.floor(Math.random() * 20),
 };
+
+// 课程进度缓存（内存中）
+const courseProgressCache: Record<string, { progress: number; status: string }> = {};
+
+// 获取或生成课程进度（后续接入真实数据）
+function getCourseProgress(classroom: Classroom) {
+  if (!courseProgressCache[classroom.id]) {
+    // 模拟进度数据（后续替换为从后端获取）
+    courseProgressCache[classroom.id] = {
+      progress: Math.floor(Math.random() * 100),
+      status: ['in-progress', 'completed', 'not-started'][Math.floor(Math.random() * 3)],
+    };
+  }
+  return courseProgressCache[classroom.id];
+}
 
 // 状态标签配置
 const statusConfig = {
@@ -118,16 +133,34 @@ export default function CoursesScreen() {
     return colors[index % colors.length];
   };
 
+  // 课程进度缓存（内存中）
+  const courseProgressCache: Record<string, { progress: number; status: string }> = {};
+
+  // 获取或生成课程进度（后续接入真实数据）
+  function getCourseProgress(classroom: Classroom) {
+    if (!courseProgressCache[classroom.id]) {
+      // 模拟进度数据（后续替换为从后端获取）
+      courseProgressCache[classroom.id] = {
+        progress: Math.floor(Math.random() * 100),
+        status: ['in-progress', 'completed', 'not-started'][Math.floor(Math.random() * 3)],
+      };
+    }
+    return courseProgressCache[classroom.id];
+  }
+
   // 课程卡片组件
   function CourseCard({ classroom, index }: { classroom: Classroom; index: number }) {
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const thumbColor = getThumbColor(index);
 
-    // 模拟课程数据（后续替换为真实数据）
-    const progress = mockCourseData.progress;
-    const status = mockCourseData.status;
-    const category = mockCourseData.category;
-    const totalSections = mockCourseData.totalSections;
+    // 获取课程进度（模拟数据，后续接入真实数据）
+    const progressData = getCourseProgress(classroom);
+    const progress = progressData.progress;
+    const status = progressData.status;
+
+    // 模拟分类和章节数（后续接入真实数据）
+    const category = ['数据科学', '编程基础', '设计基础', '人工智能', '商业分析', '人文素养'][Math.floor(Math.random() * 6)];
+    const totalSections = Math.floor(Math.random() * 30) + 10;
     const completedSections = Math.floor(totalSections * progress / 100);
 
     const statusInfo = statusConfig[status as keyof typeof statusConfig];

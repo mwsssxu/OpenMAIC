@@ -32,9 +32,34 @@ interface Classroom {
   id: string;
   name: string;
   description?: string;
+  language_directive?: string;
   created_at: string;
   updated_at?: string;
-  scene_count?: number;
+}
+
+interface Scene {
+  id: string;
+  type: string;
+  title: string;
+  order_index: number;
+  content?: any;
+  actions?: any;
+  whiteboards?: any;
+}
+
+interface ClassroomData {
+  stage: {
+    id: string;
+    name: string;
+    description?: string;
+    language_directive?: string;
+    style?: string;
+    agent_ids?: string[];
+    generated_agent_configs?: any[];
+    pending_outlines?: any[];
+  };
+  scenes: Scene[];
+  agents?: any[];
 }
 
 // 模拟课程数据（后续接入真实数据）
@@ -42,50 +67,7 @@ const mockCourseData = {
   instructor: { name: '陈教授', avatar: '陈' },
   students: 12847,
   rating: 4.8,
-  totalHours: 24,
-  totalDuration: '18h',
-  level: 'L2',
   tags: ['数据科学', 'Python', '可视化', '统计学'],
-  description: '本课程从数据分析的基础概念出发，系统讲解数据采集、清洗、探索性分析、统计推断到数据可视化的完整工作流。使用 Python 生态中的 pandas、numpy、matplotlib 等核心工具，通过 12 个真实业务场景的实战案例，帮助你建立数据驱动的思维方式。课程结束后，你将能够独立完成从原始数据到洞察报告的全流程。',
-  chapters: [
-    {
-      id: 1,
-      title: '第一章：数据分析导论',
-      lessons: 4,
-      duration: '2h15m',
-      completedLessons: 4,
-      items: [
-        { id: 1, title: '什么是数据分析', type: 'video', duration: '25分钟', status: 'completed' },
-        { id: 2, title: '数据分析工作流概览', type: 'video', duration: '32分钟', status: 'completed' },
-        { id: 3, title: 'Python 环境搭建', type: 'video', duration: '40分钟', status: 'completed' },
-        { id: 4, title: '第一章测验', type: 'quiz', duration: '15分钟', status: 'completed' },
-      ]
-    },
-    {
-      id: 2,
-      title: '第二章：数据获取与清洗',
-      lessons: 5,
-      duration: '3h30m',
-      completedLessons: 3,
-      items: [
-        { id: 5, title: '数据源类型与采集策略', type: 'video', duration: '35分钟', status: 'completed' },
-        { id: 6, title: 'pandas 数据结构', type: 'video', duration: '45分钟', status: 'completed' },
-        { id: 7, title: '缺失值处理与异常检测', type: 'video', duration: '42分钟', status: 'completed' },
-        { id: 8, title: '数据转换与特征工程基础', type: 'video', duration: '50分钟', status: 'current' },
-        { id: 9, title: '第二章实战：电商数据清洗', type: 'practice', duration: '38分钟', status: 'locked' },
-      ]
-    },
-    {
-      id: 3,
-      title: '第三章：探索性数据分析',
-      lessons: 6,
-      duration: '4h10m',
-      completedLessons: 0,
-      items: [
-        { id: 10, title: '描述性统计与分布', type: 'video', duration: '40分钟', status: 'locked' },
-      ]
-    },
-  ]
 };
 
 // 课程Hero组件
@@ -115,7 +97,7 @@ function CourseHero() {
 }
 
 // 统计卡片组件
-function StatCard({ value, label }: { value: string; label: string }) {
+function StatCard({ value, label }: { value: string | number; label: string }) {
   return (
     <View style={styles.statCard}>
       <Text style={styles.statValue}>{value}</Text>
@@ -124,8 +106,8 @@ function StatCard({ value, label }: { value: string; label: string }) {
   );
 }
 
-// 章节课程项组件
-function LessonItem({ lesson }: { lesson: typeof mockCourseData.chapters[0]['items'][0] }) {
+// 章节课程项组件（基于Scene）
+function SceneItem({ scene, index, total }: { scene: Scene; index: number; total: number }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const router = useRouter();
 
@@ -143,36 +125,37 @@ function LessonItem({ lesson }: { lesson: typeof mockCourseData.chapters[0]['ite
     }).start();
   };
 
-  const statusStyle = lesson.status === 'completed'
+  // 模拟完成状态（后续接入真实数据）
+  const status = index < Math.floor(total * 0.6) ? 'completed' :
+                 index === Math.floor(total * 0.6) ? 'current' : 'locked';
+
+  const statusStyle = status === 'completed'
     ? { backgroundColor: iOSColors.secondary, color: '#fff', text: '✓' }
-    : lesson.status === 'current'
-    ? { backgroundColor: iOSColors.accent, color: '#fff', text: String(lesson.id) }
+    : status === 'current'
+    ? { backgroundColor: iOSColors.accent, color: '#fff', text: String(index + 1) }
     : { backgroundColor: 'rgba(230, 225, 220, 0.5)', color: iOSColors.muted, text: '🔒' };
 
-  const typeIcon = {
-    video: 'play-circle',
-    quiz: 'help-circle',
-    practice: 'code-working',
-  }[lesson.type] || 'document-text';
+  const typeIcon = scene.type === 'slide' ? 'document-text' :
+                   scene.type === 'quiz' ? 'help-circle' :
+                   scene.type === 'interactive' ? 'hand-left' : 'layers';
 
   return (
     <TouchableOpacity
       onPress={() => {
-        if (lesson.status !== 'locked') {
-          // 跳转到课堂互动页
-          router.push(`/classroom/lesson1` as any);
+        if (status !== 'locked') {
+          router.push(`/classroom/${scene.id}` as any);
         }
       }}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       activeOpacity={0.9}
-      disabled={lesson.status === 'locked'}
+      disabled={status === 'locked'}
     >
       <Animated.View style={[
         styles.lessonItem,
         { transform: [{ scale: scaleAnim }] },
-        lesson.status === 'current' && styles.lessonItemCurrent,
-        lesson.status === 'locked' && styles.lessonItemLocked,
+        status === 'current' && styles.lessonItemCurrent,
+        status === 'locked' && styles.lessonItemLocked,
       ]}>
         <View style={[styles.lessonNum, { backgroundColor: statusStyle.backgroundColor }]}>
           <Text style={[styles.lessonNumText, { color: statusStyle.color }]}>
@@ -180,16 +163,16 @@ function LessonItem({ lesson }: { lesson: typeof mockCourseData.chapters[0]['ite
           </Text>
         </View>
         <View style={styles.lessonBody}>
-          <Text style={styles.lessonName}>{lesson.title}</Text>
+          <Text style={styles.lessonName}>{scene.title}</Text>
           <View style={styles.lessonMeta}>
             <View style={styles.lessonType}>
               <Ionicons name={typeIcon as any} size={10} color={iOSColors.muted} />
               <Text style={styles.lessonTypeText}>
-                {lesson.type === 'video' ? '视频' : lesson.type === 'quiz' ? '测验' : '实战'}
+                {scene.type === 'slide' ? '幻灯片' : scene.type === 'quiz' ? '测验' : scene.type === 'interactive' ? '互动' : '场景'}
               </Text>
             </View>
-            <Text style={styles.lessonDuration}>{lesson.duration}</Text>
-            {lesson.status === 'current' && (
+            <Text style={styles.lessonIndex}>#{scene.order_index + 1}</Text>
+            {status === 'current' && (
               <Text style={styles.lessonCurrentLabel}>← 当前</Text>
             )}
           </View>
@@ -203,7 +186,7 @@ export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const haptics = useHaptics();
-  const [classroom, setClassroom] = useState<Classroom | null>(null);
+  const [classroom, setClassroom] = useState<ClassroomData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -245,6 +228,9 @@ export default function CourseDetailScreen() {
     );
   }
 
+  const stage = classroom.stage;
+  const scenes = classroom.scenes || [];
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -253,8 +239,10 @@ export default function CourseDetailScreen() {
 
         {/* 课程信息 */}
         <View style={styles.courseInfo}>
-          <Text style={styles.courseTitle}>{classroom.name}</Text>
-          <Text style={styles.courseSubtitle}>{classroom.description || mockCourseData.description.slice(0, 60)}</Text>
+          <Text style={styles.courseTitle}>{stage.name}</Text>
+          <Text style={styles.courseSubtitle}>
+            {stage.description || '掌握完整的分析工作流'}
+          </Text>
 
           <View style={styles.courseMetaRow}>
             <View style={styles.instructor}>
@@ -278,14 +266,14 @@ export default function CourseDetailScreen() {
 
         {/* 统计网格 */}
         <View style={styles.statsGrid}>
-          <StatCard value={String(mockCourseData.totalHours)} label="课时" />
-          <StatCard value={mockCourseData.totalDuration} label="总时长" />
-          <StatCard value={mockCourseData.level} label="难度" />
+          <StatCard value={scenes.length} label="场景" />
+          <StatCard value={`${Math.ceil(scenes.length * 15 / 60)}h`} label="预计时长" />
+          <StatCard value="L2" label="难度" />
         </View>
 
         {/* 标签 */}
         <View style={styles.tagsRow}>
-          {mockCourseData.tags.slice(0, 4).map((tag, index) => (
+          {mockCourseData.tags.map((tag, index) => (
             <View key={tag} style={[styles.tag, index >= 2 && styles.tagSecondary]}>
               <Text style={[styles.tagText, index >= 2 && styles.tagTextSecondary]}>{tag}</Text>
             </View>
@@ -298,7 +286,7 @@ export default function CourseDetailScreen() {
         </View>
         <View style={styles.courseDescCard}>
           <Text style={[styles.courseDescText, !descExpanded && styles.courseDescTextTruncated]}>
-            {mockCourseData.description}
+            {stage.description || '本课程从基础概念出发，系统讲解完整的工作流程。通过实战案例帮助你建立专业的思维方式。'}
           </Text>
           <TouchableOpacity onPress={() => setDescExpanded(!descExpanded)}>
             <Text style={styles.descExpand}>{descExpanded ? '收起' : '展开全部'}</Text>
@@ -308,27 +296,17 @@ export default function CourseDetailScreen() {
         {/* 课程目录 */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>课程目录</Text>
-          <TouchableOpacity onPress={() => {
-            // 后续添加收起/展开功能
-          }}>
-            <Text style={styles.sectionLink}>收起 ▾</Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionLink}>共 {scenes.length} 节</Text>
         </View>
 
-        {/* 章节列表 */}
-        {mockCourseData.chapters.map((chapter) => (
-          <View key={chapter.id} style={styles.chapterGroup}>
-            <View style={styles.chapterHeader}>
-              <Text style={styles.chapterGroupTitle}>{chapter.title}</Text>
-              <Text style={styles.chapterGroupCount}>{chapter.lessons} 节 · {chapter.duration}</Text>
-            </View>
-            <View style={styles.chapterLessons}>
-              {chapter.items.map((lesson) => (
-                <LessonItem key={lesson.id} lesson={lesson} />
-              ))}
-            </View>
+        {/* 场景列表 */}
+        <View style={styles.chapterGroup}>
+          <View style={styles.chapterLessons}>
+            {scenes.map((scene, index) => (
+              <SceneItem key={scene.id} scene={scene} index={index} total={scenes.length} />
+            ))}
           </View>
-        ))}
+        </View>
 
         {/* 占位空间（为底部操作栏留空） */}
         <View style={{ height: 100 }} />
@@ -660,6 +638,10 @@ const styles = StyleSheet.create({
     color: iOSColors.muted,
   },
   lessonDuration: {
+    fontSize: 11,
+    color: iOSColors.muted,
+  },
+  lessonIndex: {
     fontSize: 11,
     color: iOSColors.muted,
   },
