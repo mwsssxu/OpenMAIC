@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>学习首页 - iOS</title>
+  <style>
+    :root {
+      --bg:      linear-gradient(165deg, oklch(97% 0.008 30) 0%, oklch(95% 0.012 40) 50%, oklch(96% 0.01 55) 100%);
+      --bg-solid: oklch(96% 0.01 40);
+      --surface: oklch(100% 0 0 / 0.55);
+      --surface-solid: oklch(100% 0 0);
+      --fg:      oklch(12% 0.015 30);
+      --muted:   oklch(42% 0.015 30);
+      --border:  oklch(94% 0.005 30 / 0.6);
+      --accent:  oklch(58% 0.16 30);
+      --accent-light: oklch(94% 0.025 40);
+      --secondary: oklch(60% 0.10 175);
+      --secondary-light: oklch(94% 0.02 175);
+
+      --font-display: 'Söhne', 'Avenir Next', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-lg: 16px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* iPhone Frame */
+    .phone-frame {
+      width: 390px;
+      height: 844px;
+      background: #1a1a1a;
+      border-radius: 54px;
+      padding: 12px;
+      position: relative;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.3), 0 0 0 2px #333;
+      margin: 24px auto;
+      font-family: var(--font-body);
+    }
+
+    .phone-screen {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      border-radius: 44px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Dynamic Island */
+    .dynamic-island {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 126px;
+      height: 36px;
+      background: #1a1a1a;
+      border-radius: 20px;
+      z-index: 100;
+    }
+
+    /* Status Bar */
+    .status-bar {
+      height: 54px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 28px 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .status-time {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status-icons {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* Content Area */
+    .app-content {
+      position: relative;
+      z-index: 1;
+      height: calc(100% - 54px - 34px - 83px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 var(--space-md) var(--space-md);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Premium: subtle shadow layer under glass cards */
+    .card-shadow {
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02);
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-md) 0 var(--space-sm);
+      margin-bottom: var(--space-lg);
+    }
+
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, oklch(50% 0.13 40) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .user-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .user-name {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+    }
+
+    .user-stats {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+      letter-spacing: 0.005em;
+    }
+
+    .stat-value {
+      color: var(--accent);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .header-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: oklch(100% 0 0 / 0.5);
+      -webkit-backdrop-filter: blur(16px) saturate(150%);
+      backdrop-filter: blur(16px) saturate(150%);
+      border: 0.5px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--fg);
+    }
+
+    /* Notification — expandable */
+    .notification-card {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: var(--space-lg);
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+    }
+
+    .notification-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--accent);
+      border-radius: 0 2px 2px 0;
+    }
+
+    .notif-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      min-height: 44px;
+    }
+
+    .notif-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .notif-badge {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .notif-summary {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .notif-title {
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: -0.005em;
+      margin-bottom: 1px;
+    }
+
+    .notif-time {
+      font-size: 10px;
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    .notif-chevron {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--muted);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .notif-chevron svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .notification-card.expanded .notif-chevron {
+      transform: rotate(180deg);
+    }
+
+    .notif-detail {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.25s ease;
+      opacity: 0;
+    }
+
+    .notification-card.expanded .notif-detail {
+      max-height: 200px;
+      opacity: 1;
+    }
+
+    .notif-detail-inner {
+      padding: 0 var(--space-md) var(--space-sm);
+      padding-left: calc(var(--space-md) + 36px + var(--space-sm));
+    }
+
+    .notif-body {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: var(--space-xs);
+    }
+
+    .notif-actions {
+      display: flex;
+      gap: var(--space-xs);
+    }
+
+    .notif-action {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      min-height: 28px;
+    }
+
+    .notif-action.primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .notif-action.secondary {
+      background: var(--border);
+      color: var(--muted);
+    }
+
+    /* Streak */
+    .streak-card {
+      background: linear-gradient(135deg, oklch(55% 0.14 35) 0%, oklch(50% 0.12 40) 100%);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+      color: white;
+      margin-bottom: var(--space-lg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+
+    .streak-number {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .streak-text {
+      font-size: 11px;
+      opacity: 0.85;
+      margin-top: 2px;
+      letter-spacing: 0.01em;
+    }
+
+    .streak-dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+    }
+
+    .dot.active {
+      background: white;
+    }
+
+    /* Section */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: var(--space-sm);
+      margin-top: var(--space-md);
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .section-link {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* Courses */
+    .course-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-lg);
+    }
+
+    .course-item {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-sm);
+      display: flex;
+      gap: var(--space-sm);
+      min-height: 44px;
+    }
+
+    .course-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .course-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .course-name {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 3px;
+      letter-spacing: -0.005em;
+    }
+
+    .course-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .course-progress {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      margin-top: 6px;
+    }
+
+    .progress-bar {
+      flex: 1;
+      max-width: 64px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .progress-num {
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* Recommended */
+    .recommended-scroll {
+      display: flex;
+      gap: var(--space-sm);
+      overflow-x: auto;
+      padding-bottom: var(--space-sm);
+      margin-bottom: var(--space-lg);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .recommended-card {
+      width: 140px;
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-sm);
+      flex-shrink: 0;
+    }
+
+    .rec-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-xs);
+      font-size: 15px;
+    }
+
+    .rec-name {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      letter-spacing: -0.005em;
+    }
+
+    .rec-cat {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* Notes */
+    .notes-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-sm);
+      margin-bottom: var(--space-lg);
+    }
+
+    .note-card {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-md);
+      text-align: center;
+      min-height: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .note-icon {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .note-label {
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: -0.005em;
+    }
+
+    .note-count {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    /* Quick Functions Grid */
+    .quick-functions {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-md) var(--space-sm);
+      margin-bottom: var(--space-lg);
+    }
+
+    .quick-functions-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: var(--space-sm) var(--space-xs);
+    }
+
+    .quick-fn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-height: 44px;
+      padding: 4px 2px;
+      border-radius: var(--radius-sm);
+      transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .quick-fn:active {
+      background: var(--accent-light);
+    }
+
+    .quick-fn-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .quick-fn-icon svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .quick-fn-icon.coral { background: oklch(92% 0.04 30); color: oklch(55% 0.16 30); }
+    .quick-fn-icon.mint  { background: oklch(92% 0.04 175); color: oklch(52% 0.10 175); }
+    .quick-fn-icon.gold  { background: oklch(92% 0.05 85); color: oklch(55% 0.14 85); }
+    .quick-fn-icon.blue  { background: oklch(92% 0.04 240); color: oklch(52% 0.12 250); }
+    .quick-fn-icon.purple{ background: oklch(92% 0.04 310); color: oklch(52% 0.12 310); }
+
+    .quick-fn-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.2;
+      letter-spacing: -0.005em;
+    }
+
+    /* Bottom Tab Bar */
+    .tab-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 83px;
+      background: oklch(100% 0 0 / 0.72);
+      -webkit-backdrop-filter: blur(32px) saturate(200%);
+      backdrop-filter: blur(32px) saturate(200%);
+      border-top: 0.5px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-start;
+      padding-top: 8px;
+    }
+
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      min-width: 64px;
+      min-height: 44px;
+      color: var(--muted);
+    }
+
+    .tab-item.active {
+      color: var(--accent);
+    }
+
+    .tab-icon {
+      font-size: 22px;
+    }
+
+    .tab-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.005em;
+    }
+
+    /* Home Indicator */
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 134px;
+      height: 5px;
+      background: var(--fg);
+      border-radius: 3px;
+      opacity: 0.2;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone-frame">
+      <div class="phone-screen">
+      <div class="dynamic-island"></div>
+
+    <!-- Status Bar -->
+      <div class="status-bar" data-od-id="status-bar">
+        <span class="status-time" data-od-id="status-time">9:41</span>
+        <div class="status-icons" data-od-id="status-icons">
+          <span>📶</span>
+          <span>📡</span>
+          <span>🔋</span>
+        </div>
+      </div>
+
+      <!-- App Content -->
+      <div class="app-content" data-od-id="app-content">
+        <!-- Header -->
+        <header class="header" data-od-id="header">
+          <div class="avatar" data-od-id="avatar">林</div>
+          <div class="user-info" data-od-id="user-info">
+            <div class="user-name" data-od-id="user-name">林小雨</div>
+            <div class="user-stats" data-od-id="user-stats"><span class="stat-value" data-od-id="stat-days">23</span>天 · <span class="stat-value" data-od-id="stat-courses-count">8</span>门课程 · <span class="stat-value" data-od-id="stat-hours">156</span>小时</div>
+          </div>
+          <div class="header-btn" data-od-id="header-btn">⚙</div>
+        </header>
+
+        <!-- Streak -->
+        <section class="streak-card" data-od-id="streak-card">
+          <div>
+            <div class="streak-number" data-od-id="streak-number">23</div>
+            <div class="streak-text" data-od-id="streak-text">天连续学习</div>
+          </div>
+          <div class="streak-dots" data-od-id="streak-dots">
+            <span class="dot active"></span>
+            <span class="dot active"></span>
+            <span class="dot active"></span>
+            <span class="dot active"></span>
+            <span class="dot active"></span>
+            <span class="dot active"></span>
+            <span class="dot active"></span>
+          </div>
+        </section>
+
+        <!-- Notification (expandable) -->
+        <section class="notification-card" id="notif-card" data-od-id="notification-card" onclick="toggleNotif()">
+          <div class="notif-header" data-od-id="notif-header">
+            <div class="notif-icon" data-od-id="notif-icon">
+              🔔
+              <span class="notif-badge" data-od-id="notif-badge">3</span>
+            </div>
+            <div class="notif-summary" data-od-id="notif-summary">
+              <div class="notif-title" data-od-id="notif-title">数据分析基础 · 新课提醒</div>
+              <div class="notif-time" data-od-id="notif-time">5分钟前</div>
+            </div>
+            <div class="notif-chevron" data-od-id="notif-chevron">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+          <div class="notif-detail" data-od-id="notif-detail">
+            <div class="notif-detail-inner">
+              <div class="notif-body" data-od-id="notif-body">第 13 节「交互式仪表盘」已更新，包含 2 个实战案例和 1 个随堂测验。完成本节后你将解锁下一章「高级筛选」。</div>
+              <div class="notif-actions" data-od-id="notif-actions">
+                <button class="notif-action primary" data-od-id="notif-action-start" onclick="event.stopPropagation()">开始学习</button>
+                <button class="notif-action secondary" data-od-id="notif-action-snooze" onclick="event.stopPropagation()">稍后提醒</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quick Functions -->
+        <section class="quick-functions" data-od-id="quick-functions">
+          <div class="quick-functions-grid" data-od-id="quick-functions-grid">
+            <div class="quick-fn" data-od-id="fn-my-courses">
+              <div class="quick-fn-icon coral">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              </div>
+              <span class="quick-fn-label">我的课程</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-qa-bounty">
+              <div class="quick-fn-icon gold">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <span class="quick-fn-label">问答悬赏</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-shared-notes">
+              <div class="quick-fn-icon mint">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </div>
+              <span class="quick-fn-label">共享笔记</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-study-buddy">
+              <div class="quick-fn-icon blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <span class="quick-fn-label">学习搭子</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-study-match">
+              <div class="quick-fn-icon purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <span class="quick-fn-label">学习匹配</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-growth">
+              <div class="quick-fn-icon coral">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              </div>
+              <span class="quick-fn-label">成长体系</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-invite">
+              <div class="quick-fn-icon gold">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+              </div>
+              <span class="quick-fn-label">邀请奖励</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-recharge">
+              <div class="quick-fn-icon mint">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              </div>
+              <span class="quick-fn-label">充值中心</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-wallet">
+              <div class="quick-fn-icon blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg>
+              </div>
+              <span class="quick-fn-label">钱包</span>
+            </div>
+            <div class="quick-fn" data-od-id="fn-enterprise">
+              <div class="quick-fn-icon purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              </div>
+              <span class="quick-fn-label">企业服务</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recent Courses -->
+        <section data-od-id="section-recent-courses">
+          <div class="section-header">
+            <h2 class="section-title" data-od-id="recent-courses-title">近期课程</h2>
+            <span class="section-link" data-od-id="recent-courses-all">全部</span>
+          </div>
+          <div class="course-list" data-od-id="course-list">
+            <div class="course-item" data-od-id="course-python">
+              <div class="course-icon" data-od-id="course-python-icon">📊</div>
+              <div class="course-info" data-od-id="course-python-info">
+                <div class="course-name" data-od-id="course-python-name">数据分析基础</div>
+                <div class="course-meta" data-od-id="course-python-meta">第 12 节 · 数据可视化</div>
+              </div>
+              <div class="course-progress" data-od-id="course-python-progress">
+                <div class="progress-bar"><div class="progress-fill" style="width:68%"></div></div>
+                <span class="progress-num">68%</span>
+              </div>
+            </div>
+            <div class="course-item" data-od-id="course-js">
+              <div class="course-icon" data-od-id="course-js-icon">💻</div>
+              <div class="course-info" data-od-id="course-js-info">
+                <div class="course-name" data-od-id="course-js-name">Python 编程入门</div>
+                <div class="course-meta" data-od-id="course-js-meta">第 8 节 · 函数与模块</div>
+              </div>
+              <div class="course-progress" data-od-id="course-js-progress">
+                <div class="progress-bar"><div class="progress-fill" style="width:45%"></div></div>
+                <span class="progress-num">45%</span>
+              </div>
+            </div>
+            <div class="course-item" data-od-id="course-ui">
+              <div class="course-icon" data-od-id="course-ui-icon">🎨</div>
+              <div class="course-info" data-od-id="course-ui-info">
+                <div class="course-name" data-od-id="course-ui-name">UI 设计原理</div>
+                <div class="course-meta" data-od-id="course-ui-meta">第 5 节 · 色彩与排版</div>
+              </div>
+              <div class="course-progress" data-od-id="course-ui-progress">
+                <div class="progress-bar"><div class="progress-fill" style="width:28%"></div></div>
+                <span class="progress-num">28%</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recommended -->
+        <section data-od-id="section-recommended">
+          <div class="section-header">
+            <h2 class="section-title" data-od-id="recommended-title">推荐课程</h2>
+            <span class="section-link" data-od-id="recommended-more">更多</span>
+          </div>
+          <div class="recommended-scroll" data-od-id="recommended-scroll">
+            <div class="recommended-card" data-od-id="rec-ml">
+              <div class="rec-icon" data-od-id="rec-ml-icon">🧮</div>
+              <div class="rec-name" data-od-id="rec-ml-name">机器学习概论</div>
+              <div class="rec-cat" data-od-id="rec-ml-cat">人工智能</div>
+            </div>
+            <div class="recommended-card" data-od-id="rec-biz">
+              <div class="rec-icon" data-od-id="rec-biz-icon">📈</div>
+              <div class="rec-name" data-od-id="rec-biz-name">商业数据分析</div>
+              <div class="rec-cat" data-od-id="rec-biz-cat">商业分析</div>
+            </div>
+            <div class="recommended-card" data-od-id="rec-write">
+              <div class="rec-icon" data-od-id="rec-write-icon">📝</div>
+              <div class="rec-name" data-od-id="rec-write-name">写作与表达</div>
+              <div class="rec-cat" data-od-id="rec-write-cat">人文素养</div>
+            </div>
+            <div class="recommended-card" data-od-id="rec-science">
+              <div class="rec-icon" data-od-id="rec-science-icon">🔬</div>
+              <div class="rec-name" data-od-id="rec-science-name">科学思维方法</div>
+              <div class="rec-cat" data-od-id="rec-science-cat">思维方式</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Notes -->
+        <section data-od-id="section-notes">
+          <div class="section-header">
+            <h2 class="section-title" data-od-id="notes-title">我的笔记</h2>
+            <span class="section-link" data-od-id="notes-all">全部</span>
+          </div>
+          <div class="notes-grid" data-od-id="notes-grid">
+            <div class="note-card" data-od-id="note-all">
+              <div class="note-icon" data-od-id="note-all-icon">📝</div>
+              <div class="note-label" data-od-id="note-all-label">全部笔记</div>
+              <div class="note-count" data-od-id="note-all-count">32 条</div>
+            </div>
+            <div class="note-card" data-od-id="note-fav">
+              <div class="note-icon" data-od-id="note-fav-icon">⭐</div>
+              <div class="note-label" data-od-id="note-fav-label">收藏</div>
+              <div class="note-count" data-od-id="note-fav-count">12 条</div>
+            </div>
+            <div class="note-card" data-od-id="note-today">
+              <div class="note-icon" data-od-id="note-today-icon">📅</div>
+              <div class="note-label" data-od-id="note-today-label">今日</div>
+              <div class="note-count" data-od-id="note-today-count">3 条</div>
+            </div>
+            <div class="note-card" data-od-id="note-new">
+              <div class="note-icon" data-od-id="note-new-icon">➕</div>
+              <div class="note-label" data-od-id="note-new-label">新建</div>
+              <div class="note-count" data-od-id="note-new-count">快速记录</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Tab Bar -->
+      <nav class="tab-bar" data-od-id="tab-bar">
+        <div class="tab-item active" data-od-id="tab-home">
+          <span class="tab-icon" data-od-id="tab-home-icon">🏠</span>
+          <span class="tab-label" data-od-id="tab-home-label">首页</span>
+        </div>
+        <div class="tab-item" data-od-id="tab-courses">
+          <span class="tab-icon" data-od-id="tab-courses-icon">📚</span>
+          <span class="tab-label" data-od-id="tab-courses-label">课程</span>
+        </div>
+        <div class="tab-item" data-od-id="tab-notes">
+          <span class="tab-icon" data-od-id="tab-notes-icon">📝</span>
+          <span class="tab-label" data-od-id="tab-notes-label">笔记</span>
+        </div>
+        <div class="tab-item" data-od-id="tab-profile">
+          <span class="tab-icon" data-od-id="tab-profile-icon">👤</span>
+          <span class="tab-label" data-od-id="tab-profile-label">我的</span>
+        </div>
+      </nav>
+
+      <div class="home-indicator" data-od-id="home-indicator"></div>
+    </div>
+  </div>
+
+  <script>
+    function toggleNotif() {
+      document.getElementById('notif-card').classList.toggle('expanded');
+    }
+  </script>
+</body>
+</html>

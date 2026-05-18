@@ -2,62 +2,65 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from '
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, SecondaryColorMap, Rounded, Spacing } from '@/lib/constants/theme';
+import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
-// 统计数据配置
-const statsData = [
-  { key: 'students', label: '活跃学员', value: '864', trend: '+12%', trendUp: true, icon: 'people', color: Colors.semantic.blue },
-  { key: 'hours', label: '课时完成', value: '452h', trend: '+5%', trendUp: true, icon: 'time', color: Colors.semantic.orange },
-  { key: 'renewal', label: '续费率', value: '92%', trend: '-2%', trendUp: false, icon: 'refresh', color: Colors.semantic.green },
-  { key: 'loss', label: '流失率', value: '4.5%', trend: '-1%', trendUp: false, icon: 'trending-down', color: Colors.semantic.purple },
+// iOS 风格颜色系统
+const iOSColors = {
+  bg: 'transparent', // 使用渐变背景
+  bgSolid: '#f5f3f2',
+  surface: 'rgba(255, 255, 255, 0.55)',
+  surfaceSolid: '#FFFFFF',
+  fg: '#1a1a1a',
+  muted: '#666666',
+  border: 'rgba(230, 225, 220, 0.6)',
+  accent: '#c45a1a',
+  accentLight: '#fde8e0',
+  secondary: '#1a8a8a',
+  secondaryLight: '#e8f5f5',
+};
+
+// 快捷功能配置（10个）
+const quickFunctions = [
+  { key: 'courses', title: '我的课程', icon: 'book', color: '#f45a1a', bgColor: '#fce8e0', route: '/courses' },
+  { key: 'qa', title: '问答悬赏', icon: 'help-circle', color: '#d97706', bgColor: '#fef3c7', route: '/questions' },
+  { key: 'notes', title: '共享笔记', icon: 'document-text', color: '#14b8a6', bgColor: '#e8f5f5', route: '/notes' },
+  { key: 'buddy', title: '学习搭子', icon: 'happy', color: '#2563eb', bgColor: '#dbeafe', route: '/buddy' },
+  { key: 'matching', title: '学习匹配', icon: 'people', color: '#8b5cf6', bgColor: '#ede9fe', route: '/matching' },
+  { key: 'growth', title: '成长体系', icon: 'trending-up', color: '#f45a1a', bgColor: '#fce8e0', route: '/gamification' },
+  { key: 'invite', title: '邀请奖励', icon: 'gift', color: '#d97706', bgColor: '#fef3c7', route: '/invite' },
+  { key: 'recharge', title: '充值中心', icon: 'card', color: '#14b8a6', bgColor: '#e8f5f5', route: '/payment' },
+  { key: 'wallet', title: '钱包', icon: 'cash', color: '#2563eb', bgColor: '#dbeafe', route: '/wallet' },
+  { key: 'enterprise', title: '企业服务', icon: 'briefcase', color: '#8b5cf6', bgColor: '#ede9fe', route: '/enterprise' },
 ];
 
-// 快捷操作配置 - 使用主题色
-const quickActions = [
-  { title: '查看课程', icon: 'book', color: SecondaryColorMap.courses, route: '/courses' },
-  { title: '发布问题', icon: 'help-circle', color: SecondaryColorMap.questions, route: '/questions' },
-  { title: '写笔记', icon: 'create', color: SecondaryColorMap.notes, route: '/notes' },
+// 近期课程数据
+const recentCourses = [
+  { id: 1, name: '数据分析基础', section: '第 12 节 · 数据可视化', progress: 68, icon: '📊', color: '#fce8e0' },
+  { id: 2, name: 'Python 编程入门', section: '第 8 节 · 函数与模块', progress: 45, icon: '💻', color: '#dbeafe' },
+  { id: 3, name: 'UI 设计原理', section: '第 5 节 · 色彩与排版', progress: 28, icon: '🎨', color: '#ede9fe' },
 ];
 
-// 功能入口配置 - 使用语义颜色
-const workbenchItems = [
-  { key: 'courses', title: '我的课程', icon: 'book', color: SecondaryColorMap.courses, route: '/courses' },
-  { key: 'questions', title: '问答悬赏', icon: 'chatbubble-ellipses', color: SecondaryColorMap.questions, route: '/questions' },
-  { key: 'notes', title: '共享笔记', icon: 'document-text', color: SecondaryColorMap.notes, route: '/notes' },
-  { key: 'buddy', title: '学习搭子', icon: 'happy', color: SecondaryColorMap.buddy, route: '/buddy' },
-  { key: 'matching', title: '学习匹配', icon: 'people', color: SecondaryColorMap.matching, route: '/matching' },
-  { key: 'gamification', title: '成长体系', icon: 'trophy', color: SecondaryColorMap.gamification, route: '/gamification' },
-  { key: 'invite', title: '邀请奖励', icon: 'gift', color: SecondaryColorMap.invite, route: '/invite' },
-  { key: 'payment', title: '充值中心', icon: 'card', color: SecondaryColorMap.payment, route: '/payment' },
-  { key: 'wallet', title: '钱包', icon: 'cash', color: SecondaryColorMap.wallet, route: '/wallet' },
-  { key: 'enterprise', title: '企业服务', icon: 'briefcase', color: SecondaryColorMap.enterprise, route: '/enterprise' },
+// 推荐课程数据
+const recommendedCourses = [
+  { id: 1, name: '机器学习概论', category: '人工智能', icon: '🧮' },
+  { id: 2, name: '商业数据分析', category: '商业分析', icon: '📈' },
+  { id: 3, name: '写作与表达', category: '人文素养', icon: '📝' },
+  { id: 4, name: '科学思维方法', category: '思维方式', icon: '🔬' },
 ];
 
-// 单个统计卡片组件
-function StatCard({ item, isFirst }: { item: typeof statsData[0]; isFirst: boolean }) {
-  return (
-    <View style={[styles.statCard, isFirst ? styles.statCardFirst : styles.statCardSecond]}>
-      <View style={[styles.statIconBox, { backgroundColor: item.color + '20' }]}>
-        <Ionicons name={item.icon as any} size={22} color={item.color} />
-      </View>
-      <View style={styles.statContent}>
-        <Text style={styles.statLabel}>{item.label}</Text>
-        <View style={styles.statValueRow}>
-          <Text style={styles.statValue}>{item.value}</Text>
-          <Text style={[styles.statTrend, { color: item.trendUp ? Colors.semantic.green : Colors.semantic.red }]}>
-            {item.trend}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
+// 笔记分类数据
+const notesCategories = [
+  { key: 'all', title: '全部笔记', icon: '📝', count: '32 条' },
+  { key: 'fav', title: '收藏', icon: '⭐', count: '12 条' },
+  { key: 'today', title: '今日', icon: '📅', count: '3 条' },
+  { key: 'new', title: '新建', icon: '➕', count: '快速记录' },
+];
 
-// 功能入口按钮组件
-function FeatureButton({ item, onPress, index }: { item: typeof workbenchItems[0]; onPress: () => void; index: number }) {
+// 快捷功能按钮组件
+function QuickFunctionBtn({ item, onPress }: { item: typeof quickFunctions[0]; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -74,51 +77,75 @@ function FeatureButton({ item, onPress, index }: { item: typeof workbenchItems[0
     }).start();
   };
 
-  // 根据索引计算位置（每行5个）
-  const row = Math.floor(index / 5);
-  const col = index % 5;
-  const isFirst = col === 0;
-  const isLast = col === 4;
-  const isLastRow = row === Math.floor((workbenchItems.length - 1) / 5);
-
   return (
     <TouchableOpacity
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       activeOpacity={0.9}
-      style={[
-        styles.featureBtn,
-        isFirst && styles.featureBtnFirst,
-        isLast && styles.featureBtnLast,
-        isLastRow && styles.featureBtnLastRow,
-      ]}
+      style={styles.quickFnBtn}
     >
-      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-        <View style={[styles.featureIconBox, { backgroundColor: item.color + '20' }]}>
-          <Ionicons name={item.icon as any} size={24} color={item.color} />
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
+        <View style={[styles.quickFnIcon, { backgroundColor: item.bgColor }]}>
+          <Ionicons name={item.icon as any} size={16} color={item.color} />
         </View>
-        <Text style={styles.featureTitle}>{item.title}</Text>
+        <Text style={styles.quickFnLabel}>{item.title}</Text>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-export default function WorkbenchScreen() {
+// 课程项组件
+function CourseItem({ course }: { course: typeof recentCourses[0] }) {
+  return (
+    <View style={styles.courseItem}>
+      <View style={[styles.courseIcon, { backgroundColor: course.color }]}>
+        <Text style={styles.courseIconText}>{course.icon}</Text>
+      </View>
+      <View style={styles.courseInfo}>
+        <Text style={styles.courseName}>{course.name}</Text>
+        <Text style={styles.courseMeta}>{course.section}</Text>
+        <View style={styles.courseProgress}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
+          </View>
+          <Text style={styles.progressNum}>{course.progress}%</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// 推荐课程卡片组件
+function RecommendedCard({ course }: { course: typeof recommendedCourses[0] }) {
+  return (
+    <View style={styles.recommendedCard}>
+      <View style={[styles.recIcon, { backgroundColor: iOSColors.accentLight }]}>
+        <Text style={styles.recIconText}>{course.icon}</Text>
+      </View>
+      <Text style={styles.recName} numberOfLines={1}>{course.name}</Text>
+      <Text style={styles.recCat}>{course.category}</Text>
+    </View>
+  );
+}
+
+// 笔记卡片组件
+function NoteCard({ note }: { note: typeof notesCategories[0] }) {
+  return (
+    <View style={styles.noteCard}>
+      <Text style={styles.noteIcon}>{note.icon}</Text>
+      <Text style={styles.noteLabel}>{note.title}</Text>
+      <Text style={styles.noteCount}>{note.count}</Text>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { onPress } = useFeedback();
   const haptics = useHaptics();
-
-  // 获取当前时间问候语
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 6) return '夜深了';
-    if (hour < 12) return '早上好';
-    if (hour < 14) return '中午好';
-    if (hour < 18) return '下午好';
-    return '晚上好';
-  };
+  const [notifExpanded, setNotifExpanded] = useState(false);
 
   const handlePress = (route: string) => {
     haptics.light();
@@ -127,345 +154,528 @@ export default function WorkbenchScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* 欢迎区域 */}
-      <View style={styles.welcomeSection}>
-        <View style={styles.welcomeHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={28} color={Colors.neutral.white} />
-            </View>
+    <View style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header 用户区 */}
+        <View style={styles.header}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(user?.nickname || user?.email || '用户').charAt(0)}</Text>
           </View>
-          <View style={styles.welcomeText}>
-            <Text style={styles.greetingLabel}>个人工作台</Text>
-            <Text style={styles.greetingText}>{getGreeting()}, {user?.nickname || user?.email || '用户'} 👋</Text>
-            <Text style={styles.greetingHint}>今天要完成什么任务？</Text>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
+            <Text style={styles.userStats}>
+              <Text style={styles.statValue}>23</Text>天 ·
+              <Text style={styles.statValue}>8</Text>门课程 ·
+              <Text style={styles.statValue}>156</Text>小时
+            </Text>
           </View>
-        </View>
-      </View>
-
-      {/* 统计卡片网格 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>数据概览</Text>
-        <View style={styles.statsGrid}>
-          {/* 第一行 */}
-          <View style={styles.statsRow}>
-            <StatCard item={statsData[0]} isFirst={true} />
-            <StatCard item={statsData[1]} isFirst={false} />
-          </View>
-          {/* 第二行 */}
-          <View style={styles.statsRow}>
-            <StatCard item={statsData[2]} isFirst={true} />
-            <StatCard item={statsData[3]} isFirst={false} />
-          </View>
-        </View>
-      </View>
-
-      {/* 快捷操作 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>快捷操作</Text>
-        <View style={styles.quickActions}>
-          {quickActions.map((action, index) => (
-            <TouchableOpacity
-              key={action.title}
-              style={[
-                styles.quickBtn,
-                { backgroundColor: action.color },
-                index === 0 && styles.quickBtnFirst,
-                index === quickActions.length - 1 && styles.quickBtnLast,
-              ]}
-              onPress={() => router.push(action.route as any)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name={action.icon as any} size={20} color={Colors.neutral.white} />
-              <Text style={styles.quickBtnText}>{action.title}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* 功能入口网格 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>常用功能</Text>
-        <View style={styles.featuresGrid}>
-          {workbenchItems.map((item, index) => (
-            <FeatureButton
-              key={item.key}
-              item={item}
-              index={index}
-              onPress={() => handlePress(item.route)}
-            />
-          ))}
-        </View>
-      </View>
-
-      {/* 渐变卡片 - 活跃学员 */}
-      <View style={styles.section}>
-        <View style={styles.gradientCard}>
-          <View style={styles.gradientDecor}>
-            <Ionicons name="school" size={80} color={Colors.neutral.white} style={{ opacity: 0.15 }} />
-          </View>
-          <Text style={styles.gradientLabel}>本月活跃学员</Text>
-          <Text style={styles.gradientValue}>864</Text>
-          <View style={styles.progressContainer}>
-            <View style={styles.progressRow}>
-              <Text style={styles.progressLabel}>月度目标达成</Text>
-              <Text style={styles.progressPercent}>78%</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '78%' }]} />
-            </View>
-          </View>
-          <TouchableOpacity style={styles.gradientBtn} activeOpacity={0.8}>
-            <Text style={styles.gradientBtnText}>查看详情</Text>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/profile')}>
+            <Ionicons name="settings-outline" size={18} color={iOSColors.fg} />
           </TouchableOpacity>
         </View>
-      </View>
-    </ScrollView>
+
+        {/* Streak 连续学习卡片 */}
+        <View style={styles.streakCard}>
+          <View>
+            <Text style={styles.streakNumber}>23</Text>
+            <Text style={styles.streakText}>天连续学习</Text>
+          </View>
+          <View style={styles.streakDots}>
+            {[1,2,3,4,5,6,7].map(i => (
+              <View key={i} style={[styles.dot, i <= 5 && styles.dotActive]} />
+            ))}
+          </View>
+        </View>
+
+        {/* Notification 通知卡片 */}
+        <TouchableOpacity
+          style={[styles.notificationCard, notifExpanded && styles.notificationCardExpanded]}
+          onPress={() => setNotifExpanded(!notifExpanded)}
+          activeOpacity={0.9}
+        >
+          <View style={styles.notifHeader}>
+            <View style={styles.notifIcon}>
+              <Text style={styles.notifIconEmoji}>🔔</Text>
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>3</Text>
+              </View>
+            </View>
+            <View style={styles.notifSummary}>
+              <Text style={styles.notifTitle}>数据分析基础 · 新课提醒</Text>
+              <Text style={styles.notifTime}>5分钟前</Text>
+            </View>
+            <View style={styles.notifChevron}>
+              <Ionicons
+                name={notifExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={iOSColors.muted}
+              />
+            </View>
+          </View>
+          {notifExpanded && (
+            <View style={styles.notifDetail}>
+              <Text style={styles.notifBody}>
+                第 13 节「交互式仪表盘」已更新，包含 2 个实战案例和 1 个随堂测验。完成本节后你将解锁下一章「高级筛选」。
+              </Text>
+              <View style={styles.notifActions}>
+                <TouchableOpacity style={styles.notifActionPrimary} onPress={() => router.push('/courses')}>
+                  <Text style={styles.notifActionPrimaryText}>开始学习</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.notifActionSecondary}>
+                  <Text style={styles.notifActionSecondaryText}>稍后提醒</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Quick Functions 快捷功能 */}
+        <View style={styles.quickFunctions}>
+          <View style={styles.quickFunctionsGrid}>
+            {quickFunctions.map((item) => (
+              <QuickFunctionBtn
+                key={item.key}
+                item={item}
+                onPress={() => handlePress(item.route)}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* Recent Courses 近期课程 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>近期课程</Text>
+            <TouchableOpacity onPress={() => router.push('/courses')}>
+              <Text style={styles.sectionLink}>全部</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.courseList}>
+            {recentCourses.map(course => (
+              <CourseItem key={course.id} course={course} />
+            ))}
+          </View>
+        </View>
+
+        {/* Recommended 推荐课程 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>推荐课程</Text>
+            <TouchableOpacity onPress={() => router.push('/courses')}>
+              <Text style={styles.sectionLink}>更多</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.recommendedScroll}
+          >
+            {recommendedCourses.map(course => (
+              <RecommendedCard key={course.id} course={course} />
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Notes 我的笔记 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>我的笔记</Text>
+            <TouchableOpacity onPress={() => router.push('/notes')}>
+              <Text style={styles.sectionLink}>全部</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.notesGrid}>
+            {notesCategories.map(note => (
+              <NoteCard key={note.key} note={note} />
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.neutral.background,
+    backgroundColor: iOSColors.bgSolid,
   },
-  // 欢迎区域
-  welcomeSection: {
+  scrollView: {
+    flex: 1,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
   },
-  welcomeHeader: {
+  // Header 用户区
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatarContainer: {
-    marginRight: Spacing.md,
+    gap: Spacing.sm,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.lg,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary.main,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: iOSColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  welcomeText: {
+  avatarText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 18,
+  },
+  userInfo: {
     flex: 1,
   },
-  greetingLabel: {
-    fontSize: 12,
+  userName: {
+    fontSize: 18,
     fontWeight: '600',
-    color: Colors.primary.main,
-    marginBottom: 2,
-    letterSpacing: 1,
+    color: iOSColors.fg,
+    letterSpacing: -0.3,
   },
-  greetingText: {
-    fontSize: 22,
+  userStats: {
+    fontSize: 12,
+    color: iOSColors.muted,
+    marginTop: 2,
+  },
+  statValue: {
+    color: iOSColors.accent,
+    fontWeight: '600',
+  },
+  headerBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+  },
+  // Streak 连续学习
+  streakCard: {
+    backgroundColor: '#c45a1a',
+    borderRadius: Rounded.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  streakNumber: {
+    fontSize: 32,
     fontWeight: '700',
-    color: Colors.neutral.textPrimary,
-    marginBottom: 2,
+    color: '#fff',
+    letterSpacing: -1,
   },
-  greetingHint: {
-    fontSize: 14,
-    color: Colors.neutral.textSecondary,
+  streakText: {
+    fontSize: 11,
+    color: '#fff',
+    opacity: 0.85,
+    marginTop: 2,
+  },
+  streakDots: {
+    flexDirection: 'row',
+    gap: 5,
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  dotActive: {
+    backgroundColor: '#fff',
+  },
+  // Notification 通知卡片
+  notificationCard: {
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    marginBottom: Spacing.lg,
+    overflow: 'hidden',
+  },
+  notificationCardExpanded: {
+    backgroundColor: iOSColors.surfaceSolid,
+  },
+  notifHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    minHeight: 44,
+  },
+  notifIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: iOSColors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  notifIconEmoji: {
+    fontSize: 16,
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: iOSColors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  notifSummary: {
+    flex: 1,
+  },
+  notifTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginBottom: 1,
+  },
+  notifTime: {
+    fontSize: 10,
+    color: iOSColors.muted,
+    opacity: 0.7,
+  },
+  notifChevron: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifDetail: {
+    padding: Spacing.sm,
+    paddingLeft: Spacing.md + 36 + Spacing.sm,
+  },
+  notifBody: {
+    fontSize: 12,
+    color: iOSColors.muted,
+    lineHeight: 18,
+    marginBottom: Spacing.xs,
+  },
+  notifActions: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  notifActionPrimary: {
+    backgroundColor: iOSColors.accent,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifActionPrimaryText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  notifActionSecondary: {
+    backgroundColor: iOSColors.border,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifActionSecondaryText: {
+    color: iOSColors.muted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Quick Functions 快捷功能
+  quickFunctions: {
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.lg,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  quickFunctionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  quickFnBtn: {
+    width: '20%',
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: Spacing.sm,
+  },
+  quickFnIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickFnLabel: {
+    fontSize: 10,
+    color: iOSColors.muted,
+    marginTop: 4,
+    textAlign: 'center',
   },
   // Section 通用
   section: {
+    marginBottom: Spacing.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: Spacing.sm,
     marginTop: Spacing.md,
-    paddingHorizontal: Spacing.md,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: Colors.neutral.textPrimary,
-    marginBottom: Spacing.sm,
+    color: iOSColors.fg,
   },
-  // 统计卡片 - 使用 flexWrap 替代 gap
-  statsGrid: {
-    backgroundColor: Colors.neutral.card,
-    borderRadius: Rounded.lg,
-    padding: Spacing.sm,
+  sectionLink: {
+    fontSize: 12,
+    color: iOSColors.accent,
+    fontWeight: '500',
   },
-  statsRow: {
-    flexDirection: 'row',
-    marginBottom: Spacing.sm,
+  // Courses 课程列表
+  courseList: {
+    gap: Spacing.sm,
   },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.neutral.background,
+  courseItem: {
+    backgroundColor: iOSColors.surface,
     borderRadius: Rounded.md,
-    padding: Spacing.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.sm,
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: Spacing.sm,
   },
-  statCardFirst: {
-    marginRight: Spacing.sm,
-  },
-  statCardSecond: {
-    marginLeft: 0,
-  },
-  statIconBox: {
+  courseIcon: {
     width: 44,
     height: 44,
     borderRadius: Rounded.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.sm,
   },
-  statContent: {
+  courseIconText: {
+    fontSize: 18,
+  },
+  courseInfo: {
     flex: 1,
   },
-  statLabel: {
-    fontSize: 13,
-    color: Colors.neutral.textSecondary,
-    marginBottom: 2,
-  },
-  statValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.neutral.textPrimary,
-    marginRight: 4,
-  },
-  statTrend: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  // 快捷操作
-  quickActions: {
-    flexDirection: 'row',
-    backgroundColor: Colors.neutral.card,
-    borderRadius: Rounded.lg,
-    padding: Spacing.md,
-  },
-  quickBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Rounded.sm,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  quickBtnFirst: {
-    marginRight: Spacing.sm,
-  },
-  quickBtnLast: {
-    marginLeft: 0,
-  },
-  quickBtnText: {
-    marginLeft: Spacing.xs,
+  courseName: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.neutral.white,
+    color: iOSColors.fg,
+    marginBottom: 3,
   },
-  // 功能入口 - 使用精确布局
-  featuresGrid: {
+  courseMeta: {
+    fontSize: 11,
+    color: iOSColors.muted,
+  },
+  courseProgress: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: Colors.neutral.card,
-    borderRadius: Rounded.lg,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
-  },
-  featureBtn: {
-    width: '20%',
     alignItems: 'center',
-    paddingVertical: Spacing.md,
-  },
-  featureBtnFirst: {
-    paddingLeft: 0,
-  },
-  featureBtnLast: {
-    paddingRight: 0,
-  },
-  featureBtnLastRow: {
-    paddingBottom: 0,
-  },
-  featureIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: Rounded.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  featureTitle: {
-    fontSize: 12,
-    color: Colors.neutral.textPrimary,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  // 渐变卡片
-  gradientCard: {
-    backgroundColor: Colors.primary.main,
-    borderRadius: Rounded.lg,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    overflow: 'hidden',
-  },
-  gradientDecor: {
-    position: 'absolute',
-    right: -20,
-    top: -20,
-  },
-  gradientLabel: {
-    fontSize: 14,
-    color: Colors.neutral.white,
-    opacity: 0.8,
-  },
-  gradientValue: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: Colors.neutral.white,
-    marginTop: 4,
-  },
-  progressContainer: {
-    marginTop: Spacing.lg,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
-  },
-  progressLabel: {
-    fontSize: 12,
-    color: Colors.neutral.white,
-    fontWeight: '500',
-  },
-  progressPercent: {
-    fontSize: 12,
-    color: Colors.neutral.white,
-    fontWeight: '600',
+    gap: Spacing.xs,
+    marginTop: 6,
   },
   progressBar: {
-    height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: Rounded.full,
+    flex: 1,
+    maxWidth: 64,
+    height: 3,
+    backgroundColor: iOSColors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   progressFill: {
-    height: 8,
-    backgroundColor: Colors.neutral.white,
-    borderRadius: Rounded.full,
+    height: 3,
+    backgroundColor: iOSColors.accent,
+    borderRadius: 2,
   },
-  gradientBtn: {
-    marginTop: Spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  progressNum: {
+    fontSize: 11,
+    color: iOSColors.muted,
+    minWidth: 32,
+    textAlign: 'right',
+  },
+  // Recommended 推荐课程
+  recommendedScroll: {
+    marginBottom: Spacing.lg,
+  },
+  recommendedCard: {
+    width: 140,
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.sm,
+    marginRight: Spacing.sm,
+  },
+  recIcon: {
+    width: 36,
+    height: 36,
     borderRadius: Rounded.sm,
-    paddingVertical: Spacing.sm,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xs,
   },
-  gradientBtnText: {
-    fontSize: 14,
+  recIconText: {
+    fontSize: 15,
+  },
+  recName: {
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.neutral.white,
+    color: iOSColors.fg,
+    marginBottom: 2,
+  },
+  recCat: {
+    fontSize: 11,
+    color: iOSColors.muted,
+  },
+  // Notes 笔记网格
+  notesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  noteCard: {
+    width: '48%',
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.md,
+    alignItems: 'center',
+    minHeight: 80,
+  },
+  noteIcon: {
+    fontSize: 18,
+    marginBottom: 4,
+  },
+  noteLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: iOSColors.fg,
+  },
+  noteCount: {
+    fontSize: 11,
+    color: iOSColors.muted,
+    marginTop: 1,
   },
 });
