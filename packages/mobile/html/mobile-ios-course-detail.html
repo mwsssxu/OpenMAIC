@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>课程详情 - iOS</title>
+  <style>
+    :root {
+      --bg:      linear-gradient(165deg, oklch(97% 0.008 30) 0%, oklch(95% 0.012 40) 50%, oklch(96% 0.01 55) 100%);
+      --bg-solid: oklch(96% 0.01 40);
+      --surface: oklch(100% 0 0 / 0.55);
+      --surface-solid: oklch(100% 0 0);
+      --fg:      oklch(12% 0.015 30);
+      --muted:   oklch(42% 0.015 30);
+      --border:  oklch(94% 0.005 30 / 0.6);
+      --accent:  oklch(58% 0.16 30);
+      --accent-light: oklch(94% 0.025 40);
+      --secondary: oklch(60% 0.10 175);
+      --secondary-light: oklch(94% 0.02 175);
+
+      --font-display: 'Söhne', 'Avenir Next', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-lg: 16px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* iPhone Frame */
+    .phone-frame {
+      width: 390px;
+      height: 844px;
+      background: #1a1a1a;
+      border-radius: 54px;
+      padding: 12px;
+      position: relative;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.3), 0 0 0 2px #333;
+      margin: 24px auto;
+      font-family: var(--font-body);
+    }
+
+    .phone-screen {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      border-radius: 44px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .dynamic-island {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 126px;
+      height: 36px;
+      background: #1a1a1a;
+      border-radius: 20px;
+      z-index: 100;
+    }
+
+    .status-bar {
+      height: 54px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 28px 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: white;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+    }
+
+    .status-time {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status-icons {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* Course Hero Banner */
+    .course-hero {
+      width: 100%;
+      height: 220px;
+      background: linear-gradient(135deg, oklch(65% 0.14 30) 0%, oklch(50% 0.12 40) 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .course-hero::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background: linear-gradient(to top, var(--bg-solid), transparent);
+    }
+
+    .hero-pattern {
+      position: absolute;
+      inset: 0;
+      opacity: 0.08;
+      background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0);
+      background-size: 24px 24px;
+    }
+
+    .hero-emoji {
+      position: absolute;
+      bottom: 32px;
+      left: 20px;
+      font-size: 48px;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+      z-index: 2;
+    }
+
+    .hero-back-btn {
+      position: absolute;
+      top: 58px;
+      left: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: oklch(100% 0 0 / 0.25);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      border: none;
+      cursor: pointer;
+    }
+
+    .hero-back-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: white;
+      fill: none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .hero-share-btn {
+      position: absolute;
+      top: 58px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: oklch(100% 0 0 / 0.25);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      border: none;
+      cursor: pointer;
+    }
+
+    .hero-share-btn svg {
+      width: 16px;
+      height: 16px;
+      stroke: white;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Content */
+    .app-content {
+      position: relative;
+      z-index: 1;
+      height: calc(100% - 54px - 34px - 83px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 var(--space-md) var(--space-md);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Course Info Section */
+    .course-info {
+      padding-top: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .course-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+      margin-bottom: var(--space-xs);
+    }
+
+    .course-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: var(--space-sm);
+    }
+
+    .course-meta-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+
+    .instructor {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .instructor-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, oklch(70% 0.08 85), oklch(58% 0.10 80));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: white;
+      font-weight: 600;
+    }
+
+    .instructor-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .meta-divider {
+      width: 1px;
+      height: 14px;
+      background: var(--border);
+    }
+
+    .meta-stat {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .meta-stat svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-xs);
+      margin-bottom: var(--space-lg);
+    }
+
+    .stat-card {
+      background: var(--surface);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-sm);
+      text-align: center;
+    }
+
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Section Titles */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-sm);
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .section-link {
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* Course Description */
+    .course-desc-card {
+      background: var(--surface);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .course-desc-text {
+      font-size: 13px;
+      color: var(--fg);
+      line-height: 1.65;
+    }
+
+    .course-desc-text.truncated {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .desc-expand {
+      font-size: 12px;
+      color: var(--accent);
+      margin-top: var(--space-xs);
+      cursor: pointer;
+      display: inline-block;
+    }
+
+    /* Tags */
+    .tags-row {
+      display: flex;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-lg);
+    }
+
+    .tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .tag.secondary {
+      background: var(--secondary-light);
+      color: var(--secondary);
+    }
+
+    /* Chapter List */
+    .chapter-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+      margin-bottom: var(--space-lg);
+    }
+
+    .chapter-group {
+      margin-bottom: var(--space-md);
+    }
+
+    .chapter-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-xs) 0;
+      margin-bottom: var(--space-xs);
+    }
+
+    .chapter-group-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .chapter-group-count {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .lesson-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+      background: var(--surface);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      min-height: 44px;
+      transition: transform 0.15s;
+    }
+
+    .lesson-item:active {
+      transform: scale(0.98);
+    }
+
+    .lesson-item.completed {
+      opacity: 0.65;
+    }
+
+    .lesson-item.current {
+      border-color: var(--accent);
+      background: oklch(100% 0 0 / 0.7);
+    }
+
+    .lesson-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .lesson-num.completed {
+      background: var(--secondary);
+      color: white;
+    }
+
+    .lesson-num.current {
+      background: var(--accent);
+      color: white;
+    }
+
+    .lesson-num.locked {
+      background: oklch(92% 0.005 30);
+      color: var(--muted);
+    }
+
+    .lesson-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .lesson-name {
+      font-size: 13px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .lesson-meta {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: var(--space-xs);
+      margin-top: 2px;
+    }
+
+    .lesson-type {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .lesson-type svg {
+      width: 10px;
+      height: 10px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .lesson-duration {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Action Bar (sticky bottom above tab bar) */
+    .action-bar {
+      position: absolute;
+      bottom: 83px;
+      left: 0;
+      right: 0;
+      padding: var(--space-sm) var(--space-md);
+      background: oklch(100% 0 0 / 0.85);
+      backdrop-filter: blur(24px) saturate(180%);
+      border-top: 0.5px solid var(--border);
+      display: flex;
+      gap: var(--space-sm);
+      z-index: 20;
+    }
+
+    .btn-primary {
+      flex: 1;
+      height: 48px;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+    }
+
+    .btn-primary:active {
+      opacity: 0.85;
+    }
+
+    .btn-primary svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .btn-secondary {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius);
+      background: var(--accent-light);
+      color: var(--accent);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .btn-secondary svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Bottom Tab Bar */
+    .tab-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 83px;
+      background: oklch(100% 0 0 / 0.72);
+      backdrop-filter: blur(32px) saturate(200%);
+      border-top: 0.5px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-start;
+      padding-top: 8px;
+      z-index: 30;
+    }
+
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      min-width: 64px;
+      min-height: 44px;
+      color: var(--muted);
+    }
+
+    .tab-item.active {
+      color: var(--accent);
+    }
+
+    .tab-icon {
+      font-size: 22px;
+    }
+
+    .tab-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.005em;
+    }
+
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 134px;
+      height: 5px;
+      background: var(--fg);
+      border-radius: 3px;
+      opacity: 0.2;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone-frame" data-od-id="phone-frame">
+    <div class="phone-screen" data-od-id="phone-screen">
+      <div class="dynamic-island" data-od-id="dynamic-island"></div>
+
+      <!-- Status Bar (on hero) -->
+      <div class="status-bar" data-od-id="status-bar">
+        <span class="status-time" data-od-id="status-time">9:41</span>
+        <div class="status-icons" data-od-id="status-icons">
+          <span>📶</span>
+          <span>📡</span>
+          <span>🔋</span>
+        </div>
+      </div>
+
+      <!-- Course Hero Banner -->
+      <div class="course-hero" data-od-id="course-hero">
+        <div class="hero-pattern"></div>
+        <button class="hero-back-btn" data-od-id="hero-back-btn" onclick="history.back()">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="hero-share-btn" data-od-id="hero-share-btn">
+          <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>
+        <div class="hero-emoji" data-od-id="hero-emoji">📊</div>
+      </div>
+
+      <!-- Scrollable Content -->
+      <div class="app-content" data-od-id="app-content">
+
+        <!-- Course Info -->
+        <section class="course-info" data-od-id="course-info">
+          <h1 class="course-title" data-od-id="course-title">数据分析基础</h1>
+          <p class="course-subtitle" data-od-id="course-subtitle">从数据采集到可视化，掌握完整的分析工作流</p>
+
+          <div class="course-meta-row" data-od-id="course-meta-row">
+            <div class="instructor" data-od-id="instructor">
+              <div class="instructor-avatar" data-od-id="instructor-avatar">陈</div>
+              <span class="instructor-name" data-od-id="instructor-name">陈教授</span>
+            </div>
+            <div class="meta-divider"></div>
+            <span class="meta-stat" data-od-id="meta-students">
+              <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              12,847
+            </span>
+            <div class="meta-divider"></div>
+            <span class="meta-stat" data-od-id="meta-rating">
+              <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              4.8
+            </span>
+          </div>
+        </section>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid" data-od-id="stats-grid">
+          <div class="stat-card" data-od-id="stat-hours">
+            <div class="stat-value">24</div>
+            <div class="stat-label">课时</div>
+          </div>
+          <div class="stat-card" data-od-id="stat-duration">
+            <div class="stat-value">18h</div>
+            <div class="stat-label">总时长</div>
+          </div>
+          <div class="stat-card" data-od-id="stat-level">
+            <div class="stat-value">L2</div>
+            <div class="stat-label">难度</div>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="tags-row" data-od-id="tags-row">
+          <span class="tag" data-od-id="tag-data">数据科学</span>
+          <span class="tag" data-od-id="tag-python">Python</span>
+          <span class="tag secondary" data-od-id="tag-visual">可视化</span>
+          <span class="tag secondary" data-od-id="tag-stats">统计学</span>
+        </div>
+
+        <!-- Description -->
+        <div class="section-header">
+          <h2 class="section-title" data-od-id="desc-title">课程简介</h2>
+        </div>
+        <div class="course-desc-card" data-od-id="desc-card">
+          <div class="course-desc-text truncated" data-od-id="desc-text">
+            本课程从数据分析的基础概念出发，系统讲解数据采集、清洗、探索性分析、统计推断到数据可视化的完整工作流。使用 Python 生态中的 pandas、numpy、matplotlib 等核心工具，通过 12 个真实业务场景的实战案例，帮助你建立数据驱动的思维方式。课程结束后，你将能够独立完成从原始数据到洞察报告的全流程。
+          </div>
+          <span class="desc-expand" data-od-id="desc-expand" onclick="expandDesc()">展开全部</span>
+        </div>
+
+        <!-- Chapters -->
+        <div class="section-header">
+          <h2 class="section-title" data-od-id="chapters-title">课程目录</h2>
+          <span class="section-link" data-od-id="chapters-toggle">收起 ▾</span>
+        </div>
+
+        <!-- Chapter 1 -->
+        <div class="chapter-group" data-od-id="chapter-1">
+          <div class="chapter-header">
+            <span class="chapter-group-title" data-od-id="ch1-title">第一章：数据分析导论</span>
+            <span class="chapter-group-count" data-od-id="ch1-count">4 节 · 2h15m</span>
+          </div>
+          <div class="chapter-lessons">
+            <div class="lesson-item completed" data-od-id="lesson-1-1">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">什么是数据分析</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">25 分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item completed" data-od-id="lesson-1-2">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">数据分析工作流概览</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">32 分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item completed" data-od-id="lesson-1-3">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">Python 环境搭建</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">40 分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item completed" data-od-id="lesson-1-4">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">第一章测验</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    测验
+                  </span>
+                  <span class="lesson-duration">15 分钟</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chapter 2 -->
+        <div class="chapter-group" data-od-id="chapter-2">
+          <div class="chapter-header">
+            <span class="chapter-group-title" data-od-id="ch2-title">第二章：数据获取与清洗</span>
+            <span class="chapter-group-count" data-od-id="ch2-count">5 节 · 3h30m</span>
+          </div>
+          <div class="chapter-lessons">
+            <div class="lesson-item completed" data-od-id="lesson-2-1">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">数据源类型与采集策略</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">35 分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item completed" data-od-id="lesson-2-2">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">pandas 数据结构</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">45 分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item completed" data-od-id="lesson-2-3">
+              <div class="lesson-num completed">✓</div>
+              <div class="lesson-body">
+                <div class="lesson-name">缺失值处理与异常检测</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">42 分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item current" data-od-id="lesson-2-4">
+              <div class="lesson-num current">4</div>
+              <div class="lesson-body">
+                <div class="lesson-name">数据转换与特征工程基础</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    视频
+                  </span>
+                  <span class="lesson-duration">50 分钟</span>
+                  <span style="color: var(--accent);">← 当前</span>
+                </div>
+              </div>
+            </div>
+            <div class="lesson-item locked" data-od-id="lesson-2-5">
+              <div class="lesson-num locked">5</div>
+              <div class="lesson-body">
+                <div class="lesson-name">第二章实战：电商数据清洗</div>
+                <div class="lesson-meta">
+                  <span class="lesson-type">
+                    <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    实战
+                  </span>
+                  <span class="lesson-duration">38 分钟</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chapter 3 (collapsed preview) -->
+        <div class="chapter-group" data-od-id="chapter-3">
+          <div class="chapter-header">
+            <span class="chapter-group-title" data-od-id="ch3-title">第三章：探索性数据分析</span>
+            <span class="chapter-group-count" data-od-id="ch3-count">6 节 · 4h10m</span>
+          </div>
+          <div class="chapter-lessons">
+            <div class="lesson-item locked" data-od-id="lesson-3-1">
+              <div class="lesson-num locked">🔒</div>
+              <div class="lesson-body">
+                <div class="lesson-name">描述性统计与分布</div>
+                <div class="lesson-meta">
+                  <span class="lesson-duration">40 分钟</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spacer for action bar -->
+        <div style="height: 80px;"></div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar" data-od-id="action-bar">
+        <button class="btn-primary" data-od-id="btn-continue">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          继续学习
+        </button>
+        <button class="btn-secondary" data-od-id="btn-download">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+
+      <!-- Bottom Tab Bar -->
+      <nav class="tab-bar" data-od-id="tab-bar">
+        <div class="tab-item" data-od-id="tab-home">
+          <span class="tab-icon" data-od-id="tab-home-icon">🏠</span>
+          <span class="tab-label" data-od-id="tab-home-label">首页</span>
+        </div>
+        <div class="tab-item active" data-od-id="tab-courses">
+          <span class="tab-icon" data-od-id="tab-courses-icon">📚</span>
+          <span class="tab-label" data-od-id="tab-courses-label">课程</span>
+        </div>
+        <div class="tab-item" data-od-id="tab-notes">
+          <span class="tab-icon" data-od-id="tab-notes-icon">📝</span>
+          <span class="tab-label" data-od-id="tab-notes-label">笔记</span>
+        </div>
+        <div class="tab-item" data-od-id="tab-profile">
+          <span class="tab-icon" data-od-id="tab-profile-icon">👤</span>
+          <span class="tab-label" data-od-id="tab-profile-label">我的</span>
+        </div>
+      </nav>
+
+      <div class="home-indicator" data-od-id="home-indicator"></div>
+    </div>
+  </div>
+
+  <script>
+    function expandDesc() {
+      const text = document.querySelector('.course-desc-text');
+      const btn = document.querySelector('.desc-expand');
+      text.classList.toggle('truncated');
+      btn.textContent = text.classList.contains('truncated') ? '展开全部' : '收起';
+    }
+  </script>
+</body>
+</html>

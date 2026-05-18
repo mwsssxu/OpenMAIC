@@ -148,7 +148,7 @@ export default function CoursesScreen() {
 
     return (
       <TouchableOpacity
-        onPress={() => router.push(`/classroom/${classroom.id}` as any)}
+        onPress={() => router.push(`/course/${classroom.id}` as any)}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={0.9}
