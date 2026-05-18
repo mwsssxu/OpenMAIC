@@ -437,6 +437,7 @@ async def create_stage_record(
     description: Optional[str],
     language: str,
     agent_ids: List[str],
+    tags: List[str] = [],
     db: Any,
     generated_agent_configs: Optional[List[Dict[str, Any]]] = None,
     pending_outlines: Optional[List[Dict[str, Any]]] = None
@@ -451,6 +452,7 @@ async def create_stage_record(
         description: 课程描述
         language: 语言设置
         agent_ids: 智能体 ID 列表
+        tags: 课程标签列表
         db: 数据库连接
         generated_agent_configs: 生成的智能体配置列表
         pending_outlines: 待创建的场景大纲列表
@@ -493,11 +495,12 @@ async def create_stage_record(
     agent_ids_json = json.dumps(agent_ids) if agent_ids is not None else None
     agent_configs_json = json.dumps(generated_agent_configs) if generated_agent_configs is not None else None
     pending_outlines_json = json.dumps(pending_outlines) if pending_outlines is not None else None
+    tags_json = json.dumps(tags) if tags is not None else '[]'
 
     await db.execute(
         """
-        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, created_at, updated_at, generated_agent_configs, pending_outlines)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        INSERT INTO stages (id, user_id, name, description, language_directive, style, agent_ids, tags, created_at, updated_at, generated_agent_configs, pending_outlines)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         """,
         stage_id,
         user_uuid,
@@ -506,6 +509,7 @@ async def create_stage_record(
         language,
         None,
         agent_ids_json,
+        tags_json,
         now,
         now,
         agent_configs_json,

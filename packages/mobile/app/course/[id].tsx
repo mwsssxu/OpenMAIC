@@ -54,6 +54,7 @@ interface ClassroomData {
     description?: string;
     language_directive?: string;
     style?: string;
+    tags?: string[];  // 课程标签
     agent_ids?: string[];
     generated_agent_configs?: any[];
     pending_outlines?: any[];
@@ -273,11 +274,19 @@ export default function CourseDetailScreen() {
 
         {/* 标签 */}
         <View style={styles.tagsRow}>
-          {mockCourseData.tags.map((tag, index) => (
-            <View key={tag} style={[styles.tag, index >= 2 && styles.tagSecondary]}>
-              <Text style={[styles.tagText, index >= 2 && styles.tagTextSecondary]}>{tag}</Text>
-            </View>
-          ))}
+          {stage.tags && stage.tags.length > 0 ? (
+            stage.tags.map((tag: string, index: number) => (
+              <View key={tag} style={[styles.tag, index >= 2 && styles.tagSecondary]}>
+                <Text style={[styles.tagText, index >= 2 && styles.tagTextSecondary]}>{tag}</Text>
+              </View>
+            ))
+          ) : (
+            mockCourseData.tags.map((tag, index) => (
+              <View key={tag} style={[styles.tag, index >= 2 && styles.tagSecondary]}>
+                <Text style={[styles.tagText, index >= 2 && styles.tagTextSecondary]}>{tag}</Text>
+              </View>
+            ))
+          )}
         </View>
 
         {/* 课程简介 */}

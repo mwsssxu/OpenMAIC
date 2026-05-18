@@ -35,6 +35,7 @@ interface Classroom {
   name: string;
   description?: string;
   language_directive?: string;
+  tags?: string[];  // 课程标签
   created_at: string;
   updated_at?: string;
 }

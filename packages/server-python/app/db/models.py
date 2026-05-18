@@ -60,6 +60,9 @@ class Stage(Base):
     language_directive = Column(Text)
     style = Column(Text)
     agent_ids = Column(JSONB)
+    tags = Column(JSONB, default=list)  # 课程分类标签，如 ["数据科学", "Python"]
+    generated_agent_configs = Column(JSONB)  # 生成的智能体配置
+    pending_outlines = Column(JSONB)  # 待创建的场景大纲
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

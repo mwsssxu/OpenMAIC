@@ -50,6 +50,11 @@ export interface AgentConfig {
   };
 }
 
+export interface CourseTag {
+  name: string;
+  color?: string;
+}
+
 export interface ExportedData {
   exported_at: string;
   user: {
