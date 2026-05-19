@@ -1658,6 +1658,87 @@ class ApiClient {
     });
     return data;
   }
+
+  // ==================== Personal Notes ====================
+
+  async getPersonalNotes(page?: number, limit?: number, filter?: string, starredOnly?: boolean) {
+    const { data } = await this.client.get('/personal-notes', {
+      params: { page, limit, filter, starred_only: starredOnly },
+    });
+    return data;
+  }
+
+  async getPersonalNote(noteId: string) {
+    const { data } = await this.client.get(`/personal-notes/${noteId}`);
+    return data;
+  }
+
+  async createPersonalNote(note: {
+    title: string;
+    content: string;
+    course_id?: string;
+    category?: string;
+    tags?: string[];
+    starred?: boolean;
+    color?: string;
+  }) {
+    const { data } = await this.client.post('/personal-notes', note);
+    return data;
+  }
+
+  async toggleNoteStar(noteId: string) {
+    const { data } = await this.client.post(`/personal-notes/${noteId}/star`);
+    return data;
+  }
+
+  async updatePersonalNote(noteId: string, updates: {
+    title?: string;
+    content?: string;
+    category?: string;
+    tags?: string[];
+    starred?: boolean;
+    color?: string;
+  }) {
+    const { data } = await this.client.put(`/personal-notes/${noteId}`, updates);
+    return data;
+  }
+
+  async deletePersonalNote(noteId: string) {
+    const { data } = await this.client.delete(`/personal-notes/${noteId}`);
+    return data;
+  }
+
+  async getNotesStats() {
+    const { data } = await this.client.get('/personal-notes/stats');
+    return data;
+  }
+
+  // ==================== Profile ====================
+
+  async getProfileOverview() {
+    const { data } = await this.client.get('/profile/overview');
+    return data;
+  }
+
+  async getWeeklyStudy() {
+    const { data } = await this.client.get('/profile/weekly-study');
+    return data;
+  }
+
+  async getProfileAchievements() {
+    const { data } = await this.client.get('/profile/achievements');
+    return data;
+  }
+
+  async getLearningStats() {
+    const { data } = await this.client.get('/profile/learning-stats');
+    return data;
+  }
+
+  async getSettingsOptions() {
+    const { data } = await this.client.get('/profile/settings-options');
+    return data;
+  }
 }
 
 export const apiClient = new ApiClient();

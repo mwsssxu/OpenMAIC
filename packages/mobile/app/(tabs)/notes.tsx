@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
+import { apiClient } from '@/lib/api-client';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -34,18 +35,24 @@ const iOSColors = {
   purpleLight: '#ede9fe',
 };
 
-// 笔记数据
-const notesData = {
-  today: [
-    { id: '1', title: '数据可视化最佳实践', preview: '柱状图适合对比分类数据，折线图适合展示趋势变化。避免使用饼图展示超过5个分类...', category: '数据分析', color: 'coral', starred: true, time: '2小时前' },
-    { id: '2', title: 'Python 装饰器笔记', preview: '@staticmethod 和 @classmethod 的区别：前者不接收隐式参数，后者接收 cls 作为第一个参数...', category: 'Python', color: 'mint', starred: false, time: '5小时前' },
-    { id: '3', title: '色彩理论：暖色调运用', preview: '暖色（红橙黄）在UI中能传达活力与亲近感，但需注意大面积使用可能造成视觉疲劳...', category: 'UI 设计', color: 'gold', starred: false, time: '昨天 18:30' },
-  ],
-  thisWeek: [
-    { id: '4', title: 'SQL JOIN 类型总结', preview: 'INNER JOIN 返回两表交集，LEFT JOIN 返回左表全部，RIGHT JOIN 返回右表全部...', category: '数据库', color: 'blue', starred: true, time: '周一' },
-    { id: '5', title: '设计模式：观察者模式', preview: '定义一对多依赖，当一个对象状态改变时所有依赖者自动收到通知。适用于事件系统...', category: '架构', color: 'purple', starred: false, time: '周日' },
-  ],
-};
+interface NoteItem {
+  id: string;
+  title: string;
+  preview: string;
+  category: string;
+  starred: boolean;
+  color: string;
+  time: string;
+  course_id?: string;
+}
+
+interface NotesData {
+  today: NoteItem[];
+  this_week: NoteItem[];
+  total: number;
+  today_count: number;
+  week_count: number;
+}
 
 // 筛选标签
 const filterTabs = [
@@ -66,11 +73,11 @@ const colorMap = {
 };
 
 // 笔记项组件
-function NoteItem({ note, onPress }: { note: typeof notesData.today[0]; onPress: () => void }) {
+function NoteItem({ note, onPress, onStarToggle }: { note: NoteItem; onPress: () => void; onStarToggle: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [starred, setStarred] = useState(note.starred);
   const haptics = useHaptics();
-  const colors = colorMap[note.color as keyof typeof colorMap];
+  const colors = colorMap[note.color as keyof typeof colorMap] || colorMap.coral;
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -89,6 +96,7 @@ function NoteItem({ note, onPress }: { note: typeof notesData.today[0]; onPress:
   const toggleStar = () => {
     haptics.light();
     setStarred(!starred);
+    onStarToggle();
   };
 
   return (
@@ -168,14 +176,56 @@ export default function NotesScreen() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [notesData, setNotesData] = useState<NotesData>({
+    today: [],
+    this_week: [],
+    total: 0,
+    today_count: 0,
+    week_count: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const totalNotes = notesData.today.length + notesData.thisWeek.length;
+  useEffect(() => {
+    loadNotes();
+  }, [activeFilter]);
 
-  const onRefresh = () => {
+  async function loadNotes() {
+    try {
+      setIsLoading(true);
+      const starredOnly = activeFilter === 'fav';
+      const filter = activeFilter === 'all' || activeFilter === 'fav' ? undefined : activeFilter;
+      const data = await apiClient.getPersonalNotes(1, 50, filter, starredOnly);
+      setNotesData({
+        today: data.today || [],
+        this_week: data.this_week || [],
+        total: data.total || 0,
+        today_count: data.today_count || 0,
+        week_count: data.week_count || 0,
+      });
+    } catch (error) {
+      console.error('Load notes error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    // 后续接入真实数据加载
-    setTimeout(() => setRefreshing(false), 1000);
+    await loadNotes();
+    setRefreshing(false);
   };
+
+  const handleToggleStar = async (noteId: string) => {
+    try {
+      await apiClient.toggleNoteStar(noteId);
+      // Refresh to get updated data
+      await loadNotes();
+    } catch (error) {
+      console.error('Toggle star error:', error);
+    }
+  };
+
+  const totalNotes = notesData.today.length + notesData.this_week.length;
 
   return (
     <View style={styles.container}>
@@ -239,6 +289,7 @@ export default function NotesScreen() {
               key={note.id}
               note={note}
               onPress={() => router.push(`/note/${note.id}` as any)}
+              onStarToggle={() => handleToggleStar(note.id)}
             />
           ))}
         </View>
@@ -246,14 +297,15 @@ export default function NotesScreen() {
         {/* 本周 */}
         <View style={styles.sectionLabel}>
           <Text style={styles.sectionTitle}>本周</Text>
-          <Text style={styles.sectionCount}>{notesData.thisWeek.length} 条</Text>
+          <Text style={styles.sectionCount}>{notesData.this_week.length} 条</Text>
         </View>
         <View style={styles.notesList}>
-          {notesData.thisWeek.map(note => (
+          {notesData.this_week.map(note => (
             <NoteItem
               key={note.id}
               note={note}
               onPress={() => router.push(`/note/${note.id}` as any)}
+              onStarToggle={() => handleToggleStar(note.id)}
             />
           ))}
         </View>

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n } from '@/lib/i18n';
+import { apiClient } from '@/lib/api-client';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -33,47 +34,25 @@ const iOSColors = {
   purpleLight: '#ede9fe',
 };
 
-// 模拟笔记数据
-const noteData = {
-  id: '1',
-  title: '数据可视化最佳实践',
-  course: '数据分析基础',
-  date: '2026-01-15 14:30',
-  content: `
-在课程第 12 节「数据可视化」中，讲师强调了以下核心原则：
-
-一、图表类型选择
-• 柱状图——适合对比分类数据，最多展示 8 个分类
-• 折线图——适合展示时间序列趋势，线条不超过 5 条
-• 散点图——适合展示变量间相关性
-• 避免饼图——超过 5 个分类时人类难以准确判断面积比例
-
-二、色彩使用原则
-💡 关键要点：同一图表中不超过 5 种颜色。使用色盲友好配色（蓝 + 橙），避免红绿组合。
-
-三、Python 示例
-import matplotlib.pyplot as plt
-
-# 创建柱状图
-categories = ['A', 'B', 'C', 'D']
-values = [23, 45, 32, 67]
-
-plt.bar(categories, values, color='#2F6FEB')
-plt.title('分类对比')
-plt.show()
-
-四、常见误区
-1. 3D 图表增加认知负担，除非数据本身是三维的
-2. 不要使用双 Y 轴，容易误导读者
-3. 坐标轴必须从 0 开始（柱状图）
-4. 添加数据标签，不要让读者猜测数值
-`,
-  tags: ['数据可视化', 'matplotlib', '图表设计', '第12节'],
-  relatedNotes: [
-    { id: '2', title: '数据清洗与预处理', course: '数据分析基础', date: '2026-01-13', color: 'mint' },
-    { id: '3', title: '仪表盘设计原则', course: '数据分析基础', date: '2026-01-10', color: 'gold' },
-  ],
-};
+interface NoteData {
+  id: string;
+  title: string;
+  content: string;
+  course: string;
+  course_id?: string;
+  category: string;
+  starred: boolean;
+  color: string;
+  tags: string[];
+  created_at: string;
+  related_notes: Array<{
+    id: string;
+    title: string;
+    date: string;
+    course: string;
+    color: string;
+  }>;
+}
 
 // 颜色映射
 const colorMap = {
@@ -84,11 +63,19 @@ const colorMap = {
   purple: { bg: iOSColors.purpleLight, stroke: iOSColors.purple },
 };
 
+interface RelatedNote {
+  id: string;
+  title: string;
+  date: string;
+  course: string;
+  color: string;
+}
+
 // 相关笔记卡片
-function RelatedNoteCard({ note, onPress }: { note: typeof noteData.relatedNotes[0]; onPress: () => void }) {
+function RelatedNoteCard({ note, onPress }: { note: RelatedNote; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const haptics = useHaptics();
-  const colors = colorMap[note.color as keyof typeof colorMap];
+  const colors = colorMap[note.color as keyof typeof colorMap] || colorMap.mint;
 
   const handlePress = () => {
     haptics.light();
@@ -143,6 +130,25 @@ export default function NoteDetailScreen() {
   const router = useRouter();
   const haptics = useHaptics();
   const { t } = useI18n();
+  const [noteData, setNoteData] = useState<NoteData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadNote();
+  }, [params.id]);
+
+  async function loadNote() {
+    if (!params.id) return;
+    try {
+      setIsLoading(true);
+      const data = await apiClient.getPersonalNote(params.id);
+      setNoteData(data);
+    } catch (error) {
+      console.error('Load note error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   // 解析笔记内容，提取代码块和重点标注
   const parseContent = (content: string) => {
@@ -152,7 +158,7 @@ export default function NoteDetailScreen() {
     let inCodeBlock = false;
     let codeContent = '';
 
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       if (line.startsWith('import ') || line.startsWith('# ') || line.startsWith('plt.') || line.startsWith('categories') || line.startsWith('values') || line.trim() === '') {
         if (!inCodeBlock && currentText) {
           elements.push({ type: 'text', content: currentText.trim() });
@@ -191,6 +197,21 @@ export default function NoteDetailScreen() {
     return elements;
   };
 
+  if (isLoading || !noteData) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.navBar}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => router.back()} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>加载中...</Text>
+        </View>
+      </View>
+    );
+  }
+
   const contentElements = parseContent(noteData.content);
 
   return (
@@ -217,9 +238,9 @@ export default function NoteDetailScreen() {
           <Text style={styles.noteTitle}>{noteData.title}</Text>
           <View style={styles.noteHeaderMeta}>
             <View style={styles.courseTag}>
-              <Text style={styles.courseTagText}>{noteData.course}</Text>
+              <Text style={styles.courseTagText}>{noteData.course || noteData.category}</Text>
             </View>
-            <Text style={styles.noteDate}>{noteData.date}</Text>
+            <Text style={styles.noteDate}>{noteData.created_at}</Text>
           </View>
         </View>
 
@@ -244,7 +265,7 @@ export default function NoteDetailScreen() {
 
         {/* 标签 */}
         <View style={styles.tagsRow}>
-          {noteData.tags.map(tag => (
+          {noteData.tags.map((tag: string) => (
             <View key={tag} style={styles.tag}>
               <Text style={styles.tagText}># {tag}</Text>
             </View>
@@ -272,16 +293,18 @@ export default function NoteDetailScreen() {
         </View>
 
         {/* 相关笔记 */}
-        <View style={styles.relatedSection}>
-          <Text style={styles.relatedSectionTitle}>相关笔记</Text>
-          {noteData.relatedNotes.map(note => (
-            <RelatedNoteCard
-              key={note.id}
-              note={note}
-              onPress={() => router.push(`/note/${note.id}` as any)}
-            />
-          ))}
-        </View>
+        {noteData.related_notes.length > 0 && (
+          <View style={styles.relatedSection}>
+            <Text style={styles.relatedSectionTitle}>相关笔记</Text>
+            {noteData.related_notes.map((note: RelatedNote) => (
+              <RelatedNoteCard
+                key={note.id}
+                note={note}
+                onPress={() => router.push(`/note/${note.id}` as any)}
+              />
+            ))}
+          </View>
+        )}
 
         {/* 占位 */}
         <View style={{ height: 40 }} />
@@ -294,6 +317,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: iOSColors.bgSolid,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: iOSColors.muted,
   },
   navBar: {
     flexDirection: 'row',

@@ -29,36 +29,41 @@ const iOSColors = {
   purpleLight: '#ede9fe',
 };
 
-// 成就徽章数据
-const achievementsData = [
-  { id: '1', name: '连续7天', icon: 'flame', color: 'coral', earned: true },
-  { id: '2', name: '完成5课', icon: 'book', color: 'mint', earned: true },
-  { id: '3', name: '笔记达人', icon: 'star', color: 'gold', earned: true },
-  { id: '4', name: '百小时', icon: 'time', color: 'blue', earned: true },
-  { id: '5', name: '连续30天', icon: 'lock-closed', color: 'muted', earned: false },
-  { id: '6', name: '完成10课', icon: 'lock-closed', color: 'muted', earned: false },
-];
+interface Achievement {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  earned: boolean;
+}
 
-// 周学习数据
-const weeklyData = [
-  { day: '一', hours: 1.2, active: true },
-  { day: '二', hours: 2.1, active: true },
-  { day: '三', hours: 0.8, active: true },
-  { day: '四', hours: 2.5, active: true },
-  { day: '五', hours: 1.5, active: true },
-  { day: '六', hours: 3.0, active: true, today: true },
-  { day: '日', hours: 0, active: false },
-];
+interface WeeklyData {
+  day: string;
+  hours: number;
+  active: boolean;
+  today: boolean;
+}
 
-// 设置项数据
-const settingsData = [
-  { id: 'profile', title: '编辑个人资料', icon: 'person', color: 'coral', badge: null },
-  { id: 'notifications', title: '通知设置', icon: 'notifications', color: 'mint', badge: '2' },
-  { id: 'preferences', title: '学习偏好', icon: 'settings', color: 'gold', badge: null },
-  { id: 'darkmode', title: '深色模式', icon: 'moon', color: 'blue', badge: null },
-  { id: 'help', title: '帮助与反馈', icon: 'help-circle', color: 'purple', badge: null },
-  { id: 'logout', title: '退出登录', icon: 'log-out', color: 'coral', badge: null },
-];
+interface ProfileData {
+  user: {
+    nickname: string;
+    avatar_url?: string;
+  };
+  stats: {
+    streak_days: number;
+    active_courses: number;
+    total_hours: number;
+  };
+  level: {
+    level: number;
+    title: string;
+  };
+  weekly_study: {
+    total_hours: number;
+    daily_data: WeeklyData[];
+  };
+  achievements: Achievement[];
+}
 
 interface BalanceState {
   tokenBalance: number;
@@ -67,15 +72,16 @@ interface BalanceState {
 }
 
 // 成就徽章组件
-function AchievementBadge({ achievement }: { achievement: typeof achievementsData[0] }) {
+function AchievementBadge({ achievement }: { achievement: Achievement }) {
   const colorStyles = {
     coral: { bg: iOSColors.accentLight, icon: iOSColors.accent },
     mint: { bg: iOSColors.secondaryLight, icon: iOSColors.secondary },
     gold: { bg: iOSColors.goldLight, icon: iOSColors.gold },
     blue: { bg: iOSColors.blueLight, icon: iOSColors.blue },
+    purple: { bg: iOSColors.purpleLight, icon: iOSColors.purple },
     muted: { bg: iOSColors.border, icon: iOSColors.muted },
   };
-  const colors = colorStyles[achievement.color as keyof typeof colorStyles];
+  const colors = colorStyles[achievement.color as keyof typeof colorStyles] || colorStyles.muted;
 
   return (
     <View style={styles.achievement}>
@@ -88,7 +94,7 @@ function AchievementBadge({ achievement }: { achievement: typeof achievementsDat
 }
 
 // 周学习柱状图组件
-function WeeklyBar({ data }: { data: typeof weeklyData[0] }) {
+function WeeklyBar({ data }: { data: WeeklyData }) {
   const maxHours = 3.5;
   const heightPercent = (data.hours / maxHours) * 100;
 
@@ -110,8 +116,25 @@ function WeeklyBar({ data }: { data: typeof weeklyData[0] }) {
   );
 }
 
+interface SettingsItem {
+  id: string;
+  title: string;
+  icon: string;
+  color: string;
+  badge?: string | null;
+}
+
+const settingsData: SettingsItem[] = [
+  { id: 'profile', title: '编辑个人资料', icon: 'person', color: 'coral', badge: null },
+  { id: 'notifications', title: '通知设置', icon: 'notifications', color: 'mint', badge: '2' },
+  { id: 'preferences', title: '学习偏好', icon: 'settings', color: 'gold', badge: null },
+  { id: 'darkmode', title: '深色模式', icon: 'moon', color: 'blue', badge: null },
+  { id: 'help', title: '帮助与反馈', icon: 'help-circle', color: 'purple', badge: null },
+  { id: 'logout', title: '退出登录', icon: 'log-out', color: 'coral', badge: null },
+];
+
 // 设置项组件
-function SettingsItem({ item, onPress }: { item: typeof settingsData[0]; onPress: () => void }) {
+function SettingsItem({ item, onPress }: { item: SettingsItem; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const colorStyles = {
     coral: { bg: iOSColors.accentLight, icon: iOSColors.accent },
@@ -162,7 +185,7 @@ function SettingsItem({ item, onPress }: { item: typeof settingsData[0]; onPress
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { onSuccess, onError } = useFeedback();
+  const { onSuccess } = useFeedback();
   const haptics = useHaptics();
   const { t, locale, setLocale, availableLocales } = useI18n();
   const [balance, setBalance] = useState<BalanceState>({
@@ -170,25 +193,34 @@ export default function ProfileScreen() {
     pointsBalance: 0,
     isLoading: true,
   });
+  const [profileData, setProfileData] = useState<ProfileData>({
+    user: { nickname: '' },
+    stats: { streak_days: 0, active_courses: 0, total_hours: 0 },
+    level: { level: 1, title: '初学者' },
+    weekly_study: { total_hours: 0, daily_data: [] },
+    achievements: [],
+  });
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   useEffect(() => {
-    loadBalance();
+    loadProfileData();
   }, []);
 
-  async function loadBalance() {
+  async function loadProfileData() {
     try {
-      const [tokenData, pointsData] = await Promise.all([
+      const [profile, tokenData, pointsData] = await Promise.all([
+        apiClient.getProfileOverview(),
         apiClient.getTokenBalance(),
         apiClient.getPointsBalance(),
       ]);
+      setProfileData(profile);
       setBalance({
         tokenBalance: tokenData.balance || 0,
         pointsBalance: pointsData.balance || 0,
         isLoading: false,
       });
     } catch (error) {
-      console.error('Load balance error:', error);
+      console.error('Load profile error:', error);
       setBalance({ ...balance, isLoading: false });
     }
   }
@@ -207,7 +239,7 @@ export default function ProfileScreen() {
   };
 
   // 计算本周总学习时长
-  const weeklyTotal = weeklyData.reduce((sum, d) => sum + d.hours, 0);
+  const weeklyTotal = profileData.weekly_study.total_hours;
 
   return (
     <View style={styles.container}>
@@ -220,25 +252,25 @@ export default function ProfileScreen() {
               <Text style={styles.avatarEmoji}>👤</Text>
             </View>
           </View>
-          <Text style={styles.profileName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
+          <Text style={styles.profileName}>{profileData.user.nickname || user?.nickname || user?.email?.split('@')[0] || '学习者'}</Text>
           <Text style={styles.profileBio}>全栈学习ing · 数据分析方向</Text>
           <View style={styles.profileLevel}>
-            <Text style={styles.profileLevelText}>⭐ Lv.12 · 学习达人</Text>
+            <Text style={styles.profileLevelText}>⭐ Lv.{profileData.level.level} · {profileData.level.title}</Text>
           </View>
         </View>
 
         {/* 学习统计三栏 */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: iOSColors.accent }]}>23</Text>
+            <Text style={[styles.statValue, { color: iOSColors.accent }]}>{profileData.stats.streak_days}</Text>
             <Text style={styles.statLabel}>连续天数</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: iOSColors.secondary }]}>8</Text>
+            <Text style={[styles.statValue, { color: iOSColors.secondary }]}>{profileData.stats.active_courses}</Text>
             <Text style={styles.statLabel}>在学课程</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: iOSColors.gold }]}>156h</Text>
+            <Text style={[styles.statValue, { color: iOSColors.gold }]}>{profileData.stats.total_hours.toFixed(0)}h</Text>
             <Text style={styles.statLabel}>学习时长</Text>
           </View>
         </View>
@@ -251,7 +283,7 @@ export default function ProfileScreen() {
             <Text style={styles.weeklyTotal}>本周累计 {weeklyTotal.toFixed(1)}h</Text>
           </View>
           <View style={styles.weeklyChart}>
-            {weeklyData.map((data, idx) => (
+            {profileData.weekly_study.daily_data.map((data, idx) => (
               <WeeklyBar key={idx} data={data} />
             ))}
           </View>
@@ -264,7 +296,7 @@ export default function ProfileScreen() {
           showsHorizontalScrollIndicator={false}
           style={styles.achievementsScroll}
         >
-          {achievementsData.map(achievement => (
+          {profileData.achievements.map(achievement => (
             <AchievementBadge key={achievement.id} achievement={achievement} />
           ))}
         </ScrollView>
