@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>个人资料 - iOS</title>
+  <style>
+    :root {
+      --bg:      linear-gradient(165deg, oklch(97% 0.008 30) 0%, oklch(95% 0.012 40) 50%, oklch(96% 0.01 55) 100%);
+      --bg-solid: oklch(96% 0.01 40);
+      --surface: oklch(100% 0 0 / 0.55);
+      --surface-solid: oklch(100% 0 0);
+      --fg:      oklch(12% 0.015 30);
+      --muted:   oklch(42% 0.015 30);
+      --border:  oklch(94% 0.005 30 / 0.6);
+      --accent:  oklch(58% 0.16 30);
+      --accent-light: oklch(94% 0.025 40);
+      --secondary: oklch(60% 0.10 175);
+      --secondary-light: oklch(94% 0.02 175);
+
+      --font-display: 'Söhne', 'Avenir Next', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-lg: 16px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 20px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    .phone-frame {
+      width: 390px; height: 844px;
+      background: #1a1a1a; border-radius: 54px;
+      padding: 12px; position: relative;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.3), 0 0 0 2px #333;
+      margin: 24px auto; font-family: var(--font-body);
+    }
+    .phone-screen {
+      width: 100%; height: 100%;
+      background: var(--bg-solid); border-radius: 44px;
+      overflow: hidden; position: relative;
+    }
+    .dynamic-island {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      width: 126px; height: 36px; background: #1a1a1a; border-radius: 20px; z-index: 100;
+    }
+
+    .status-bar {
+      height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+      padding: 0 28px 8px; font-size: 14px; font-weight: 600; color: var(--fg);
+      position: relative; z-index: 10;
+    }
+    .status-icons { display: flex; gap: 6px; align-items: center; }
+
+    .nav-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px var(--space-md) var(--space-sm);
+      position: relative; z-index: 10;
+    }
+    .nav-title {
+      font-family: var(--font-display); font-size: 17px; font-weight: 600;
+      letter-spacing: -0.015em;
+    }
+    .nav-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: oklch(100% 0 0 / 0.5); border: 0.5px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; color: var(--fg); cursor: pointer;
+      -webkit-backdrop-filter: blur(16px) saturate(150%);
+      backdrop-filter: blur(16px) saturate(150%);
+    }
+    .nav-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Content */
+    .app-content {
+      position: relative; z-index: 1;
+      height: calc(100% - 54px - 44px - 83px);
+      overflow-y: auto; overflow-x: hidden;
+      padding: 0 var(--space-md) var(--space-md);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Profile Header */
+    .profile-header {
+      text-align: center; padding: var(--space-md) 0 var(--space-lg);
+    }
+
+    /* Cartoon Avatar */
+    .avatar-large {
+      width: 88px; height: 88px; margin: 0 auto var(--space-sm);
+      position: relative;
+    }
+    .avatar-large svg { width: 88px; height: 88px; }
+
+    .profile-name {
+      font-family: var(--font-display); font-size: 20px; font-weight: 700;
+      letter-spacing: -0.02em; margin-bottom: 2px;
+    }
+    .profile-bio {
+      font-size: 13px; color: var(--muted); line-height: 1.4; margin-bottom: var(--space-sm);
+    }
+    .profile-level {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: 14px;
+      background: linear-gradient(135deg, oklch(55% 0.14 85) 0%, oklch(58% 0.16 30) 100%);
+      color: white; font-size: 12px; font-weight: 600;
+    }
+
+    /* Stats Row */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-sm); margin-bottom: var(--space-lg);
+    }
+    .stat-card {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-sm);
+      text-align: center;
+    }
+    .stat-value {
+      font-family: var(--font-display); font-size: 22px; font-weight: 700;
+      letter-spacing: -0.03em; line-height: 1.1;
+    }
+    .stat-value.coral { color: oklch(58% 0.16 30); }
+    .stat-value.mint  { color: oklch(52% 0.10 175); }
+    .stat-value.gold  { color: oklch(55% 0.14 85); }
+    .stat-label {
+      font-size: 11px; color: var(--muted); margin-top: 2px;
+    }
+
+    /* Section Title */
+    .section-title {
+      font-family: var(--font-display); font-size: 15px; font-weight: 600;
+      margin-bottom: var(--space-sm); letter-spacing: -0.01em;
+    }
+
+    /* Achievements */
+    .achievements-scroll {
+      display: flex; gap: var(--space-sm); overflow-x: auto;
+      padding-bottom: var(--space-sm); margin-bottom: var(--space-lg);
+      -webkit-overflow-scrolling: touch;
+    }
+    .achievement {
+      width: 80px; text-align: center; flex-shrink: 0;
+    }
+    .achievement-icon {
+      width: 56px; height: 56px; border-radius: 50%; margin: 0 auto var(--space-xs);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .achievement-icon.earned { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .achievement-icon.locked { opacity: 0.35; }
+    .achievement-icon svg { width: 28px; height: 28px; }
+    .achievement-icon.earned.coral { background: linear-gradient(135deg, oklch(92% 0.04 30), oklch(88% 0.06 30)); }
+    .achievement-icon.earned.mint  { background: linear-gradient(135deg, oklch(92% 0.04 175), oklch(88% 0.06 175)); }
+    .achievement-icon.earned.gold  { background: linear-gradient(135deg, oklch(92% 0.05 85), oklch(88% 0.07 85)); }
+    .achievement-icon.earned.blue  { background: linear-gradient(135deg, oklch(92% 0.04 240), oklch(88% 0.06 240)); }
+    .achievement-icon.locked { background: var(--border); }
+    .achievement-name { font-size: 10px; color: var(--muted); line-height: 1.2; }
+
+    /* Settings List */
+    .settings-list {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: var(--space-lg);
+    }
+    .settings-item {
+      display: flex; align-items: center; gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      min-height: 44px; cursor: pointer;
+      border-bottom: 0.5px solid var(--border);
+      transition: background 0.15s;
+    }
+    .settings-item:last-child { border-bottom: none; }
+    .settings-item:active { background: var(--accent-light); }
+    .settings-icon {
+      width: 32px; height: 32px; border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .settings-icon svg { width: 16px; height: 16px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .settings-icon.coral { background: oklch(92% 0.04 30); color: oklch(55% 0.16 30); }
+    .settings-icon.mint  { background: oklch(92% 0.04 175); color: oklch(52% 0.10 175); }
+    .settings-icon.gold  { background: oklch(92% 0.05 85); color: oklch(55% 0.14 85); }
+    .settings-icon.blue  { background: oklch(92% 0.04 240); color: oklch(52% 0.12 250); }
+    .settings-icon.purple{ background: oklch(92% 0.04 310); color: oklch(52% 0.12 310); }
+    .settings-text { flex: 1; font-size: 14px; }
+    .settings-chevron { color: var(--muted); opacity: 0.5; }
+    .settings-chevron svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .settings-badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      background: var(--accent); color: white; font-weight: 600;
+    }
+
+    /* Weekly Study Chart */
+    .weekly-card {
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+    .weekly-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: var(--space-sm);
+    }
+    .weekly-header h3 { font-size: 15px; font-weight: 600; }
+    .weekly-header span { font-size: 12px; color: var(--accent); }
+    .weekly-chart {
+      display: flex; align-items: flex-end; gap: 6px; height: 80px;
+    }
+    .weekly-bar {
+      flex: 1; border-radius: 4px 4px 0 0;
+      background: var(--accent-light);
+      position: relative;
+      min-height: 8px;
+    }
+    .weekly-bar.active { background: var(--accent); }
+    .weekly-bar.today { background: linear-gradient(180deg, var(--accent), oklch(50% 0.13 40)); }
+    .weekly-label {
+      display: flex; justify-content: space-around;
+      margin-top: 4px;
+    }
+    .weekly-label span {
+      flex: 1; text-align: center; font-size: 10px; color: var(--muted);
+    }
+
+    /* Bottom Tab Bar */
+    .tab-bar {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 83px;
+      background: oklch(100% 0 0 / 0.72);
+      -webkit-backdrop-filter: blur(32px) saturate(200%);
+      backdrop-filter: blur(32px) saturate(200%);
+      border-top: 0.5px solid var(--border);
+      display: flex; justify-content: space-around; align-items: flex-start;
+      padding-top: 8px;
+    }
+    .tab-item {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      min-width: 64px; min-height: 44px; color: var(--muted);
+    }
+    .tab-item.active { color: var(--accent); }
+    .tab-icon { font-size: 22px; }
+    .tab-label { font-size: 10px; font-weight: 500; letter-spacing: 0.005em; }
+    .home-indicator {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      width: 134px; height: 5px; background: var(--fg);
+      border-radius: 3px; opacity: 0.2;
+    }
+
+    .scroll-spacer { height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="dynamic-island"></div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons"><span>📶</span><span>📡</span><span>🔋</span></div>
+      </div>
+
+      <!-- Nav Bar -->
+      <nav class="nav-bar">
+        <span class="nav-title">我的</span>
+        <div class="nav-btn">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+      </nav>
+
+      <!-- Content -->
+      <div class="app-content">
+        <!-- Profile Header with Cartoon Avatar -->
+        <div class="profile-header">
+          <div class="avatar-large">
+            <!-- Cartoon person avatar -->
+            <svg viewBox="0 0 100 100" fill="none">
+              <!-- Background circle -->
+              <circle cx="50" cy="50" r="46" fill="oklch(58% 0.16 30)"/>
+              <!-- Hair -->
+              <path d="M28 42 Q28 22 50 20 Q72 22 72 42" fill="oklch(20% 0.02 30)"/>
+              <path d="M28 42 Q26 36 30 32" stroke="oklch(20% 0.02 30)" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M72 42 Q74 36 70 32" stroke="oklch(20% 0.02 30)" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <!-- Face -->
+              <ellipse cx="50" cy="52" rx="18" ry="20" fill="oklch(85% 0.04 70)"/>
+              <!-- Eyes -->
+              <circle cx="43" cy="48" r="2.5" fill="oklch(20% 0.02 30)"/>
+              <circle cx="57" cy="48" r="2.5" fill="oklch(20% 0.02 30)"/>
+              <!-- Eye shine -->
+              <circle cx="44" cy="47" r="1" fill="white"/>
+              <circle cx="58" cy="47" r="1" fill="white"/>
+              <!-- Blush -->
+              <ellipse cx="38" cy="54" rx="4" ry="2.5" fill="oklch(80% 0.06 30)" opacity="0.4"/>
+              <ellipse cx="62" cy="54" rx="4" ry="2.5" fill="oklch(80% 0.06 30)" opacity="0.4"/>
+              <!-- Smile -->
+              <path d="M44 58 Q50 63 56 58" stroke="oklch(20% 0.02 30)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <!-- Body/shirt -->
+              <path d="M34 72 Q34 66 50 64 Q66 66 66 72 L66 86 Q66 90 50 92 Q34 90 34 86Z" fill="oklch(52% 0.10 175)"/>
+              <!-- Collar -->
+              <path d="M44 64 L50 70 L56 64" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Sparkle -->
+              <path d="M78 30 Q80 26 84 24 Q80 22 78 18 Q76 22 72 24 Q76 26 78 30Z" fill="oklch(55% 0.14 85)"/>
+            </svg>
+          </div>
+          <div class="profile-name">林小雨</div>
+          <div class="profile-bio">全栈学习ing · 数据分析方向</div>
+          <div class="profile-level">⭐ Lv.12 · 学习达人</div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-value coral">23</div>
+            <div class="stat-label">连续天数</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value mint">8</div>
+            <div class="stat-label">在学课程</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value gold">156h</div>
+            <div class="stat-label">学习时长</div>
+          </div>
+        </div>
+
+        <!-- Weekly Study -->
+        <div class="section-title">本周学习</div>
+        <div class="weekly-card">
+          <div class="weekly-header">
+            <h3>学习时长</h3>
+            <span>本周累计 8.5h</span>
+          </div>
+          <div class="weekly-chart">
+            <div class="weekly-bar active" style="height:45%"></div>
+            <div class="weekly-bar active" style="height:70%"></div>
+            <div class="weekly-bar active" style="height:35%"></div>
+            <div class="weekly-bar active" style="height:80%"></div>
+            <div class="weekly-bar active" style="height:55%"></div>
+            <div class="weekly-bar today" style="height:90%"></div>
+            <div class="weekly-bar" style="height:0%"></div>
+          </div>
+          <div class="weekly-label">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+        </div>
+
+        <!-- Achievements -->
+        <div class="section-title">成就徽章</div>
+        <div class="achievements-scroll">
+          <div class="achievement">
+            <div class="achievement-icon earned coral">
+              <!-- Flame badge -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(58% 0.16 30)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2c0 4-4 6-4 10a4 4 0 0 0 8 0c0-4-4-6-4-10z"/>
+              </svg>
+            </div>
+            <div class="achievement-name">连续7天</div>
+          </div>
+          <div class="achievement">
+            <div class="achievement-icon earned mint">
+              <!-- Book badge -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(52% 0.10 175)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+            </div>
+            <div class="achievement-name">完成5课</div>
+          </div>
+          <div class="achievement">
+            <div class="achievement-icon earned gold">
+              <!-- Star badge -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(55% 0.14 85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+            </div>
+            <div class="achievement-name">笔记达人</div>
+          </div>
+          <div class="achievement">
+            <div class="achievement-icon earned blue">
+              <!-- Clock badge -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(52% 0.12 250)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <div class="achievement-name">百小时</div>
+          </div>
+          <div class="achievement">
+            <div class="achievement-icon locked">
+              <!-- Lock icon -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(42% 0.015 30)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div class="achievement-name">连续30天</div>
+          </div>
+          <div class="achievement">
+            <div class="achievement-icon locked">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(42% 0.015 30)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div class="achievement-name">完成10课</div>
+          </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="section-title">设置</div>
+        <div class="settings-list">
+          <div class="settings-item">
+            <div class="settings-icon coral">
+              <svg viewBox="0 0 24 24" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <span class="settings-text">编辑个人资料</span>
+            <div class="settings-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-icon mint">
+              <svg viewBox="0 0 24 24" stroke="currentColor"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </div>
+            <span class="settings-text">通知设置</span>
+            <div class="settings-badge">2</div>
+            <div class="settings-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-icon gold">
+              <svg viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <span class="settings-text">学习偏好</span>
+            <div class="settings-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-icon blue">
+              <svg viewBox="0 0 24 24" stroke="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </div>
+            <span class="settings-text">深色模式</span>
+            <div class="settings-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-icon purple">
+              <svg viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <span class="settings-text">帮助与反馈</span>
+            <div class="settings-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-icon coral">
+              <svg viewBox="0 0 24 24" stroke="currentColor"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </div>
+            <span class="settings-text">退出登录</span>
+            <div class="settings-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+        </div>
+
+        <div class="scroll-spacer"></div>
+      </div>
+
+      <!-- Tab Bar -->
+      <nav class="tab-bar">
+        <div class="tab-item">
+          <span class="tab-icon">🏠</span>
+          <span class="tab-label">首页</span>
+        </div>
+        <div class="tab-item">
+          <span class="tab-icon">📚</span>
+          <span class="tab-label">课程</span>
+        </div>
+        <div class="tab-item">
+          <span class="tab-icon">📝</span>
+          <span class="tab-label">笔记</span>
+        </div>
+        <div class="tab-item active">
+          <span class="tab-icon">👤</span>
+          <span class="tab-label">我的</span>
+        </div>
+      </nav>
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+</body>
+</html>

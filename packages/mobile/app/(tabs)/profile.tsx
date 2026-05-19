@@ -21,12 +21,142 @@ const iOSColors = {
   accentLight: '#fde8e0',
   secondary: '#1a8a8a',
   secondaryLight: '#e8f5f5',
+  gold: '#f59e0b',
+  goldLight: '#fef3c7',
+  blue: '#2563eb',
+  blueLight: '#dbeafe',
+  purple: '#8b5cf6',
+  purpleLight: '#ede9fe',
 };
+
+// 成就徽章数据
+const achievementsData = [
+  { id: '1', name: '连续7天', icon: 'flame', color: 'coral', earned: true },
+  { id: '2', name: '完成5课', icon: 'book', color: 'mint', earned: true },
+  { id: '3', name: '笔记达人', icon: 'star', color: 'gold', earned: true },
+  { id: '4', name: '百小时', icon: 'time', color: 'blue', earned: true },
+  { id: '5', name: '连续30天', icon: 'lock-closed', color: 'muted', earned: false },
+  { id: '6', name: '完成10课', icon: 'lock-closed', color: 'muted', earned: false },
+];
+
+// 周学习数据
+const weeklyData = [
+  { day: '一', hours: 1.2, active: true },
+  { day: '二', hours: 2.1, active: true },
+  { day: '三', hours: 0.8, active: true },
+  { day: '四', hours: 2.5, active: true },
+  { day: '五', hours: 1.5, active: true },
+  { day: '六', hours: 3.0, active: true, today: true },
+  { day: '日', hours: 0, active: false },
+];
+
+// 设置项数据
+const settingsData = [
+  { id: 'profile', title: '编辑个人资料', icon: 'person', color: 'coral', badge: null },
+  { id: 'notifications', title: '通知设置', icon: 'notifications', color: 'mint', badge: '2' },
+  { id: 'preferences', title: '学习偏好', icon: 'settings', color: 'gold', badge: null },
+  { id: 'darkmode', title: '深色模式', icon: 'moon', color: 'blue', badge: null },
+  { id: 'help', title: '帮助与反馈', icon: 'help-circle', color: 'purple', badge: null },
+  { id: 'logout', title: '退出登录', icon: 'log-out', color: 'coral', badge: null },
+];
 
 interface BalanceState {
   tokenBalance: number;
   pointsBalance: number;
   isLoading: boolean;
+}
+
+// 成就徽章组件
+function AchievementBadge({ achievement }: { achievement: typeof achievementsData[0] }) {
+  const colorStyles = {
+    coral: { bg: iOSColors.accentLight, icon: iOSColors.accent },
+    mint: { bg: iOSColors.secondaryLight, icon: iOSColors.secondary },
+    gold: { bg: iOSColors.goldLight, icon: iOSColors.gold },
+    blue: { bg: iOSColors.blueLight, icon: iOSColors.blue },
+    muted: { bg: iOSColors.border, icon: iOSColors.muted },
+  };
+  const colors = colorStyles[achievement.color as keyof typeof colorStyles];
+
+  return (
+    <View style={styles.achievement}>
+      <View style={[styles.achievementIcon, { backgroundColor: colors.bg }, !achievement.earned && styles.achievementLocked]}>
+        <Ionicons name={achievement.icon as any} size={28} color={colors.icon} />
+      </View>
+      <Text style={styles.achievementName}>{achievement.name}</Text>
+    </View>
+  );
+}
+
+// 周学习柱状图组件
+function WeeklyBar({ data }: { data: typeof weeklyData[0] }) {
+  const maxHours = 3.5;
+  const heightPercent = (data.hours / maxHours) * 100;
+
+  return (
+    <View style={styles.weeklyBarWrapper}>
+      <View style={[
+        styles.weeklyBar,
+        { height: `${heightPercent}%` },
+        data.active && !data.today && { backgroundColor: iOSColors.accentLight },
+        data.today && styles.weeklyBarToday,
+        !data.active && { backgroundColor: iOSColors.border },
+      ]}>
+        {data.active && (
+          <Text style={styles.weeklyBarValue}>{data.hours.toFixed(1)}h</Text>
+        )}
+      </View>
+      <Text style={[styles.weeklyBarLabel, data.today && styles.weeklyBarLabelToday]}>{data.day}</Text>
+    </View>
+  );
+}
+
+// 设置项组件
+function SettingsItem({ item, onPress }: { item: typeof settingsData[0]; onPress: () => void }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const colorStyles = {
+    coral: { bg: iOSColors.accentLight, icon: iOSColors.accent },
+    mint: { bg: iOSColors.secondaryLight, icon: iOSColors.secondary },
+    gold: { bg: iOSColors.goldLight, icon: iOSColors.gold },
+    blue: { bg: iOSColors.blueLight, icon: iOSColors.blue },
+    purple: { bg: iOSColors.purpleLight, icon: iOSColors.purple },
+  };
+  const colors = colorStyles[item.color as keyof typeof colorStyles];
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.98,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={0.9}
+    >
+      <Animated.View style={[styles.settingsItem, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={[styles.settingsIcon, { backgroundColor: colors.bg }]}>
+          <Ionicons name={item.icon as any} size={16} color={colors.icon} />
+        </View>
+        <Text style={styles.settingsText}>{item.title}</Text>
+        {item.badge && (
+          <View style={styles.settingsBadge}>
+            <Text style={styles.settingsBadgeText}>{item.badge}</Text>
+          </View>
+        )}
+        <Ionicons name="chevron-forward" size={16} color={iOSColors.muted} style={{ opacity: 0.5 }} />
+      </Animated.View>
+    </TouchableOpacity>
+  );
 }
 
 export default function ProfileScreen() {
@@ -76,136 +206,95 @@ export default function ProfileScreen() {
     onSuccess();
   };
 
-  // 菜单项组件
-  function MenuItem({ icon, title, onPress }: { icon: string; title: string; onPress: () => void }) {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 0.98,
-        useNativeDriver: true,
-      }).start();
-    };
-
-    const handlePressOut = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-      }).start();
-    };
-
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.9}
-      >
-        <Animated.View style={[styles.menuItem, { transform: [{ scale: scaleAnim }] }]}>
-          <Ionicons name={icon as any} size={20} color={iOSColors.accent} />
-          <Text style={styles.menuItemText}>{title}</Text>
-          <Ionicons name="chevron-forward" size={16} color={iOSColors.muted} />
-        </Animated.View>
-      </TouchableOpacity>
-    );
-  }
+  // 计算本周总学习时长
+  const weeklyTotal = weeklyData.reduce((sum, d) => sum + d.hours, 0);
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header 用户信息 */}
-        <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{(user?.nickname || user?.email || '用户').charAt(0)}</Text>
+        {/* 个人资料头部 */}
+        <View style={styles.profileHeader}>
+          {/* 卡通头像 */}
+          <View style={styles.avatarLarge}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarEmoji}>👤</Text>
+            </View>
           </View>
-          <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '用户'}</Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
+          <Text style={styles.profileName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
+          <Text style={styles.profileBio}>全栈学习ing · 数据分析方向</Text>
+          <View style={styles.profileLevel}>
+            <Text style={styles.profileLevelText}>⭐ Lv.12 · 学习达人</Text>
           </View>
         </View>
 
-        {/* Balance Cards */}
-        <View style={styles.statsGrid}>
+        {/* 学习统计三栏 */}
+        <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{balance.tokenBalance}</Text>
-            <Text style={styles.statLabel}>{t('profile.tokenBalance')}</Text>
+            <Text style={[styles.statValue, { color: iOSColors.accent }]}>23</Text>
+            <Text style={styles.statLabel}>连续天数</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{balance.pointsBalance}</Text>
-            <Text style={styles.statLabel}>{t('profile.pointsBalance')}</Text>
+            <Text style={[styles.statValue, { color: iOSColors.secondary }]}>8</Text>
+            <Text style={styles.statLabel}>在学课程</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: iOSColors.gold }]}>156h</Text>
+            <Text style={styles.statLabel}>学习时长</Text>
           </View>
         </View>
 
-        {/* Settings Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
-          <MenuItem
-            icon="language-outline"
-            title={t('profile.languageSettings')}
-            onPress={() => {
-              haptics.light();
-              setShowLanguageModal(true);
-            }}
-          />
-          <MenuItem
-            icon="wallet-outline"
-            title={t('home.wallet')}
-            onPress={() => {
-              haptics.light();
-              router.push('/wallet');
-            }}
-          />
-          <MenuItem
-            icon="trending-up-outline"
-            title={t('home.growthSystem')}
-            onPress={() => {
-              haptics.light();
-              router.push('/gamification');
-            }}
-          />
-          <MenuItem
-            icon="gift-outline"
-            title={t('home.inviteRewards')}
-            onPress={() => {
-              haptics.light();
-              router.push('/invite');
-            }}
-          />
+        {/* 本周学习 */}
+        <Text style={styles.sectionTitle}>本周学习</Text>
+        <View style={styles.weeklyCard}>
+          <View style={styles.weeklyHeader}>
+            <Text style={styles.weeklyTitle}>学习时长</Text>
+            <Text style={styles.weeklyTotal}>本周累计 {weeklyTotal.toFixed(1)}h</Text>
+          </View>
+          <View style={styles.weeklyChart}>
+            {weeklyData.map((data, idx) => (
+              <WeeklyBar key={idx} data={data} />
+            ))}
+          </View>
         </View>
 
-        {/* More Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>更多</Text>
-          <MenuItem
-            icon="information-circle-outline"
-            title={t('profile.about')}
-            onPress={() => {
-              haptics.light();
-            }}
-          />
-          <MenuItem
-            icon="download-outline"
-            title={t('profile.exportData')}
-            onPress={() => {
-              haptics.light();
-            }}
-          />
-        </View>
-
-        {/* Logout Button */}
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-          activeOpacity={0.85}
+        {/* 成就徽章 */}
+        <Text style={styles.sectionTitle}>成就徽章</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.achievementsScroll}
         >
-          <Text style={styles.logoutButtonText}>{t('auth.logout')}</Text>
-        </TouchableOpacity>
+          {achievementsData.map(achievement => (
+            <AchievementBadge key={achievement.id} achievement={achievement} />
+          ))}
+        </ScrollView>
 
-        {/* Spacer for safe area */}
+        {/* 设置列表 */}
+        <Text style={styles.sectionTitle}>设置</Text>
+        <View style={styles.settingsList}>
+          {settingsData.map(item => (
+            <SettingsItem
+              key={item.id}
+              item={item}
+              onPress={() => {
+                haptics.light();
+                if (item.id === 'profile') {
+                  // 编辑个人资料
+                } else if (item.id === 'notifications') {
+                  // 通知设置
+                } else if (item.id === 'logout') {
+                  handleLogout();
+                }
+              }}
+            />
+          ))}
+        </View>
+
+        {/* 占位 */}
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Language Selection Modal */}
+      {/* 语言选择弹窗 */}
       <Modal
         visible={showLanguageModal}
         transparent
@@ -215,7 +304,7 @@ export default function ProfileScreen() {
         <Pressable style={styles.modalOverlay} onPress={() => setShowLanguageModal(false)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('profile.languageSettings')}</Text>
-            {availableLocales.map((lang) => (
+            {availableLocales.map(lang => (
               <TouchableOpacity
                 key={lang.code}
                 style={[styles.languageOption, locale === lang.code && styles.languageOptionActive]}
@@ -253,44 +342,54 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Header
-  header: {
-    flexDirection: 'row',
+  // Profile Header
+  profileHeader: {
     alignItems: 'center',
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md + 4,
-    marginBottom: Spacing.lg,
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  avatarLarge: {
+    marginBottom: Spacing.sm,
+  },
+  avatarCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: iOSColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
   },
-  avatarText: {
-    fontSize: 24,
+  avatarEmoji: {
+    fontSize: 40,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: iOSColors.fg,
+    letterSpacing: -0.02,
+    marginBottom: 2,
+  },
+  profileBio: {
+    fontSize: 13,
+    color: iOSColors.muted,
+    lineHeight: 20,
+    marginBottom: Spacing.sm,
+  },
+  profileLevel: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: iOSColors.accent,
+  },
+  profileLevelText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#fff',
   },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: iOSColors.fg,
-    marginBottom: 2,
-  },
-  userEmail: {
-    fontSize: 13,
-    color: iOSColors.muted,
-  },
 
-  // Stats Grid
-  statsGrid: {
+  // Stats Row
+  statsRow: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
@@ -302,62 +401,160 @@ const styles = StyleSheet.create({
     borderRadius: Rounded.md,
     borderWidth: 0.5,
     borderColor: iOSColors.border,
-    padding: Spacing.md,
+    padding: Spacing.sm,
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
-    color: iOSColors.accent,
+    letterSpacing: -0.03,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: iOSColors.muted,
-    marginTop: 4,
+    marginTop: 2,
   },
 
-  // Section
-  section: {
-    paddingHorizontal: Spacing.md,
-    marginBottom: Spacing.lg,
-  },
+  // Section Title
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: iOSColors.fg,
+    paddingHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
   },
 
-  // Menu Item
-  menuItem: {
+  // Weekly Chart
+  weeklyCard: {
+    marginHorizontal: Spacing.md,
     backgroundColor: iOSColors.surface,
     borderRadius: Rounded.md,
     borderWidth: 0.5,
     borderColor: iOSColors.border,
     padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  weeklyHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
     marginBottom: Spacing.sm,
   },
-  menuItemText: {
-    flex: 1,
+  weeklyTitle: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '600',
     color: iOSColors.fg,
-    marginLeft: Spacing.sm,
+  },
+  weeklyTotal: {
+    fontSize: 12,
+    color: iOSColors.accent,
+    fontWeight: '500',
+  },
+  weeklyChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
+    height: 80,
+  },
+  weeklyBarWrapper: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weeklyBar: {
+    width: '100%',
+    borderRadius: 4,
+    backgroundColor: iOSColors.accentLight,
+    minHeight: 8,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  weeklyBarToday: {
+    backgroundColor: iOSColors.accent,
+  },
+  weeklyBarValue: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginBottom: 2,
+  },
+  weeklyBarLabel: {
+    fontSize: 10,
+    color: iOSColors.muted,
+    marginTop: 4,
+  },
+  weeklyBarLabelToday: {
+    color: iOSColors.accent,
+    fontWeight: '600',
   },
 
-  // Logout Button
-  logoutButton: {
+  // Achievements
+  achievementsScroll: {
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  achievement: {
+    width: 80,
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  achievementIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xs,
+  },
+  achievementLocked: {
+    opacity: 0.35,
+  },
+  achievementName: {
+    fontSize: 10,
+    color: iOSColors.muted,
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+
+  // Settings List
+  settingsList: {
     marginHorizontal: Spacing.md,
-    height: 48,
+    backgroundColor: iOSColors.surface,
     borderRadius: Rounded.md,
-    backgroundColor: '#ef4444',
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    marginBottom: Spacing.lg,
+    overflow: 'hidden',
+  },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    minHeight: 44,
+    borderBottomWidth: 0.5,
+    borderBottomColor: iOSColors.border,
+  },
+  settingsIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: Rounded.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutButtonText: {
-    fontSize: 16,
+  settingsText: {
+    flex: 1,
+    fontSize: 14,
+    color: iOSColors.fg,
+  },
+  settingsBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: iOSColors.accent,
+  },
+  settingsBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
     color: '#fff',
   },

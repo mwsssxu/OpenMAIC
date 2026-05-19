@@ -1,665 +1,479 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Modal, TextInput, Animated, Alert } from 'react-native';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Animated,
+  RefreshControl,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { apiClient } from '@/lib/api-client';
-import { Colors, Rounded, Spacing, SecondaryColorMap } from '@/lib/constants/theme';
-import { useFeedback } from '@/lib/hooks/use-feedback';
+import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 
-interface Note {
-  id: string;
-  user_id: string;
-  title: string;
-  visibility: string;
-  price: number;
-  tags: string;
-  rating: number;
-  rating_count: number;
-  purchase_count: number;
-  is_purchased: boolean;
-  created_at: string;
-}
+// iOS 风格颜色系统
+const iOSColors = {
+  bgSolid: '#f5f3f2',
+  surface: 'rgba(255, 255, 255, 0.55)',
+  surfaceSolid: '#FFFFFF',
+  fg: '#1a1a1a',
+  muted: '#666666',
+  border: 'rgba(230, 225, 220, 0.6)',
+  accent: '#c45a1a',
+  accentLight: '#fde8e0',
+  secondary: '#1a8a8a',
+  secondaryLight: '#e8f5f5',
+  gold: '#f59e0b',
+  goldLight: '#fef3c7',
+  blue: '#2563eb',
+  blueLight: '#dbeafe',
+  purple: '#8b5cf6',
+  purpleLight: '#ede9fe',
+};
 
-export default function NotesScreen() {
-  const router = useRouter();
-  const { onSuccess, onError } = useFeedback();
+// 笔记数据
+const notesData = {
+  today: [
+    { id: '1', title: '数据可视化最佳实践', preview: '柱状图适合对比分类数据，折线图适合展示趋势变化。避免使用饼图展示超过5个分类...', category: '数据分析', color: 'coral', starred: true, time: '2小时前' },
+    { id: '2', title: 'Python 装饰器笔记', preview: '@staticmethod 和 @classmethod 的区别：前者不接收隐式参数，后者接收 cls 作为第一个参数...', category: 'Python', color: 'mint', starred: false, time: '5小时前' },
+    { id: '3', title: '色彩理论：暖色调运用', preview: '暖色（红橙黄）在UI中能传达活力与亲近感，但需注意大面积使用可能造成视觉疲劳...', category: 'UI 设计', color: 'gold', starred: false, time: '昨天 18:30' },
+  ],
+  thisWeek: [
+    { id: '4', title: 'SQL JOIN 类型总结', preview: 'INNER JOIN 返回两表交集，LEFT JOIN 返回左表全部，RIGHT JOIN 返回右表全部...', category: '数据库', color: 'blue', starred: true, time: '周一' },
+    { id: '5', title: '设计模式：观察者模式', preview: '定义一对多依赖，当一个对象状态改变时所有依赖者自动收到通知。适用于事件系统...', category: '架构', color: 'purple', starred: false, time: '周日' },
+  ],
+};
+
+// 筛选标签
+const filterTabs = [
+  { key: 'all', label: '全部' },
+  { key: 'data', label: '数据分析' },
+  { key: 'python', label: 'Python' },
+  { key: 'ui', label: 'UI 设计' },
+  { key: 'fav', label: '收藏' },
+];
+
+// 颜色映射
+const colorMap = {
+  coral: { bg: iOSColors.accentLight, stroke: iOSColors.accent, tagBg: '#fce8e0', tagText: '#c45a1a', icon: 'bar-chart' },
+  mint: { bg: iOSColors.secondaryLight, stroke: iOSColors.secondary, tagBg: '#e8f5f5', tagText: '#1a8a8a', icon: 'code' },
+  gold: { bg: iOSColors.goldLight, stroke: iOSColors.gold, tagBg: '#fef3c7', tagText: '#f59e0b', icon: 'sunny' },
+  blue: { bg: iOSColors.blueLight, stroke: iOSColors.blue, tagBg: '#dbeafe', tagText: '#2563eb', icon: 'server' },
+  purple: { bg: iOSColors.purpleLight, stroke: iOSColors.purple, tagBg: '#ede9fe', tagText: '#8b5cf6', icon: 'book' },
+};
+
+// 笔记项组件
+function NoteItem({ note, onPress }: { note: typeof notesData.today[0]; onPress: () => void }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [starred, setStarred] = useState(note.starred);
   const haptics = useHaptics();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [earnings, setEarnings] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [sort, setSort] = useState('recent');
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [price, setPrice] = useState('0');
-  const fabScale = useRef(new Animated.Value(1)).current;
+  const colors = colorMap[note.color as keyof typeof colorMap];
 
-  useEffect(() => {
-    loadData();
-  }, [sort]);
-
-  async function loadData() {
-    setIsLoading(true);
-    try {
-      const [notesData, earningsData] = await Promise.all([
-        apiClient.getNotes(1, 20, sort),
-        apiClient.getMyNoteEarnings(),
-      ]);
-      setNotes(notesData.items || []);
-      setEarnings(earningsData);
-    } catch (error) {
-      console.error('Load notes error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  const onRefresh = useCallback(() => {
-    loadData();
-  }, [sort]);
-
-  const purchaseNote = (noteId: string, notePrice: number) => {
-    Alert.alert(
-      '确认购买',
-      `将花费 ${notePrice} 积分购买此笔记，确认吗？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认购买',
-          onPress: async () => {
-            haptics.medium();
-            try {
-              await apiClient.purchaseNote(noteId);
-              haptics.success();
-              onSuccess();
-              loadData();
-            } catch (error: any) {
-              haptics.error();
-              onError();
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const publishNote = async () => {
-    if (!title.trim() || !content.trim()) {
-      haptics.error();
-      onError();
-      return;
-    }
-
-    haptics.light();
-    try {
-      await apiClient.publishNote(
-        title.trim(),
-        content.trim(),
-        parseInt(price) > 0 ? 'paid' : 'public',
-        parseInt(price) || 0
-      );
-      setShowPublishModal(false);
-      setTitle('');
-      setContent('');
-      setPrice('0');
-      haptics.success();
-      onSuccess();
-      loadData();
-    } catch (error) {
-      haptics.error();
-      onError();
-    }
-  };
-
-  const handleFabPressIn = () => {
-    Animated.spring(fabScale, {
-      toValue: 0.9,
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.98,
       useNativeDriver: true,
     }).start();
   };
 
-  const handleFabPressOut = () => {
-    Animated.spring(fabScale, {
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
     }).start();
   };
 
-  const renderNote = ({ item, index }: { item: Note; index: number }) => {
-    const cardAnim = useRef(new Animated.Value(0)).current;
+  const toggleStar = () => {
+    haptics.light();
+    setStarred(!starred);
+  };
 
-    useEffect(() => {
-      Animated.timing(cardAnim, {
-        toValue: 1,
-        duration: 300,
-        delay: index * 50,
-        useNativeDriver: true,
-      }).start();
-    }, []);
-
-    return (
-      <Animated.View
-        style={[
-          styles.noteItem,
-          {
-            opacity: cardAnim,
-            transform: [
-              {
-                translateY: cardAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [20, 0],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => router.push(`/notes/${item.id}` as any)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.noteHeader}>
-            <Text style={styles.noteTitle} numberOfLines={2}>{item.title}</Text>
-            {item.price > 0 && (
-              <View style={[styles.priceBadge, { backgroundColor: SecondaryColorMap.notes + '20', borderColor: SecondaryColorMap.notes }]}>
-                <Ionicons name="diamond" size={12} color={SecondaryColorMap.notes} />
-                <Text style={[styles.priceText, { color: SecondaryColorMap.notes }]}>{item.price}</Text>
-              </View>
-            )}
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={0.9}
+    >
+      <Animated.View style={[styles.noteItem, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={[styles.noteThumb, { backgroundColor: colors.bg }]}>
+          <Ionicons name={colors.icon as any} size={20} color={colors.stroke} />
+        </View>
+        <View style={styles.noteBody}>
+          <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
+          <Text style={styles.notePreview} numberOfLines={2}>{note.preview}</Text>
+          <View style={styles.noteMeta}>
+            <View style={[styles.noteTag, { backgroundColor: colors.tagBg }]}>
+              <Text style={[styles.noteTagText, { color: colors.tagText }]}>{note.category}</Text>
+            </View>
+            <Text style={styles.noteTime}>{note.time}</Text>
           </View>
-          <View style={styles.noteStats}>
-            <View style={styles.statItem}>
-              <Ionicons name="star" size={14} color={Colors.semantic.amber} />
-              <Text style={styles.statText}>{item.rating.toFixed(1)}</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Ionicons name="people" size={14} color={Colors.neutral.textMuted} />
-              <Text style={styles.statText}>{item.purchase_count}</Text>
-            </View>
-            {item.rating_count > 0 && (
-              <Text style={styles.ratingCount}>({item.rating_count}评)</Text>
-            )}
-          </View>
-          {!item.is_purchased && item.price > 0 && (
-            <TouchableOpacity
-              style={[styles.buyButton, { backgroundColor: SecondaryColorMap.notes }]}
-              onPress={() => purchaseNote(item.id, item.price)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="cart" size={14} color={Colors.neutral.white} />
-              <Text style={styles.buyButtonText}>购买</Text>
-            </TouchableOpacity>
-          )}
-          {item.is_purchased && (
-            <View style={[styles.purchasedBadge, { backgroundColor: Colors.semantic.green + '20' }]}>
-              <Ionicons name="checkmark-circle" size={14} color={Colors.semantic.green} />
-              <Text style={[styles.purchasedText, { color: Colors.semantic.green }]}>已购买</Text>
-            </View>
-          )}
+        </View>
+        <TouchableOpacity style={styles.noteStar} onPress={toggleStar} activeOpacity={0.7}>
+          <Ionicons
+            name={starred ? 'star' : 'star-outline'}
+            size={18}
+            color={starred ? iOSColors.gold : iOSColors.muted}
+          />
         </TouchableOpacity>
       </Animated.View>
-    );
+    </TouchableOpacity>
+  );
+}
+
+// 筛选标签组件
+function FilterTab({ tab, active, onPress }: { tab: typeof filterTabs[0]; active: boolean; onPress: () => void }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const haptics = useHaptics();
+
+  const handlePress = () => {
+    haptics.light();
+    Animated.spring(scaleAnim, {
+      toValue: 0.96,
+      useNativeDriver: true,
+    }).start();
+    onPress();
+    setTimeout(() => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+    }, 100);
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.9}
+    >
+      <Animated.View style={[
+        styles.filterTab,
+        active && styles.filterTabActive,
+        { transform: [{ scale: scaleAnim }] }
+      ]}>
+        <Text style={[styles.filterTabText, active && styles.filterTabTextActive]}>
+          {tab.label}
+        </Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+export default function NotesScreen() {
+  const router = useRouter();
+  const haptics = useHaptics();
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [searchText, setSearchText] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const totalNotes = notesData.today.length + notesData.thisWeek.length;
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    // 后续接入真实数据加载
+    setTimeout(() => setRefreshing(false), 1000);
   };
 
   return (
     <View style={styles.container}>
-      {/* 头部 */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Ionicons name="document-text" size={24} color={SecondaryColorMap.notes} />
-          <Text style={styles.headerTitle}>共享笔记</Text>
-        </View>
-      </View>
-
-      {/* 我的收益卡片 */}
-      {earnings && (
-        <View style={[styles.earningsCard, { backgroundColor: SecondaryColorMap.notes }]}>
-          <View style={styles.earningsDecor}>
-            <Ionicons name="trending-up" size={60} color={Colors.neutral.white} style={{ opacity: 0.15 }} />
-          </View>
-          <Text style={styles.earningsTitle}>我的笔记收益</Text>
-          <View style={styles.earningsStats}>
-            <View style={styles.earningsItem}>
-              <Text style={styles.earningsValue}>{earnings.total_earnings || 0}</Text>
-              <Text style={styles.earningsLabel}>总收益</Text>
-            </View>
-            <View style={styles.earningsDivider} />
-            <View style={styles.earningsItem}>
-              <Text style={styles.earningsValue}>{earnings.total_purchases || 0}</Text>
-              <Text style={styles.earningsLabel}>购买次数</Text>
-            </View>
-            <View style={styles.earningsDivider} />
-            <View style={styles.earningsItem}>
-              <Text style={styles.earningsValue}>{earnings.notes_count || 0}</Text>
-              <Text style={styles.earningsLabel}>发布笔记</Text>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* 排序切换 */}
-      <View style={styles.sortContainer}>
-        {[
-          { key: 'recent', label: '最新', icon: 'time' },
-          { key: 'popular', label: '热门', icon: 'flame' },
-          { key: 'rating', label: '高分', icon: 'star' },
-        ].map((s) => (
-          <TouchableOpacity
-            key={s.key}
-            style={[
-              styles.sortButton,
-              sort === s.key && styles.activeSort,
-              { backgroundColor: sort === s.key ? SecondaryColorMap.notes : Colors.neutral.backgroundAlt },
-            ]}
-            onPress={() => {
-              haptics.light();
-              setSort(s.key);
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name={s.icon as any} size={14} color={sort === s.key ? Colors.neutral.white : Colors.neutral.textSecondary} />
-            <Text style={[styles.sortText, sort === s.key && styles.activeSortText]}>
-              {s.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* 笔记列表 */}
-      <FlatList
-        data={notes}
-        renderItem={renderNote}
-        keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} colors={[SecondaryColorMap.notes]} />}
-        scrollEnabled={false}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <View style={[styles.emptyIconWrap, { backgroundColor: SecondaryColorMap.notes + '15' }]}>
-              <Ionicons name="document-text-outline" size={44} color={SecondaryColorMap.notes} />
-            </View>
-            <Text style={styles.emptyTitle}>暂无笔记</Text>
-            <Text style={styles.emptyHint}>点击下方按钮分享你的第一条笔记</Text>
-          </View>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        contentContainerStyle={styles.listContent}
-      />
+      >
+        {/* 笔记本Banner */}
+        <View style={styles.notesBanner}>
+          <View style={styles.notesBannerText}>
+            <Text style={styles.notesBannerTitle}>{totalNotes} 条笔记</Text>
+            <Text style={styles.notesBannerDesc}>今天写了 {notesData.today.length} 条，继续保持！</Text>
+          </View>
+          <View style={styles.notesBannerIcon}>
+            <Text style={styles.notesBannerEmoji}>📝</Text>
+            <Text style={styles.notesBannerPencil}>✏️</Text>
+          </View>
+        </View>
 
-      {/* 发布按钮 FAB */}
+        {/* 搜索栏 */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={16} color={iOSColors.muted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="搜索笔记内容..."
+            placeholderTextColor={iOSColors.muted}
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+        </View>
+
+        {/* 筛选标签 */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterTabsScroll}
+        >
+          <View style={styles.filterTabs}>
+            {filterTabs.map(tab => (
+              <FilterTab
+                key={tab.key}
+                tab={tab}
+                active={activeFilter === tab.key}
+                onPress={() => setActiveFilter(tab.key)}
+              />
+            ))}
+          </View>
+        </ScrollView>
+
+        {/* 今天 */}
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionTitle}>今天</Text>
+          <Text style={styles.sectionCount}>{notesData.today.length} 条</Text>
+        </View>
+        <View style={styles.notesList}>
+          {notesData.today.map(note => (
+            <NoteItem
+              key={note.id}
+              note={note}
+              onPress={() => router.push(`/note/${note.id}` as any)}
+            />
+          ))}
+        </View>
+
+        {/* 本周 */}
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionTitle}>本周</Text>
+          <Text style={styles.sectionCount}>{notesData.thisWeek.length} 条</Text>
+        </View>
+        <View style={styles.notesList}>
+          {notesData.thisWeek.map(note => (
+            <NoteItem
+              key={note.id}
+              note={note}
+              onPress={() => router.push(`/note/${note.id}` as any)}
+            />
+          ))}
+        </View>
+
+        {/* 占位 */}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+
+      {/* 新建笔记按钮 */}
       <TouchableOpacity
-        style={styles.fabContainer}
+        style={styles.fab}
         onPress={() => {
           haptics.medium();
-          setShowPublishModal(true);
+          router.push('/notes/new' as any);
         }}
-        onPressIn={handleFabPressIn}
-        onPressOut={handleFabPressOut}
-        activeOpacity={0.9}
+        activeOpacity={0.85}
       >
-        <Animated.View style={[styles.fab, { backgroundColor: SecondaryColorMap.notes, transform: [{ scale: fabScale }] }]}>
-          <Ionicons name="add" size={28} color={Colors.neutral.white} />
-        </Animated.View>
+        <Ionicons name="add" size={24} color="#fff" />
       </TouchableOpacity>
-
-      {/* 发布弹窗 */}
-      <Modal visible={showPublishModal} transparent animationType="slide">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={[styles.modalHeader, { backgroundColor: SecondaryColorMap.notes + '15' }]}>
-              <Ionicons name="document-text" size={24} color={SecondaryColorMap.notes} />
-              <Text style={styles.modalTitle}>发布笔记</Text>
-            </View>
-
-            <Text style={styles.inputLabel}>标题</Text>
-            <TextInput
-              style={styles.input}
-              value={title}
-              onChangeText={setTitle}
-              placeholder="笔记标题"
-              placeholderTextColor={Colors.neutral.textMuted}
-            />
-
-            <Text style={styles.inputLabel}>内容</Text>
-            <TextInput
-              style={[styles.input, styles.contentInput]}
-              value={content}
-              onChangeText={setContent}
-              placeholder="分享你的学习心得..."
-              placeholderTextColor={Colors.neutral.textMuted}
-              multiline
-              numberOfLines={5}
-            />
-
-            <Text style={styles.inputLabel}>价格 (积分，0为免费)</Text>
-            <TextInput
-              style={styles.input}
-              value={price}
-              onChangeText={setPrice}
-              placeholder="0"
-              placeholderTextColor={Colors.neutral.textMuted}
-              keyboardType="numeric"
-            />
-
-            <TouchableOpacity style={[styles.publishModalButton, { backgroundColor: SecondaryColorMap.notes }]} onPress={publishNote}>
-              <Ionicons name="send" size={16} color={Colors.neutral.white} />
-              <Text style={styles.publishModalButtonText}>发布</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => {
-              haptics.light();
-              setShowPublishModal(false);
-            }}>
-              <Text style={styles.cancelButtonText}>取消</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.neutral.background },
+  container: {
+    flex: 1,
+    backgroundColor: iOSColors.bgSolid,
+  },
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: Spacing.md,
+  },
 
-  // 头部
-  header: {
+  // Banner
+  notesBanner: {
+    borderRadius: Rounded.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 4,
-    backgroundColor: Colors.neutral.card,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral.border,
+    minHeight: 100,
+    backgroundColor: '#fce8e0',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  notesBannerText: {
+    flex: 1,
   },
-  headerTitle: {
+  notesBannerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: Colors.neutral.textPrimary,
-    marginLeft: Spacing.sm,
+    color: iOSColors.fg,
+    letterSpacing: -0.02,
+    marginBottom: 4,
   },
-
-  // 收益卡片
-  earningsCard: {
-    margin: Spacing.md,
-    borderRadius: Rounded.lg,
-    padding: Spacing.lg,
-    overflow: 'hidden',
-  },
-  earningsDecor: {
-    position: 'absolute',
-    right: -10,
-    top: -10,
-  },
-  earningsTitle: {
-    fontSize: 14,
-    color: Colors.neutral.white,
-    opacity: 0.9,
-  },
-  earningsStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: Spacing.md,
-  },
-  earningsItem: {
-    alignItems: 'center',
-  },
-  earningsDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: Colors.neutral.white + '33',
-  },
-  earningsValue: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.neutral.white
-  },
-  earningsLabel: {
-    fontSize: 12,
-    color: Colors.neutral.white,
-    opacity: 0.8,
-    marginTop: Spacing.xs
-  },
-
-  // 排序
-  sortContainer: {
-    flexDirection: 'row',
-    backgroundColor: Colors.neutral.card,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm - 2,
-    borderRadius: Rounded.full,
-    marginRight: Spacing.sm,
-  },
-  activeSort: {
-    shadowColor: SecondaryColorMap.notes,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sortText: {
+  notesBannerDesc: {
     fontSize: 13,
-    color: Colors.neutral.textSecondary,
-    marginLeft: 4,
+    color: iOSColors.muted,
+    lineHeight: 20,
   },
-  activeSortText: {
-    color: Colors.neutral.white,
-    fontWeight: '600'
+  notesBannerIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  notesBannerEmoji: {
+    fontSize: 32,
+  },
+  notesBannerPencil: {
+    fontSize: 20,
+    marginLeft: -8,
+    marginTop: 16,
   },
 
-  // 列表
-  listContent: {
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.xxl + 16
+  // Search
+  searchBar: {
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: Spacing.md,
+    minHeight: 44,
   },
-  noteItem: {
-    backgroundColor: Colors.neutral.card,
-    marginBottom: Spacing.sm,
-    borderRadius: Rounded.lg,
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-    overflow: 'hidden',
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: iOSColors.fg,
   },
-  noteHeader: {
+
+  // Filter Tabs
+  filterTabsScroll: {
+    marginBottom: Spacing.md,
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  filterTab: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    backgroundColor: iOSColors.surface,
+  },
+  filterTabActive: {
+    backgroundColor: iOSColors.accent,
+    borderColor: iOSColors.accent,
+  },
+  filterTabText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: iOSColors.muted,
+  },
+  filterTabTextActive: {
+    color: '#fff',
+  },
+
+  // Section
+  sectionLabel: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    padding: Spacing.md,
-    paddingBottom: Spacing.sm,
-  },
-  noteTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-    color: Colors.neutral.textPrimary
-  },
-  priceBadge: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: Rounded.sm,
-    borderWidth: 1,
-    marginLeft: Spacing.sm,
-  },
-  priceText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 2,
-  },
-  noteStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: Spacing.sm,
-  },
-  statText: {
-    fontSize: 12,
-    color: Colors.neutral.textSecondary,
-    marginLeft: 2,
-  },
-  ratingCount: {
-    fontSize: 12,
-    color: Colors.neutral.textMuted,
-  },
-  buyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm - 2,
-    borderRadius: Rounded.sm,
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  buyButtonText: {
-    color: Colors.neutral.white,
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: Spacing.xs,
-  },
-  purchasedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm - 2,
-    borderRadius: Rounded.sm,
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  purchasedText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: Spacing.xs,
-  },
-
-  // 空状态
-  empty: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xxl + 16,
-    paddingHorizontal: Spacing.lg,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.neutral.textPrimary,
     marginBottom: Spacing.xs,
   },
-  emptyHint: {
-    fontSize: 13,
-    color: Colors.neutral.textMuted,
-    textAlign: 'center',
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    letterSpacing: -0.01,
+  },
+  sectionCount: {
+    fontSize: 12,
+    color: iOSColors.accent,
+    fontWeight: '500',
+  },
+
+  // Notes List
+  notesList: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  noteItem: {
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.sm,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  noteThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: Rounded.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  noteTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    letterSpacing: -0.005,
+    marginBottom: 3,
+  },
+  notePreview: {
+    fontSize: 12,
+    color: iOSColors.muted,
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  noteMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  noteTag: {
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  noteTagText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  noteTime: {
+    fontSize: 10,
+    color: iOSColors.muted,
+    opacity: 0.7,
+  },
+  noteStar: {
+    width: 44,
+    height: 44,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    paddingTop: 2,
   },
 
   // FAB
-  fabContainer: {
+  fab: {
     position: 'absolute',
     bottom: Spacing.lg,
     right: Spacing.lg,
-  },
-  fab: {
     width: 56,
     height: 56,
     borderRadius: 28,
+    backgroundColor: iOSColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: SecondaryColorMap.notes,
+    shadowColor: iOSColors.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
-  },
-
-  // Modal
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    backgroundColor: Colors.neutral.card,
-    padding: Spacing.lg,
-    borderRadius: Rounded.lg,
-    marginHorizontal: Spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Rounded.sm,
-    marginBottom: Spacing.md,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.neutral.textPrimary,
-    marginLeft: Spacing.sm,
-  },
-  inputLabel: {
-    fontSize: 14,
-    color: Colors.neutral.textSecondary,
-    marginBottom: Spacing.xs,
-    fontWeight: '500'
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-    borderRadius: Rounded.sm,
-    padding: Spacing.md - 2,
-    marginBottom: Spacing.sm + 3,
-    backgroundColor: Colors.neutral.backgroundAlt,
-    color: Colors.neutral.textPrimary,
-    fontSize: 16,
-  },
-  contentInput: {
-    height: 100,
-    textAlignVertical: 'top'
-  },
-  publishModalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.sm + 2,
-    borderRadius: Rounded.sm,
-  },
-  publishModalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.neutral.white,
-    marginLeft: Spacing.sm,
-  },
-  cancelButton: {
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    padding: Spacing.sm,
-  },
-  cancelButtonText: {
-    color: Colors.neutral.textSecondary,
-    fontSize: 16
   },
 });
