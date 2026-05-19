@@ -200,6 +200,8 @@ export default function ProfileScreen() {
     weekly_study: { total_hours: 0, daily_data: [] },
     achievements: [],
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   useEffect(() => {
@@ -208,6 +210,8 @@ export default function ProfileScreen() {
 
   async function loadProfileData() {
     try {
+      setIsLoading(true);
+      setError(null);
       const [profile, tokenData, pointsData] = await Promise.all([
         apiClient.getProfileOverview(),
         apiClient.getTokenBalance(),
@@ -219,9 +223,12 @@ export default function ProfileScreen() {
         pointsBalance: pointsData.balance || 0,
         isLoading: false,
       });
-    } catch (error) {
-      console.error('Load profile error:', error);
+    } catch (err) {
+      console.error('Load profile error:', err);
+      setError('加载资料失败，请下拉重试');
       setBalance({ ...balance, isLoading: false });
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -240,6 +247,33 @@ export default function ProfileScreen() {
 
   // 计算本周总学习时长
   const weeklyTotal = profileData.weekly_study.total_hours;
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Ionicons name="person-outline" size={48} color={iOSColors.muted} />
+          <Text style={styles.loadingText}>加载资料...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={iOSColors.accent} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProfileData} activeOpacity={0.7}>
+            <Text style={styles.retryButtonText}>重新加载</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -643,5 +677,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: iOSColors.muted,
+  },
+
+  // Loading & Error
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: iOSColors.muted,
+    marginTop: Spacing.sm,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  errorText: {
+    fontSize: 16,
+    color: iOSColors.fg,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.accent,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

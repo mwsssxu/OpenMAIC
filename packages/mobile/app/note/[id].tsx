@@ -132,6 +132,7 @@ export default function NoteDetailScreen() {
   const { t } = useI18n();
   const [noteData, setNoteData] = useState<NoteData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadNote();
@@ -141,10 +142,12 @@ export default function NoteDetailScreen() {
     if (!params.id) return;
     try {
       setIsLoading(true);
+      setError(null);
       const data = await apiClient.getPersonalNote(params.id);
       setNoteData(data);
-    } catch (error) {
-      console.error('Load note error:', error);
+    } catch (err) {
+      console.error('Load note error:', err);
+      setError('加载笔记失败');
     } finally {
       setIsLoading(false);
     }
@@ -197,7 +200,8 @@ export default function NoteDetailScreen() {
     return elements;
   };
 
-  if (isLoading || !noteData) {
+  // Loading state
+  if (isLoading) {
     return (
       <View style={styles.container}>
         <View style={styles.navBar}>
@@ -206,7 +210,28 @@ export default function NoteDetailScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>加载中...</Text>
+          <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
+          <Text style={styles.loadingText}>加载笔记...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error || !noteData) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.navBar}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => router.back()} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={iOSColors.accent} />
+          <Text style={styles.errorText}>{error || '笔记不存在'}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadNote} activeOpacity={0.7}>
+            <Text style={styles.retryButtonText}>重新加载</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -322,10 +347,36 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
   },
   loadingText: {
     fontSize: 16,
     color: iOSColors.muted,
+    marginTop: Spacing.sm,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  errorText: {
+    fontSize: 16,
+    color: iOSColors.fg,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.accent,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   navBar: {
     flexDirection: 'row',

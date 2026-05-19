@@ -184,6 +184,7 @@ export default function NotesScreen() {
     week_count: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadNotes();
@@ -192,6 +193,7 @@ export default function NotesScreen() {
   async function loadNotes() {
     try {
       setIsLoading(true);
+      setError(null);
       const starredOnly = activeFilter === 'fav';
       const filter = activeFilter === 'all' || activeFilter === 'fav' ? undefined : activeFilter;
       const data = await apiClient.getPersonalNotes(1, 50, filter, starredOnly);
@@ -202,8 +204,9 @@ export default function NotesScreen() {
         today_count: data.today_count || 0,
         week_count: data.week_count || 0,
       });
-    } catch (error) {
-      console.error('Load notes error:', error);
+    } catch (err) {
+      console.error('Load notes error:', err);
+      setError('加载笔记失败，请下拉重试');
     } finally {
       setIsLoading(false);
     }
@@ -226,6 +229,33 @@ export default function NotesScreen() {
   };
 
   const totalNotes = notesData.today.length + notesData.this_week.length;
+
+  // Loading state
+  if (isLoading && !refreshing) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
+          <Text style={styles.loadingText}>加载笔记...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error && totalNotes === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={iOSColors.accent} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadNotes} activeOpacity={0.7}>
+            <Text style={styles.retryButtonText}>重新加载</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -527,5 +557,42 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+
+  // Loading & Error
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: iOSColors.muted,
+    marginTop: Spacing.sm,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  errorText: {
+    fontSize: 16,
+    color: iOSColors.fg,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.accent,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
