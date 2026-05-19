@@ -1,10 +1,27 @@
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'react-native';
-import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Animated } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { apiClient } from '@/lib/api-client';
-import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import { useHaptics } from '@/lib/hooks/use-haptics';
+import { useI18n, Locale } from '@/lib/i18n';
+import { Ionicons } from '@expo/vector-icons';
+
+// iOS 风格颜色系统
+const iOSColors = {
+  bgSolid: '#f5f3f2',
+  surface: 'rgba(255, 255, 255, 0.55)',
+  surfaceSolid: '#FFFFFF',
+  fg: '#1a1a1a',
+  muted: '#666666',
+  border: 'rgba(230, 225, 220, 0.6)',
+  accent: '#c45a1a',
+  accentLight: '#fde8e0',
+  secondary: '#1a8a8a',
+  secondaryLight: '#e8f5f5',
+};
 
 interface BalanceState {
   tokenBalance: number;
@@ -12,35 +29,18 @@ interface BalanceState {
   isLoading: boolean;
 }
 
-interface AlertState {
-  visible: boolean;
-  message: string;
-}
-
-interface ConfirmState {
-  visible: boolean;
-  message: string;
-  onConfirm: (() => Promise<void>) | null;
-}
-
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { onSuccess, onError } = useFeedback();
+  const haptics = useHaptics();
+  const { t, locale, setLocale, availableLocales } = useI18n();
   const [balance, setBalance] = useState<BalanceState>({
     tokenBalance: 0,
     pointsBalance: 0,
     isLoading: true,
   });
-  const [alertState, setAlertState] = useState<AlertState>({
-    visible: false,
-    message: '',
-  });
-  const [confirmState, setConfirmState] = useState<ConfirmState>({
-    visible: false,
-    message: '',
-    onConfirm: null,
-  });
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   useEffect(() => {
     loadBalance();
@@ -63,137 +63,179 @@ export default function ProfileScreen() {
     }
   }
 
-  const showAlert = (message: string) => {
-    setAlertState({ visible: true, message });
-  };
-
-  const hideAlert = () => {
-    setAlertState({ visible: false, message: '' });
-  };
-
-  const showConfirm = (message: string, onConfirm: () => Promise<void>) => {
-    setConfirmState({ visible: true, message, onConfirm });
-  };
-
-  const hideConfirm = () => {
-    setConfirmState({ visible: false, message: '', onConfirm: null });
-  };
-
-  const handleConfirmYes = async () => {
-    hideConfirm();
-    if (confirmState.onConfirm) {
-      try {
-        await confirmState.onConfirm();
-      } catch (error) {
-        console.error('Confirm action error:', error);
-      }
-    }
-  };
-
   const handleLogout = () => {
-    showConfirm('确定要退出登录吗？', async () => {
-      console.log('开始退出登录...');
-      await logout();
-      console.log('退出登录成功');
-      router.replace('/auth/login');
-    });
+    haptics.medium();
+    logout();
+    router.replace('/auth/login');
   };
 
-  const handleExchange = () => {
-    if (balance.pointsBalance < 100) {
-      showAlert('需要至少100积分才能兑换');
-      return;
-    }
-
-    showConfirm('将100积分兑换为10Token？', async () => {
-      try {
-        await apiClient.exchangeTokens(100);
-        onSuccess();
-        loadBalance();
-        showAlert('兑换成功');
-      } catch (error) {
-        onError();
-        showAlert('兑换失败，请稍后重试');
-      }
-    });
+  const handleLanguageChange = (newLocale: Locale) => {
+    haptics.light();
+    setLocale(newLocale);
+    setShowLanguageModal(false);
+    onSuccess();
   };
+
+  // 菜单项组件
+  function MenuItem({ icon, title, onPress }: { icon: string; title: string; onPress: () => void }) {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 0.98,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
+      >
+        <Animated.View style={[styles.menuItem, { transform: [{ scale: scaleAnim }] }]}>
+          <Ionicons name={icon as any} size={20} color={iOSColors.accent} />
+          <Text style={styles.menuItemText}>{title}</Text>
+          <Ionicons name="chevron-forward" size={16} color={iOSColors.muted} />
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* 用户信息 */}
-      <View style={styles.header}>
-        <Text style={styles.nickname}>{user?.nickname || '用户'}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
-      </View>
-
-      {/* Token/积分余额卡片 */}
-      <View style={styles.balanceCard}>
-        <View style={styles.balanceItem}>
-          <Text style={styles.balanceLabel}>Token余额</Text>
-          <Text style={styles.balanceValue}>{balance.tokenBalance}</Text>
-        </View>
-        <View style={styles.balanceDivider} />
-        <View style={styles.balanceItem}>
-          <Text style={styles.balanceLabel}>积分余额</Text>
-          <Text style={styles.balanceValue}>{balance.pointsBalance}</Text>
-        </View>
-      </View>
-
-      {/* 兑换按钮 */}
-      <TouchableOpacity style={styles.exchangeButton} onPress={handleExchange}>
-        <Text style={styles.exchangeButtonText}>积分兑换Token</Text>
-      </TouchableOpacity>
-
-      {/* 菜单列表 */}
-      <View style={styles.section}>
-        <TouchableOpacity style={styles.item} onPress={() => router.push('/wallet')}>
-          <Text style={styles.itemText}>钱包详情</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.item}>
-          <Text style={styles.itemText}>设置</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.item}>
-          <Text style={styles.itemText}>帮助</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.item} onPress={handleLogout}>
-          <Text style={[styles.itemText, styles.logoutText]}>退出登录</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 确认弹窗 */}
-      <Modal
-        visible={confirmState.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideConfirm}
-      >
-        <Pressable style={styles.modalOverlay} onPress={hideConfirm}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalMessage}>{confirmState.message}</Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButtonCancel} onPress={hideConfirm}>
-                <Text style={styles.modalButtonCancelText}>取消</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButtonConfirm} onPress={handleConfirmYes}>
-                <Text style={styles.modalButtonConfirmText}>确定</Text>
-              </TouchableOpacity>
-            </View>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header 用户信息 */}
+        <View style={styles.header}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(user?.nickname || user?.email || '用户').charAt(0)}</Text>
           </View>
-        </Pressable>
-      </Modal>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '用户'}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
+          </View>
+        </View>
 
-      {/* 提示弹窗 */}
+        {/* Balance Cards */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{balance.tokenBalance}</Text>
+            <Text style={styles.statLabel}>{t('profile.tokenBalance')}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{balance.pointsBalance}</Text>
+            <Text style={styles.statLabel}>{t('profile.pointsBalance')}</Text>
+          </View>
+        </View>
+
+        {/* Settings Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
+          <MenuItem
+            icon="language-outline"
+            title={t('profile.languageSettings')}
+            onPress={() => {
+              haptics.light();
+              setShowLanguageModal(true);
+            }}
+          />
+          <MenuItem
+            icon="wallet-outline"
+            title={t('home.wallet')}
+            onPress={() => {
+              haptics.light();
+              router.push('/wallet');
+            }}
+          />
+          <MenuItem
+            icon="trending-up-outline"
+            title={t('home.growthSystem')}
+            onPress={() => {
+              haptics.light();
+              router.push('/gamification');
+            }}
+          />
+          <MenuItem
+            icon="gift-outline"
+            title={t('home.inviteRewards')}
+            onPress={() => {
+              haptics.light();
+              router.push('/invite');
+            }}
+          />
+        </View>
+
+        {/* More Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>更多</Text>
+          <MenuItem
+            icon="information-circle-outline"
+            title={t('profile.about')}
+            onPress={() => {
+              haptics.light();
+            }}
+          />
+          <MenuItem
+            icon="download-outline"
+            title={t('profile.exportData')}
+            onPress={() => {
+              haptics.light();
+            }}
+          />
+        </View>
+
+        {/* Logout Button */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.logoutButtonText}>{t('auth.logout')}</Text>
+        </TouchableOpacity>
+
+        {/* Spacer for safe area */}
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* Language Selection Modal */}
       <Modal
-        visible={alertState.visible}
+        visible={showLanguageModal}
         transparent
         animationType="fade"
-        onRequestClose={hideAlert}
+        onRequestClose={() => setShowLanguageModal(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={hideAlert}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowLanguageModal(false)}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalMessage}>{alertState.message}</Text>
-            <TouchableOpacity style={styles.modalButtonSingle} onPress={hideAlert}>
-              <Text style={styles.modalButtonConfirmText}>知道了</Text>
+            <Text style={styles.modalTitle}>{t('profile.languageSettings')}</Text>
+            {availableLocales.map((lang) => (
+              <TouchableOpacity
+                key={lang.code}
+                style={[styles.languageOption, locale === lang.code && styles.languageOptionActive]}
+                onPress={() => handleLanguageChange(lang.code)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.languageOptionText, locale === lang.code && styles.languageOptionTextActive]}>
+                  {lang.name}
+                </Text>
+                {locale === lang.code && (
+                  <Ionicons name="checkmark" size={20} color={iOSColors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowLanguageModal(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -203,57 +245,124 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.neutral.background },
+  container: {
+    flex: 1,
+    backgroundColor: iOSColors.bgSolid,
+  },
+  scrollView: {
+    flex: 1,
+  },
+
+  // Header
   header: {
-    padding: Spacing.lg,
-    backgroundColor: Colors.neutral.card,
-    marginBottom: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral.border,
-  },
-  nickname: { fontSize: 24, fontWeight: 'bold', color: Colors.neutral.textPrimary },
-  email: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: Spacing.sm },
-  balanceCard: {
-    backgroundColor: Colors.neutral.card,
-    marginHorizontal: Spacing.sm,
-    borderRadius: Rounded.md,
-    padding: Spacing.lg,
-    marginBottom: Spacing.sm,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-  },
-  balanceItem: { alignItems: 'center' },
-  balanceLabel: { fontSize: 14, color: Colors.neutral.textSecondary },
-  balanceValue: { fontSize: 28, fontWeight: 'bold', color: Colors.primary.main, marginTop: Spacing.sm },
-  balanceDivider: { width: 1, height: 50, backgroundColor: Colors.neutral.border },
-  exchangeButton: {
-    backgroundColor: Colors.primary.main,
-    marginHorizontal: Spacing.sm,
-    borderRadius: Rounded.sm,
-    padding: Spacing.md,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md + 4,
     marginBottom: Spacing.lg,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: iOSColors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginBottom: 2,
+  },
+  userEmail: {
+    fontSize: 13,
+    color: iOSColors.muted,
+  },
+
+  // Stats Grid
+  statsGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.md,
     alignItems: 'center',
   },
-  exchangeButtonText: { color: Colors.neutral.textInverse, fontSize: 16, fontWeight: '600' },
-  section: {
-    backgroundColor: Colors.neutral.card,
-    borderRadius: Rounded.md,
-    marginHorizontal: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-    overflow: 'hidden',
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: iOSColors.accent,
   },
-  item: {
-    padding: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral.border,
+  statLabel: {
+    fontSize: 12,
+    color: iOSColors.muted,
+    marginTop: 4,
   },
-  itemText: { fontSize: 16, color: Colors.neutral.textPrimary },
-  logoutText: { color: Colors.feedback.errorText },
 
-  // Modal 样式
+  // Section
+  section: {
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginBottom: Spacing.sm,
+  },
+
+  // Menu Item
+  menuItem: {
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: iOSColors.fg,
+    marginLeft: Spacing.sm,
+  },
+
+  // Logout Button
+  logoutButton: {
+    marginHorizontal: Spacing.md,
+    height: 48,
+    borderRadius: Rounded.md,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -261,51 +370,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: Colors.neutral.card,
+    backgroundColor: iOSColors.surfaceSolid,
     borderRadius: Rounded.lg,
-    padding: Spacing.lg,
-    minWidth: 280,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
+    padding: Spacing.md,
+    width: '85%',
+    maxWidth: 320,
   },
-  modalMessage: {
-    fontSize: 16,
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: iOSColors.fg,
     textAlign: 'center',
-    marginBottom: Spacing.lg,
-    color: Colors.neutral.textPrimary,
+    marginBottom: Spacing.md,
   },
-  modalButtons: {
+  languageOption: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  modalButtonCancel: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
     borderRadius: Rounded.sm,
-    backgroundColor: Colors.neutral.disabled,
+    marginBottom: Spacing.sm,
   },
-  modalButtonCancelText: {
+  languageOptionActive: {
+    backgroundColor: iOSColors.accentLight,
+  },
+  languageOptionText: {
+    flex: 1,
     fontSize: 16,
-    color: Colors.neutral.textSecondary,
+    color: iOSColors.fg,
+  },
+  languageOptionTextActive: {
     fontWeight: '600',
+    color: iOSColors.accent,
   },
-  modalButtonConfirm: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+  modalCancelButton: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.md,
     borderRadius: Rounded.sm,
-    backgroundColor: Colors.primary.main,
+    backgroundColor: iOSColors.border,
+    alignItems: 'center',
   },
-  modalButtonConfirmText: {
+  modalCancelText: {
     fontSize: 16,
-    color: Colors.neutral.textInverse,
     fontWeight: '600',
-  },
-  modalButtonSingle: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
-    borderRadius: Rounded.sm,
-    backgroundColor: Colors.primary.main,
+    color: iOSColors.muted,
   },
 });

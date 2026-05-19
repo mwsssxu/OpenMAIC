@@ -6,6 +6,7 @@ import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useRef, useState } from 'react';
+import { useI18n } from '@/lib/i18n';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -24,16 +25,16 @@ const iOSColors = {
 
 // 快捷功能配置（10个）
 const quickFunctions = [
-  { key: 'courses', title: '我的课程', icon: 'book', color: '#f45a1a', bgColor: '#fce8e0', route: '/courses' },
-  { key: 'qa', title: '问答悬赏', icon: 'help-circle', color: '#d97706', bgColor: '#fef3c7', route: '/questions' },
-  { key: 'notes', title: '共享笔记', icon: 'document-text', color: '#14b8a6', bgColor: '#e8f5f5', route: '/notes' },
-  { key: 'buddy', title: '学习搭子', icon: 'happy', color: '#2563eb', bgColor: '#dbeafe', route: '/buddy' },
-  { key: 'matching', title: '学习匹配', icon: 'people', color: '#8b5cf6', bgColor: '#ede9fe', route: '/matching' },
-  { key: 'growth', title: '成长体系', icon: 'trending-up', color: '#f45a1a', bgColor: '#fce8e0', route: '/gamification' },
-  { key: 'invite', title: '邀请奖励', icon: 'gift', color: '#d97706', bgColor: '#fef3c7', route: '/invite' },
-  { key: 'recharge', title: '充值中心', icon: 'card', color: '#14b8a6', bgColor: '#e8f5f5', route: '/payment' },
-  { key: 'wallet', title: '钱包', icon: 'cash', color: '#2563eb', bgColor: '#dbeafe', route: '/wallet' },
-  { key: 'enterprise', title: '企业服务', icon: 'briefcase', color: '#8b5cf6', bgColor: '#ede9fe', route: '/enterprise' },
+  { key: 'courses', titleKey: 'home.myCourses', icon: 'book', color: '#f45a1a', bgColor: '#fce8e0', route: '/courses' },
+  { key: 'qa', titleKey: 'home.qaBounty', icon: 'help-circle', color: '#d97706', bgColor: '#fef3c7', route: '/questions' },
+  { key: 'notes', titleKey: 'home.sharedNotes', icon: 'document-text', color: '#14b8a6', bgColor: '#e8f5f5', route: '/notes' },
+  { key: 'buddy', titleKey: 'home.studyBuddy', icon: 'happy', color: '#2563eb', bgColor: '#dbeafe', route: '/buddy' },
+  { key: 'matching', titleKey: 'home.studyMatching', icon: 'people', color: '#8b5cf6', bgColor: '#ede9fe', route: '/matching' },
+  { key: 'growth', titleKey: 'home.growthSystem', icon: 'trending-up', color: '#f45a1a', bgColor: '#fce8e0', route: '/gamification' },
+  { key: 'invite', titleKey: 'home.inviteRewards', icon: 'gift', color: '#d97706', bgColor: '#fef3c7', route: '/invite' },
+  { key: 'recharge', titleKey: 'home.recharge', icon: 'card', color: '#14b8a6', bgColor: '#e8f5f5', route: '/payment' },
+  { key: 'wallet', titleKey: 'home.wallet', icon: 'cash', color: '#2563eb', bgColor: '#dbeafe', route: '/wallet' },
+  { key: 'enterprise', titleKey: 'home.enterpriseServices', icon: 'briefcase', color: '#8b5cf6', bgColor: '#ede9fe', route: '/enterprise' },
 ];
 
 // 近期课程数据
@@ -53,14 +54,14 @@ const recommendedCourses = [
 
 // 笔记分类数据
 const notesCategories = [
-  { key: 'all', title: '全部笔记', icon: '📝', count: '32 条' },
-  { key: 'fav', title: '收藏', icon: '⭐', count: '12 条' },
-  { key: 'today', title: '今日', icon: '📅', count: '3 条' },
-  { key: 'new', title: '新建', icon: '➕', count: '快速记录' },
+  { key: 'all', titleKey: 'home.allNotes', icon: '📝', count: '32 条' },
+  { key: 'fav', titleKey: 'home.favorites', icon: '⭐', count: '12 条' },
+  { key: 'today', titleKey: 'home.today', icon: '📅', count: '3 条' },
+  { key: 'new', titleKey: 'home.quickRecord', icon: '➕', count: '' },
 ];
 
 // 快捷功能按钮组件
-function QuickFunctionBtn({ item, onPress }: { item: typeof quickFunctions[0]; onPress: () => void }) {
+function QuickFunctionBtn({ item, onPress, t }: { item: typeof quickFunctions[0]; onPress: () => void; t: (key: string) => string }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -89,7 +90,7 @@ function QuickFunctionBtn({ item, onPress }: { item: typeof quickFunctions[0]; o
         <View style={[styles.quickFnIcon, { backgroundColor: item.bgColor }]}>
           <Ionicons name={item.icon as any} size={16} color={item.color} />
         </View>
-        <Text style={styles.quickFnLabel}>{item.title}</Text>
+        <Text style={styles.quickFnLabel}>{t(item.titleKey)}</Text>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -97,54 +98,18 @@ function QuickFunctionBtn({ item, onPress }: { item: typeof quickFunctions[0]; o
 
 // 课程项组件
 function CourseItem({ course }: { course: typeof recentCourses[0] }) {
-  return (
-    <View style={styles.courseItem}>
-      <View style={[styles.courseIcon, { backgroundColor: course.color }]}>
-        <Text style={styles.courseIconText}>{course.icon}</Text>
-      </View>
-      <View style={styles.courseInfo}>
-        <Text style={styles.courseName}>{course.name}</Text>
-        <Text style={styles.courseMeta}>{course.section}</Text>
-        <View style={styles.courseProgress}>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
-          </View>
-          <Text style={styles.progressNum}>{course.progress}%</Text>
-        </View>
-      </View>
-    </View>
+      </Animated.View>
+    </TouchableOpacity>
   );
 }
 
-// 推荐课程卡片组件
-function RecommendedCard({ course }: { course: typeof recommendedCourses[0] }) {
-  return (
-    <View style={styles.recommendedCard}>
-      <View style={[styles.recIcon, { backgroundColor: iOSColors.accentLight }]}>
-        <Text style={styles.recIconText}>{course.icon}</Text>
-      </View>
-      <Text style={styles.recName} numberOfLines={1}>{course.name}</Text>
-      <Text style={styles.recCat}>{course.category}</Text>
-    </View>
-  );
-}
-
-// 笔记卡片组件
-function NoteCard({ note }: { note: typeof notesCategories[0] }) {
-  return (
-    <View style={styles.noteCard}>
-      <Text style={styles.noteIcon}>{note.icon}</Text>
-      <Text style={styles.noteLabel}>{note.title}</Text>
-      <Text style={styles.noteCount}>{note.count}</Text>
-    </View>
-  );
-}
-
-export default function HomeScreen() {
+// 课程项组件
+function CourseItem({ course }: { course: typeof recentCourses[0] }) {
   const router = useRouter();
   const { user } = useAuth();
   const { onPress } = useFeedback();
   const haptics = useHaptics();
+  const { t } = useI18n();
   const [notifExpanded, setNotifExpanded] = useState(false);
 
   const handlePress = (route: string) => {
@@ -164,9 +129,9 @@ export default function HomeScreen() {
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
             <Text style={styles.userStats}>
-              <Text style={styles.statValue}>23</Text>天 ·
-              <Text style={styles.statValue}>8</Text>门课程 ·
-              <Text style={styles.statValue}>156</Text>小时
+              <Text style={styles.statValue}>23</Text>{t('home.days')} ·
+              <Text style={styles.statValue}>8</Text>{t('home.courses')} ·
+              <Text style={styles.statValue}>156</Text>{t('home.hours')}
             </Text>
           </View>
           <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/profile')}>
@@ -178,7 +143,7 @@ export default function HomeScreen() {
         <View style={styles.streakCard}>
           <View>
             <Text style={styles.streakNumber}>23</Text>
-            <Text style={styles.streakText}>天连续学习</Text>
+            <Text style={styles.streakText}>{t('home.streakDays')}</Text>
           </View>
           <View style={styles.streakDots}>
             {[1,2,3,4,5,6,7].map(i => (
@@ -201,7 +166,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.notifSummary}>
-              <Text style={styles.notifTitle}>数据分析基础 · 新课提醒</Text>
+              <Text style={styles.notifTitle}>{t('home.newLessonReminder')} · 数据分析基础</Text>
               <Text style={styles.notifTime}>5分钟前</Text>
             </View>
             <View style={styles.notifChevron}>
@@ -219,10 +184,10 @@ export default function HomeScreen() {
               </Text>
               <View style={styles.notifActions}>
                 <TouchableOpacity style={styles.notifActionPrimary} onPress={() => router.push('/courses')}>
-                  <Text style={styles.notifActionPrimaryText}>开始学习</Text>
+                  <Text style={styles.notifActionPrimaryText}>{t('home.startLearning')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.notifActionSecondary}>
-                  <Text style={styles.notifActionSecondaryText}>稍后提醒</Text>
+                  <Text style={styles.notifActionSecondaryText}>{t('home.remindLater')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -237,6 +202,7 @@ export default function HomeScreen() {
                 key={item.key}
                 item={item}
                 onPress={() => handlePress(item.route)}
+                t={t}
               />
             ))}
           </View>
@@ -245,7 +211,7 @@ export default function HomeScreen() {
         {/* Recent Courses 近期课程 */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>近期课程</Text>
+            <Text style={styles.sectionTitle}>{t('home.recentCourses')}</Text>
             <TouchableOpacity onPress={() => router.push('/courses')}>
               <Text style={styles.sectionLink}>全部</Text>
             </TouchableOpacity>
@@ -260,7 +226,7 @@ export default function HomeScreen() {
         {/* Recommended 推荐课程 */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>推荐课程</Text>
+            <Text style={styles.sectionTitle}>{t('home.recommendedCourses')}</Text>
             <TouchableOpacity onPress={() => router.push('/courses')}>
               <Text style={styles.sectionLink}>更多</Text>
             </TouchableOpacity>
@@ -286,7 +252,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.notesGrid}>
             {notesCategories.map(note => (
-              <NoteCard key={note.key} note={note} />
+              <NoteCard key={note.key} note={note} t={t} />
             ))}
           </View>
         </View>
