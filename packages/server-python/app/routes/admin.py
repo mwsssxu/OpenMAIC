@@ -106,8 +106,8 @@ async def list_users(
 
     users = await db.fetch(
         f"""
-        SELECT id, email, nickname, avatar_url, token_balance, point_balance,
-               subscription_tier, created_at, is_active
+        SELECT id, email, nickname, avatar_url, total_points,
+               created_at, is_active
         FROM users
         WHERE {where_clause}
         ORDER BY created_at DESC
@@ -117,9 +117,37 @@ async def list_users(
     )
 
     return {
-        "users": [dict(u) for u in users],
+        "data": [dict(u) for u in users],
         "total": len(users)
     }
+
+
+@router.get("/users/{user_id}")
+async def get_user(
+    user_id: str,
+    admin: dict = Depends(get_current_admin),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """Get single user by ID."""
+    user = await db.fetchrow(
+        """
+        SELECT id, email, nickname, avatar_url, total_points,
+               created_at, is_active
+        FROM users
+        WHERE id = $1
+        """,
+        user_id
+    )
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Convert to dict and handle datetime serialization
+    user_dict = dict(user)
+    if user_dict.get("created_at"):
+        user_dict["created_at"] = user_dict["created_at"].isoformat()
+
+    return {"data": user_dict}
 
 
 @router.post("/users/{user_id}/ban")
@@ -236,6 +264,87 @@ async def gift_points(
     )
 
     return {"success": True}
+
+
+# ============ Course Management ============
+
+@router.get("/courses")
+async def list_courses(
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, le=100),
+    offset: int = Query(0, ge=0),
+    admin: dict = Depends(get_current_admin),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """List courses (stages) for admin."""
+    conditions = []
+    params = []
+
+    if search:
+        conditions.append("name ILIKE $" + str(len(params) + 1))
+        params.append(f"%{search}%")
+
+    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+    params.extend([limit, offset])
+
+    courses = await db.fetch(
+        f"""
+        SELECT s.id, s.name as title, s.description, s.user_id as creator_id,
+               s.created_at, s.updated_at
+        FROM stages s
+        WHERE {where_clause}
+        ORDER BY s.created_at DESC
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params
+    )
+
+    # Convert to list of dicts
+    course_list = []
+    for c in courses:
+        course_dict = dict(c)
+        course_dict["chapters_count"] = 0  # Placeholder
+        if course_dict.get("created_at"):
+            course_dict["created_at"] = course_dict["created_at"].isoformat()
+        if course_dict.get("updated_at"):
+            course_dict["updated_at"] = course_dict["updated_at"].isoformat()
+        course_list.append(course_dict)
+
+    return {
+        "data": course_list,
+        "total": len(course_list)
+    }
+
+
+@router.get("/courses/{course_id}")
+async def get_course(
+    course_id: str,
+    admin: dict = Depends(get_current_admin),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """Get single course (stage) by ID."""
+    course = await db.fetchrow(
+        """
+        SELECT s.id, s.name as title, s.description, s.user_id as creator_id,
+               s.created_at, s.updated_at
+        FROM stages s
+        WHERE s.id = $1
+        """,
+        course_id
+    )
+
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    course_dict = dict(course)
+    course_dict["chapters_count"] = 0
+    course_dict["total_duration"] = 0
+    if course_dict.get("created_at"):
+        course_dict["created_at"] = course_dict["created_at"].isoformat()
+    if course_dict.get("updated_at"):
+        course_dict["updated_at"] = course_dict["updated_at"].isoformat()
+
+    return {"data": course_dict}
 
 
 # ============ Content Review ============

@@ -437,8 +437,8 @@ async def create_stage_record(
     description: Optional[str],
     language: str,
     agent_ids: List[str],
-    tags: List[str] = [],
     db: Any,
+    tags: List[str] = [],
     generated_agent_configs: Optional[List[Dict[str, Any]]] = None,
     pending_outlines: Optional[List[Dict[str, Any]]] = None
 ) -> None:

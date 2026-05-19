@@ -431,30 +431,3 @@ async def delete_personal_note(
         "note_id": str(n_uuid),
         "message": "笔记删除成功",
     }
-        """,
-        user_uuid
-    ) or 0
-
-    # 今日笔记数
-    today = utcnow().date()
-    today_count = await db.fetchval(
-        """
-        SELECT COUNT(*) FROM shared_notes
-        WHERE user_id = $1 AND is_personal = TRUE AND created_at >= $2
-        """,
-        user_uuid, today
-    ) or 0
-
-    # 收藏笔记数
-    starred_count = await db.fetchval(
-        """
-        SELECT COUNT(*) FROM shared_notes WHERE user_id = $1 AND is_personal = TRUE AND starred = TRUE
-        """,
-        user_uuid
-    ) or 0
-
-    return {
-        "total_notes": total,
-        "today_notes": today_count,
-        "starred_notes": starred_count,
-    }

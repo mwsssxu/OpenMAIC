@@ -70,6 +70,8 @@ if settings.TESTING_MODE or settings.DEBUG:
         "http://localhost:3001",
         "http://localhost:3003",
         "http://localhost:3030",
+        "http://localhost:3032",
+        "http://localhost:3033",
         "http://localhost:8081",
         "http://localhost:8082",
         "http://localhost:19000",
@@ -79,6 +81,8 @@ if settings.TESTING_MODE or settings.DEBUG:
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3003",
         "http://127.0.0.1:3030",
+        "http://127.0.0.1:3032",
+        "http://127.0.0.1:3033",
         # 局域网 IP（用于手机/Web 端访问）
         "http://192.168.1.110:8081",
         "http://192.168.1.110:8082",
