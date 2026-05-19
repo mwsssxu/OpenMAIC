@@ -96,15 +96,113 @@ function QuickFunctionBtn({ item, onPress, t }: { item: typeof quickFunctions[0]
   );
 }
 
-// 课程项组件
+// 课程项组件（近期课程列表）
 function CourseItem({ course }: { course: typeof recentCourses[0] }) {
+  const router = useRouter();
+
+  return (
+    <TouchableOpacity
+      style={styles.courseItem}
+      onPress={() => router.push(`/course/${course.id}` as any)}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.courseIcon, { backgroundColor: course.color }]}>
+        <Text style={styles.courseIconText}>{course.icon}</Text>
+      </View>
+      <View style={styles.courseInfo}>
+        <Text style={styles.courseName}>{course.name}</Text>
+        <Text style={styles.courseMeta}>{course.section}</Text>
+        <View style={styles.courseProgress}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
+          </View>
+          <Text style={styles.progressNum}>{course.progress}%</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// 推荐课程卡片组件
+function RecommendedCard({ course }: { course: typeof recommendedCourses[0] }) {
+  const router = useRouter();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push(`/course/${course.id}` as any)}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={0.9}
+    >
+      <Animated.View style={[styles.recommendedCard, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={[styles.recIcon, { backgroundColor: iOSColors.accentLight }]}>
+          <Text style={styles.recIconText}>{course.icon}</Text>
+        </View>
+        <Text style={styles.recName}>{course.name}</Text>
+        <Text style={styles.recCat}>{course.category}</Text>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-// 课程项组件
-function CourseItem({ course }: { course: typeof recentCourses[0] }) {
+// 笔记卡片组件
+function NoteCard({ note, t }: { note: typeof notesCategories[0]; t: (key: string) => string }) {
+  const router = useRouter();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      style={styles.noteCard}
+      onPress={() => {
+        if (note.key === 'new') {
+          router.push('/notes/new' as any);
+        } else {
+          router.push('/notes' as any);
+        }
+      }}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={0.9}
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
+        <Text style={styles.noteIcon}>{note.icon}</Text>
+        <Text style={styles.noteLabel}>{t(note.titleKey)}</Text>
+        {note.count && <Text style={styles.noteCount}>{note.count}</Text>}
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { onPress } = useFeedback();

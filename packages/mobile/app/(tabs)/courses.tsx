@@ -49,21 +49,6 @@ const mockCourseData = {
   completedSections: Math.floor(Math.random() * 20),
 };
 
-// 课程进度缓存（内存中）
-const courseProgressCache: Record<string, { progress: number; status: string }> = {};
-
-// 获取或生成课程进度（后续接入真实数据）
-function getCourseProgress(classroom: Classroom) {
-  if (!courseProgressCache[classroom.id]) {
-    // 模拟进度数据（后续替换为从后端获取）
-    courseProgressCache[classroom.id] = {
-      progress: Math.floor(Math.random() * 100),
-      status: ['in-progress', 'completed', 'not-started'][Math.floor(Math.random() * 3)],
-    };
-  }
-  return courseProgressCache[classroom.id];
-}
-
 // 状态标签配置
 const statusConfig = {
   'in-progress': { label: '学习中', bgColor: iOSColors.accentLight, textColor: iOSColors.accent },
