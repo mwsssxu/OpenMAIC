@@ -8,6 +8,7 @@ import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n, Locale } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -276,7 +277,8 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* 个人资料头部 */}
         <View style={styles.profileHeader}>
@@ -396,6 +398,7 @@ export default function ProfileScreen() {
         </Pressable>
       </Modal>
     </View>
+    </TabPageWrapper>
   );
 }
 

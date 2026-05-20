@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { apiClient } from '@/lib/api-client';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -258,7 +259,8 @@ export default function NotesScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -356,6 +358,7 @@ export default function NotesScreen() {
         <Ionicons name="add" size={24} color="#fff" />
       </TouchableOpacity>
     </View>
+    </TabPageWrapper>
   );
 }
 

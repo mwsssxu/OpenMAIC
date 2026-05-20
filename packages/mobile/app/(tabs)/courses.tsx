@@ -15,6 +15,7 @@ import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useRef } from 'react';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -239,7 +240,8 @@ export default function CoursesScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
       {/* 页面头部 */}
       <View style={styles.pageHeader}>
         <TouchableOpacity
@@ -354,6 +356,7 @@ export default function CoursesScreen() {
         showsVerticalScrollIndicator={false}
       />
     </View>
+    </TabPageWrapper>
   );
 }
 

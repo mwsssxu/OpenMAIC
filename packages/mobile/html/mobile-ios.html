@@ -636,9 +636,11 @@
       backdrop-filter: blur(32px) saturate(200%);
       border-top: 0.5px solid var(--border);
       display: flex;
-      justify-content: space-around;
+      justify-content: center;
       align-items: flex-start;
       padding-top: 8px;
+      padding-bottom: 8px;
+      gap: 4px;
     }
 
     .tab-item {
@@ -646,8 +648,9 @@
       flex-direction: column;
       align-items: center;
       gap: 3px;
-      min-width: 64px;
+      min-width: 60px;
       min-height: 44px;
+      flex: 1;
       color: var(--muted);
     }
 
@@ -663,6 +666,35 @@
       font-size: 10px;
       font-weight: 500;
       letter-spacing: 0.005em;
+    }
+
+    /* Floating Create Button */
+    .fab-create {
+      position: relative;
+      top: -14px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, oklch(50% 0.13 40) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.12);
+      color: white;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      margin: 0 4px;
+    }
+
+    .fab-create:active {
+      transform: scale(0.93);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+
+    .fab-create svg {
+      width: 28px;
+      height: 28px;
     }
 
     /* Home Indicator */
@@ -929,11 +961,17 @@
           <span class="tab-icon" data-od-id="tab-courses-icon">📚</span>
           <span class="tab-label" data-od-id="tab-courses-label">课程</span>
         </div>
-        <div class="tab-item" data-od-id="tab-notes">
+        <div class="fab-create" data-od-id="fab-create">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </div>
+        <div class="tab-item" data-od-id="tab-notes" onclick="window.location.href='mobile-ios-notes.html'">
           <span class="tab-icon" data-od-id="tab-notes-icon">📝</span>
           <span class="tab-label" data-od-id="tab-notes-label">笔记</span>
         </div>
-        <div class="tab-item" data-od-id="tab-profile">
+        <div class="tab-item" data-od-id="tab-profile" onclick="window.location.href='mobile-ios-profile.html'">
           <span class="tab-icon" data-od-id="tab-profile-icon">👤</span>
           <span class="tab-label" data-od-id="tab-profile-label">我的</span>
         </div>

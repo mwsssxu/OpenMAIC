@@ -7,6 +7,7 @@ import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -217,7 +218,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <TabPageWrapper>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header 用户区 */}
         <View style={styles.header}>
@@ -355,7 +356,7 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
-    </View>
+    </TabPageWrapper>
   );
 }
 
