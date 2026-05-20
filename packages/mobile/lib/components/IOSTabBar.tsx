@@ -47,7 +47,7 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
       {/* 中间创建按钮 */}
       <TouchableOpacity
         style={styles.fabCreate}
-        onPress={onCreatePress || (() => router.push('/courses/create' as any))}
+        onPress={onCreatePress || (() => router.push('/classroom/create'))}
         activeOpacity={0.85}
       >
         <View style={styles.fabInner}>
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     color: 'rgba(0, 0, 0, 0.5)',
   },
   tabLabelActive: {
-    color: '#B8714B',
+    color: '#c45a1a',
   },
   fabCreate: {
     position: 'relative',
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     flexShrink: 0,
     marginHorizontal: 4,
-    backgroundColor: '#B8714B',
+    backgroundColor: '#c45a1a',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.18,
