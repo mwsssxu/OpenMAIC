@@ -9,11 +9,11 @@ import { useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
-// iOS 风格颜色系统
+// iOS 风格颜色系统 - 与静态页一致
 const iOSColors = {
-  bg: 'transparent', // 使用渐变背景
+  bg: 'transparent',
   bgSolid: '#f5f3f2',
-  surface: 'rgba(255, 255, 255, 0.55)',
+  surface: 'rgba(255, 255, 255, 0.55)', // 半透明白色，与静态页 --surface 一致
   surfaceSolid: '#FFFFFF',
   fg: '#1a1a1a',
   muted: '#666666',
@@ -22,6 +22,9 @@ const iOSColors = {
   accentLight: '#fde8e0',
   secondary: '#1a8a8a',
   secondaryLight: '#e8f5f5',
+  // Streak 渐变颜色（静态页 oklch 转换）
+  streakGradientStart: '#b85a1a', // oklch(55% 0.14 35)
+  streakGradientEnd: '#a84817', // oklch(50% 0.12 40)
 };
 
 // 快捷功能配置（10个）
@@ -238,16 +241,20 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Streak 连续学习卡片 */}
-        <View style={styles.streakCard}>
-          <View>
-            <Text style={styles.streakNumber}>23</Text>
-            <Text style={styles.streakText}>{t('home.streakDays')}</Text>
-          </View>
-          <View style={styles.streakDots}>
-            {[1,2,3,4,5,6,7].map(i => (
-              <View key={i} style={[styles.dot, i <= 5 && styles.dotActive]} />
-            ))}
+        {/* Streak 连续学习卡片 - 渐变背景 */}
+        <View style={styles.streakCardContainer}>
+          <View style={styles.streakCardGradient}>
+            <View style={styles.streakCard}>
+              <View>
+                <Text style={styles.streakNumber}>23</Text>
+                <Text style={styles.streakText}>{t('home.streakDays')}</Text>
+              </View>
+              <View style={styles.streakDots}>
+                {[1,2,3,4,5,6,7].map(i => (
+                  <View key={i} style={[styles.dot, i <= 5 && styles.dotActive]} />
+                ))}
+              </View>
+            </View>
           </View>
         </View>
 
@@ -419,12 +426,17 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: iOSColors.border,
   },
-  // Streak 连续学习
-  streakCard: {
-    backgroundColor: '#c45a1a',
-    borderRadius: Rounded.lg,
-    padding: Spacing.lg,
+  // Streak 连续学习 - 渐变效果
+  streakCardContainer: {
     marginBottom: Spacing.lg,
+    borderRadius: Rounded.lg,
+    overflow: 'hidden',
+  },
+  streakCardGradient: {
+    backgroundColor: iOSColors.streakGradientStart,
+  },
+  streakCard: {
+    padding: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -464,7 +476,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   notificationCardExpanded: {
-    backgroundColor: iOSColors.surfaceSolid,
+    // 展开时保持相同的半透明背景
   },
   notifHeader: {
     flexDirection: 'row',
