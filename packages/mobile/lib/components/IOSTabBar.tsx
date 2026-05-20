@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 interface TabBarProps {
   onCreatePress?: () => void;
@@ -50,9 +51,7 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
         onPress={onCreatePress || (() => router.push('/classroom/create'))}
         activeOpacity={0.85}
       >
-        <View style={styles.fabInner}>
-          <Text style={styles.fabIcon}>+</Text>
-        </View>
+        <Ionicons name="add" size={28} color="white" />
       </TouchableOpacity>
 
       {/* 右侧两个 Tab */}
@@ -131,24 +130,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     marginHorizontal: 4,
     backgroundColor: '#c45a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.18,
     shadowRadius: 16,
     elevation: 8,
-  },
-  fabInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fabIcon: {
-    fontSize: 28,
-    color: 'white',
-    fontWeight: '300',
-    letterSpacing: -2,
   },
 });
 
