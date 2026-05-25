@@ -2,7 +2,24 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.110:8000';
+// API 地址配置：
+// - Web 端：使用 localhost（与后端同机）
+// - Mobile 端：使用环境变量或局域网 IP（真机需要访问电脑的后端服务）
+const getApiBaseUrl = () => {
+  // 优先使用环境变量
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  // Web 端使用 localhost
+  if (Platform.OS === 'web') {
+    return 'http://127.0.0.1:8000';
+  }
+  // Mobile 端需要局域网 IP（真机无法访问 127.0.0.1）
+  // 可以在 .env 文件中设置 EXPO_PUBLIC_API_URL
+  return 'http://192.168.1.114:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Web端使用localStorage，Mobile端使用SecureStore
 const storage = {
@@ -708,13 +725,100 @@ class ApiClient {
         reject(new Error('请求超时'));
       };
 
-      xhr.timeout = 180000; // 180秒超时（多Agent讨论需要更长时间）
+      xhr.timeout = 300000; // 300秒超时（多Agent讨论需要更长时间）
 
       // 发送请求（格式与 Web端一致）
       xhr.send(JSON.stringify({
         messages,
         config,
         storeState,
+      }));
+    });
+  }
+
+  /**
+   * 单 Agent 流式响应（分批处理讨论）
+   * 每次请求约 10-20 秒，不会超时
+   * 前端依次调用此 API 处理每个 agent
+   */
+  streamSingleAgent(
+    agentId: string,
+    agentRole: string,
+    prompt: string,
+    previousResponses: Array<{ agent: string; agentId: string; content: string }> = [],
+    context: { scene_title?: string; description?: string; key_points?: string[] } = {},
+    onEvent?: (event: { type: string; messageId?: string; agentId?: string; content?: string; actionName?: string; params?: any }) => void,
+    onComplete?: () => void,
+    onError?: (error: string) => void,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const url = `${API_BASE_URL}/chat/agent-stream`;
+      const xhr = new XMLHttpRequest();
+
+      xhr.open('POST', url);
+      xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === 3 || xhr.readyState === 4) {
+          const text = xhr.responseText;
+          const lines = text.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const jsonStr = line.slice(6);
+                const data = JSON.parse(jsonStr);
+                const eventType = data.type;
+                const eventData = data.data || {};
+
+                if (eventType === 'agent_start') {
+                  if (onEvent) onEvent({ type: 'agent_start', messageId: eventData.messageId, agentId: eventData.agentId });
+                } else if (eventType === 'text_delta') {
+                  if (onEvent) onEvent({ type: 'text_delta', messageId: eventData.messageId, agentId: eventData.agentId, content: eventData.content });
+                } else if (eventType === 'action') {
+                  if (onEvent) onEvent({ type: 'action', messageId: eventData.messageId, actionName: eventData.actionName, params: eventData.params, agentId: eventData.agentId });
+                } else if (eventType === 'agent_end') {
+                  if (onEvent) onEvent({ type: 'agent_end', messageId: eventData.messageId, agentId: eventData.agentId, content: eventData.content });
+                }
+              } catch (e) {
+                // JSON 解析失败，跳过
+              }
+            }
+          }
+
+          if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+              if (onComplete) onComplete();
+              resolve();
+            } else {
+              const errorMsg = xhr.status === 0 ? '网络错误' : `HTTP ${xhr.status}`;
+              if (onError) onError(errorMsg);
+              reject(new Error(errorMsg));
+            }
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        if (onError) onError('网络请求失败');
+        reject(new Error('网络请求失败'));
+      };
+
+      xhr.ontimeout = () => {
+        if (onError) onError('请求超时');
+        reject(new Error('请求超时'));
+      };
+
+      xhr.timeout = 120000; // 120秒超时（LLM响应可能需要较长时间）
+
+      xhr.send(JSON.stringify({
+        agentId,
+        agentRole,
+        prompt,
+        previousResponses,
+        context,
       }));
     });
   }
@@ -1737,6 +1841,87 @@ class ApiClient {
 
   async getSettingsOptions() {
     const { data } = await this.client.get('/profile/settings-options');
+    return data;
+  }
+
+  // ==================== MAIC-UI 交互内容 ====================
+
+  // 检查 MAIC-UI 服务状态
+  async checkMaicUiHealth() {
+    const { data } = await this.client.get('/maic-ui/health');
+    return data;
+  }
+
+  // 根据概念生成交互式内容（无需上传文件）
+  async generateConceptContent(params: {
+    concept: string;
+    title?: string;
+    grade_level?: number;
+    generation_mode?: 'fast' | 'heavy';
+  }) {
+    const { data } = await this.client.post('/maic-ui/concept', params);
+    return data;
+  }
+
+  // 获取文档处理状态
+  async getMaicUiDocumentStatus(documentId: number) {
+    const { data } = await this.client.get(`/maic-ui/documents/${documentId}/status`);
+    return data;
+  }
+
+  // 获取生成的交互式网站内容
+  async getMaicUiWebsite(documentId: number) {
+    const { data } = await this.client.get(`/maic-ui/documents/${documentId}/website`);
+    return data;
+  }
+
+  // 上传 PDF 到 MAIC-UI
+  async uploadPdfToMaicUi(file: File | Blob, title: string, gradeLevel?: number, generationMode?: string) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+    if (gradeLevel) formData.append('grade_level', gradeLevel.toString());
+    formData.append('generation_mode', generationMode || 'fast');
+
+    const { data } = await this.client.post('/maic-ui/pdf/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  }
+
+  // 上传 PPT 到 MAIC-UI
+  async uploadPptToMaicUi(file: File | Blob, title: string) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+
+    const { data } = await this.client.post('/maic-ui/ppt/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  }
+
+  // 获取 MAIC-UI 模板列表
+  async getMaicUiTemplates() {
+    const { data } = await this.client.get('/maic-ui/templates');
+    return data;
+  }
+
+  // 根据概念搜索模板
+  async searchMaicUiTemplates(concept: string, limit?: number) {
+    const { data } = await this.client.post('/maic-ui/search-templates', {
+      concept,
+      limit: limit || 5,
+    });
+    return data;
+  }
+
+  // 使用模板生成内容
+  async generateWithTemplate(concept: string, templateId: string) {
+    const { data } = await this.client.post('/maic-ui/generate-with-template', {
+      concept,
+      template_id: templateId,
+    });
     return data;
   }
 }
