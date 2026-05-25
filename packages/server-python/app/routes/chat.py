@@ -45,6 +45,9 @@ def parse_agent_actions(response_text: str) -> tuple:
     [{"type":"text","content":"..."}, {"type":"action","name":"...","params":{...}}]
     需要提取 "type":"text" 元素中的 content 字段作为显示文本
     """
+    # 调试日志：输入内容前200字符
+    logger.info(f"[Parse] Input (first 200 chars): {response_text[:200]}")
+
     actions = []
     display_text = response_text.strip()
 
