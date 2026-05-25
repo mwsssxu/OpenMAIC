@@ -760,12 +760,19 @@ class ApiClient {
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.setRequestHeader('Accept', 'text/event-stream');
 
+      // 记录已处理的行数，避免重复处理
+      let processedLinesCount = 0;
+
       xhr.onreadystatechange = () => {
         if (xhr.readyState === 3 || xhr.readyState === 4) {
           const text = xhr.responseText;
           const lines = text.split('\n');
 
-          for (const line of lines) {
+          // 只处理新增的行（避免重复处理）
+          const newLines = lines.slice(processedLinesCount);
+          processedLinesCount = lines.length;
+
+          for (const line of newLines) {
             if (line.startsWith('data: ')) {
               try {
                 const jsonStr = line.slice(6);
