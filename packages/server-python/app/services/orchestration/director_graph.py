@@ -370,18 +370,121 @@ async def run_agent_turn(
         temperature=0.7,
     )
 
-    # 解析 actions（参考 chat.py）
+    # 解析 actions（支持多种 JSON 格式，确保返回纯文本）
     actions = []
     display_text = response
-    json_match = re.search(r'\[\s*\{[^}]*"type"\s*:\s*"action"[^\]]*\]', response, re.DOTALL)
-    if json_match:
-        try:
-            actions_json = json.loads(json_match.group())
-            if isinstance(actions_json, list):
-                actions = actions_json
-                display_text = response[:json_match.start()].strip()
-        except json.JSONDecodeError:
-            pass
+
+    # 首先检测是否整个响应都是 JSON 格式 [{"type":"text",...}, {"type":"action",...}]
+    try:
+        parsed = json.loads(response.strip())
+        if isinstance(parsed, list):
+            # 检查是否是 [{"type":"text",...}, {"type":"action",...}] 格式
+            text_contents = []
+            for item in parsed:
+                if isinstance(item, dict):
+                    item_type = item.get("type", "")
+                    if item_type == "text":
+                        # 提取 text 元素的 content
+                        content = item.get("content", "")
+                        if content:
+                            text_contents.append(content)
+                    elif item_type == "action":
+                        # 收集 action 元素
+                        actions.append(item)
+            # 如果成功提取到文本内容，直接使用
+            if text_contents:
+                display_text = "\n\n".join(text_contents)
+                logger.info(f"[Director] Full JSON array detected - extracted {len(text_contents)} text segments, {len(actions)} actions")
+                return {
+                    "id": str(uuid.uuid4()),
+                    "agent_id": agent_id,
+                    "agent_role": agent_role,
+                    "content": display_text,
+                    "actions": actions,
+                }
+        elif isinstance(parsed, dict):
+            # 单个 JSON 对象 {"type":"text","content":"..."}
+            if parsed.get("type") == "text":
+                display_text = parsed.get("content", "")
+                return {
+                    "id": str(uuid.uuid4()),
+                    "agent_id": agent_id,
+                    "agent_role": agent_role,
+                    "content": display_text,
+                    "actions": [],
+                }
+            elif parsed.get("type") == "action":
+                actions.append(parsed)
+                return {
+                    "id": str(uuid.uuid4()),
+                    "agent_id": agent_id,
+                    "agent_role": agent_role,
+                    "content": "",
+                    "actions": actions,
+                }
+    except json.JSONDecodeError:
+        # 不是完整 JSON，继续其他解析方法
+        pass
+
+    # 方法2：尝试匹配 JSON 数组（部分响应）
+    if not actions:
+        json_array_match = re.search(r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]', response, re.DOTALL)
+        if json_array_match:
+            try:
+                items = json.loads(json_array_match.group())
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict):
+                            if item.get("type") == "action":
+                                actions.append(item)
+                            elif item.get("type") == "text":
+                                # 也提取 text 类型
+                                content = item.get("content", "")
+                                if content:
+                                    display_text = content
+                    if actions or display_text != response:
+                        # 移除 JSON 部分
+                        before_json = response[:json_array_match.start()].strip()
+                        after_json = response[json_array_match.end():].strip()
+                        if before_json or after_json:
+                            display_text = (before_json + "\n" + display_text + "\n" + after_json).strip()
+            except json.JSONDecodeError:
+                pass
+
+    # 方法3：尝试单个 action 对象
+    if not actions:
+        json_obj_match = re.search(r'\{\s*"type"\s*:\s*"action"[^}]*\}', response, re.DOTALL)
+        if json_obj_match:
+            try:
+                action_obj = json.loads(json_obj_match.group())
+                actions.append(action_obj)
+                display_text = response[:json_obj_match.start()].strip()
+                after_json = response[json_obj_match.end():].strip()
+                if after_json:
+                    display_text = (display_text + "\n" + after_json).strip()
+            except json.JSONDecodeError:
+                pass
+
+    # 二次清理：移除残留的 JSON 结构
+    def clean_json(text):
+        # 清理代码块
+        text = re.sub(r'```(?:json)?\s*\n?\s*[\[{].*?[\]}]\s*\n?\s*```', '', text, flags=re.DOTALL)
+        # 清理裸露 JSON
+        text = re.sub(r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]', '', text, flags=re.DOTALL)
+        text = re.sub(r'\{\s*"type"\s*:\s*"[^"]*"[^}]*\}', '', text, flags=re.DOTALL)
+        # 清理 JSON 字段残留
+        text = re.sub(r'"(?:type|content|name|params)"\s*:\s*"[^"]*"', '', text)
+        text = re.sub(r'"(?:x|y|width|height|fontSize)"\s*:\s*\d+', '', text)
+        # 清理符号残留
+        text = re.sub(r'[\[\]{},]', '', text)
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        return text.strip()
+
+    display_text = clean_json(display_text)
+
+    # 确保不为空
+    if not display_text and response:
+        display_text = re.sub(r'[\[\]{}"\':,]', '', response).strip()
 
     return {
         "id": str(uuid.uuid4()),
@@ -415,7 +518,7 @@ async def stream_agent_response(
     # 使用指定模型或默认 qwen3.5-plus（不经过模型映射）
     effective_model = model or "qwen3.5-plus"
 
-    # 真正的流式输出：逐token/yield增量
+    # 收集完整响应后再解析发送（避免发送 JSON 格式）
     full_response = ""
     async for chunk in stream_llm(
         prompt=prompt,
@@ -424,18 +527,54 @@ async def stream_agent_response(
         temperature=0.7,
     ):
         full_response += chunk
-        # 发送增量 text_delta 事件
-        yield {
-            "type": "text_delta",
-            "agent_id": agent_id,
-            "text": chunk,
-        }
+        # 不发送原始流（避免显示 JSON）
 
-    # 流式结束，发送完整响应作为确认
+    # 解析响应，提取纯文本
+    # 使用与 run_agent_turn 相同的解析逻辑
+    actions = []
+    display_text = full_response
+
+    # 首先检测是否整个响应都是 JSON 格式
+    try:
+        parsed = json.loads(full_response.strip())
+        if isinstance(parsed, list):
+            text_contents = []
+            for item in parsed:
+                if isinstance(item, dict):
+                    item_type = item.get("type", "")
+                    if item_type == "text":
+                        content = item.get("content", "")
+                        if content:
+                            text_contents.append(content)
+                    elif item_type == "action":
+                        actions.append(item)
+            if text_contents:
+                display_text = "\n\n".join(text_contents)
+        elif isinstance(parsed, dict):
+            if parsed.get("type") == "text":
+                display_text = parsed.get("content", "")
+            elif parsed.get("type") == "action":
+                actions.append(parsed)
+                display_text = ""
+    except json.JSONDecodeError:
+        pass
+
+    # 发送解析后的纯文本（分段发送）
+    if display_text:
+        for i in range(0, len(display_text), 50):
+            chunk = display_text[i:i+50]
+            yield {
+                "type": "text_delta",
+                "agent_id": agent_id,
+                "text": chunk,
+            }
+
+    # 发送完整响应作为确认
     yield {
         "type": "response_complete",
         "agent_id": agent_id,
-        "content": full_response,
+        "content": display_text,
+        "actions": actions,
     }
 
 

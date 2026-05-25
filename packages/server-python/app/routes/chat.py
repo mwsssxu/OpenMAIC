@@ -37,100 +37,161 @@ def sse_event(event_type: str, data: dict) -> str:
 
 def parse_agent_actions(response_text: str) -> tuple:
     """
-    解析Agent响应中的actions
+    解析Agent响应中的actions，确保返回纯文本
 
-    支持三种格式：
-    1. JSON 数组：[{...}]
-    2. 多个独立 JSON 对象（每个在 ```json 代码块中）
-    3. 直接 JSON 对象（无代码块）
+    核心原则：display_text 必须是纯文本，不含任何 JSON 结构
 
-    返回: (display_text, actions_list)
+    特殊处理：当LLM输出整个响应为JSON格式时：
+    [{"type":"text","content":"..."}, {"type":"action","name":"...","params":{...}}]
+    需要提取 "type":"text" 元素中的 content 字段作为显示文本
     """
     actions = []
-    display_text = response_text
+    display_text = response_text.strip()
 
-    # 方法1：提取所有 ```json 代码块中的内容
-    code_blocks = re.findall(r'```json\s*\n?\s*(\{.*?\})\s*\n?\s*```', response_text, re.DOTALL)
+    # 首先检测是否整个响应都是 JSON 格式 [{"type":...}, ...]
+    # 这是最常见的情况 - LLM 直接输出 JSON 数组
+    try:
+        # 尝试解析整个响应为 JSON
+        parsed = json.loads(response_text.strip())
+        if isinstance(parsed, list):
+            # 检查是否是 [{"type":"text",...}, {"type":"action",...}] 格式
+            text_contents = []
+            for item in parsed:
+                if isinstance(item, dict):
+                    item_type = item.get("type", "")
+                    if item_type == "text":
+                        # 提取 text 元素的 content
+                        content = item.get("content", "")
+                        if content:
+                            text_contents.append(content)
+                    elif item_type == "action":
+                        # 收集 action 元素
+                        actions.append(item)
+
+            # 如果成功提取到文本内容，直接使用
+            if text_contents:
+                display_text = "\n\n".join(text_contents)
+                logger.info(f"[Parse] Full JSON array detected - extracted {len(text_contents)} text segments, {len(actions)} actions")
+                return display_text, actions
+
+        elif isinstance(parsed, dict):
+            # 单个 JSON 对象 {"type":"text","content":"..."}
+            if parsed.get("type") == "text":
+                display_text = parsed.get("content", "")
+                logger.info(f"[Parse] Single JSON text object detected - extracted content")
+                return display_text, actions
+            elif parsed.get("type") == "action":
+                actions.append(parsed)
+                display_text = ""
+                return display_text, actions
+    except json.JSONDecodeError:
+        # 不是完整 JSON，继续其他解析方法
+        pass
+
+    # 方法1：提取 ```json 代码块
+    code_block_pattern = r'```(?:json)?\s*\n?\s*(\[.*?\]|\{.*?\})\s*\n?\s*```'
+    code_blocks = re.findall(code_block_pattern, response_text, re.DOTALL)
     if code_blocks:
         for block in code_blocks:
             try:
-                action = json.loads(block)
-                if action.get("type") == "action":
-                    actions.append(action)
+                parsed = json.loads(block)
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        if item.get("type") == "action":
+                            actions.append(item)
+                elif isinstance(parsed, dict) and parsed.get("type") == "action":
+                    actions.append(parsed)
             except json.JSONDecodeError:
                 continue
 
-        # 如果找到了 actions，移除所有代码块，保留其他文本
         if actions:
-            # 移除所有 ```json 代码块
-            cleaned_text = re.sub(r'```json\s*\n?\s*\{.*?\}\s*\n?\s*```', '', response_text, flags=re.DOTALL)
-            display_text = cleaned_text.strip()
-            return display_text, actions
+            # 移除所有代码块
+            display_text = re.sub(code_block_pattern, '', response_text, flags=re.DOTALL).strip()
 
-    # 方法2：尝试提取 JSON 数组（代码块形式）
-    code_block_match = re.search(r'```json\s*\n?\s*(\[)', response_text, re.DOTALL)
-    if code_block_match:
-        json_start = code_block_match.end() - 1
-        bracket_count = 0
-        json_end = -1
-        for i in range(json_start, len(response_text)):
-            if response_text[i] == '[':
-                bracket_count += 1
-            elif response_text[i] == ']':
-                bracket_count -= 1
-                if bracket_count == 0:
-                    json_end = i + 1
-                    break
-            if response_text[i:i+3] == '```' and bracket_count == 0:
-                json_end = i
-                break
-
-        if json_end != -1:
+    # 方法2：匹配裸露的 JSON 数组 [...]
+    if not actions:
+        # 尝试匹配完整的 JSON 数组
+        bracket_pattern = r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]'
+        json_match = re.search(bracket_pattern, response_text, re.DOTALL)
+        if json_match:
             try:
-                json_str = response_text[json_start:json_end]
-                actions_json = json.loads(json_str)
-                if isinstance(actions_json, list) and len(actions_json) > 0:
-                    if actions_json[0].get("type") == "action":
-                        actions = actions_json
-                        code_block_end = response_text.find('```', json_end)
-                        if code_block_end != -1:
-                            code_block_end += 3
-                        else:
-                            code_block_end = json_end
-                        display_text = response_text[:code_block_match.start()].strip()
-                        after_block = response_text[code_block_end:].strip()
-                        if after_block:
-                            display_text = display_text + "\n" + after_block if display_text else after_block
-                        return display_text, actions
+                items = json.loads(json_match.group())
+                if isinstance(items, list):
+                    for item in items:
+                        if item.get("type") == "action":
+                            actions.append(item)
+                    if actions:
+                        # 移除 JSON 部分
+                        display_text = response_text[:json_match.start()].strip()
+                        after = response_text[json_match.end():].strip()
+                        if after:
+                            display_text = (display_text + "\n" + after).strip()
             except json.JSONDecodeError:
                 pass
 
-    # 方法3：直接匹配 JSON 数组（无代码块）
-    json_start = response_text.find('[{"type":"action"')
-    if json_start != -1:
-        bracket_count = 0
-        json_end = -1
-        for i in range(json_start, len(response_text)):
-            if response_text[i] == '[':
-                bracket_count += 1
-            elif response_text[i] == ']':
-                bracket_count -= 1
-                if bracket_count == 0:
-                    json_end = i + 1
-                    break
-
-        if json_end != -1:
+    # 方法3：匹配单个 action 对象 {...}
+    if not actions:
+        obj_pattern = r'\{\s*"type"\s*:\s*"action"[^}]*\}'
+        obj_match = re.search(obj_pattern, response_text, re.DOTALL)
+        if obj_match:
             try:
-                json_str = response_text[json_start:json_end]
-                actions_json = json.loads(json_str)
-                if isinstance(actions_json, list):
-                    actions = actions_json
-                    display_text = response_text[:json_start].strip()
-                    after_json = response_text[json_end:].strip()
-                    if after_json:
-                        display_text = display_text + "\n" + after_json if display_text else after_json
+                action_obj = json.loads(obj_match.group())
+                if action_obj.get("type") == "action":
+                    actions.append(action_obj)
+                    display_text = response_text[:obj_match.start()].strip()
+                    after = response_text[obj_match.end():].strip()
+                    if after:
+                        display_text = (display_text + "\n" + after).strip()
             except json.JSONDecodeError:
                 pass
+
+    # 第二步：校验 display_text 是否还包含 JSON 结构
+    # 如果包含，再次清理
+    def clean_json_from_text(text: str) -> str:
+        """递归清理文本中的所有 JSON 结构"""
+        cleaned = text
+
+        # 清理代码块
+        cleaned = re.sub(r'```(?:json)?\s*\n?\s*[\[{].*?[\]}]\s*\n?\s*```', '', cleaned, flags=re.DOTALL)
+
+        # 清理裸露的 JSON 数组
+        cleaned = re.sub(r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]', '', cleaned, flags=re.DOTALL)
+
+        # 清理单个 JSON 对象（包含 type 字段）
+        cleaned = re.sub(r'\{\s*"type"\s*:\s*"[^"]*"[^}]*\}', '', cleaned, flags=re.DOTALL)
+
+        # 清理残留的 JSON 片段（如 "content":"..."）
+        cleaned = re.sub(r'"(?:type|content|name|params|x|y|width|height|fontSize|color)"\s*:\s*"[^"]*"', '', cleaned)
+        cleaned = re.sub(r'"(?:type|content|name|params|x|y|width|height|fontSize|color)"\s*:\s*\d+', '', cleaned)
+
+        # 清理方括号和花括号残留
+        cleaned = re.sub(r'[\[\]{},]', '', cleaned)
+
+        # 清理多余空白
+        cleaned = re.sub(r'\n\s*\n', '\n\n', cleaned)
+        cleaned = cleaned.strip()
+
+        return cleaned
+
+    # 执行校验和二次清理
+    original_display = display_text
+    display_text = clean_json_from_text(display_text)
+
+    # 如果清理后文本明显变短，说明有残留 JSON，记录日志
+    if len(display_text) < len(original_display) * 0.8:
+        logger.warning(f"[Parse] Display text cleaned: {len(original_display)} -> {len(display_text)} chars")
+
+    # 确保 display_text 不为空
+    if not display_text and response_text:
+        # 如果清理后为空，尝试提取纯文本部分
+        # 移除所有 JSON 相关字符后保留
+        display_text = re.sub(r'[\[\]{}"\':,]', '', response_text)
+        display_text = re.sub(r'\b(type|content|name|params|x|y|width|height|fontSize|color)\b', '', display_text)
+        display_text = display_text.strip()
+
+    logger.info(f"[Parse] Result: display_text={len(display_text)} chars, actions={len(actions)}")
+    if actions:
+        logger.info(f"[Parse] Actions: {[a.get('name', 'unknown') for a in actions]}")
 
     return display_text, actions
 
@@ -178,9 +239,9 @@ async def chat(
         if session_type == "discussion" and len(agents) > 1:
             logger.info(f"[Chat] Discussion mode - agents={agents}, topic={discussion_topic[:50]}")
 
-            # 讨论轮次（默认 2 轮）
-            max_turns = 2
-            discussion_agents = agents[:3]  # 最多 3 个 Agent 参与
+            # 讨论轮次（默认 1 轮，减少总时间）
+            max_turns = 1
+            discussion_agents = agents[:2]  # 最多 2 个 Agent 参与（减少 LLM 调用）
 
             logger.info(f"[Chat] Discussion config - max_turns={max_turns}, discussion_agents={discussion_agents}")
             logger.info(f"[Chat] Scene context - title={scene_title}, key_points={key_points}")
@@ -505,3 +566,144 @@ async def start_discussion(
                 }
             ]
         }
+
+
+@router.post("/agent-stream")
+async def stream_single_agent(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    单 Agent 流式响应（分批处理讨论）
+
+    前端可以依次调用此 API，每个请求处理一个 agent。
+    每次请求约 10-20 秒，不会超时。
+
+    参数：
+    - agentId: agent ID（如 "teacher", "student", "assistant")
+    - agentRole: agent 角色
+    - prompt: 讨论问题/提示
+    - previousResponses: 前面 agent 的发言（用于上下文）
+    - context: 场景上下文
+
+    返回：SSE 流式事件
+    """
+    agent_id = body.get("agentId", "teacher")
+    agent_role = body.get("agentRole", agent_id)
+    prompt = body.get("prompt", "")
+    previous_responses = body.get("previousResponses", [])
+    context = body.get("context", {})
+
+    logger.info(f"[AgentStream] Request - agentId={agent_id}, role={agent_role}, prompt={prompt[:50]}")
+    logger.info(f"[AgentStream] Previous responses count: {len(previous_responses)}")
+
+    # 构建场景上下文
+    scene_title = context.get("scene_title", "")
+    description = context.get("description", "")
+    key_points = context.get("key_points", [])
+
+    # 构建完整 prompt
+    full_prompt = ""
+    if scene_title:
+        full_prompt += f"## 当前场景\n标题：{scene_title}\n\n"
+    if description:
+        full_prompt += f"## 场景描述\n{description}\n\n"
+    if key_points:
+        full_prompt += f"## 关键要点\n"
+        for i, point in enumerate(key_points, 1):
+            full_prompt += f"{i}. {point}\n"
+        full_prompt += "\n"
+
+    full_prompt += f"## 讨论问题\n{prompt}\n\n"
+
+    # 添加前面 agent 的发言作为上下文
+    if previous_responses:
+        full_prompt += "## 前面同学的发言\n"
+        for resp in previous_responses:
+            agent_name = resp.get("agent", resp.get("agent_id", "同学"))
+            content = resp.get("content", resp.get("message", ""))
+            if content:
+                full_prompt += f"- **{agent_name}**: {content[:200]}...\n"
+        full_prompt += "\n"
+
+    if previous_responses:
+        full_prompt += "请继续讨论，结合场景要点补充观点或回应其他人的发言。"
+    else:
+        full_prompt += "请开始讨论，结合场景要点发表你的观点。"
+
+    async def event_stream():
+        message_id = f"msg-{uuid.uuid4().hex[:8]}"
+
+        # 发送 agent_start
+        yield sse_event("agent_start", {
+            "messageId": message_id,
+            "agentId": agent_id,
+            "agentName": agent_role.replace("_", " ").title(),
+        })
+
+        # 流式生成（先收集完整响应，再发送解析后的文本）
+        system_prompt = get_agent_system_prompt(agent_role)
+        logger.info(f"[AgentStream] Agent {agent_id} - system_prompt length: {len(system_prompt)} chars")
+
+        full_response = ""
+        chunk_count = 0
+        async for chunk in stream_llm(
+            prompt=full_prompt,
+            system_prompt=system_prompt,
+            model=CHAT_MODEL,
+            temperature=0.7,
+        ):
+            full_response += chunk
+            chunk_count += 1
+            # 不发送原始流（避免显示 JSON）
+
+        logger.info(f"[AgentStream] Agent {agent_id} - completed: {len(full_response)} chars, {chunk_count} chunks")
+
+        # 解析 actions（分离纯文本和 actions）
+        display_text, actions = parse_agent_actions(full_response)
+        logger.info(f"[AgentStream] parsed: display_text={len(display_text)} chars, actions={len(actions)}")
+
+        # 发送纯文本作为 text_delta（分段发送模拟流式效果）
+        if display_text:
+            logger.info(f"[AgentStream] Agent {agent_id} - sending text_delta in chunks")
+            # 分段发送（每 50 字符一段）
+            chunks_sent = 0
+            for i in range(0, len(display_text), 50):
+                chunk = display_text[i:i+50]
+                yield sse_event("text_delta", {
+                    "messageId": message_id,
+                    "content": chunk,
+                })
+                chunks_sent += 1
+            logger.info(f"[AgentStream] Agent {agent_id} - sent {chunks_sent} text_delta events")
+        else:
+            logger.warning(f"[AgentStream] Agent {agent_id} - no display_text to send")
+
+        # 发送 action 事件
+        if actions:
+            for action in actions:
+                action_id = f"action-{uuid.uuid4().hex[:8]}"
+                action_name = action.get("name", "unknown")
+                yield sse_event("action", {
+                    "messageId": message_id,
+                    "actionId": action_id,
+                    "actionName": action_name,
+                    "params": action.get("params", {}),
+                    "agentId": agent_id,
+                })
+
+        # 发送 agent_end
+        yield sse_event("agent_end", {
+            "messageId": message_id,
+            "agentId": agent_id,
+            "content": display_text,
+        })
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
