@@ -45,8 +45,9 @@ def parse_agent_actions(response_text: str) -> tuple:
     [{"type":"text","content":"..."}, {"type":"action","name":"...","params":{...}}]
     需要提取 "type":"text" 元素中的 content 字段作为显示文本
     """
-    # 调试日志：输入内容前200字符
-    logger.info(f"[Parse] Input (first 200 chars): {response_text[:200]}")
+    logger.info(f"[Parse] ========== 解析开始 ==========")
+    logger.info(f"[Parse] 输入长度: {len(response_text)} chars")
+    logger.info(f"[Parse] 输入内容前300字符: {response_text[:300]}")
 
     actions = []
     display_text = response_text.strip()
@@ -55,41 +56,51 @@ def parse_agent_actions(response_text: str) -> tuple:
     # 这是最常见的情况 - LLM 直接输出 JSON 数组
     try:
         # 尝试解析整个响应为 JSON
+        logger.info(f"[Parse] 尝试解析完整JSON...")
         parsed = json.loads(response_text.strip())
+        logger.info(f"[Parse] JSON解析成功，类型: {type(parsed).__name__}")
+
         if isinstance(parsed, list):
+            logger.info(f"[Parse] JSON数组长度: {len(parsed)}")
             # 检查是否是 [{"type":"text",...}, {"type":"action",...}] 格式
             text_contents = []
-            for item in parsed:
+            for i, item in enumerate(parsed):
                 if isinstance(item, dict):
                     item_type = item.get("type", "")
+                    logger.info(f"[Parse] 数组元素[{i}] type={item_type}")
                     if item_type == "text":
                         # 提取 text 元素的 content
                         content = item.get("content", "")
                         if content:
                             text_contents.append(content)
+                            logger.info(f"[Parse] 提取text content长度: {len(content)}")
                     elif item_type == "action":
                         # 收集 action 元素
                         actions.append(item)
+                        logger.info(f"[Parse] 收集action: {item.get('name', 'unknown')}")
 
             # 如果成功提取到文本内容，直接使用
             if text_contents:
                 display_text = "\n\n".join(text_contents)
-                logger.info(f"[Parse] Full JSON array detected - extracted {len(text_contents)} text segments, {len(actions)} actions")
+                logger.info(f"[Parse] ✅ 完整JSON数组提取成功 - text片段数={len(text_contents)}, actions数={len(actions)}")
+                logger.info(f"[Parse] 最终display_text前100字符: {display_text[:100]}")
                 return display_text, actions
 
         elif isinstance(parsed, dict):
             # 单个 JSON 对象 {"type":"text","content":"..."}
+            logger.info(f"[Parse] 单个JSON对象，type={parsed.get('type')}")
             if parsed.get("type") == "text":
                 display_text = parsed.get("content", "")
-                logger.info(f"[Parse] Single JSON text object detected - extracted content")
+                logger.info(f"[Parse] ✅ 单个JSON text对象提取成功")
                 return display_text, actions
             elif parsed.get("type") == "action":
                 actions.append(parsed)
                 display_text = ""
+                logger.info(f"[Parse] ✅ 单个JSON action对象提取成功")
                 return display_text, actions
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as je:
         # 不是完整 JSON，继续其他解析方法
-        pass
+        logger.info(f"[Parse] JSON解析失败: {je}, 尝试其他方法")
 
     # 方法1：提取 ```json 代码块
     code_block_pattern = r'```(?:json)?\s*\n?\s*(\[.*?\]|\{.*?\})\s*\n?\s*```'
@@ -191,10 +202,13 @@ def parse_agent_actions(response_text: str) -> tuple:
         display_text = re.sub(r'[\[\]{}"\':,]', '', response_text)
         display_text = re.sub(r'\b(type|content|name|params|x|y|width|height|fontSize|color)\b', '', display_text)
         display_text = display_text.strip()
+        logger.warning(f"[Parse] display_text为空，使用fallback提取")
 
-    logger.info(f"[Parse] Result: display_text={len(display_text)} chars, actions={len(actions)}")
+    logger.info(f"[Parse] ========== 解析结束 ==========")
+    logger.info(f"[Parse] 最终结果: display_text长度={len(display_text)} chars, actions数量={len(actions)}")
+    logger.info(f"[Parse] display_text前100字符: {display_text[:100]}")
     if actions:
-        logger.info(f"[Parse] Actions: {[a.get('name', 'unknown') for a in actions]}")
+        logger.info(f"[Parse] actions列表: {[a.get('name', 'unknown') for a in actions]}")
 
     return display_text, actions
 
@@ -591,14 +605,19 @@ async def stream_single_agent(
 
     返回：SSE 流式事件
     """
+    logger.info(f"[AgentStream] ========== 新请求开始 ==========")
+    logger.info(f"[AgentStream] Request body: {json.dumps(body, ensure_ascii=False)[:500]}")
+
     agent_id = body.get("agentId", "teacher")
     agent_role = body.get("agentRole", agent_id)
     prompt = body.get("prompt", "")
     previous_responses = body.get("previousResponses", [])
     context = body.get("context", {})
 
-    logger.info(f"[AgentStream] Request - agentId={agent_id}, role={agent_role}, prompt={prompt[:50]}")
-    logger.info(f"[AgentStream] Previous responses count: {len(previous_responses)}")
+    logger.info(f"[AgentStream] 解析参数 - agentId={agent_id}, role={agent_role}")
+    logger.info(f"[AgentStream] prompt前50字符: {prompt[:50]}")
+    logger.info(f"[AgentStream] previousResponses数量: {len(previous_responses)}")
+    logger.info(f"[AgentStream] context内容: scene_title={context.get('scene_title', '')}, key_points={context.get('key_points', [])}")
 
     # 构建场景上下文
     scene_title = context.get("scene_title", "")
@@ -635,72 +654,95 @@ async def stream_single_agent(
         full_prompt += "请开始讨论，结合场景要点发表你的观点。"
 
     async def event_stream():
-        message_id = f"msg-{uuid.uuid4().hex[:8]}"
+        try:
+            message_id = f"msg-{uuid.uuid4().hex[:8]}"
+            logger.info(f"[AgentStream] event_stream 开始 - messageId={message_id}")
 
-        # 发送 agent_start
-        yield sse_event("agent_start", {
-            "messageId": message_id,
-            "agentId": agent_id,
-            "agentName": agent_role.replace("_", " ").title(),
-        })
+            # 发送 agent_start
+            yield sse_event("agent_start", {
+                "messageId": message_id,
+                "agentId": agent_id,
+                "agentName": agent_role.replace("_", " ").title(),
+            })
+            logger.info(f"[AgentStream] 已发送 agent_start")
 
-        # 流式生成（先收集完整响应，再发送解析后的文本）
-        system_prompt = get_agent_system_prompt(agent_role)
-        logger.info(f"[AgentStream] Agent {agent_id} - system_prompt length: {len(system_prompt)} chars")
+            # 流式生成（先收集完整响应，再发送解析后的文本）
+            system_prompt = get_agent_system_prompt(agent_role)
+            logger.info(f"[AgentStream] Agent {agent_id} - system_prompt前100字符: {system_prompt[:100]}")
+            logger.info(f"[AgentStream] Agent {agent_id} - full_prompt前200字符: {full_prompt[:200]}")
 
-        full_response = ""
-        chunk_count = 0
-        async for chunk in stream_llm(
-            prompt=full_prompt,
-            system_prompt=system_prompt,
-            model=CHAT_MODEL,
-            temperature=0.7,
-        ):
-            full_response += chunk
-            chunk_count += 1
-            # 不发送原始流（避免显示 JSON）
+            full_response = ""
+            chunk_count = 0
+            try:
+                async for chunk in stream_llm(
+                    prompt=full_prompt,
+                    system_prompt=system_prompt,
+                    model=CHAT_MODEL,
+                    temperature=0.7,
+                ):
+                    full_response += chunk
+                    chunk_count += 1
+                    if chunk_count % 20 == 0:
+                        logger.debug(f"[AgentStream] LLM进度: {chunk_count} chunks, {len(full_response)} chars")
+            except Exception as llm_err:
+                logger.error(f"[AgentStream] LLM调用失败: {llm_err}")
+                import traceback
+                logger.error(f"[AgentStream] LLM错误堆栈: {traceback.format_exc()}")
+                yield sse_event("error", {"message": f"LLM调用失败: {str(llm_err)}"})
+                return
 
-        logger.info(f"[AgentStream] Agent {agent_id} - completed: {len(full_response)} chars, {chunk_count} chunks")
+            logger.info(f"[AgentStream] Agent {agent_id} - LLM完成: {len(full_response)} chars, {chunk_count} chunks")
+            logger.info(f"[AgentStream] LLM响应前200字符: {full_response[:200]}")
 
-        # 解析 actions（分离纯文本和 actions）
-        display_text, actions = parse_agent_actions(full_response)
-        logger.info(f"[AgentStream] parsed: display_text={len(display_text)} chars, actions={len(actions)}")
+            # 解析 actions（分离纯文本和 actions）
+            display_text, actions = parse_agent_actions(full_response)
+            logger.info(f"[AgentStream] 解析结果: display_text长度={len(display_text)}, actions数量={len(actions)}")
+            logger.info(f"[AgentStream] display_text前100字符: {display_text[:100]}")
 
-        # 发送纯文本作为 text_delta（分段发送模拟流式效果）
-        if display_text:
-            logger.info(f"[AgentStream] Agent {agent_id} - sending text_delta in chunks")
-            # 分段发送（每 50 字符一段）
-            chunks_sent = 0
-            for i in range(0, len(display_text), 50):
-                chunk = display_text[i:i+50]
-                yield sse_event("text_delta", {
-                    "messageId": message_id,
-                    "content": chunk,
-                })
-                chunks_sent += 1
-            logger.info(f"[AgentStream] Agent {agent_id} - sent {chunks_sent} text_delta events")
-        else:
-            logger.warning(f"[AgentStream] Agent {agent_id} - no display_text to send")
+            # 发送纯文本作为 text_delta（分段发送模拟流式效果）
+            if display_text:
+                logger.info(f"[AgentStream] Agent {agent_id} - 开始发送 text_delta")
+                # 分段发送（每 50 字符一段）
+                chunks_sent = 0
+                for i in range(0, len(display_text), 50):
+                    chunk = display_text[i:i+50]
+                    yield sse_event("text_delta", {
+                        "messageId": message_id,
+                        "content": chunk,
+                    })
+                    chunks_sent += 1
+                logger.info(f"[AgentStream] Agent {agent_id} - 已发送 {chunks_sent} 个 text_delta 事件")
+            else:
+                logger.warning(f"[AgentStream] Agent {agent_id} - display_text 为空，无法发送")
 
-        # 发送 action 事件
-        if actions:
-            for action in actions:
-                action_id = f"action-{uuid.uuid4().hex[:8]}"
-                action_name = action.get("name", "unknown")
-                yield sse_event("action", {
-                    "messageId": message_id,
-                    "actionId": action_id,
-                    "actionName": action_name,
-                    "params": action.get("params", {}),
-                    "agentId": agent_id,
-                })
+            # 发送 action 事件
+            if actions:
+                logger.info(f"[AgentStream] 发送 {len(actions)} 个 action 事件")
+                for action in actions:
+                    action_id = f"action-{uuid.uuid4().hex[:8]}"
+                    action_name = action.get("name", "unknown")
+                    logger.info(f"[AgentStream] action: {action_name}, params: {json.dumps(action.get('params', {}), ensure_ascii=False)[:100]}")
+                    yield sse_event("action", {
+                        "messageId": message_id,
+                        "actionId": action_id,
+                        "actionName": action_name,
+                        "params": action.get("params", {}),
+                        "agentId": agent_id,
+                    })
 
-        # 发送 agent_end
-        yield sse_event("agent_end", {
-            "messageId": message_id,
-            "agentId": agent_id,
-            "content": display_text,
-        })
+            # 发送 agent_end
+            yield sse_event("agent_end", {
+                "messageId": message_id,
+                "agentId": agent_id,
+                "content": display_text,
+            })
+            logger.info(f"[AgentStream] ========== Agent {agent_id} 完成 ==========")
+
+        except Exception as e:
+            logger.error(f"[AgentStream] event_stream 异常: {e}")
+            import traceback
+            logger.error(f"[AgentStream] 异常堆栈: {traceback.format_exc()}")
+            yield sse_event("error", {"message": str(e)})
 
     return StreamingResponse(
         event_stream(),
