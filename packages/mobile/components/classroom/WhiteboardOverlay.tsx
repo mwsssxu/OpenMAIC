@@ -287,6 +287,9 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
   const hasElements = elements.length > 0;
   const hasTextContent = !!textContent;
 
+  // 计算白板画布尺寸 — 使用屏幕宽度的 88% 作为画布宽度（减去边距）
+  // ScreenCanvas 内部会根据 scrollable 模式使用屏幕宽度计算 scale
+
   const content = (
     <View style={[styles.whiteboard, useAbsolute && styles.whiteboardAbsolute]}>
       {/* Header */}
@@ -307,11 +310,17 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
           </View>
         ) : hasElements ? (
           /* Element-based rendering via ScreenCanvas (matches web端) */
-          <ScreenCanvas
-            elements={elements}
-            background={{ type: 'solid', color: '#f8f9fa' }}
-            scrollable
-          />
+          <ScrollView
+            style={styles.canvasScrollView}
+            contentContainerStyle={styles.canvasScrollContent}
+            showsVerticalScrollIndicator={true}
+          >
+            <ScreenCanvas
+              elements={elements}
+              background={{ type: 'solid', color: '#f8f9fa' }}
+              scrollable
+            />
+          </ScrollView>
         ) : (
           /* Legacy text fallback */
           <ScrollView style={styles.textScrollView} contentContainerStyle={styles.textScrollContent}>
@@ -414,6 +423,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
     minHeight: 200,
+  },
+  canvasScrollView: {
+    flex: 1,
+  },
+  canvasScrollContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.md,
   },
   emptyState: {
     flex: 1,

@@ -17,6 +17,8 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
   }));
 }
 
+let lineIdCounter = 0;
+
 export class MobileActionEngine {
   execute(actionName: string, params: Record<string, any>): void {
     switch (actionName) {
@@ -33,7 +35,12 @@ export class MobileActionEngine {
         this.drawLatex(params);
         break;
       case 'wb_draw_chart':
+      case 'wb_draw_bar':
+      case 'wb_draw_diagram':
         this.drawChart(params);
+        break;
+      case 'wb_edit_code':
+        this.editCode(params);
         break;
       case 'wb_draw_table':
         this.drawTable(params);
@@ -206,6 +213,63 @@ export class MobileActionEngine {
       fileName: params.fileName,
       showLineNumbers: true,
       fontSize: 14,
+    } as any);
+  }
+
+  private editCode(params: Record<string, any>): void {
+    const elementId = params.elementId;
+    if (!elementId) return;
+
+    const elements = whiteboardStore.getElements();
+    const element = elements.find((el) => el.id === elementId);
+    if (!element || element.type !== 'code') return;
+
+    const codeEl = element as any;
+    const newLines = [...codeEl.lines];
+    const operations: Array<{ operation: string; lineId?: string; lineIds?: string[]; content?: string }> = params.operations ?? [];
+
+    for (const op of operations) {
+      if (op.operation === 'insert_after' && op.lineId) {
+        const idx = newLines.findIndex((l: any) => l.id === op.lineId);
+        if (idx === -1) continue;
+        const newContent = (op.content ?? '').split('\n');
+        const insertLines = newContent.map((c, i) => ({
+          id: `L_${++lineIdCounter}_${Date.now().toString(36)}_${i}`,
+          content: c,
+        }));
+        newLines.splice(idx + 1, 0, ...insertLines);
+      } else if (op.operation === 'insert_before' && op.lineId) {
+        const idx = newLines.findIndex((l: any) => l.id === op.lineId);
+        if (idx === -1) continue;
+        const newContent = (op.content ?? '').split('\n');
+        const insertLines = newContent.map((c, i) => ({
+          id: `L_${++lineIdCounter}_${Date.now().toString(36)}_${i}`,
+          content: c,
+        }));
+        newLines.splice(idx, 0, ...insertLines);
+      } else if (op.operation === 'delete_lines' && op.lineIds) {
+        const idsToDelete = new Set(op.lineIds);
+        for (let i = newLines.length - 1; i >= 0; i--) {
+          if (idsToDelete.has(newLines[i].id)) newLines.splice(i, 1);
+        }
+      } else if (op.operation === 'replace_lines' && op.lineIds) {
+        const firstIdx = newLines.findIndex((l: any) => l.id === op.lineIds![0]);
+        if (firstIdx === -1) continue;
+        const lastIdx = newLines.findIndex((l: any) => l.id === op.lineIds![op.lineIds!.length - 1]);
+        const newContent = (op.content ?? '').split('\n');
+        const replaceLines = newContent.map((c, i) => ({
+          id: i < op.lineIds!.length ? op.lineIds![i] : `L_${++lineIdCounter}_${Date.now().toString(36)}_${i}`,
+          content: c,
+        }));
+        newLines.splice(firstIdx, lastIdx - firstIdx + 1, ...replaceLines);
+      }
+    }
+
+    whiteboardStore.deleteElement(elementId);
+    whiteboardStore.addElement({
+      ...codeEl,
+      id: elementId,
+      lines: newLines,
     } as any);
   }
 }

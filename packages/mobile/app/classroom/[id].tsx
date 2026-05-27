@@ -748,10 +748,11 @@ export default function ClassroomScreen() {
     }
   }, [autoPlayEnabled, playbackMode, data]);
 
-  // 清理引擎
+  // 清理引擎和白板状态
   useEffect(() => {
     return () => {
       playbackEngineRef.current?.dispose();
+      whiteboardStore.clear();
     };
   }, []);
 

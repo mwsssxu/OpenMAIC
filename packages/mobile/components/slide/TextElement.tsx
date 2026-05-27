@@ -7,7 +7,7 @@
 import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import type { PPTTextElement, SlideTheme } from './types';
-import { sFont, isSmallScreen } from '@/lib/utils/scaling';
+import { isSmallScreen } from '@/lib/utils/scaling';
 
 interface TextElementProps {
   element: PPTTextElement;
@@ -44,15 +44,16 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
   }, [element.content]);
 
   // Font size: responsive with mobile-friendly minimums
+  const minFont = isSmallScreen ? 9 : 11;
   const fontSize = useMemo(() => {
     if ((element as any).style?.fontSize) {
       const styleFontSize = (element as any).style.fontSize;
-      return sFont(styleFontSize * effectiveScale, isSmallScreen ? 9 : 11);
+      return Math.max(minFont, Math.round(styleFontSize * effectiveScale));
     }
     const htmlFontSizeMatch = element.content?.match(/font-size:\s*(\d+)px/i);
     if (htmlFontSizeMatch) {
       const htmlFontSize = parseInt(htmlFontSizeMatch[1], 10);
-      return sFont(htmlFontSize * effectiveScale, isSmallScreen ? 9 : 11);
+      return Math.max(minFont, Math.round(htmlFontSize * effectiveScale));
     }
     // Fallback based on element height
     let baseFontSize;
@@ -63,7 +64,7 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
     } else {
       baseFontSize = 12;
     }
-    return sFont(baseFontSize * effectiveScale, isSmallScreen ? 9 : 11);
+    return Math.max(minFont, Math.round(baseFontSize * effectiveScale));
   }, [element, position.height, effectiveScale]);
 
   const textColor = useMemo(() => {

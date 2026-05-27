@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import type { PPTTableElement, SlideTheme } from './types';
-import { sFont, isSmallScreen } from '@/lib/utils/scaling';
+import { isSmallScreen } from '@/lib/utils/scaling';
 
 interface TableElementProps {
   element: PPTTableElement;
@@ -30,7 +30,7 @@ export function TableElement({ element, theme, scaleX, scaleY }: TableElementPro
     zIndex: 1,
   }), [element, scaleX, scaleY]);
 
-  const fontSize = sFont(12 * effectiveScale, isSmallScreen ? 8 : 10);
+  const fontSize = Math.max(isSmallScreen ? 8 : 10, Math.round(12 * effectiveScale));
 
   return (
     <View style={containerStyle}>

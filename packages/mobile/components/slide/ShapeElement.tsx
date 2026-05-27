@@ -85,8 +85,8 @@ export function ShapeElement({ element, theme, scaleX, scaleY }: ShapeElementPro
   const textStyle = useMemo(() => ({
     color: element.text?.defaultColor || theme.fontColor,
     fontFamily: element.text?.defaultFontName || theme.fontName,
-    fontSize: sFont(14 * Math.min(scaleX, scaleY), isSmallScreen ? 9 : 11),
-    lineHeight: sFont(14 * Math.min(scaleX, scaleY), isSmallScreen ? 9 : 11) * 1.4,
+    fontSize: sFont(14, isSmallScreen ? 9 : 11),
+    lineHeight: sFont(14, isSmallScreen ? 9 : 11) * 1.4,
     textAlign: 'center' as const,
   }), [element, theme, scaleX, scaleY]);
 

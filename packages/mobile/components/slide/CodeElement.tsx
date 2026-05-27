@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import type { PPTCodeElement, SlideTheme } from './types';
-import { sFont, isSmallScreen } from '@/lib/utils/scaling';
+import { isSmallScreen } from '@/lib/utils/scaling';
 
 interface CodeElementProps {
   element: PPTCodeElement;
@@ -14,7 +14,7 @@ export function CodeElement({ element, theme, scaleX, scaleY }: CodeElementProps
   const effectiveScale = Math.min(scaleX, scaleY);
   const lines = element.lines ?? [];
   const showLineNumbers = element.showLineNumbers ?? true;
-  const baseFontSize = sFont((element.fontSize ?? 14) * effectiveScale, isSmallScreen ? 8 : 10);
+  const baseFontSize = Math.max(isSmallScreen ? 8 : 10, Math.round((element.fontSize ?? 14) * effectiveScale));
 
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -35,11 +35,11 @@ export function CodeElement({ element, theme, scaleX, scaleY }: CodeElementProps
             <View style={[styles.dot, { backgroundColor: '#febc2e' }]} />
             <View style={[styles.dot, { backgroundColor: '#28c840' }]} />
           </View>
-          <Text style={[styles.codeLang, { fontSize: sFont(10 * effectiveScale, 8) }]}>
+          <Text style={[styles.codeLang, { fontSize: Math.max(8, Math.round(10 * effectiveScale)) }]}>
             {element.language ?? 'code'}
           </Text>
           {element.fileName && (
-            <Text style={[styles.fileName, { fontSize: sFont(10 * effectiveScale, 8) }]}>
+            <Text style={[styles.fileName, { fontSize: Math.max(8, Math.round(10 * effectiveScale)) }]}>
               {element.fileName}
             </Text>
           )}
