@@ -8,7 +8,9 @@ import {
   TextInput,
   Animated,
   RefreshControl,
+  Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
@@ -229,6 +231,36 @@ export default function NotesScreen() {
     } catch (error) {
       console.error('Toggle star error:', error);
     }
+  };
+
+  /**
+   * Purchase a note with confirmation dialog
+   * Shows an alert to confirm the purchase before deducting points
+   */
+  const purchaseNote = async (noteId: string, notePrice: number, noteTitle: string) => {
+    Alert.alert(
+      '确认购买',
+      `将花费 ${notePrice} 积分购买笔记「${noteTitle}」，确认吗？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认购买',
+          onPress: async () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            try {
+              await apiClient.purchaseNote(noteId);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert('购买成功', '笔记已添加到您的收藏');
+              loadNotes();
+            } catch (error: any) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              const errorMsg = error?.response?.data?.detail || '购买失败，请稍后重试';
+              Alert.alert('购买失败', errorMsg);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const totalNotes = notesData.today.length + notesData.this_week.length;
