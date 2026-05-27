@@ -285,6 +285,27 @@ export class AudioPlayer {
   }
 
   /**
+   * 设置播放速率（实时调整，不重新生成音频）
+   *
+   * @param rate - 播放速率 (0.5 - 2.0)
+   */
+  async setRate(rate: number): Promise<void> {
+    // 确保速率在合理范围内
+    const safeRate = Math.max(0.5, Math.min(2.0, rate));
+
+    // Web 环境：使用 HTMLAudioElement.playbackRate
+    if (Platform.OS === 'web' && this.webAudio) {
+      this.webAudio.playbackRate = safeRate;
+    }
+
+    // Native 环境：使用 expo-av 的 setRateAsync
+    // 参数：rate, shouldCorrectPitch (可选)
+    if (this.sound) {
+      await this.sound.setRateAsync(safeRate, true);
+    }
+  }
+
+  /**
    * 暂停播放
    */
   async pause(): Promise<void> {

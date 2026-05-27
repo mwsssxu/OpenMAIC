@@ -106,8 +106,14 @@ export class PlaybackEngine {
    */
   setTTSConfig(config: Partial<TTSConfig>) {
     this.ttsConfig = { ...this.ttsConfig, ...config };
-    // 清除缓存，使用新配置重新生成
-    this.audioCache.clear();
+
+    // 如果正在播放且只更新了语速，直接调整播放速率
+    if (config.speed !== undefined && this.audioPlayer.isPlaying()) {
+      this.audioPlayer.setRate(config.speed);
+    } else {
+      // 其他配置变更，清除缓存重新生成
+      this.audioCache.clear();
+    }
   }
 
   /**
@@ -500,8 +506,8 @@ export class PlaybackEngine {
    * 播放文本（TTS API 或 expo-speech fallback）
    */
   private async speakText(text: string, audioId: string): Promise<void> {
-    // 1. 检查缓存（使用文本长度和更多字符避免碰撞）
-    const cacheKey = `${this.ttsConfig.provider}_${this.ttsConfig.voice}_${text.length}_${text.slice(0, 100)}`;
+    // 1. 检查缓存（包含 speed 以确保不同语速使用不同缓存）
+    const cacheKey = `${this.ttsConfig.provider}_${this.ttsConfig.voice}_${this.ttsConfig.speed}_${text.length}_${text.slice(0, 100)}`;
     const cached = this.audioCache.get(cacheKey);
     if (cached) {
       // Web 环境：直接缓存到 AudioPlayer

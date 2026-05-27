@@ -13,15 +13,25 @@ class WhiteboardElementStore {
   }
 
   addElement(el: PPTElement): void {
-    if (!el.id) {
-      (el as any).id = `wb_${++this.idCounter}_${Date.now().toString(36)}`;
+    const withId = { ...el } as PPTElement;
+    if (!withId.id) {
+      (withId as any).id = `wb_${++this.idCounter}_${Date.now().toString(36)}`;
     }
-    this.elements = [...this.elements, el];
+    this.elements = [...this.elements, withId];
     this.notify();
   }
 
   deleteElement(id: string): void {
     this.elements = this.elements.filter((el) => el.id !== id);
+    this.notify();
+  }
+
+  updateElement(id: string, updates: Record<string, any>): void {
+    const idx = this.elements.findIndex((el) => el.id === id);
+    if (idx === -1) return;
+    this.elements = this.elements.map((el, i) =>
+      i === idx ? { ...el, ...updates } as PPTElement : el
+    );
     this.notify();
   }
 
