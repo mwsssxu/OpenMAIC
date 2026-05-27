@@ -290,3 +290,58 @@ export function getResponsiveStyles(
 // Export screen dimensions for backward compatibility with scaling.ts
 export const screenW = Dimensions.get('window').width;
 export const screenH = Dimensions.get('window').height;
+
+/**
+ * Low-end device detection
+ * Used to reduce animation complexity on devices with limited performance
+ */
+let _isLowEndDevice: boolean | null = null;
+
+export function isLowEndDevice(): boolean {
+  if (_isLowEndDevice !== null) return _isLowEndDevice;
+
+  const pixelRatio = PixelRatio.get();
+  const { width } = Dimensions.get('window');
+
+  // Heuristics for low-end device detection:
+  // 1. Low pixel ratio (< 2) suggests older/slower device
+  // 2. Very small screen (< 360px width) suggests budget device
+  // 3. On Android, could check platform.Version, but iOS doesn't expose hardware info
+  const isLowPixelRatio = pixelRatio < 2;
+  const isSmallScreen = width < 360;
+  const isLowMemory = false; // Can't detect in RN directly
+
+  _isLowEndDevice = isLowPixelRatio || isSmallScreen || isLowMemory;
+  return _isLowEndDevice;
+}
+
+/**
+ * Get animation duration adjusted for device performance
+ * Low-end devices get faster animations to reduce perceived lag
+ */
+export function getAdaptiveAnimationDuration(
+  baseDuration: number,
+  isLowEnd?: boolean
+): number {
+  const lowEnd = isLowEnd ?? isLowEndDevice();
+  return lowEnd ? Math.round(baseDuration * 0.6) : baseDuration;
+}
+
+/**
+ * Hook: Get animation settings based on device performance
+ */
+export function useAnimationSettings(): {
+  isLowEnd: boolean;
+  defaultDuration: number;
+  reduceMotion: boolean;
+  getDuration: (baseMs: number) => number;
+} {
+  const lowEnd = isLowEndDevice();
+
+  return useMemo(() => ({
+    isLowEnd: lowEnd,
+    defaultDuration: lowEnd ? 200 : 400,
+    reduceMotion: lowEnd, // Simplify animations on low-end devices
+    getDuration: (baseMs: number) => getAdaptiveAnimationDuration(baseMs, lowEnd),
+  }), [lowEnd]);
+}

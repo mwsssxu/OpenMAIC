@@ -12,9 +12,14 @@
  * - Right dimming layer (right of target)
  *
  * This creates the visual effect of a dark overlay with a clear cutout.
+ *
+ * Performance optimizations:
+ * - Uses memo to prevent unnecessary re-renders
+ * - Uses useDerivedValue to combine animations
+ * - Adaptive animation duration for low-end devices
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, memo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -23,6 +28,7 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
+import { getAdaptiveAnimationDuration } from '@/lib/utils/responsive';
 
 interface SpotlightOverlayProps {
   /** Target element geometry (in viewport coordinates 0-1000) */
@@ -51,7 +57,7 @@ interface SpotlightOverlayProps {
  * 2. White border around the highlighted area
  * 3. Animation: contraction from larger area to precise position
  */
-export function SpotlightOverlay({
+export const SpotlightOverlay = memo(function SpotlightOverlay({
   geometry,
   dimness = 0.7,
   scaleX,
@@ -59,6 +65,9 @@ export function SpotlightOverlay({
   canvasWidth,
   canvasHeight,
 }: SpotlightOverlayProps) {
+  // Adaptive animation duration for device performance
+  const animationDuration = getAdaptiveAnimationDuration(600);
+
   // Animation values for contraction effect
   const paddingAnim = useSharedValue(40); // Start with larger padding
   const borderRadiusAnim = useSharedValue(12); // Start with larger radius
@@ -66,11 +75,11 @@ export function SpotlightOverlay({
   // Trigger contraction animation on mount
   useEffect(() => {
     paddingAnim.value = withTiming(8, {
-      duration: 600,
+      duration: animationDuration,
       easing: Easing.out(Easing.exp),
     });
     borderRadiusAnim.value = withTiming(4, {
-      duration: 600,
+      duration: animationDuration,
       easing: Easing.out(Easing.exp),
     });
 
@@ -79,7 +88,7 @@ export function SpotlightOverlay({
       cancelAnimation(paddingAnim);
       cancelAnimation(borderRadiusAnim);
     };
-  }, []);
+  }, [animationDuration]);
 
   // Calculate the cutout area dimensions
   const cutoutX = geometry.centerX - geometry.width / 2;
@@ -177,7 +186,7 @@ export function SpotlightOverlay({
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   overlayContainer: {

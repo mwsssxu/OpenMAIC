@@ -8,9 +8,14 @@
  *
  * Adapted from Web's LaserOverlay.tsx
  * Uses react-native-reanimated for animations
+ *
+ * Performance optimizations:
+ * - Uses memo to prevent unnecessary re-renders
+ * - Adaptive animation duration for low-end devices
+ * - Reduced particle count on low-end devices (no pulse ring)
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, memo } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -21,6 +26,7 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
+import { isLowEndDevice, getAdaptiveAnimationDuration } from '@/lib/utils/responsive';
 
 interface LaserOverlayProps {
   /** Target position (in viewport coordinates 0-1000) */
@@ -46,10 +52,10 @@ interface LaserOverlayProps {
  *
  * Creates a laser pointer effect:
  * - Fly-in: starts from corner opposite to target position
- * - Pulse: continuous expanding ring animation
+ * - Pulse: continuous expanding ring animation (disabled on low-end devices)
  * - Glow: core dot with shadow glow effect
  */
-export function LaserOverlay({
+export const LaserOverlay = memo(function LaserOverlay({
   position,
   color = '#ff3b30',
   duration = 500,
@@ -58,6 +64,10 @@ export function LaserOverlay({
   canvasWidth,
   canvasHeight,
 }: LaserOverlayProps) {
+  // Low-end device detection
+  const lowEnd = isLowEndDevice();
+  const flyDuration = getAdaptiveAnimationDuration(duration);
+
   // Determine start position (fly-in from opposite corner)
   const startPos = useMemo(() => {
     // If target is on right side, fly in from left
@@ -82,32 +92,33 @@ export function LaserOverlay({
 
   // Start animations on mount
   useEffect(() => {
-    // Fly-in animation (0.5s ease-out)
+    // Fly-in animation
     laserX.value = withTiming(position.x, {
-      duration: duration,
+      duration: flyDuration,
       easing: Easing.out(Easing.exp),
     });
     laserY.value = withTiming(position.y, {
-      duration: duration,
+      duration: flyDuration,
       easing: Easing.out(Easing.exp),
     });
 
     // Fade in during fly-in
     laserOpacity.value = withDelay(100, withTiming(1, { duration: 150 }));
 
-    // Pulsing ring animation (1.2s cycle)
-    // Scale: 1 → 2.8, Opacity: 0.6 → 0 (starts immediately)
-    pulseScale.value = withRepeat(
-      withTiming(2.8, { duration: 1200 }),
-      -1, // infinite
-      false // don't reverse
-    );
-    pulseOpacity.value = withRepeat(
-      withTiming(0, { duration: 1200 }),
-      -1,
-      false
-    );
-  }, [position, startPos, duration]);
+    // Pulsing ring animation - only on non-low-end devices
+    if (!lowEnd) {
+      pulseScale.value = withRepeat(
+        withTiming(2.8, { duration: 1200 }),
+        -1, // infinite
+        false // don't reverse
+      );
+      pulseOpacity.value = withRepeat(
+        withTiming(0, { duration: 1200 }),
+        -1,
+        false
+      );
+    }
+  }, [position, startPos, flyDuration, lowEnd]);
 
   // Cleanup animations on unmount
   useEffect(() => {
@@ -174,7 +185,7 @@ export function LaserOverlay({
       />
     </>
   );
-}
+});
 
 const styles = StyleSheet.create({
   pulseRing: {
