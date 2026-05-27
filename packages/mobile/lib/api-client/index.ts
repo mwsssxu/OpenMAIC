@@ -4,13 +4,20 @@ import { Platform } from 'react-native';
 import { i18n } from '../i18n';
 
 // API 地址配置：
-// - Web 端：使用 localhost（与后端同机）
-// - Mobile 端：使用环境变量或局域网 IP（真机需要访问电脑的后端服务）
+// - 生产环境：必须设置 EXPO_PUBLIC_API_URL 环境变量
+// - 开发环境 Web：使用 localhost
+// - 开发环境 Mobile：使用局域网 IP（真机需要访问电脑的后端服务）
 const getApiBaseUrl = () => {
   // 优先使用环境变量
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
   }
+
+  // 生产环境警告
+  if (!__DEV__) {
+    console.warn('WARNING: EXPO_PUBLIC_API_URL not set in production. Using fallback URL.');
+  }
+
   // Web 端使用 localhost
   if (Platform.OS === 'web') {
     return 'http://127.0.0.1:8000';
