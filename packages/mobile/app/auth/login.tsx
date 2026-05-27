@@ -559,7 +559,8 @@ const S = StyleSheet.create({
   },
   socialBtn: {
     width: 52,
-    height: 42,
+    minHeight: 44,
+    paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: C.border,
