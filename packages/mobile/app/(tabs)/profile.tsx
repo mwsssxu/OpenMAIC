@@ -9,6 +9,7 @@ import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n, Locale } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { useResponsiveDimensions } from '@/lib/utils/responsive';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -189,6 +190,7 @@ export default function ProfileScreen() {
   const { onSuccess } = useFeedback();
   const haptics = useHaptics();
   const { t, locale, setLocale, availableLocales } = useI18n();
+  const { isTablet } = useResponsiveDimensions();
   const [balance, setBalance] = useState<BalanceState>({
     tokenBalance: 0,
     pointsBalance: 0,
@@ -279,7 +281,10 @@ export default function ProfileScreen() {
   return (
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={[styles.scrollView, isTablet && styles.scrollViewTablet]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* 个人资料头部 */}
         <View style={styles.profileHeader}>
           {/* 卡通头像 */}
@@ -409,6 +414,11 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewTablet: {
+    maxWidth: 800,
+    alignSelf: 'center',
+    width: '100%',
   },
 
   // Profile Header

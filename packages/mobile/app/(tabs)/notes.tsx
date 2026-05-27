@@ -15,6 +15,7 @@ import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { apiClient } from '@/lib/api-client';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { useResponsiveDimensions } from '@/lib/utils/responsive';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -174,6 +175,7 @@ function FilterTab({ tab, active, onPress }: { tab: typeof filterTabs[0]; active
 export default function NotesScreen() {
   const router = useRouter();
   const haptics = useHaptics();
+  const { isTablet } = useResponsiveDimensions();
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -262,7 +264,7 @@ export default function NotesScreen() {
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
       <ScrollView
-        style={styles.scrollView}
+        style={[styles.scrollView, isTablet && styles.scrollViewTablet]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -370,6 +372,11 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     paddingHorizontal: Spacing.md,
+  },
+  scrollViewTablet: {
+    maxWidth: 800,
+    alignSelf: 'center',
+    width: '100%',
   },
 
   // Banner
