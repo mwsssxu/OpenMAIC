@@ -5,8 +5,8 @@
  * Used during teaching and interactive scenes to display formulas and key points.
  */
 
-import React, { memo, useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import React, { memo, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Clipboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { ScreenCanvas } from '@/components/slide/ScreenCanvas';
@@ -14,6 +14,9 @@ import { whiteboardStore } from '@/lib/whiteboard/element-store';
 
 // 真正的数学符号（排除基本运算符 = + -，它们在普通文本中很常见）
 const MATH_SYMBOLS = ['∑', '∫', '∂', '√', '∞', 'π', 'α', 'β', 'γ', 'δ', 'θ', 'λ', 'μ', 'σ', 'ω', 'φ', 'ψ', 'Ω', 'Δ', '∇', '±', '≠', '≤', '≥', '×', '÷', '∈', '∉', '⊂', '⊃', '∪', '∩', '∀', '∃', '→', '↔', '⟹', '∝', '∘', '⊥', '∥', '∠', '°', '′', '″', '²', '³', '⁴', '⁵', 'ⁿ', '₀', '₁', '₂', '₃', '₄', '₅', 'ₙ', '‰', '‱'];
+
+// 代码块显示行数阈值（超过则默认折叠）
+const CODE_COLLAPSE_THRESHOLD = 10;
 
 /**
  * 预处理内容，提取代码块
@@ -63,19 +66,55 @@ function parseContentSegments(content: string): Array<{ type: 'text' | 'code'; c
 }
 
 /**
- * 代码块渲染组件
+ * 代码块渲染组件 - 支持折叠/展开和复制
  */
 const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const lines = code.split('\n');
+  const shouldCollapse = lines.length > CODE_COLLAPSE_THRESHOLD;
+  const displayLines = shouldCollapse && !expanded ? lines.slice(0, CODE_COLLAPSE_THRESHOLD) : lines;
+
+  const handleCopy = () => {
+    Clipboard.setString(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <View style={styles.codeBlock}>
-      {lang && (
-        <View style={styles.codeHeader}>
-          <Text style={styles.codeLang}>{lang}</Text>
+      <View style={styles.codeHeader}>
+        <Text style={styles.codeLang}>{lang || 'code'}</Text>
+        <View style={styles.codeActions}>
+          <TouchableOpacity onPress={handleCopy} style={styles.codeActionBtn}>
+            <Ionicons
+              name={copied ? 'checkmark' : 'copy-outline'}
+              size={16}
+              color={copied ? Colors.secondary.success : '#666'}
+            />
+          </TouchableOpacity>
         </View>
-      )}
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <Text style={styles.codeText}>{code}</Text>
+        <Text style={styles.codeText}>
+          {displayLines.map((line, i) => `${i + 1}  ${line}`).join('\n')}
+        </Text>
       </ScrollView>
+      {shouldCollapse && (
+        <TouchableOpacity
+          style={styles.codeExpandBtn}
+          onPress={() => setExpanded(!expanded)}
+        >
+          <Text style={styles.codeExpandText}>
+            {expanded ? `收起 (${lines.length} 行)` : `展开全部 (${lines.length} 行)`}
+          </Text>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={Colors.primary.main}
+          />
+        </TouchableOpacity>
+      )}
     </View>
   );
 });
@@ -627,6 +666,9 @@ const styles = StyleSheet.create({
     borderColor: '#e0e0e0',
   },
   codeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#e8e8e8',
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -637,6 +679,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     fontWeight: '500',
+  },
+  codeActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  codeActionBtn: {
+    padding: 4,
+  },
+  codeExpandBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+  },
+  codeExpandText: {
+    fontSize: 12,
+    color: Colors.primary.main,
   },
   codeText: {
     fontSize: 13,

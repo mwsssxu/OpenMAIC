@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -290,7 +292,11 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+    >
       {/* 进度指示 */}
       <View style={styles.progress}>
         <Text style={styles.progressText}>
@@ -387,7 +393,7 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
         icon="swap-horizontal"
         text={t('quiz.swipeHint') || '左右滑动切换题目'}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -406,6 +412,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
+    minHeight: 44, // iOS 最小触摸目标
     marginVertical: 4,
     borderRadius: 8,
     backgroundColor: '#f8f8f8',
@@ -435,7 +442,8 @@ const styles = StyleSheet.create({
   },
   navButton: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 44, // iOS 最小触摸目标
     borderRadius: 8,
     backgroundColor: '#f0f0f0',
   },
@@ -443,7 +451,8 @@ const styles = StyleSheet.create({
   navButtonText: { fontSize: 16, color: '#333' },
   submitButton: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 44, // iOS 最小触摸目标
     borderRadius: 8,
     backgroundColor: '#007AFF',
   },
