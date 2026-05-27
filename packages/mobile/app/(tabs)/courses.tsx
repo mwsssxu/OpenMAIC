@@ -184,8 +184,8 @@ export default function CoursesScreen() {
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           activeOpacity={0.9}
-          accessibilityLabel={`${classroom.name}，${statusInfo.label}，进度${progress}%`}
-          accessibilityHint="点击查看课程详情"
+          accessibilityLabel={t('accessibility.courseProgressLabel', { name: classroom.name, status: statusInfo.label, percent: progress })}
+          accessibilityHint={t('accessibility.tapToViewCourse')}
           accessibilityRole="button"
         >
           <Animated.View style={[styles.gridCard, { transform: [{ scale: scaleAnim }] }]}>
@@ -221,8 +221,8 @@ export default function CoursesScreen() {
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={0.9}
-        accessibilityLabel={`${classroom.name}，${statusInfo.label}，进度${progress}%`}
-        accessibilityHint="点击查看课程详情"
+        accessibilityLabel={t('accessibility.courseProgressLabel', { name: classroom.name, status: statusInfo.label, percent: progress })}
+        accessibilityHint={t('accessibility.tapToViewCourse')}
         accessibilityRole="button"
       >
         <Animated.View style={[styles.courseCard, { transform: [{ scale: scaleAnim }] }]}>
@@ -310,7 +310,7 @@ export default function CoursesScreen() {
           accessibilityHint={t('accessibility.backButtonHint')}
           accessibilityRole="button"
         >
-          <Ionicons name="chevron-back" size={20} color={iOSColors.fg} accessibilityRole="image" accessibilityLabel="返回箭头" />
+          <Ionicons name="chevron-back" size={20} color={iOSColors.fg} accessibilityRole="image" accessibilityLabel={t('accessibility.backArrowIcon')} />
         </TouchableOpacity>
         <Text style={styles.pageTitle} accessibilityRole="header">我的课程</Text>
         <View style={styles.pageHeaderActions}>
@@ -326,7 +326,7 @@ export default function CoursesScreen() {
             accessibilityHint={t('accessibility.searchButtonHint')}
             accessibilityRole="button"
           >
-            <Ionicons name="search-outline" size={18} color={iOSColors.muted} accessibilityRole="image" accessibilityLabel="搜索图标" />
+            <Ionicons name="search-outline" size={18} color={iOSColors.muted} accessibilityRole="image" accessibilityLabel={t('accessibility.searchIcon')} />
           </TouchableOpacity>
         </View>
       </View>
