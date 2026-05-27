@@ -8,6 +8,8 @@ import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { ResponsiveGrid } from '@/lib/components/ResponsiveGrid';
+import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
 
 // iOS 风格颜色系统 - 与静态页一致
 const iOSColors = {
@@ -65,7 +67,7 @@ const notesCategories = [
 ];
 
 // 快捷功能按钮组件
-function QuickFunctionBtn({ item, onPress, t }: { item: typeof quickFunctions[0]; onPress: () => void; t: (key: string) => string }) {
+function QuickFunctionBtn({ item, onPress, t, iconSize }: { item: typeof quickFunctions[0]; onPress: () => void; t: (key: string) => string; iconSize: number }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -92,7 +94,7 @@ function QuickFunctionBtn({ item, onPress, t }: { item: typeof quickFunctions[0]
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
         <View style={[styles.quickFnIcon, { backgroundColor: item.bgColor }]}>
-          <Ionicons name={item.icon as any} size={16} color={item.color} />
+          <Ionicons name={item.icon as any} size={iconSize} color={item.color} />
         </View>
         <Text style={styles.quickFnLabel}>{t(item.titleKey)}</Text>
       </Animated.View>
@@ -128,7 +130,7 @@ function CourseItem({ course }: { course: typeof recentCourses[0] }) {
 }
 
 // 推荐课程卡片组件
-function RecommendedCard({ course }: { course: typeof recommendedCourses[0] }) {
+function RecommendedCard({ course, cardWidth }: { course: typeof recommendedCourses[0]; cardWidth: number }) {
   const router = useRouter();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -153,7 +155,7 @@ function RecommendedCard({ course }: { course: typeof recommendedCourses[0] }) {
       onPressOut={handlePressOut}
       activeOpacity={0.9}
     >
-      <Animated.View style={[styles.recommendedCard, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={[styles.recommendedCard, { width: cardWidth, transform: [{ scale: scaleAnim }] }]}>
         <View style={[styles.recIcon, { backgroundColor: iOSColors.accentLight }]}>
           <Text style={styles.recIconText}>{course.icon}</Text>
         </View>
@@ -213,6 +215,11 @@ export default function HomeScreen() {
   const haptics = useHaptics();
   const { t } = useI18n();
   const [notifExpanded, setNotifExpanded] = useState(false);
+  const { breakpoint } = useResponsiveDimensions();
+
+  // Responsive sizes
+  const quickFnIconSize = responsiveValue({ compact: 14, regular: 16, medium: 18, large: 20 }, breakpoint);
+  const recCardWidth = responsiveValue({ compact: 120, regular: 140, medium: 160, large: 180 }, breakpoint);
 
   const handlePress = (route: string) => {
     haptics.light();
@@ -302,16 +309,20 @@ export default function HomeScreen() {
 
         {/* Quick Functions 快捷功能 */}
         <View style={styles.quickFunctions}>
-          <View style={styles.quickFunctionsGrid}>
+          <ResponsiveGrid
+            columns={{ compact: 5, regular: 5, medium: 5, large: 10 }}
+            gap="sm"
+          >
             {quickFunctions.map((item) => (
               <QuickFunctionBtn
                 key={item.key}
                 item={item}
                 onPress={() => handlePress(item.route)}
                 t={t}
+                iconSize={quickFnIconSize}
               />
             ))}
-          </View>
+          </ResponsiveGrid>
         </View>
 
         {/* Recent Courses 近期课程 */}
@@ -343,7 +354,7 @@ export default function HomeScreen() {
             style={styles.recommendedScroll}
           >
             {recommendedCourses.map(course => (
-              <RecommendedCard key={course.id} course={course} />
+              <RecommendedCard key={course.id} course={course} cardWidth={recCardWidth} />
             ))}
           </ScrollView>
         </View>
@@ -584,13 +595,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginBottom: Spacing.lg,
   },
-  quickFunctionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
   quickFnBtn: {
-    width: '20%',
     alignItems: 'center',
     paddingVertical: 4,
     marginBottom: Spacing.sm,
@@ -695,7 +700,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   recommendedCard: {
-    width: 140,
     backgroundColor: iOSColors.surface,
     borderRadius: Rounded.md,
     borderWidth: 0.5,

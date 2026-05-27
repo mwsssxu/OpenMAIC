@@ -1,7 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
 
 interface TabBarProps {
   onCreatePress?: () => void;
@@ -17,6 +19,8 @@ const tabs = [
 export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
   const pathname = usePathname();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { breakpoint, isTablet } = useResponsiveDimensions();
 
   const isActive = (route: string) => {
     if (route === '/(tabs)' && pathname === '/') return true;
@@ -28,8 +32,25 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
     router.push(route as '/' | '/courses' | '/notes' | '/profile');
   };
 
+  // Responsive sizes
+  const fabSize = responsiveValue({ compact: 56, regular: 56, medium: 60, large: 64 }, breakpoint);
+  const fabIconSize = responsiveValue({ compact: 28, regular: 28, medium: 32, large: 36 }, breakpoint);
+  const labelSize = responsiveValue({ compact: 10, regular: 10, medium: 11, large: 12 }, breakpoint);
+  const emojiSize = responsiveValue({ compact: 22, regular: 22, medium: 24, large: 26 }, breakpoint);
+
+  // TabBar 高度 = 基础高度 + 内容padding + 底部安全区域
+  const baseHeight = responsiveValue({ compact: 49, regular: 49, medium: 56, large: 60 }, breakpoint);
+  const tabBarHeight = baseHeight + insets.bottom;
+
   return (
-    <View style={styles.tabBar}>
+    <View style={[
+      styles.tabBar,
+      {
+        height: tabBarHeight,
+        paddingBottom: insets.bottom + 8,
+        paddingTop: isTablet ? 10 : 8,
+      }
+    ]}>
       {/* 左侧两个 Tab */}
       {tabs.slice(0, 2).map((tab) => (
         <TouchableOpacity
@@ -38,8 +59,12 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
           onPress={() => handleTabPress(tab.route)}
           activeOpacity={0.7}
         >
-          <Text style={styles.tabIcon}>{tab.emoji}</Text>
-          <Text style={[styles.tabLabel, isActive(tab.route) && styles.tabLabelActive]}>
+          <Text style={[styles.tabIcon, { fontSize: emojiSize }]}>{tab.emoji}</Text>
+          <Text style={[
+            styles.tabLabel,
+            { fontSize: labelSize },
+            isActive(tab.route) && styles.tabLabelActive
+          ]}>
             {tab.name}
           </Text>
         </TouchableOpacity>
@@ -47,11 +72,19 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
 
       {/* 中间创建按钮 */}
       <TouchableOpacity
-        style={styles.fabCreate}
+        style={[
+          styles.fabCreate,
+          {
+            width: fabSize,
+            height: fabSize,
+            borderRadius: fabSize / 2,
+            top: responsiveValue({ compact: -14, regular: -14, medium: -16, large: -18 }, breakpoint),
+          }
+        ]}
         onPress={onCreatePress || (() => router.push('/classroom/create'))}
         activeOpacity={0.85}
       >
-        <Ionicons name="add" size={28} color="white" />
+        <Ionicons name="add" size={fabIconSize} color="white" />
       </TouchableOpacity>
 
       {/* 右侧两个 Tab */}
@@ -62,8 +95,12 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
           onPress={() => handleTabPress(tab.route)}
           activeOpacity={0.7}
         >
-          <Text style={styles.tabIcon}>{tab.emoji}</Text>
-          <Text style={[styles.tabLabel, isActive(tab.route) && styles.tabLabelActive]}>
+          <Text style={[styles.tabIcon, { fontSize: emojiSize }]}>{tab.emoji}</Text>
+          <Text style={[
+            styles.tabLabel,
+            { fontSize: labelSize },
+            isActive(tab.route) && styles.tabLabelActive
+          ]}>
             {tab.name}
           </Text>
         </TouchableOpacity>
@@ -78,15 +115,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 83,
     backgroundColor: 'rgba(255, 255, 255, 0.72)',
     borderTopWidth: 0.5,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'flex-start',
-    paddingTop: 8,
-    paddingBottom: 8,
     gap: 4,
     ...Platform.select({
       ios: {
@@ -106,14 +140,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-  tabItemActive: {
-    // 活跃状态
-  },
+  tabItemActive: {},
   tabIcon: {
-    fontSize: 22,
+    // fontSize set dynamically
   },
   tabLabel: {
-    fontSize: 10,
     fontWeight: '500',
     letterSpacing: 0.005,
     color: 'rgba(0, 0, 0, 0.5)',
@@ -123,10 +154,6 @@ const styles = StyleSheet.create({
   },
   fabCreate: {
     position: 'relative',
-    top: -14,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
     flexShrink: 0,
     marginHorizontal: 4,
     backgroundColor: '#c45a1a',

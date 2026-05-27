@@ -1,4 +1,5 @@
 import { whiteboardStore } from './element-store';
+import { screenW, getWhiteboardLayoutMode, WHITEBOARD_CARD_GAP, WHITEBOARD_CARD_PADDING, isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
 
 const SHAPE_PATHS: Record<string, string> = {
   rectangle: 'M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z',
@@ -17,9 +18,131 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
   }));
 }
 
-let lineIdCounter = 0;
+/**
+ * 根据屏幕宽度计算自适应的元素位置
+ * 小屏手机：垂直堆叠，单列布局
+ * 大屏手机：有限的双列布局
+ * iPad：保持原有水平布局
+ */
+function getAdaptivePosition(
+  yIndex: number,
+  layoutMode: 'vertical' | 'limited-horizontal' | 'horizontal',
+  screenWidth: number,
+  preferredHeight?: number,
+): { x: number; y: number; width: number; height: number } {
+  // 可用宽度减去边距
+  const margin = WHITEBOARD_CARD_GAP;
+  const availableWidth = screenWidth - margin * 2;
+
+  // 默认高度
+  const defaultHeight = preferredHeight ?? (isSmallScreen ? 80 : isWideScreen ? 120 : 100);
+  // 每个"行"的高度（考虑元素高度 + 间距）
+  const rowHeight = defaultHeight + WHITEBOARD_CARD_GAP;
+
+  if (layoutMode === 'vertical') {
+    // 垂直布局：单列，宽度占满
+    return {
+      x: margin,
+      y: yIndex * rowHeight,
+      width: availableWidth,
+      height: defaultHeight,
+    };
+  } else if (layoutMode === 'limited-horizontal') {
+    // 大屏手机：双列布局
+    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP) / 2;
+    const col = yIndex % 2;
+    const row = Math.floor(yIndex / 2);
+    return {
+      x: margin + col * (colWidth + WHITEBOARD_CARD_GAP),
+      y: row * rowHeight,
+      width: colWidth,
+      height: defaultHeight,
+    };
+  } else {
+    // iPad：水平布局，最多3列
+    const colCount = 3;
+    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP * (colCount - 1)) / colCount;
+    const col = yIndex % colCount;
+    const row = Math.floor(yIndex / colCount);
+    return {
+      x: margin + col * (colWidth + WHITEBOARD_CARD_GAP),
+      y: row * rowHeight,
+      width: colWidth,
+      height: defaultHeight,
+    };
+  }
+}
+
+/**
+ * 获取自适应的元素宽高（用于图表、表格等大型元素）
+ */
+function getAdaptiveSize(
+  type: 'chart' | 'table' | 'code' | 'latex',
+  layoutMode: 'vertical' | 'limited-horizontal' | 'horizontal',
+  screenWidth: number,
+  contentInfo?: { rows?: number; lines?: number },
+): { width: number; height: number } {
+  const margin = WHITEBOARD_CARD_GAP;
+  const availableWidth = screenWidth - margin * 2;
+
+  if (layoutMode === 'vertical') {
+    // 垂直布局：宽度占满，高度自适应
+    switch (type) {
+      case 'chart':
+        return { width: availableWidth, height: isSmallScreen ? 180 : isWideScreen ? 300 : 220 };
+      case 'table':
+        const tableRows = contentInfo?.rows ?? 3;
+        return { width: availableWidth, height: tableRows * (isSmallScreen ? 32 : isWideScreen ? 40 : 36) + 20 };
+      case 'code':
+        const codeLines = contentInfo?.lines ?? 10;
+        return { width: availableWidth, height: codeLines * (isSmallScreen ? 16 : isWideScreen ? 20 : 18) + 40 };
+      case 'latex':
+        return { width: availableWidth, height: isSmallScreen ? 60 : isWideScreen ? 100 : 80 };
+      default:
+        return { width: availableWidth, height: 100 };
+    }
+  } else if (layoutMode === 'limited-horizontal') {
+    // 大屏手机：宽度减半
+    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP) / 2;
+    switch (type) {
+      case 'chart':
+        return { width: colWidth, height: isSmallScreen ? 180 : 220 };
+      case 'table':
+        return { width: colWidth, height: (contentInfo?.rows ?? 3) * 36 + 20 };
+      case 'code':
+        return { width: colWidth, height: (contentInfo?.lines ?? 10) * 18 + 40 };
+      case 'latex':
+        return { width: colWidth, height: 80 };
+      default:
+        return { width: colWidth, height: 100 };
+    }
+  } else {
+    // iPad：保持原有尺寸（但宽度不超过1/3）
+    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP * 2) / 3;
+    switch (type) {
+      case 'chart':
+        return { width: Math.min(400, colWidth), height: 280 };
+      case 'table':
+        return { width: Math.min(500, colWidth), height: (contentInfo?.rows ?? 3) * 40 + 20 };
+      case 'code':
+        return { width: Math.min(500, colWidth), height: 300 };
+      case 'latex':
+        return { width: Math.min(400, colWidth), height: 100 };
+      default:
+        return { width: colWidth, height: 100 };
+    }
+  }
+}
 
 export class MobileActionEngine {
+  private lineIdCounter = 0;
+  private elementIndex = 0; // 用于自适应布局的计数器
+
+  /** 重置元素计数器（用于新白板内容） */
+  resetLayout(): void {
+    this.elementIndex = 0;
+  }
+
   execute(actionName: string, params: Record<string, any>): void {
     switch (actionName) {
       case 'wb_draw_text':
@@ -50,6 +173,7 @@ export class MobileActionEngine {
         break;
       case 'wb_clear':
         whiteboardStore.clear();
+        this.elementIndex = 0; // 清空时重置计数器
         break;
       case 'wb_delete':
         if (params.elementId) {
@@ -75,14 +199,31 @@ export class MobileActionEngine {
       content = `<p style="font-size: ${fontSize}px;">${content}</p>`;
     }
 
+    // 根据屏幕宽度自适应布局
+    const layoutMode = getWhiteboardLayoutMode();
+
+    // 计算文本高度（根据内容长度估算）
+    const lines = content.split('\n').length;
+    const estimatedHeight = Math.max(
+      isSmallScreen ? 60 : isWideScreen ? 100 : 80,
+      lines * (fontSize * 1.4) + WHITEBOARD_CARD_PADDING * 2,
+    );
+
+    const adaptivePos = getAdaptivePosition(
+      this.elementIndex++,
+      layoutMode,
+      screenW,
+      estimatedHeight,
+    );
+
     whiteboardStore.addElement({
       id: params.elementId || generateId('text'),
       type: 'text',
       content,
-      left: params.x ?? 50,
-      top: params.y ?? 50,
-      width: params.width ?? 400,
-      height: params.height ?? 100,
+      left: adaptivePos.x,
+      top: adaptivePos.y,
+      width: adaptivePos.width,
+      height: adaptivePos.height,
       rotate: 0,
       defaultFontName: 'Microsoft YaHei',
       defaultColor: params.color ?? '#333333',
@@ -90,15 +231,23 @@ export class MobileActionEngine {
   }
 
   private drawShape(params: Record<string, any>): void {
+    const layoutMode = getWhiteboardLayoutMode();
+    const adaptivePos = getAdaptivePosition(
+      this.elementIndex++,
+      layoutMode,
+      screenW,
+      isSmallScreen ? 100 : isWideScreen ? 160 : 130,
+    );
+
     whiteboardStore.addElement({
       id: params.elementId || generateId('shape'),
       type: 'shape',
       viewBox: [1000, 1000] as [number, number],
       path: SHAPE_PATHS[params.shape] ?? SHAPE_PATHS.rectangle,
-      left: params.x ?? 50,
-      top: params.y ?? 50,
-      width: params.width ?? 200,
-      height: params.height ?? 150,
+      left: adaptivePos.x,
+      top: adaptivePos.y,
+      width: Math.min(adaptivePos.width, adaptivePos.height * 1.5),
+      height: adaptivePos.height,
       rotate: 0,
       fill: params.fillColor ?? '#5b9bd5',
       fixedRatio: false,
@@ -106,6 +255,7 @@ export class MobileActionEngine {
   }
 
   private drawLine(params: Record<string, any>): void {
+    // 线条保持原有坐标（通常用于连接元素）
     const left = Math.min(params.startX ?? 0, params.endX ?? 100);
     const top = Math.min(params.startY ?? 0, params.endY ?? 100);
     const start: [number, number] = [(params.startX ?? 0) - left, (params.startY ?? 0) - top];
@@ -129,13 +279,22 @@ export class MobileActionEngine {
     const latex = params.latex ?? params.content ?? '';
     if (!latex) return;
 
+    const layoutMode = getWhiteboardLayoutMode();
+    const size = getAdaptiveSize('latex', layoutMode, screenW);
+    const adaptivePos = getAdaptivePosition(
+      this.elementIndex++,
+      layoutMode,
+      screenW,
+      size.height,
+    );
+
     whiteboardStore.addElement({
       id: params.elementId || generateId('latex'),
       type: 'latex',
-      left: params.x ?? 50,
-      top: params.y ?? 50,
-      width: params.width ?? 400,
-      height: params.height ?? 80,
+      left: adaptivePos.x,
+      top: adaptivePos.y,
+      width: adaptivePos.width,
+      height: size.height,
       rotate: 0,
       latex,
       color: params.color ?? '#000000',
@@ -143,13 +302,22 @@ export class MobileActionEngine {
   }
 
   private drawChart(params: Record<string, any>): void {
+    const layoutMode = getWhiteboardLayoutMode();
+    const size = getAdaptiveSize('chart', layoutMode, screenW);
+    const adaptivePos = getAdaptivePosition(
+      this.elementIndex++,
+      layoutMode,
+      screenW,
+      size.height,
+    );
+
     whiteboardStore.addElement({
       id: params.elementId || generateId('chart'),
       type: 'chart',
-      left: params.x ?? 50,
-      top: params.y ?? 50,
-      width: params.width ?? 400,
-      height: params.height ?? 250,
+      left: adaptivePos.x,
+      top: adaptivePos.y,
+      width: adaptivePos.width,
+      height: size.height,
       rotate: 0,
       chartType: params.chartType ?? 'bar',
       data: params.data ?? {},
@@ -176,16 +344,25 @@ export class MobileActionEngine {
       })),
     );
 
+    const layoutMode = getWhiteboardLayoutMode();
+    const size = getAdaptiveSize('table', layoutMode, screenW, { rows });
+    const adaptivePos = getAdaptivePosition(
+      this.elementIndex++,
+      layoutMode,
+      screenW,
+      size.height,
+    );
+
     whiteboardStore.addElement({
       id: params.elementId || generateId('table'),
       type: 'table',
-      left: params.x ?? 50,
-      top: params.y ?? 50,
-      width: params.width ?? 500,
-      height: params.height ?? rows * 36,
+      left: adaptivePos.x,
+      top: adaptivePos.y,
+      width: adaptivePos.width,
+      height: size.height,
       rotate: 0,
       colWidths,
-      cellMinHeight: 36,
+      cellMinHeight: isSmallScreen ? 32 : isWideScreen ? 40 : 36,
       data: tableData,
       outline: params.outline ?? { width: 2, style: 'solid', color: '#eeece1' },
       theme: params.theme
@@ -198,21 +375,30 @@ export class MobileActionEngine {
     const code = params.code ?? params.content ?? '';
     if (!code) return;
 
-    const lines = codeToLines(code);
+    const codeLines = codeToLines(code);
+
+    const layoutMode = getWhiteboardLayoutMode();
+    const size = getAdaptiveSize('code', layoutMode, screenW, { lines: codeLines.length });
+    const adaptivePos = getAdaptivePosition(
+      this.elementIndex++,
+      layoutMode,
+      screenW,
+      size.height,
+    );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('code'),
       type: 'code',
-      left: params.x ?? 50,
-      top: params.y ?? 50,
-      width: params.width ?? 500,
-      height: params.height ?? 300,
+      left: adaptivePos.x,
+      top: adaptivePos.y,
+      width: adaptivePos.width,
+      height: size.height,
       rotate: 0,
       language: params.language ?? 'text',
-      lines,
+      lines: codeLines,
       fileName: params.fileName,
       showLineNumbers: true,
-      fontSize: 14,
+      fontSize: isSmallScreen ? 12 : isWideScreen ? 16 : 14,
     } as any);
   }
 
@@ -234,7 +420,7 @@ export class MobileActionEngine {
         if (idx === -1) continue;
         const newContent = (op.content ?? '').split('\n');
         const insertLines = newContent.map((c, i) => ({
-          id: `L_${++lineIdCounter}_${Date.now().toString(36)}_${i}`,
+          id: `L_${++this.lineIdCounter}_${Date.now().toString(36)}_${i}`,
           content: c,
         }));
         newLines.splice(idx + 1, 0, ...insertLines);
@@ -243,7 +429,7 @@ export class MobileActionEngine {
         if (idx === -1) continue;
         const newContent = (op.content ?? '').split('\n');
         const insertLines = newContent.map((c, i) => ({
-          id: `L_${++lineIdCounter}_${Date.now().toString(36)}_${i}`,
+          id: `L_${++this.lineIdCounter}_${Date.now().toString(36)}_${i}`,
           content: c,
         }));
         newLines.splice(idx, 0, ...insertLines);
@@ -258,19 +444,14 @@ export class MobileActionEngine {
         const lastIdx = newLines.findIndex((l: any) => l.id === op.lineIds![op.lineIds!.length - 1]);
         const newContent = (op.content ?? '').split('\n');
         const replaceLines = newContent.map((c, i) => ({
-          id: i < op.lineIds!.length ? op.lineIds![i] : `L_${++lineIdCounter}_${Date.now().toString(36)}_${i}`,
+          id: i < op.lineIds!.length ? op.lineIds![i] : `L_${++this.lineIdCounter}_${Date.now().toString(36)}_${i}`,
           content: c,
         }));
         newLines.splice(firstIdx, lastIdx - firstIdx + 1, ...replaceLines);
       }
     }
 
-    whiteboardStore.deleteElement(elementId);
-    whiteboardStore.addElement({
-      ...codeEl,
-      id: elementId,
-      lines: newLines,
-    } as any);
+    whiteboardStore.updateElement(elementId, { lines: newLines });
   }
 }
 

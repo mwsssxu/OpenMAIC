@@ -96,6 +96,7 @@ class ApiClient {
   });
 
   private token: string | null = null;
+  private refreshPromise: Promise<string | null> | null = null; // concurrency guard
 
   getBaseUrl(): string {
     return API_BASE_URL;
@@ -110,29 +111,15 @@ class ApiClient {
       return config;
     });
 
-    // Token 过期自动刷新
+    // Token 过期自动刷新（并发安全）
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
-          // Token 过期，尝试刷新
-          const refreshToken = await storage.getItem('refresh_token');
-          if (refreshToken) {
-            try {
-              const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-                refresh_token: refreshToken,
-              });
-              this.setToken(data.access_token);
-              await storage.setItem('auth_token', data.access_token);
-              // 重试原请求
-              error.config.headers.Authorization = `Bearer ${data.access_token}`;
-              return this.client.request(error.config);
-            } catch {
-              // 刷新失败，清除登录状态
-              this.setToken(null);
-              await storage.deleteItem('auth_token');
-              await storage.deleteItem('refresh_token');
-            }
+          const newToken = await this.ensureValidToken();
+          if (newToken) {
+            error.config.headers.Authorization = `Bearer ${newToken}`;
+            return this.client.request(error.config);
           }
         }
         return Promise.reject(error);
@@ -140,31 +127,46 @@ class ApiClient {
     );
   }
 
-  setToken(token: string | null) {
-    this.token = token;
+  /** Refresh token with concurrency guard — only one refresh in a time */
+  private async ensureValidToken(): Promise<string | null> {
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this._doRefresh();
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
   }
 
-  async refreshToken(): Promise<string | null> {
+  private async _doRefresh(): Promise<string | null> {
     try {
-      const refreshToken = await storage.getItem('refresh_token');
-      if (!refreshToken) {
-        return null;
+      const rt = await storage.getItem('refresh_token');
+      if (!rt) return null;
+      const res = await axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: rt });
+      const newToken = res.data?.access_token;
+      if (newToken) {
+        this.setToken(newToken);
+        await storage.setItem('auth_token', newToken);
+        if (res.data?.refresh_token) {
+          await storage.setItem('refresh_token', res.data.refresh_token);
+        }
+        return newToken;
       }
-
-      const response = await axios.post(`${this.getBaseUrl()}/auth/refresh`, {
-        refresh_token: refreshToken,
-      });
-
-      const newToken = response.data.access_token;
-      this.setToken(newToken);
-      await storage.setItem('auth_token', newToken);
-      return newToken;
-    } catch (error) {
-      // 刷新失败，清除登录状态
+      return null;
+    } catch {
       this.setToken(null);
       await storage.deleteItem('auth_token');
       await storage.deleteItem('refresh_token');
       return null;
+    }
+  }
+
+  setToken(token: string | null) {
+    this.token = token;
+    if (token) {
+      this.client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete this.client.defaults.headers.common['Authorization'];
     }
   }
 
@@ -323,18 +325,33 @@ class ApiClient {
 
           // 检查 HTTP 状态码
           if (xhr.readyState === 4 && xhr.status === 401) {
-            // Token 过期，尝试刷新
-            this.refreshToken().then(newToken => {
-              // 用新 token 重试（只重试一次）
-              if (newToken && onError) {
-                onError('Token已刷新，请重新尝试');
+            // Token 过期，尝试刷新并重试
+            this.ensureValidToken().then(newToken => {
+              if (newToken) {
+                // 用新 token 重试一次
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${newToken}`);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('Accept', 'text/event-stream');
+                xhr.setRequestHeader('Cache-Control', 'no-cache');
+                lastProcessedLength = 0;
+                outlineCount = 0;
+                currentEvent = '';
+                xhr.send(JSON.stringify({
+                  requirement,
+                  language,
+                  agent_ids: agents?.map(a => a.id),
+                  web_search: webSearch,
+                  agents: agents,
+                }));
+              } else {
+                if (onError) onError('登录已过期，请重新登录');
+                reject(new Error('Token过期'));
               }
             }).catch(() => {
-              if (onError) {
-                onError('登录已过期，请重新登录');
-              }
+              if (onError) onError('登录已过期，请重新登录');
+              reject(new Error('Token过期'));
             });
-            reject(new Error('Token过期'));
             return;
           }
 
@@ -635,35 +652,46 @@ class ApiClient {
     }
 
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', url, true);
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'text/event-stream');
-      xhr.setRequestHeader('Cache-Control', 'no-cache');
+      const sendRequest = (authToken: string) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'text/event-stream');
+        xhr.setRequestHeader('Cache-Control', 'no-cache');
 
-      let lastProcessedLength = 0;
-      let fullResponse = '';
-      let currentMessageId: string | undefined = undefined;
-      let currentAgentId: string | undefined = undefined;
+        let lastProcessedLength = 0;
+        let fullResponse = '';
+        let currentMessageId: string | undefined = undefined;
+        let currentAgentId: string | undefined = undefined;
 
-      xhr.onreadystatechange = () => {
-        if (xhr.readyState >= 3) {
-          // Check HTTP status first
-          if (xhr.readyState === 4 && xhr.status !== 200) {
-            if (xhr.status === 401) {
-              if (onError) onError('登录已过期');
-              reject(new Error('Token expired'));
-            } else {
+        xhr.onreadystatechange = () => {
+          if (xhr.readyState >= 3) {
+            if (xhr.readyState === 4 && xhr.status === 401) {
+              // Token expired — refresh and retry once
+              this.ensureValidToken().then(newToken => {
+                if (newToken) {
+                  sendRequest(newToken);
+                } else {
+                  if (onError) onError('登录已过期，请重新登录');
+                  reject(new Error('Token expired'));
+                }
+              }).catch(() => {
+                if (onError) onError('登录已过期，请重新登录');
+                reject(new Error('Token expired'));
+              });
+              return;
+            }
+
+            if (xhr.readyState === 4 && xhr.status !== 200) {
               if (onError) onError(`请求失败: ${xhr.status}`);
               reject(new Error(`HTTP ${xhr.status}`));
+              return;
             }
-            return;
-          }
 
-          const fullText = xhr.responseText;
-          const newText = fullText.slice(lastProcessedLength);
-          lastProcessedLength = fullText.length;
+            const fullText = xhr.responseText;
+            const newText = fullText.slice(lastProcessedLength);
+            lastProcessedLength = fullText.length;
 
           // 解析 SSE 数据（Web端格式：`data: {JSON}\n\n`）
           const lines = newText.split('\n');
@@ -727,12 +755,15 @@ class ApiClient {
 
       xhr.timeout = 300000; // 300秒超时（多Agent讨论需要更长时间）
 
-      // 发送请求（格式与 Web端一致）
       xhr.send(JSON.stringify({
         messages,
         config,
         storeState,
       }));
+      };
+
+      // Send initial request with current token
+      sendRequest(token);
     });
   }
 
@@ -751,82 +782,104 @@ class ApiClient {
     onComplete?: () => void,
     onError?: (error: string) => void,
   ): Promise<void> {
+    const token = this.token;
+    if (!token) {
+      if (onError) onError('请先登录');
+      return Promise.reject(new Error('未登录'));
+    }
+
     return new Promise((resolve, reject) => {
-      const url = `${API_BASE_URL}/chat/agent-stream`;
-      const xhr = new XMLHttpRequest();
+      const sendRequest = (authToken: string) => {
+        const xhr = new XMLHttpRequest();
+        const url = `${API_BASE_URL}/chat/agent-stream`;
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'text/event-stream');
 
-      xhr.open('POST', url);
-      xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'text/event-stream');
+        let processedLinesCount = 0;
 
-      // 记录已处理的行数，避免重复处理
-      let processedLinesCount = 0;
-
-      xhr.onreadystatechange = () => {
-        if (xhr.readyState === 3 || xhr.readyState === 4) {
-          const text = xhr.responseText;
-          const lines = text.split('\n');
-
-          // 只处理新增的行（避免重复处理）
-          const newLines = lines.slice(processedLinesCount);
-          processedLinesCount = lines.length;
-
-          for (const line of newLines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const jsonStr = line.slice(6);
-                const data = JSON.parse(jsonStr);
-                const eventType = data.type;
-                const eventData = data.data || {};
-
-                if (eventType === 'agent_start') {
-                  if (onEvent) onEvent({ type: 'agent_start', messageId: eventData.messageId, agentId: eventData.agentId });
-                } else if (eventType === 'text_delta') {
-                  if (onEvent) onEvent({ type: 'text_delta', messageId: eventData.messageId, agentId: eventData.agentId, content: eventData.content });
-                } else if (eventType === 'action') {
-                  if (onEvent) onEvent({ type: 'action', messageId: eventData.messageId, actionName: eventData.actionName, params: eventData.params, agentId: eventData.agentId });
-                } else if (eventType === 'agent_end') {
-                  if (onEvent) onEvent({ type: 'agent_end', messageId: eventData.messageId, agentId: eventData.agentId, content: eventData.content });
+        xhr.onreadystatechange = () => {
+          if (xhr.readyState === 3 || xhr.readyState === 4) {
+            if (xhr.readyState === 4 && xhr.status === 401) {
+              this.ensureValidToken().then(newToken => {
+                if (newToken) {
+                  sendRequest(newToken);
+                } else {
+                  if (onError) onError('登录已过期，请重新登录');
+                  reject(new Error('Token expired'));
                 }
-              } catch (e) {
-                // JSON 解析失败，跳过
+              }).catch(() => {
+                if (onError) onError('登录已过期，请重新登录');
+                reject(new Error('Token expired'));
+              });
+              return;
+            }
+
+            const text = xhr.responseText;
+            const lines = text.split('\n');
+
+            const newLines = lines.slice(processedLinesCount);
+            processedLinesCount = lines.length;
+
+            for (const line of newLines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.slice(6);
+                  const data = JSON.parse(jsonStr);
+                  const eventType = data.type;
+                  const eventData = data.data || {};
+
+                  if (eventType === 'agent_start') {
+                    if (onEvent) onEvent({ type: 'agent_start', messageId: eventData.messageId, agentId: eventData.agentId });
+                  } else if (eventType === 'text_delta') {
+                    if (onEvent) onEvent({ type: 'text_delta', messageId: eventData.messageId, agentId: eventData.agentId, content: eventData.content });
+                  } else if (eventType === 'action') {
+                    if (onEvent) onEvent({ type: 'action', messageId: eventData.messageId, actionName: eventData.actionName, params: eventData.params, agentId: eventData.agentId });
+                  } else if (eventType === 'agent_end') {
+                    if (onEvent) onEvent({ type: 'agent_end', messageId: eventData.messageId, agentId: eventData.agentId, content: eventData.content });
+                  }
+                } catch (e) {
+                  // JSON 解析失败，跳过
+                }
+              }
+            }
+
+            if (xhr.readyState === 4) {
+              if (xhr.status === 200) {
+                if (onComplete) onComplete();
+                resolve();
+              } else if (xhr.status !== 401) {
+                const errorMsg = xhr.status === 0 ? '网络错误' : `HTTP ${xhr.status}`;
+                if (onError) onError(errorMsg);
+                reject(new Error(errorMsg));
               }
             }
           }
+        };
 
-          if (xhr.readyState === 4) {
-            if (xhr.status === 200) {
-              if (onComplete) onComplete();
-              resolve();
-            } else {
-              const errorMsg = xhr.status === 0 ? '网络错误' : `HTTP ${xhr.status}`;
-              if (onError) onError(errorMsg);
-              reject(new Error(errorMsg));
-            }
-          }
-        }
+        xhr.onerror = () => {
+          if (onError) onError('网络请求失败');
+          reject(new Error('网络请求失败'));
+        };
+
+        xhr.ontimeout = () => {
+          if (onError) onError('请求超时');
+          reject(new Error('请求超时'));
+        };
+
+        xhr.timeout = 120000; // 120秒超时（LLM响应可能需要较长时间）
+
+        xhr.send(JSON.stringify({
+          agentId,
+          agentRole,
+          prompt,
+          previousResponses,
+          context,
+        }));
       };
 
-      xhr.onerror = () => {
-        if (onError) onError('网络请求失败');
-        reject(new Error('网络请求失败'));
-      };
-
-      xhr.ontimeout = () => {
-        if (onError) onError('请求超时');
-        reject(new Error('请求超时'));
-      };
-
-      xhr.timeout = 120000; // 120秒超时（LLM响应可能需要较长时间）
-
-      xhr.send(JSON.stringify({
-        agentId,
-        agentRole,
-        prompt,
-        previousResponses,
-        context,
-      }));
+      sendRequest(token);
     });
   }
 

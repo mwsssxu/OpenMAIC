@@ -85,6 +85,17 @@ export async function appendChatEntry(sceneId: string, entry: ChatEntry): Promis
   }
 }
 
+/** 添加单条讨论记录 */
+export async function appendDiscussionEntry(sceneId: string, entry: ChatEntry): Promise<void> {
+  try {
+    const entries = await readDiscussionHistory(sceneId);
+    entries.push(entry);
+    await saveDiscussionHistory(sceneId, entries);
+  } catch (error) {
+    console.warn(`[chat-persistence] appendDiscussionEntry failed:`, error);
+  }
+}
+
 /** 清除聊天历史 */
 export async function clearChatHistory(sceneId: string): Promise<void> {
   try {

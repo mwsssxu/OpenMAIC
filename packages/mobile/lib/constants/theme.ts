@@ -247,6 +247,7 @@ export const BadgeStyles = {
     borderRadius: Rounded.full,
     paddingVertical: 4,
     paddingHorizontal: 12,
+    fontSize: 12,
   },
   success: {
     backgroundColor: Colors.secondary.success,
@@ -254,6 +255,7 @@ export const BadgeStyles = {
     borderRadius: Rounded.full,
     paddingVertical: 4,
     paddingHorizontal: 12,
+    fontSize: 12,
   },
   info: {
     backgroundColor: Colors.secondary.info,
@@ -261,5 +263,81 @@ export const BadgeStyles = {
     borderRadius: Rounded.full,
     paddingVertical: 4,
     paddingHorizontal: 12,
+    fontSize: 12,
   },
+};
+
+// ============================================================================
+// Responsive Design Tokens
+// ============================================================================
+
+import { Breakpoint } from '@/lib/utils/responsive';
+
+/**
+ * Responsive spacing values per breakpoint
+ * Use with responsiveValue() from '@/lib/utils/responsive'
+ */
+export const SpacingResponsive: Record<string, Record<Breakpoint, number>> = {
+  xs: { compact: 4, regular: 4, medium: 6, large: 8 },
+  sm: { compact: 8, regular: 8, medium: 12, large: 16 },
+  md: { compact: 12, regular: 16, medium: 20, large: 24 },
+  lg: { compact: 16, regular: 24, medium: 32, large: 40 },
+  xl: { compact: 24, regular: 32, medium: 48, large: 64 },
+  xxl: { compact: 32, regular: 48, medium: 64, large: 80 },
+};
+
+/**
+ * Responsive typography sizes per breakpoint (font sizes in pixels)
+ */
+export const TypographyResponsive: Record<string, Record<Breakpoint, number>> = {
+  h1: { compact: 24, regular: 28, medium: 36, large: 40 },
+  h2: { compact: 20, regular: 22, medium: 28, large: 32 },
+  h3: { compact: 18, regular: 20, medium: 24, large: 28 },
+  h4: { compact: 16, regular: 18, medium: 20, large: 24 },
+  body: { compact: 14, regular: 16, medium: 18, large: 20 },
+  bodyLg: { compact: 16, regular: 18, medium: 20, large: 22 },
+  caption: { compact: 12, regular: 12, medium: 14, large: 16 },
+  small: { compact: 10, regular: 11, medium: 12, large: 14 },
+};
+
+/**
+ * Responsive card dimensions per breakpoint
+ */
+export const CardResponsive = {
+  width: { compact: 140, regular: 160, medium: 200, large: 240 },
+  minWidth: { compact: 120, regular: 140, medium: 180, large: 220 },
+  padding: { compact: 12, regular: 16, medium: 20, large: 24 },
+  borderRadius: { compact: 12, regular: 12, medium: 16, large: 20 },
+  marginH: { compact: 6, regular: 8, medium: 12, large: 16 },
+};
+
+/**
+ * Responsive button dimensions per breakpoint
+ */
+export const ButtonResponsive = {
+  height: { compact: 40, regular: 44, medium: 48, large: 52 },
+  paddingH: { compact: 12, regular: 16, medium: 20, large: 24 },
+  fontSize: { compact: 14, regular: 16, medium: 18, large: 20 },
+  borderRadius: { compact: 8, regular: 8, medium: 12, large: 12 },
+  iconSize: { compact: 18, regular: 20, medium: 22, large: 24 },
+};
+
+/**
+ * Responsive icon sizes per breakpoint
+ */
+export const IconResponsive = {
+  sm: { compact: 16, regular: 18, medium: 20, large: 24 },
+  md: { compact: 20, regular: 22, medium: 26, large: 32 },
+  lg: { compact: 24, regular: 28, medium: 36, large: 44 },
+  xl: { compact: 32, regular: 40, medium: 48, large: 56 },
+};
+
+/**
+ * Grid columns recommended per breakpoint
+ */
+export const GridColumns = {
+  compact: 4,
+  regular: 5,
+  medium: 6,
+  large: 8,
 };
