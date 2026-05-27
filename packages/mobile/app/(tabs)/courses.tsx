@@ -16,6 +16,7 @@ import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useRef } from 'react';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -67,6 +68,14 @@ export default function CoursesScreen() {
 
   // 筛选状态
   const [activeFilter, setActiveFilter] = useState('all');
+
+  // 视图模式（列表/网格）- 平板默认网格
+  const { breakpoint, isTablet } = useResponsiveDimensions();
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(isTablet ? 'grid' : 'list');
+
+  // 响应式尺寸
+  const cardThumbSize = responsiveValue({ compact: 56, regular: 64, medium: 72, large: 80 }, breakpoint);
+  const filterTabPadding = responsiveValue({ compact: 10, regular: 14, medium: 16, large: 18 }, breakpoint);
 
   useEffect(() => {
     loadClassrooms();
@@ -136,7 +145,7 @@ export default function CoursesScreen() {
   }
 
   // 课程卡片组件
-  function CourseCard({ classroom, index }: { classroom: Classroom; index: number }) {
+  function CourseCard({ classroom, index, mode }: { classroom: Classroom; index: number; mode: 'list' | 'grid' }) {
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const thumbColor = getThumbColor(index);
 
@@ -166,6 +175,43 @@ export default function CoursesScreen() {
       }).start();
     };
 
+    if (mode === 'grid') {
+      // 网格模式 - 卡片式布局
+      return (
+        <TouchableOpacity
+          style={styles.gridCardWrapper}
+          onPress={() => router.push(`/course/${classroom.id}` as any)}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={0.9}
+        >
+          <Animated.View style={[styles.gridCard, { transform: [{ scale: scaleAnim }] }]}>
+            {/* 缩略图 */}
+            <View style={[styles.gridThumb, { backgroundColor: thumbColor === 'coral' ? '#f45a1a' : thumbColor === 'mint' ? '#14b8a6' : thumbColor === 'gold' ? '#f59e0b' : thumbColor === 'blue' ? '#2563eb' : '#8b5cf6' }]}>
+              <Text style={styles.gridThumbIcon}>
+                {thumbColor === 'coral' ? '📊' : thumbColor === 'mint' ? '💻' : thumbColor === 'gold' ? '📈' : thumbColor === 'blue' ? '🧮' : '🎨'}
+              </Text>
+            </View>
+            {/* 课程信息 */}
+            <Text style={styles.gridName} numberOfLines={2}>{classroom.name}</Text>
+            <Text style={styles.gridCat}>{category}</Text>
+            <View style={styles.gridProgress}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${progress}%` }]} />
+              </View>
+              <Text style={styles.gridPct}>{progress}%</Text>
+            </View>
+            <View style={[styles.gridStatus, { backgroundColor: statusInfo.bgColor }]}>
+              <Text style={[styles.gridStatusText, { color: statusInfo.textColor }]}>
+                {statusInfo.label}
+              </Text>
+            </View>
+          </Animated.View>
+        </TouchableOpacity>
+      );
+    }
+
+    // 列表模式
     return (
       <TouchableOpacity
         onPress={() => router.push(`/course/${classroom.id}` as any)}
@@ -175,7 +221,7 @@ export default function CoursesScreen() {
       >
         <Animated.View style={[styles.courseCard, { transform: [{ scale: scaleAnim }] }]}>
           {/* 缩略图 */}
-          <View style={[styles.courseThumb, { backgroundColor: thumbColor === 'coral' ? '#f45a1a' : thumbColor === 'mint' ? '#14b8a6' : thumbColor === 'gold' ? '#f59e0b' : thumbColor === 'blue' ? '#2563eb' : '#8b5cf6' }]}>
+          <View style={[styles.courseThumb, { width: cardThumbSize, height: cardThumbSize, backgroundColor: thumbColor === 'coral' ? '#f45a1a' : thumbColor === 'mint' ? '#14b8a6' : thumbColor === 'gold' ? '#f59e0b' : thumbColor === 'blue' ? '#2563eb' : '#8b5cf6' }]}>
             <Text style={styles.courseThumbIcon}>
               {thumbColor === 'coral' ? '📊' : thumbColor === 'mint' ? '💻' : thumbColor === 'gold' ? '📈' : thumbColor === 'blue' ? '🧮' : '🎨'}
             </Text>
@@ -322,25 +368,47 @@ export default function CoursesScreen() {
       {/* 排序栏 */}
       <View style={styles.sortBar}>
         <Text style={styles.courseCount}>共 {filteredClassrooms.length} 门课程</Text>
-        <TouchableOpacity
-          style={styles.sortBtn}
-          onPress={() => {
-            haptics.light();
-            onPress();
-            // 后续添加排序功能
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.sortBtnText}>最近更新</Text>
-          <Ionicons name="chevron-down" size={14} color={iOSColors.muted} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+          {/* 视图切换按钮 - 仅平板显示 */}
+          {isTablet && (
+            <View style={{ flexDirection: 'row', gap: 4, backgroundColor: iOSColors.surface, borderRadius: 8, padding: 2 }}>
+              <TouchableOpacity
+                style={[styles.viewModeBtn, viewMode === 'list' && styles.viewModeBtnActive]}
+                onPress={() => setViewMode('list')}
+              >
+                <Ionicons name="list" size={16} color={viewMode === 'list' ? iOSColors.accent : iOSColors.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.viewModeBtn, viewMode === 'grid' && styles.viewModeBtnActive]}
+                onPress={() => setViewMode('grid')}
+              >
+                <Ionicons name="grid" size={16} color={viewMode === 'grid' ? iOSColors.accent : iOSColors.muted} />
+              </TouchableOpacity>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.sortBtn}
+            onPress={() => {
+              haptics.light();
+              onPress();
+              // 后续添加排序功能
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sortBtnText}>最近更新</Text>
+            <Ionicons name="chevron-down" size={14} color={iOSColors.muted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 课程列表 */}
       <FlatList
         data={filteredClassrooms}
         keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => <CourseCard classroom={item} index={index} />}
+        numColumns={viewMode === 'grid' ? 2 : 1}
+        key={viewMode} // Force re-render when view mode changes
+        renderItem={({ item, index }) => <CourseCard classroom={item} index={index} mode={viewMode} />}
+        columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
@@ -564,6 +632,72 @@ const styles = StyleSheet.create({
   },
   courseStatusText: {
     fontSize: 10,
+    fontWeight: '600',
+  },
+
+  // 视图切换
+  viewModeBtn: {
+    padding: 6,
+    borderRadius: 6,
+  },
+  viewModeBtnActive: {
+    backgroundColor: iOSColors.accentLight,
+  },
+
+  // 网格模式
+  gridRow: {
+    gap: Spacing.sm,
+  },
+  gridCardWrapper: {
+    flex: 1,
+  },
+  gridCard: {
+    backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.sm,
+  },
+  gridThumb: {
+    width: '100%',
+    height: 80,
+    borderRadius: Rounded.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xs,
+  },
+  gridThumbIcon: {
+    fontSize: 28,
+  },
+  gridName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginBottom: 2,
+  },
+  gridCat: {
+    fontSize: 11,
+    color: iOSColors.muted,
+    marginBottom: Spacing.xs,
+  },
+  gridProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  gridPct: {
+    fontSize: 10,
+    color: iOSColors.muted,
+  },
+  gridStatus: {
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+  },
+  gridStatusText: {
+    fontSize: 9,
     fontWeight: '600',
   },
 
