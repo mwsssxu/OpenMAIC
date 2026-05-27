@@ -197,7 +197,8 @@ function Sparkle({ delay, top, left }: { delay: number; top: number; left: numbe
 }
 
 // 数字动画计数器（简化版：直接显示值）
-function AnimatedCounter({ value }: { value: number }) {
+function AnimatedCounter({ value, delay }: { value: number; delay?: number }) {
+  // delay 参数暂不使用，预留用于后续动画优化
   return <Text style={styles.statNumber}>{value}</Text>;
 }
 

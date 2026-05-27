@@ -30,7 +30,8 @@ export function summarizeScenes(
 
   for (const scene of scenes) {
     if (scene.type !== 'quiz') continue;
-    const questions = (scene.content?.questions ?? []) as QuizQuestion[];
+    const quizContent = scene.content as import('@/lib/types/scene').QuizContent;
+    const questions = (quizContent.questions ?? []) as QuizQuestion[];
     const answers = quizAnswers?.[scene.id] ?? {};
     const results = quizResults?.[scene.id];
 
