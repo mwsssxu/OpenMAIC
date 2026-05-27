@@ -5,11 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useI18n } from '@/lib/i18n';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { ResponsiveGrid } from '@/lib/components/ResponsiveGrid';
 import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
+import { apiClient, UserStats } from '@/lib/api-client';
 
 // iOS 风格颜色系统 - 与静态页一致
 const iOSColors = {
@@ -208,6 +209,22 @@ function NoteCard({ note, t }: { note: typeof notesCategories[0]; t: (key: strin
   );
 }
 
+// Dashboard stats state interface
+interface DashboardStats {
+  days: number;
+  courses: number;
+  hours: number;
+  streak: number;
+}
+
+// Default placeholder stats (used when API data is not available)
+const defaultStats: DashboardStats = {
+  days: 23,
+  courses: 8,
+  hours: 156,
+  streak: 23,
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -216,6 +233,40 @@ export default function HomeScreen() {
   const { t } = useI18n();
   const [notifExpanded, setNotifExpanded] = useState(false);
   const { breakpoint } = useResponsiveDimensions();
+
+  // Dashboard stats state
+  const [stats, setStats] = useState<DashboardStats>(defaultStats);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  // Fetch dashboard stats on mount
+  useEffect(() => {
+    const fetchStats = async () => {
+      setStatsLoading(true);
+      setStatsError(null);
+      try {
+        const userStats: UserStats = await apiClient.getStats();
+        // Transform API stats to dashboard stats
+        // UserStats has: total_classrooms, total_scenes, total_media_files, total_chat_sessions
+        // We'll use total_classrooms as courses count and derive other values
+        setStats({
+          days: userStats.total_chat_sessions || defaultStats.days, // Use chat sessions as proxy for active days
+          courses: userStats.total_classrooms || defaultStats.courses,
+          hours: Math.round((userStats.total_scenes || 0) * 0.5) || defaultStats.hours, // Estimate hours from scenes
+          streak: defaultStats.streak, // Streak data not available from UserStats, use placeholder
+        });
+      } catch (error) {
+        // Gracefully handle errors - keep placeholder data
+        console.warn('Failed to fetch dashboard stats:', error);
+        setStatsError('Unable to load stats');
+        setStats(defaultStats);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   // Responsive sizes
   const quickFnIconSize = responsiveValue({ compact: 14, regular: 16, medium: 18, large: 20 }, breakpoint);
@@ -238,9 +289,15 @@ export default function HomeScreen() {
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
             <Text style={styles.userStats}>
-              <Text style={styles.statValue}>23</Text>{t('home.days')} ·
-              <Text style={styles.statValue}>8</Text>{t('home.courses')} ·
-              <Text style={styles.statValue}>156</Text>{t('home.hours')}
+              {statsLoading ? (
+                <Text style={styles.loadingText}>{t('home.loading') || 'Loading...'}</Text>
+              ) : (
+                <>
+                  <Text style={styles.statValue}>{stats.days}</Text>{t('home.days')} ·
+                  <Text style={styles.statValue}>{stats.courses}</Text>{t('home.courses')} ·
+                  <Text style={styles.statValue}>{stats.hours}</Text>{t('home.hours')}
+                </>
+              )}
             </Text>
           </View>
           <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/profile')}>
@@ -253,7 +310,9 @@ export default function HomeScreen() {
           <View style={styles.streakCardGradient}>
             <View style={styles.streakCard}>
               <View>
-                <Text style={styles.streakNumber}>23</Text>
+                <Text style={styles.streakNumber}>
+                  {statsLoading ? '-' : stats.streak}
+                </Text>
                 <Text style={styles.streakText}>{t('home.streakDays')}</Text>
               </View>
               <View style={styles.streakDots}>
@@ -426,6 +485,10 @@ const styles = StyleSheet.create({
   statValue: {
     color: iOSColors.accent,
     fontWeight: '600',
+  },
+  loadingText: {
+    color: iOSColors.muted,
+    fontStyle: 'italic',
   },
   headerBtn: {
     width: 44,
