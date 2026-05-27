@@ -259,7 +259,7 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
           </TouchableOpacity>
           {url && (
             <TouchableOpacity style={styles.browserButton} onPress={handleOpenInBrowser}>
-              <Text style={styles.browserButtonText}>在浏览器中打开</Text>
+              <Text style={styles.browserButtonText}>{t('webview.openInBrowser')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -271,9 +271,9 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
       return (
         <View style={[styles.placeholder, style]}>
           <Ionicons name="code-working" size={48} color={Colors.neutral.textMuted} />
-          <Text style={styles.placeholderTitle}>互动内容</Text>
+          <Text style={styles.placeholderTitle}>{t('webview.noContent')}</Text>
           <Text style={styles.placeholderText}>
-            此场景包含互动内容，需要在支持的环境中打开
+            {t('webview.noContentHint')}
           </Text>
         </View>
       );

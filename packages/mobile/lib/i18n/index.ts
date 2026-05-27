@@ -247,7 +247,8 @@ const translations = {
     // WebView
     webview: {
       loadingContent: '加载互动内容...',
-      noContent: '暂无互动内容',
+      noContent: '互动内容',
+      noContentHint: '此场景包含互动内容，需要在支持的环境中打开',
       openInBrowser: '在浏览器中打开',
       networkError: '网络连接失败，请检查网络设置',
       timeoutError: '加载超时，请稍后重试',
@@ -448,7 +449,8 @@ const translations = {
     },
     webview: {
       loadingContent: 'Loading interactive content...',
-      noContent: 'No interactive content',
+      noContent: 'Interactive Content',
+      noContentHint: 'This scene contains interactive content and needs to be opened in a supported environment.',
       openInBrowser: 'Open in Browser',
       networkError: 'Network connection failed. Please check your network settings.',
       timeoutError: 'Loading timeout. Please try again later.',
