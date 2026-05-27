@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { i18n } from '../i18n';
 
 // API 地址配置：
 // - Web 端：使用 localhost（与后端同机）
@@ -20,6 +21,91 @@ const getApiBaseUrl = () => {
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+/**
+ * Get user-friendly error message based on error type
+ * Provides localized, user-friendly messages for common error scenarios
+ *
+ * @param error - The error object from axios or other sources
+ * @returns A user-friendly error message string
+ */
+export function getErrorMessage(error: any): string {
+  // Network error (no response received)
+  if (!error.response) {
+    // Check for timeout
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      return i18n.t('errors.timeoutError');
+    }
+    // Check for network connection issues
+    if (error.message === 'Network Error' || error.message?.includes('Network')) {
+      return i18n.t('errors.networkError');
+    }
+    // Generic network failure
+    return i18n.t('errors.networkError');
+  }
+
+  const status = error.response.status;
+  const detail = error.response?.data?.detail;
+
+  // Authentication errors
+  if (status === 401) {
+    return i18n.t('errors.unauthorized');
+  }
+
+  // Authorization errors
+  if (status === 403) {
+    return i18n.t('errors.forbidden');
+  }
+
+  // Not found errors
+  if (status === 404) {
+    return detail || i18n.t('errors.notFound');
+  }
+
+  // Validation errors (400, 422)
+  if (status === 400 || status === 422) {
+    return detail || i18n.t('errors.validationError');
+  }
+
+  // Server errors (5xx)
+  if (status >= 500) {
+    return i18n.t('errors.serverError');
+  }
+
+  // Other client errors (4xx)
+  if (status >= 400) {
+    return detail || i18n.t('errors.requestFailed');
+  }
+
+  // Fallback to detail or generic message
+  return detail || i18n.t('errors.unknownError');
+}
+
+/**
+ * Check if an error is a network connectivity error
+ */
+export function isNetworkError(error: any): boolean {
+  return !error.response && (
+    error.code === 'ECONNABORTED' ||
+    error.message === 'Network Error' ||
+    error.message?.includes('Network') ||
+    error.message?.includes('timeout')
+  );
+}
+
+/**
+ * Check if an error is an authentication error (token expired, etc.)
+ */
+export function isAuthError(error: any): boolean {
+  return error.response?.status === 401;
+}
+
+/**
+ * Check if an error is a server error (5xx)
+ */
+export function isServerError(error: any): boolean {
+  return error.response?.status >= 500;
+}
 
 // Web端使用localStorage，Mobile端使用SecureStore
 const storage = {

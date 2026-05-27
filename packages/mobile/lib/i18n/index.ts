@@ -239,12 +239,15 @@ const translations = {
     },
     // 错误消息
     errors: {
-      networkError: '网络连接失败',
-      serverError: '服务器错误',
-      unauthorized: '请先登录',
-      forbidden: '无权限访问',
+      networkError: '网络连接失败，请检查网络后重试',
+      serverError: '服务器暂时不可用，请稍后再试',
+      unauthorized: '登录已过期，请重新登录',
+      forbidden: '无权限执行此操作',
       notFound: '未找到内容',
       validationError: '输入有误',
+      requestFailed: '操作失败，请重试',
+      timeoutError: '请求超时，请稍后重试',
+      unknownError: '发生未知错误',
     },
     // WebView
     webview: {
@@ -590,12 +593,15 @@ const translations = {
       playbackSpeed: 'Playback Speed',
     },
     errors: {
-      networkError: 'Network connection failed',
-      serverError: 'Server error',
-      unauthorized: 'Please login first',
-      forbidden: 'Access denied',
-      notFound: 'Not found',
+      networkError: 'Network connection failed. Please check your network and try again.',
+      serverError: 'Server is temporarily unavailable. Please try again later.',
+      unauthorized: 'Your session has expired. Please login again.',
+      forbidden: 'You do not have permission to perform this action.',
+      notFound: 'Content not found',
       validationError: 'Invalid input',
+      requestFailed: 'Operation failed. Please try again.',
+      timeoutError: 'Request timed out. Please try again later.',
+      unknownError: 'An unknown error occurred',
     },
     webview: {
       loadingContent: 'Loading interactive content...',
