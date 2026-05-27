@@ -288,6 +288,13 @@ export default function ClassroomScreen() {
   const windowDimensions = useWindowDimensions();
   const screenWidth = windowDimensions.width - 40;
 
+  // 横屏检测 - 调整布局
+  const isLandscape = windowDimensions.width > windowDimensions.height;
+  const slideHeight = isLandscape ? windowDimensions.height * 0.7 : windowDimensions.height * 0.5;
+
+  // iPad 分屏检测 - 宽度 < 600px 时进入紧凑模式
+  const isCompactMode = windowDimensions.width < 600;
+
   useEffect(() => {
     if (!authLoading && isAuthenticated && id) {
       loadClassroom();
@@ -1352,11 +1359,11 @@ export default function ClassroomScreen() {
         )}
 
         {/* 头部：标题 + 返回按钮 */}
-        <View style={styles.header}>
+        <View style={[styles.header, isLandscape && styles.headerLandscape, isCompactMode && styles.headerCompact]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color="#c45a1a" />
           </TouchableOpacity>
-          <Text style={styles.title}>{data.stage.name}</Text>
+          <Text style={[styles.title, isCompactMode && styles.titleCompact]}>{data.stage.name}</Text>
           {/* 后台讨论进行中的指示器 */}
           {discussionRunning && !showChatModal && (
             <TouchableOpacity
@@ -1697,7 +1704,7 @@ export default function ClassroomScreen() {
       )}
 
       {/* 智能体头像栏 */}
-      <View style={styles.agentBar}>
+      <View style={[styles.agentBar, isLandscape && styles.agentBarLandscape, isCompactMode && styles.agentBarCompact]}>
         {agents.length === 0 && (
           <Text style={{ color: '#999', fontSize: 12 }}>加载智能体...</Text>
         )}
@@ -1735,7 +1742,7 @@ export default function ClassroomScreen() {
       </View>
 
       {/* 工具栏 */}
-      <View style={styles.toolbar}>
+      <View style={[styles.toolbar, isLandscape && styles.toolbarLandscape, isCompactMode && styles.toolbarCompact]}>
         <TouchableOpacity
           style={[styles.toolBtn, currentSceneIndex === 0 && styles.toolBtnDisabled]}
           onPress={goToPrevScene}
@@ -3083,5 +3090,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: Spacing.xs,
+  },
+
+  // 横屏布局样式
+  headerLandscape: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  agentBarLandscape: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingVertical: Spacing.xs,
+  },
+  toolbarLandscape: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  contentLandscape: {
+    flex: 1,
+  },
+
+  // iPad 分屏紧凑模式样式
+  headerCompact: {
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  titleCompact: {
+    fontSize: 14,
+  },
+  agentBarCompact: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  toolbarCompact: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  toolBtnCompact: {
+    padding: Spacing.xs,
+    borderRadius: Rounded.sm,
   },
 });
