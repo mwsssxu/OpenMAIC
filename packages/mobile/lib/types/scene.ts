@@ -124,7 +124,14 @@ export interface InteractiveContent {
   html?: string;
 }
 
-export type SceneContent = SlideContent | QuizContent | InteractiveContent;
+export interface PblContent {
+  type: 'pbl';
+  url?: string;
+  html?: string;
+  projectData?: Record<string, unknown>;
+}
+
+export type SceneContent = SlideContent | QuizContent | InteractiveContent | PblContent;
 
 export interface Scene {
   id: string;

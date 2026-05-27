@@ -34,6 +34,7 @@ import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { BottomSheetModal } from '@/components/common/BottomSheetModal';
 import { HintToast } from '@/components/common/HintToast';
+import { InteractiveWebView, InteractiveWebViewRef } from '@/components/playback/InteractiveWebView';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 import { mobileActionEngine } from '@/lib/whiteboard/action-engine';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
@@ -255,6 +256,9 @@ export default function ClassroomScreen() {
   const [spotlightElementId, setSpotlightElementId] = useState<string | null>(null);
   const [laserElementId, setLaserElementId] = useState<string | null>(null);
   const [laserOptions, setLaserOptions] = useState<{ color?: string }>({});
+
+  // InteractiveWebView ref
+  const interactiveWebViewRef = useRef<InteractiveWebViewRef>(null);
 
   // TTS 配置
   const [ttsConfig, setTtsConfig] = useState<TTSConfig>({
@@ -784,6 +788,16 @@ export default function ClassroomScreen() {
       setQuizSubmitted(false);
     }
   }
+
+  // Interactive/PBL 场景 WebView 回调
+  const handleInteractiveComplete = useCallback((data: any) => {
+    console.log('[Interactive] Scene complete:', data);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const handleInteractiveMessage = useCallback((data: any) => {
+    console.log('[Interactive] Message:', data);
+  }, []);
 
   // 测验交互函数
   const selectAnswer = (questionId: string, optionValue: string) => {
@@ -1518,7 +1532,26 @@ export default function ClassroomScreen() {
         })()}
 
         {/* Interactive 类型：互动讨论场景 */}
-        {currentScene?.type === 'interactive' && (
+        {currentScene?.type === 'interactive' && (() => {
+          const content = currentScene.content as any;
+          // 如果有 URL 或 HTML，渲染 WebView
+          if (content?.url || content?.html) {
+            return (
+              <View style={styles.webviewContainer}>
+                <InteractiveWebView
+                  ref={interactiveWebViewRef}
+                  sceneId={currentScene.id}
+                  url={content.url}
+                  htmlContent={content.html}
+                  onComplete={handleInteractiveComplete}
+                  onMessage={handleInteractiveMessage}
+                  style={styles.webview}
+                />
+              </View>
+            );
+          }
+          // 否则显示讨论界面
+          return (
           <View style={styles.interactiveOverlay}>
             <View style={styles.interactiveCard}>
               <View style={styles.interactiveHeader}>
@@ -1586,10 +1619,30 @@ export default function ClassroomScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        )}
+          );
+        })()}
 
         {/* PBL 类型：项目学习场景 */}
-        {currentScene?.type === 'pbl' && (
+        {currentScene?.type === 'pbl' && (() => {
+          const content = currentScene.content as any;
+          // 如果有 URL 或 HTML，渲染 WebView
+          if (content?.url || content?.html) {
+            return (
+              <View style={styles.webviewContainer}>
+                <InteractiveWebView
+                  ref={interactiveWebViewRef}
+                  sceneId={currentScene.id}
+                  url={content.url}
+                  htmlContent={content.html}
+                  onComplete={handleInteractiveComplete}
+                  onMessage={handleInteractiveMessage}
+                  style={styles.webview}
+                />
+              </View>
+            );
+          }
+          // 否则显示项目学习界面
+          return (
           <View style={styles.pblOverlay}>
             <View style={styles.pblCard}>
                 <View style={styles.pblHeader}>
@@ -1647,7 +1700,8 @@ export default function ClassroomScreen() {
                 </TouchableOpacity>
               </View>
           </View>
-        )}
+          );
+        })()}
       </Animated.View>
     </ScrollView>
 
@@ -3134,5 +3188,19 @@ const styles = StyleSheet.create({
   toolBtnCompact: {
     padding: Spacing.xs,
     borderRadius: Rounded.sm,
+  },
+
+  // WebView 容器样式
+  webviewContainer: {
+    flex: 1,
+    marginHorizontal: Spacing.md,
+    marginVertical: Spacing.sm,
+    borderRadius: Rounded.lg,
+    overflow: 'hidden',
+    backgroundColor: Colors.neutral.background,
+    minHeight: 400,
+  },
+  webview: {
+    flex: 1,
   },
 });
