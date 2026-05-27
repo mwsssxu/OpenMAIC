@@ -303,7 +303,17 @@ export default function HomeScreen() {
         </View>
 
         {/* Streak 连续学习卡片 - 渐变背景 */}
-        <View style={styles.streakCardContainer}>
+        <TouchableOpacity
+          style={styles.streakCardContainer}
+          onPress={() => {
+            haptics.light();
+            router.push('/gamification');
+          }}
+          activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel={`${t('home.streak')}: ${statsLoading ? '-' : stats.streak} ${t('home.streakDays')}`}
+          accessibilityHint={t('home.viewDetails')}
+        >
           <View style={styles.streakCardGradient}>
             <View style={styles.streakCard}>
               <View>
@@ -312,14 +322,17 @@ export default function HomeScreen() {
                 </Text>
                 <Text style={styles.streakText}>{t('home.streakDays')}</Text>
               </View>
-              <View style={styles.streakDots}>
-                {[1,2,3,4,5,6,7].map(i => (
-                  <View key={i} style={[styles.dot, i <= 5 && styles.dotActive]} />
-                ))}
+              <View style={styles.streakRight}>
+                <View style={styles.streakDots}>
+                  {[1,2,3,4,5,6,7].map(i => (
+                    <View key={i} style={[styles.dot, i <= 5 && styles.dotActive]} />
+                  ))}
+                </View>
+                <Text style={styles.viewDetailsText}>{t('home.viewDetails')}</Text>
               </View>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Notification 通知卡片 */}
         <TouchableOpacity
@@ -527,6 +540,15 @@ const styles = StyleSheet.create({
   streakDots: {
     flexDirection: 'row',
     gap: 5,
+  },
+  streakRight: {
+    alignItems: 'flex-end',
+  },
+  viewDetailsText: {
+    fontSize: 11,
+    color: '#fff',
+    opacity: 0.8,
+    marginTop: 6,
   },
   dot: {
     width: 5,
