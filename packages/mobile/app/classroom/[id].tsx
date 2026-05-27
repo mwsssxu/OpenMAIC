@@ -37,6 +37,7 @@ import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 import { mobileActionEngine } from '@/lib/whiteboard/action-engine';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { useResponsiveDimensions } from '@/lib/utils/responsive';
 import {
   readDraft,
   writeDraft,
@@ -184,6 +185,9 @@ export default function ClassroomScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+
+  // 响应式尺寸
+  const { isTablet } = useResponsiveDimensions();
 
   // 首次进入课堂：提示滑动与缩放手势（3.8s 后自动消失）
   const classroomGestureHint = useFirstTimeHint('classroom.gesture', {
@@ -955,19 +959,17 @@ export default function ClassroomScreen() {
             const params = event.params || {};
             console.log('[Chat] Action:', actionName);
 
-            if (actionName === 'wb_open') {
-              setShowWhiteboard(true);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } else if (actionName === 'wb_clear') {
-              whiteboardStore.clear();
+            if (actionName === 'wb_clear') {
+              mobileActionEngine.execute('wb_clear', {});
               setWhiteboardTextContent(null);
             } else if (actionName === 'wb_close') {
               setShowWhiteboard(false);
-              whiteboardStore.clear();
+              mobileActionEngine.execute('wb_clear', {});
               setWhiteboardTextContent(null);
             } else if (actionName.startsWith('wb_')) {
               mobileActionEngine.execute(actionName, params);
               setShowWhiteboard(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
           } else if (event.type === 'agent_end') {
             const agentId = event.agentId || '';
@@ -1211,18 +1213,17 @@ export default function ClassroomScreen() {
 
   // 处理讨论中的 action
   function handleDiscussionAction(actionName: string, params: any) {
-    if (actionName === 'wb_open' || actionName.startsWith('wb_')) {
-      setShowWhiteboard(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
     if (actionName === 'wb_clear') {
-      whiteboardStore.clear();
+      mobileActionEngine.execute('wb_clear', {});
       setWhiteboardTextContent(null);
     } else if (actionName === 'wb_close') {
-      whiteboardStore.clear();
+      setShowWhiteboard(false);
+      mobileActionEngine.execute('wb_clear', {});
       setWhiteboardTextContent(null);
     } else if (actionName.startsWith('wb_')) {
       mobileActionEngine.execute(actionName, params);
+      setShowWhiteboard(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   }
 
@@ -1378,7 +1379,11 @@ export default function ClassroomScreen() {
           showsVerticalScrollIndicator={false}
           bounces={true}
         >
-          <Animated.View style={[styles.contentInner, animatedStyle]}>
+          <Animated.View style={[
+            styles.contentInner,
+            animatedStyle,
+            isTablet && styles.contentInnerTablet
+          ]}>
             {/* Slide类型：使用 ScreenCanvas 渲染 */}
             {currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (
               <ScreenCanvas
@@ -2224,6 +2229,9 @@ const styles = StyleSheet.create({
     maxWidth: '100%',  // 限制最大宽度
     alignSelf: 'center',  // 居中显示
   },
+  contentInnerTablet: {
+    maxWidth: 800,  // 平板最大宽度
+  },
   slideScroll: { flex: 1 },
   slideContainer: { flex: 1, alignItems: 'center' },
   slideCard: {
@@ -2232,6 +2240,7 @@ const styles = StyleSheet.create({
     borderRadius: Rounded.lg,
     padding: Spacing.lg + 1,
     width: '100%',
+    maxWidth: 800, // 平板最大宽度
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
     minHeight: 400,
   },
