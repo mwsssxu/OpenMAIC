@@ -250,7 +250,7 @@ export default function GamificationScreen() {
         data={tasks}
         renderItem={renderTask}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />}
         ListHeaderComponent={
           <View>
             {/* 激励总览 */}

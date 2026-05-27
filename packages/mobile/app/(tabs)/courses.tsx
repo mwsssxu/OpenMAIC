@@ -7,11 +7,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Animated,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
-import { Rounded, Spacing } from '@/lib/constants/theme';
+import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
@@ -468,8 +469,7 @@ export default function CoursesScreen() {
             <Text style={styles.emptyDesc}>创建你的第一个课程开始学习</Text>
           </View>
         }
-        refreshing={loading}
-        onRefresh={loadClassrooms}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadClassrooms} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />}
         contentContainerStyle={styles.courseList}
         showsVerticalScrollIndicator={false}
       />

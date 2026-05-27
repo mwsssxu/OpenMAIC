@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Rounded, Spacing } from '@/lib/constants/theme';
+import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { apiClient } from '@/lib/api-client';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
@@ -267,7 +267,7 @@ export default function NotesScreen() {
         style={[styles.scrollView, isTablet && styles.scrollViewTablet]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />
         }
       >
         {/* 笔记本Banner */}

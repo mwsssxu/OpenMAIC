@@ -174,7 +174,7 @@ export default function QuestionsScreen() {
         data={questions}
         renderItem={renderQuestion}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} colors={[SecondaryColorMap.questions]} />}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <View style={[styles.emptyIconWrap, { backgroundColor: SecondaryColorMap.questions + '15' }]}>
