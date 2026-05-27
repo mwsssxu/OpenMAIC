@@ -5,7 +5,7 @@
  * Used during teaching and interactive scenes to display formulas and key points.
  */
 
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useMemo, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Clipboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
@@ -120,6 +120,99 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
 });
 
 /**
+ * 可滚动表格组件 - 支持横向滚动和阴影指示器
+ */
+const ScrollableTable = memo(function ScrollableTable({ rows }: { rows: string[][] }) {
+  const [showLeftShadow, setShowLeftShadow] = useState(false);
+  const [showRightShadow, setShowRightShadow] = useState(false);
+  const contentWidthRef = useRef(0);
+  const layoutWidthRef = useRef(0);
+
+  const handleScroll = (event: any) => {
+    const { contentOffset } = event.nativeEvent;
+    const isAtLeft = contentOffset.x <= 5;
+    const isAtRight = contentOffset.x >= contentWidthRef.current - layoutWidthRef.current - 5;
+    setShowLeftShadow(!isAtLeft);
+    setShowRightShadow(!isAtRight);
+  };
+
+  const onContentSizeChange = (w: number) => {
+    contentWidthRef.current = w;
+    setShowRightShadow(w > layoutWidthRef.current);
+  };
+
+  const onLayout = (event: any) => {
+    layoutWidthRef.current = event.nativeEvent.layout.width;
+  };
+
+  return (
+    <View style={styles.tableWrapper} onLayout={onLayout}>
+      {showLeftShadow && <View style={styles.tableShadowLeft} />}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onScroll={handleScroll}
+        onContentSizeChange={onContentSizeChange}
+        scrollEventThrottle={16}
+      >
+        <View>
+          {rows.map((cells, ri) => (
+            <View key={ri} style={styles.tableRow}>
+              {cells.map((cell, ci) => (
+                <View key={ci} style={styles.tableCell}>
+                  <Text style={styles.tableCellText}>{cell.trim()}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      {showRightShadow && <View style={styles.tableShadowRight} />}
+    </View>
+  );
+});
+
+/**
+ * 解析文本行并提取表格块
+ * 返回分段数组，表格会被合并为table类型
+ */
+function parseTextSegments(lines: string[]): Array<{ type: 'line' | 'table'; line?: string; rows?: string[][] }> {
+  const result: Array<{ type: 'line' | 'table'; line?: string; rows?: string[][] }> = [];
+  let tableRows: string[][] = [];
+  let inTable = false;
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    // 检测表格行 (| col1 | col2 |)
+    if (trimmedLine.startsWith('|') && trimmedLine.endsWith('|')) {
+      const cells = trimmedLine.split('|').filter(c => c.trim());
+      // 跳过表格分隔行 (|---|---|)
+      if (cells.every(c => c.match(/^[-:]+$/))) {
+        continue; // 忽略分隔行，但保持在表格模式
+      }
+      tableRows.push(cells);
+      inTable = true;
+    } else {
+      // 如果之前有表格，先保存
+      if (inTable && tableRows.length > 0) {
+        result.push({ type: 'table', rows: tableRows });
+        tableRows = [];
+      }
+      inTable = false;
+      result.push({ type: 'line', line });
+    }
+  }
+
+  // 处理末尾的表格
+  if (tableRows.length > 0) {
+    result.push({ type: 'table', rows: tableRows });
+  }
+
+  return result;
+}
+
+/**
  * 解析并渲染结构化白板内容
  * 支持树结构、流程图、公式、代码块、表格等
  */
@@ -134,13 +227,34 @@ const StructuredContent = memo(function StructuredContent({ content }: { content
           return <CodeBlock key={`code-${segIndex}`} code={segment.content} lang={segment.lang} />;
         }
 
-        // 处理文本段落
-        const lines = segment.content.split('\n');
+        // 处理文本段落 - 使用解析表格的分段逻辑
+        const textSegments = useMemo(() => parseTextSegments(segment.content.split('\n')), [segment.content]);
+
         return (
           <View key={`text-${segIndex}`}>
-            {lines.map((line, index) => {
+            {textSegments.map((seg, segIdx) => {
+              if (seg.type === 'table' && seg.rows) {
+                // 渲染表格
+                if (seg.rows.length === 1) {
+                  // 单行表格直接渲染，不需要滚动
+                  return (
+                    <View key={`table-${segIdx}`} style={styles.tableRow}>
+                      {seg.rows[0].map((cell, i) => (
+                        <View key={i} style={styles.tableCell}>
+                          <Text style={styles.tableCellText}>{cell.trim()}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                }
+                // 多行表格使用 ScrollableTable
+                return <ScrollableTable key={`table-${segIdx}`} rows={seg.rows} />;
+              }
+
+              // 渲染普通行
+              const line = seg.line || '';
               const trimmedLine = line.trim();
-              const key = `${segIndex}-${index}`;
+              const key = `${segIndex}-${segIdx}`;
 
               // 检测树结构节点 (├──, └──, │)
               if (trimmedLine.includes('├──') || trimmedLine.includes('└──') || trimmedLine.startsWith('│')) {
@@ -258,24 +372,6 @@ const StructuredContent = memo(function StructuredContent({ content }: { content
               // 检测分隔线
               if (trimmedLine.match(/^[-─━]{3,}$/)) {
                 return <View key={key} style={styles.separator} />;
-              }
-
-              // 检测表格行 (| col1 | col2 |)
-              if (trimmedLine.startsWith('|') && trimmedLine.endsWith('|')) {
-                const cells = trimmedLine.split('|').filter(c => c.trim());
-                // 检测是否是表格分隔行 (|---|---|)
-                if (cells.every(c => c.match(/^[-:]+$/))) {
-                  return <View key={key} style={styles.tableSeparator} />;
-                }
-                return (
-                  <View key={key} style={styles.tableRow}>
-                    {cells.map((cell, i) => (
-                      <View key={i} style={styles.tableCell}>
-                        <Text style={styles.tableCellText}>{cell.trim()}</Text>
-                      </View>
-                    ))}
-                  </View>
-                );
               }
 
               // 检测标题行 (# ## ###)
@@ -644,6 +740,28 @@ const styles = StyleSheet.create({
   tableCellText: {
     fontSize: 13,
     color: '#333',
+  },
+  // 表格滚动指示器
+  tableWrapper: {
+    position: 'relative',
+  },
+  tableShadowLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 20,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    zIndex: 1,
+  },
+  tableShadowRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 20,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    zIndex: 1,
   },
   // 标题样式
   headingText: {
