@@ -78,7 +78,7 @@ function BarChartView({ element, scaleX, scaleY, labels, series, colors }: {
 
   const labelSize = sFont(10, 8);
   const valueSize = sFont(9, 7);
-  const barWidth = labels.length > 0 ? `${Math.floor(90 / labels.length)}%` : '20%';
+  const barFlex = 1;
 
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -97,13 +97,13 @@ function BarChartView({ element, scaleX, scaleY, labels, series, colors }: {
         {/* Bars */}
         <View style={styles.barsArea}>
           {labels.map((label, li) => (
-            <View key={li} style={[styles.barColumn, { width: barWidth }]}>
+            <View key={li} style={[styles.barColumn, { flex: barFlex }]}>
               {series.map((s, si) => {
                 const val = s.data[li] ?? 0;
                 const pct = Math.max((val / maxVal) * 100, 3);
                 return (
                   <View key={si} style={styles.barCell}>
-                    <View style={{ flex: pct, backgroundColor: colors[si % colors.length], borderRadius: 2, width: '80%', justifyContent: 'flex-end' as const, alignItems: 'center' as const }}>
+                    <View style={{ flex: pct, backgroundColor: colors[si % colors.length], borderRadius: 2, justifyContent: 'flex-end' as const, alignItems: 'center' as const }}>
                       <Text style={{ fontSize: valueSize, color: '#333' }} numberOfLines={1}>{val}</Text>
                     </View>
                   </View>
@@ -146,7 +146,7 @@ function SimpleBarChart({ element, scaleX, scaleY, items, colors }: {
         const pct = Math.max((item.value / maxVal) * 100, 3);
         return (
           <View key={i} style={styles.simpleBarRow}>
-            <Text style={{ fontSize: labelSize, color: '#666', width: '25%' }} numberOfLines={1}>{item.label}</Text>
+            <Text style={{ fontSize: labelSize, color: '#666', flex: 1 }} numberOfLines={1}>{item.label}</Text>
             <View style={styles.simpleBarTrack}>
               <View style={{ flex: pct, backgroundColor: colors[i % colors.length], borderRadius: 2, justifyContent: 'center' as const, alignItems: 'center' as const }}>
                 <Text style={{ fontSize: valueSize, color: '#fff' }} numberOfLines={1}>{item.value}</Text>
@@ -252,13 +252,12 @@ const styles = {
     alignItems: 'flex-end' as const,
   },
   barColumn: {
+    flex: 1,
     alignItems: 'center' as const,
     justifyContent: 'flex-end' as const,
-    height: '100%',
   },
   barCell: {
     flex: 1,
-    width: '100%',
     justifyContent: 'flex-end' as const,
     alignItems: 'center' as const,
   },

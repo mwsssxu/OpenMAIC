@@ -310,17 +310,12 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
           </View>
         ) : hasElements ? (
           /* Element-based rendering via ScreenCanvas (matches web端) */
-          <ScrollView
-            style={styles.canvasScrollView}
-            contentContainerStyle={styles.canvasScrollContent}
-            showsVerticalScrollIndicator={true}
-          >
-            <ScreenCanvas
-              elements={elements}
-              background={{ type: 'solid', color: '#f8f9fa' }}
-              scrollable
-            />
-          </ScrollView>
+          <ScreenCanvas
+            elements={elements}
+            background={{ type: 'solid', color: '#f8f9fa' }}
+            scrollable
+            isWhiteboard
+          />
         ) : (
           /* Legacy text fallback */
           <ScrollView style={styles.textScrollView} contentContainerStyle={styles.textScrollContent}>
@@ -423,13 +418,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
     minHeight: 200,
-  },
-  canvasScrollView: {
-    flex: 1,
-  },
-  canvasScrollContent: {
-    flexGrow: 1,
-    paddingBottom: Spacing.md,
   },
   emptyState: {
     flex: 1,
@@ -656,17 +644,5 @@ const styles = StyleSheet.create({
     color: '#333',
     padding: 10,
     lineHeight: 18,
-  },
-  textDiagramContainer: {
-    backgroundColor: '#f0f4f8',
-    borderRadius: Rounded.md,
-    padding: Spacing.md,
-  },
-  textDiagram: {
-    fontSize: 14,
-    fontFamily: 'monospace',
-    color: '#333',
-    lineHeight: 20,
-    textAlign: 'left',
   },
 });

@@ -2,6 +2,7 @@
  * TextElement - Mobile text element renderer with responsive scaling
  *
  * Uses canvas-scale-based font sizing with minimum readability threshold.
+ * Whiteboard elements get a default card-like background for visual separation.
  */
 
 import React, { useMemo } from 'react';
@@ -9,11 +10,33 @@ import { View, Text } from 'react-native';
 import type { PPTTextElement, SlideTheme } from './types';
 import { isSmallScreen } from '@/lib/utils/scaling';
 
+// 预定义的白板背景色数组，用于区分不同文本块
+const WHITEBOARD_BG_COLORS = [
+  '#e8f4f8', // 淡蓝
+  '#fff3e6', // 淡橙
+  '#f0f7f0', // 淡绿
+  '#f5f0fa', // 淡紫
+  '#fff8e6', // 淡黄
+  '#e6f2ff', // 淡青蓝
+];
+
+// 根据元素 ID 生成稳定的背景色索引
+function getBackgroundColorForElement(elementId: string): string {
+  // 使用 ID 的哈希值选择颜色，保证同一元素颜色一致
+  let hash = 0;
+  for (let i = 0; i < elementId.length; i++) {
+    hash = ((hash << 5) - hash + elementId.charCodeAt(i)) % WHITEBOARD_BG_COLORS.length;
+  }
+  return WHITEBOARD_BG_COLORS[Math.abs(hash)];
+}
+
 interface TextElementProps {
   element: PPTTextElement;
   theme: SlideTheme;
   scaleX: number;
   scaleY: number;
+  /** 是否在白板模式下渲染（添加卡片背景） */
+  isWhiteboard?: boolean;
 }
 
 function getPosition(element: PPTTextElement) {
@@ -34,7 +57,7 @@ function getPosition(element: PPTTextElement) {
   };
 }
 
-export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps) {
+export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = false }: TextElementProps) {
   const position = useMemo(() => getPosition(element), [element]);
   const effectiveScale = Math.min(scaleX, scaleY);
 
@@ -81,6 +104,15 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
     return '400' as any;
   }, [element]);
 
+  // 白板模式下为每个文本块添加背景色
+  const elementId = element.id || '';
+  const bgColor = useMemo(() => {
+    if (isWhiteboard && !element.fill) {
+      return getBackgroundColorForElement(elementId);
+    }
+    return element.fill || 'transparent';
+  }, [isWhiteboard, element.fill, elementId]);
+
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
     left: position.left * scaleX,
@@ -93,11 +125,22 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
 
   const textWrapperStyle = useMemo(() => ({
     flex: 1,
-    padding: Math.max(4, 8 * effectiveScale),
+    padding: isWhiteboard ? Math.max(8, 12 * effectiveScale) : Math.max(4, 8 * effectiveScale),
     justifyContent: 'flex-start' as const,
-    backgroundColor: element.fill || 'transparent',
+    backgroundColor: bgColor,
     opacity: element.opacity || 1,
-  }), [effectiveScale, element.fill, element.opacity]);
+    // 白板模式下添加圆角和阴影
+    ...(isWhiteboard && {
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: 'rgba(0, 0, 0, 0.06)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 3,
+      elevation: 2,
+    }),
+  }), [effectiveScale, bgColor, element.opacity, isWhiteboard]);
 
   const textStyle = useMemo(() => ({
     color: textColor,

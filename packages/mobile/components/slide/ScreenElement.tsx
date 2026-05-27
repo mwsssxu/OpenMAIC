@@ -21,12 +21,14 @@ interface ScreenElementProps {
   theme: SlideTheme;
   scaleX: number;
   scaleY: number;
+  /** 是否在白板模式下渲染（文本元素会添加卡片背景） */
+  isWhiteboard?: boolean;
 }
 
-export function ScreenElement({ element, theme, scaleX, scaleY }: ScreenElementProps) {
+export function ScreenElement({ element, theme, scaleX, scaleY, isWhiteboard = false }: ScreenElementProps) {
   switch (element.type) {
     case 'text':
-      return <TextElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
+      return <TextElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'image':
       return <ImageElement element={element} scaleX={scaleX} scaleY={scaleY} />;
     case 'shape':

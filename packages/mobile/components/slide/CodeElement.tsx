@@ -54,9 +54,9 @@ export function CodeElement({ element, theme, scaleX, scaleY }: CodeElementProps
                     fontSize: baseFontSize,
                     fontFamily: 'Menlo' as const,
                     color: '#aaa',
-                    width: 30 * effectiveScale,
+                    width: Math.max(20, 30 * effectiveScale),
                     textAlign: 'right' as const,
-                    marginRight: 8 * effectiveScale,
+                    marginRight: Math.max(4, 8 * effectiveScale),
                     lineHeight: baseFontSize * 1.5,
                   }}>
                     {i + 1}

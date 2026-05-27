@@ -52,6 +52,8 @@ interface ScreenCanvasProps {
   laserOptions?: { color?: string; duration?: number };
   /** Enable scrollable mode - calculates full content height */
   scrollable?: boolean;
+  /** Whether rendering in whiteboard mode (adds card backgrounds to text elements) */
+  isWhiteboard?: boolean;
 }
 
 /**
@@ -66,6 +68,7 @@ export function ScreenCanvas({
   laserElementId,
   laserOptions,
   scrollable = false,
+  isWhiteboard = false,
 }: ScreenCanvasProps) {
   const containerRef = useRef<View>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -267,6 +270,7 @@ export function ScreenCanvas({
                 theme={activeTheme}
                 scaleX={canvasScaleX}
                 scaleY={canvasScaleY}
+                isWhiteboard={isWhiteboard}
               />
             ))}
 

@@ -39,40 +39,44 @@ function simplifyLatex(latex: string): string {
   // Square root: \sqrt{x} → √x
   result = result.replace(/\\sqrt\{([^}]*)}/g, '√($1)');
 
-  // Common commands
-  result = result.replace(/\\times/g, '×');
-  result = result.replace(/\\div/g, '÷');
-  result = result.replace(/\\pm/g, '±');
-  result = result.replace(/\\infty/g, '∞');
-  result = result.replace(/\\partial/g, '∂');
-  result = result.replace(/\\nabla/g, '∇');
-  result = result.replace(/\\sum/g, '∑');
-  result = result.replace(/\\int/g, '∫');
-  result = result.replace(/\\prod/g, '∏');
-  result = result.replace(/\\cdot/g, '·');
-  result = result.replace(/\\leq/g, '≤');
-  result = result.replace(/\\geq/g, '≥');
-  result = result.replace(/\\neq/g, '≠');
-  result = result.replace(/\\approx/g, '≈');
-  result = result.replace(/\\equiv/g, '≡');
-  result = result.replace(/\\rightarrow/g, '→');
-  result = result.replace(/\\leftarrow/g, '←');
-  result = result.replace(/\\Rightarrow/g, '⇒');
-  result = result.replace(/\\Leftrightarrow/g, '⇔');
-
-  // Greek letters
-  result = result.replace(/\\alpha/g, 'α');
-  result = result.replace(/\\beta/g, 'β');
-  result = result.replace(/\\gamma/g, 'γ');
-  result = result.replace(/\\delta/g, 'δ');
-  result = result.replace(/\\theta/g, 'θ');
-  result = result.replace(/\\lambda/g, 'λ');
-  result = result.replace(/\\mu/g, 'μ');
-  result = result.replace(/\\sigma/g, 'σ');
-  result = result.replace(/\\omega/g, 'ω');
-  result = result.replace(/\\phi/g, 'φ');
-  result = result.replace(/\\pi/g, 'π');
-  result = result.replace(/\\epsilon/g, 'ε');
+  // Common commands — longest first to avoid partial matches
+  const COMMANDS: Array<[string, string]> = [
+    ['\\Leftrightarrow', '⇔'],
+    ['\\Rightarrow', '⇒'],
+    ['\\Leftarrow', '⇐'],
+    ['\\rightarrow', '→'],
+    ['\\leftarrow', '←'],
+    ['\\partial', '∂'],
+    ['\\epsilon', 'ε'],
+    ['\\nabla', '∇'],
+    ['\\approx', '≈'],
+    ['\\equiv', '≡'],
+    ['\\times', '×'],
+    ['\\infty', '∞'],
+    ['\\prod', '∏'],
+    ['\\leq', '≤'],
+    ['\\geq', '≥'],
+    ['\\neq', '≠'],
+    ['\\sum', '∑'],
+    ['\\int', '∫'],
+    ['\\div', '÷'],
+    ['\\pm', '±'],
+    ['\\cdot', '·'],
+    ['\\alpha', 'α'],
+    ['\\beta', 'β'],
+    ['\\gamma', 'γ'],
+    ['\\delta', 'δ'],
+    ['\\theta', 'θ'],
+    ['\\lambda', 'λ'],
+    ['\\mu', 'μ'],
+    ['\\sigma', 'σ'],
+    ['\\omega', 'ω'],
+    ['\\phi', 'φ'],
+    ['\\pi', 'π'],
+  ];
+  for (const [cmd, sym] of COMMANDS) {
+    result = result.replace(new RegExp(cmd.replace(/\\/g, '\\\\'), 'g'), sym);
+  }
 
   // Remove remaining \command patterns
   result = result.replace(/\\[a-zA-Z]+/g, '');

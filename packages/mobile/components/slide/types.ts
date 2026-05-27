@@ -131,7 +131,7 @@ export interface PPTTableElement extends PPTBaseElement {
   data: Array<Array<{ id: string; colspan: number; rowspan: number; text: string }>>;
   colWidths?: number[];
   outline?: { width: number; style: string; color: string };
-  theme?: { color: string; rowHeader: boolean };
+  theme?: { color: string; rowHeader: boolean; rowFooter?: boolean; colHeader?: boolean; colFooter?: boolean };
 }
 
 /**
