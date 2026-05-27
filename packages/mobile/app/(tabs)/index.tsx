@@ -237,13 +237,11 @@ export default function HomeScreen() {
   // Dashboard stats state
   const [stats, setStats] = useState<DashboardStats>(defaultStats);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [statsError, setStatsError] = useState<string | null>(null);
 
   // Fetch dashboard stats on mount
   useEffect(() => {
     const fetchStats = async () => {
       setStatsLoading(true);
-      setStatsError(null);
       try {
         const userStats: UserStats = await apiClient.getStats();
         // Transform API stats to dashboard stats
@@ -258,7 +256,6 @@ export default function HomeScreen() {
       } catch (error) {
         // Gracefully handle errors - keep placeholder data
         console.warn('Failed to fetch dashboard stats:', error);
-        setStatsError('Unable to load stats');
         setStats(defaultStats);
       } finally {
         setStatsLoading(false);
