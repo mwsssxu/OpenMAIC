@@ -127,19 +127,19 @@ export default function CoursesScreen() {
     return colors[index % colors.length];
   };
 
-  // 课程进度缓存（内存中）
-  const courseProgressCache: Record<string, { progress: number; status: string }> = {};
+  // 课程进度缓存（使用 useRef 防止组件重新渲染时丢失）
+  const courseProgressCacheRef = useRef<Record<string, { progress: number; status: string }>>({});
 
   // 获取或生成课程进度（后续接入真实数据）
   function getCourseProgress(classroom: Classroom) {
-    if (!courseProgressCache[classroom.id]) {
+    if (!courseProgressCacheRef.current[classroom.id]) {
       // 模拟进度数据（后续替换为从后端获取）
-      courseProgressCache[classroom.id] = {
+      courseProgressCacheRef.current[classroom.id] = {
         progress: Math.floor(Math.random() * 100),
         status: ['in-progress', 'completed', 'not-started'][Math.floor(Math.random() * 3)],
       };
     }
-    return courseProgressCache[classroom.id];
+    return courseProgressCacheRef.current[classroom.id];
   }
 
   // 课程卡片组件

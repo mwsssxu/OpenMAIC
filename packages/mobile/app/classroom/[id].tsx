@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Dimensions,
+  useWindowDimensions,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -283,7 +284,9 @@ export default function ClassroomScreen() {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
 
-  const screenWidth = Dimensions.get('window').width - 40;
+  // 使用 useWindowDimensions 替代硬编码尺寸，响应屏幕旋转
+  const windowDimensions = useWindowDimensions();
+  const screenWidth = windowDimensions.width - 40;
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && id) {

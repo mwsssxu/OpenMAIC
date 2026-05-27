@@ -69,6 +69,9 @@ export function ResponsiveGrid({
     numColumns = calculateGridColumns(width, minItemWidth, responsiveGap, maxColumns);
   }
 
+  // Guard against division by zero
+  numColumns = Math.max(1, numColumns);
+
   // Calculate item width to fill grid evenly
   // Formula: itemWidth = (containerWidth - (columns - 1) * gap) / columns
   // We use percentage to allow flex shrink if needed
