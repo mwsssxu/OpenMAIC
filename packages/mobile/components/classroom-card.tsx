@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@/lib/constants/theme';
+import { useI18n } from '@/lib/i18n';
 
 interface ClassroomCardProps {
   classroom: {
@@ -18,11 +19,18 @@ interface ClassroomCardProps {
 }
 
 export function ClassroomCard({ classroom, onPress, onLongPress, thumbnail }: ClassroomCardProps) {
+  const { t } = useI18n();
   const handleLongPress = () => {
     if (!onLongPress) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onLongPress();
   };
+
+  // 构建无障碍标签
+  const accessibilityLabel = `${t('accessibility.courseCard')}: ${classroom.name}`;
+  const accessibilityHint = onLongPress
+    ? t('accessibility.courseCardHint')
+    : '点击查看课程详情';
 
   return (
     <TouchableOpacity
@@ -31,14 +39,25 @@ export function ClassroomCard({ classroom, onPress, onLongPress, thumbnail }: Cl
       onLongPress={onLongPress ? handleLongPress : undefined}
       delayLongPress={350}
       activeOpacity={0.7}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityRole="button"
     >
       {/* 缩略图区域 */}
       {thumbnail && (
-        <View style={styles.thumbnailArea}>
+        <View
+          style={styles.thumbnailArea}
+          accessibilityRole="image"
+          accessibilityLabel="课程缩略图"
+        >
           {thumbnail}
           {/* Deep-Interactive Badge */}
           {classroom.interactiveMode && (
-            <View style={styles.interactiveBadge}>
+            <View
+              style={styles.interactiveBadge}
+              accessibilityRole="image"
+              accessibilityLabel="互动课程标识"
+            >
               <Ionicons name="game-controller" size={12} color="white" />
               <Text style={styles.interactiveBadgeText}>互动</Text>
             </View>
@@ -49,10 +68,18 @@ export function ClassroomCard({ classroom, onPress, onLongPress, thumbnail }: Cl
       {/* 内容区域 */}
       <View style={styles.content}>
         <View style={styles.titleRow}>
-          <Text style={styles.title} numberOfLines={2}>{classroom.name}</Text>
+          <Text
+            style={styles.title}
+            numberOfLines={2}
+            accessibilityRole="header"
+          >{classroom.name}</Text>
           {/* 无缩略图时，Badge 放在标题旁 */}
           {!thumbnail && classroom.interactiveMode && (
-            <View style={styles.interactiveBadgeSmall}>
+            <View
+              style={styles.interactiveBadgeSmall}
+              accessibilityRole="image"
+              accessibilityLabel="互动课程标识"
+            >
               <Ionicons name="game-controller" size={10} color="white" />
             </View>
           )}
@@ -60,8 +87,8 @@ export function ClassroomCard({ classroom, onPress, onLongPress, thumbnail }: Cl
         <Text style={styles.description} numberOfLines={2}>
           {classroom.description || '暂无描述'}
         </Text>
-        <View style={styles.metaRow}>
-          <Ionicons name="layers-outline" size={12} color="#999" />
+        <View style={styles.metaRow} accessibilityRole="text">
+          <Ionicons name="layers-outline" size={12} color="#999" accessibilityRole="image" accessibilityLabel="场景图标" />
           <Text style={styles.metaText}>
             {classroom.scene_count || 0} 场景
           </Text>

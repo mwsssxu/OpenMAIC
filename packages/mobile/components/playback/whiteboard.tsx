@@ -270,14 +270,47 @@ export function Whiteboard({
     <View style={[styles.container, { width: screenWidth, height: screenHeight + (showTools && editable ? 60 : 0) }]}>
       {/* 缩放指示器 */}
       {showZoomIndicator && (
-        <View style={styles.zoomIndicator}>
+        <View
+          style={styles.zoomIndicator}
+          accessibilityRole="text"
+          accessibilityLabel={`缩放 ${getZoomPercent()}%`}
+        >
           <Text style={styles.zoomText}>{getZoomPercent()}%</Text>
         </View>
       )}
 
       {/* 白板画布 */}
       <GestureDetector gesture={composedGesture}>
-        <View style={[styles.canvas, { width: screenWidth, height: screenHeight }]}>
+        <View
+          style={[styles.canvas, { width: screenWidth, height: screenHeight }]}
+          accessibilityLabel={t('accessibility.whiteboardCanvas')}
+          accessibilityHint={t('accessibility.whiteboardCanvasHint')}
+          accessibilityRole="image"
+          accessibilityActions={[
+            { name: 'activate', label: t('accessibility.whiteboardZoomIn') },
+            { name: 'increment', label: t('accessibility.whiteboardZoomIn') },
+            { name: 'decrement', label: t('accessibility.whiteboardZoomOut') },
+          ]}
+          onAccessibilityAction={(event) => {
+            switch (event.nativeEvent.actionName) {
+              case 'activate':
+              case 'increment':
+                // 放大
+                scale.value = withSpring(Math.min(MAX_SCALE, scale.value * 1.2));
+                savedScale.value = scale.value;
+                updateZoomIndicator();
+                haptics.light();
+                break;
+              case 'decrement':
+                // 缩小
+                scale.value = withSpring(Math.max(MIN_SCALE, scale.value / 1.2));
+                savedScale.value = scale.value;
+                updateZoomIndicator();
+                haptics.light();
+                break;
+            }
+          }}
+        >
           {/* 背景 */}
           <View style={{ width: screenWidth, height: screenHeight, backgroundColor: '#ffffff' }} />
 
@@ -303,40 +336,71 @@ export function Whiteboard({
           <TouchableOpacity
             style={styles.resetZoomButton}
             onPress={handleResetView}
+            accessibilityLabel={t('accessibility.whiteboardResetView')}
+            accessibilityHint="恢复画布到原始大小和位置"
+            accessibilityRole="button"
           >
             <Text style={styles.resetZoomText}>{t('whiteboard.resetView')}</Text>
           </TouchableOpacity>
 
           {/* 颜色选择 */}
-          <View style={styles.colorPicker}>
-            {COLORS.map((c) => (
+          <View
+            style={styles.colorPicker}
+            accessibilityRole="tablist"
+            accessibilityLabel={t('accessibility.whiteboardColorPicker')}
+          >
+            {COLORS.map((c, i) => (
               <TouchableOpacity
                 key={c}
                 style={[styles.colorButton, { backgroundColor: c }, color === c && styles.colorButtonActive]}
                 onPress={() => setColor(c)}
+                accessibilityLabel={`${t('accessibility.whiteboardColor', { color: ['黑色', '红色', '蓝色', '绿色', '黄色', '紫色', '白色'][i] })}`}
+                accessibilityHint={color === c ? '当前选中' : '点击选择此颜色'}
+                accessibilityRole="button"
+                accessibilityState={{ selected: color === c }}
               />
             ))}
           </View>
 
           {/* 笔触大小 */}
-          <View style={styles.strokePicker}>
+          <View
+            style={styles.strokePicker}
+            accessibilityRole="tablist"
+            accessibilityLabel={t('accessibility.whiteboardStrokePicker')}
+          >
             {STROKE_WIDTHS.map((s) => (
               <TouchableOpacity
                 key={s}
                 style={[styles.strokeButton, strokeWidth === s && styles.strokeButtonActive]}
                 onPress={() => setStrokeWidth(s)}
+                accessibilityLabel={t('accessibility.whiteboardStroke', { width: s })}
+                accessibilityHint={strokeWidth === s ? '当前选中' : '点击选择此粗细'}
+                accessibilityRole="button"
+                accessibilityState={{ selected: strokeWidth === s }}
               >
-                <View style={[styles.strokeIndicator, { width: s, height: s }]} />
+                <View style={[styles.strokeIndicator, { width: s, height: s }]} accessibilityRole="image" accessibilityLabel={`${s}像素`} />
               </TouchableOpacity>
             ))}
           </View>
 
           {/* 操作按钮 */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleUndo}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleUndo}
+              accessibilityLabel={t('accessibility.whiteboardUndo')}
+              accessibilityHint="撤销最后一步绘制"
+              accessibilityRole="button"
+            >
               <Text style={styles.actionButtonText}>{t('whiteboard.undo')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionButton, styles.clearButton]} onPress={handleClear}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.clearButton]}
+              onPress={handleClear}
+              accessibilityLabel={t('accessibility.whiteboardClear')}
+              accessibilityHint="清空整个画布"
+              accessibilityRole="button"
+            >
               <Text style={styles.actionButtonText}>{t('whiteboard.clear')}</Text>
             </TouchableOpacity>
           </View>

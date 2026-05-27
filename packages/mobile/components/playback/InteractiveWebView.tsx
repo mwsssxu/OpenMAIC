@@ -239,7 +239,12 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
 
     // 渲染加载中界面
     const renderLoading = useCallback(() => (
-      <View style={styles.loadingOverlay}>
+      <View
+        style={styles.loadingOverlay}
+        accessibilityRole="text"
+        accessibilityLabel={t('accessibility.loading')}
+        accessibilityHint={t('accessibility.loadingHint')}
+      >
         <ActivityIndicator size="large" color={Colors.primary.main} />
         <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
@@ -247,18 +252,40 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
 
     // 渲染错误界面
     const renderError = useCallback(() => (
-      <View style={styles.errorOverlay}>
-        <Ionicons name="alert-circle-outline" size={48} color={Colors.semantic.red} />
+      <View
+        style={styles.errorOverlay}
+        accessibilityRole="text"
+        accessibilityLabel={t('accessibility.error')}
+      >
+        <Ionicons
+          name="alert-circle-outline"
+          size={48}
+          color={Colors.semantic.red}
+          accessibilityRole="image"
+          accessibilityLabel="错误图标"
+        />
         <Text style={styles.errorTitle}>{t('common.error')}</Text>
         <Text style={styles.errorMessage}>
           {state.errorMessage || ERROR_MESSAGES.DEFAULT}
         </Text>
         <View style={styles.errorButtons}>
-          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={handleRetry}
+            accessibilityLabel={t('accessibility.webViewReload')}
+            accessibilityHint={t('accessibility.errorHint')}
+            accessibilityRole="button"
+          >
             <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
           </TouchableOpacity>
           {url && (
-            <TouchableOpacity style={styles.browserButton} onPress={handleOpenInBrowser}>
+            <TouchableOpacity
+              style={styles.browserButton}
+              onPress={handleOpenInBrowser}
+              accessibilityLabel={t('accessibility.webViewOpenBrowser')}
+              accessibilityHint="在系统浏览器中打开此内容"
+              accessibilityRole="button"
+            >
               <Text style={styles.browserButtonText}>{t('webview.openInBrowser')}</Text>
             </TouchableOpacity>
           )}
@@ -269,8 +296,18 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
     // 无内容时显示占位界面
     if (!url && !htmlContent) {
       return (
-        <View style={[styles.placeholder, style]}>
-          <Ionicons name="code-working" size={48} color={Colors.neutral.textMuted} />
+        <View
+          style={[styles.placeholder, style]}
+          accessibilityRole="text"
+          accessibilityLabel={t('accessibility.empty')}
+        >
+          <Ionicons
+            name="code-working"
+            size={48}
+            color={Colors.neutral.textMuted}
+            accessibilityRole="image"
+            accessibilityLabel="代码图标"
+          />
           <Text style={styles.placeholderTitle}>{t('webview.noContent')}</Text>
           <Text style={styles.placeholderText}>
             {t('webview.noContentHint')}
@@ -301,6 +338,8 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
           originWhitelist={['*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          accessibilityLabel={t('accessibility.interactiveContent')}
+          accessibilityHint={t('accessibility.interactiveContentHint')}
         />
       </View>
     );

@@ -253,11 +253,11 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
 
   if (grading) {
     return (
-      <View style={styles.gradingContainer}>
+      <View style={styles.gradingContainer} accessibilityRole="text" accessibilityLabel={t('quiz.aiGrading')}>
         <Text style={styles.gradingText}>{t('quiz.aiGrading')}</Text>
         <View style={styles.progressDots}>
           {[0, 1, 2].map((i) => (
-            <View key={i} style={[styles.dot, styles.dotActive]} />
+            <View key={i} style={[styles.dot, styles.dotActive]} accessibilityRole="image" accessibilityLabel="加载指示点" />
           ))}
         </View>
       </View>
@@ -266,15 +266,18 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
 
   if (submitted) {
     return (
-      <ScrollView style={styles.resultContainer}>
-        <Text style={styles.resultTitle}>{t('quiz.score')}: {score}%</Text>
+      <ScrollView style={styles.resultContainer} accessibilityRole="text">
+        <Text style={styles.resultTitle} accessibilityRole="header">{t('quiz.score')}: {score}%</Text>
 
         {/* 结果列表 */}
         {questions.map((q, index) => (
-          <View key={q.id} style={styles.resultItem}>
+          <View key={q.id} style={styles.resultItem} accessibilityRole="text">
             <Text style={styles.resultQuestion}>{index + 1}. {q.question}</Text>
             <View style={styles.resultStatus}>
-              <Text style={[styles.resultBadge, isAnswerCorrect(q) ? styles.correctBadge : styles.incorrectBadge]}>
+              <Text
+                style={[styles.resultBadge, isAnswerCorrect(q) ? styles.correctBadge : styles.incorrectBadge]}
+                accessibilityRole="text"
+              >
                 {isAnswerCorrect(q) ? t('quiz.correct') : t('quiz.incorrect')}
               </Text>
             </View>
@@ -284,7 +287,13 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
           </View>
         ))}
 
-        <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={handleRetry}
+          accessibilityLabel={t('quiz.retry')}
+          accessibilityHint="重新开始答题"
+          accessibilityRole="button"
+        >
           <Text style={styles.retryButtonText}>{t('quiz.retry')}</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -298,9 +307,9 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       {/* 进度指示 */}
-      <View style={styles.progress}>
-        <Text style={styles.progressText}>
-          {currentIndex + 1} / {questions.length}
+      <View style={styles.progress} accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: questions.length, now: currentIndex + 1 }}>
+        <Text style={styles.progressText} accessibilityRole="text">
+          {t('accessibility.quizQuestion', { num: currentIndex + 1, total: questions.length })}
         </Text>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${((currentIndex + 1) / questions.length) * 100}%` }]} />
@@ -312,43 +321,67 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
       <GestureDetector gesture={panGesture}>
         <Animated.View style={[styles.questionOuter, animatedStyle]}>
           <ScrollView style={styles.questionContainer}>
-            <Text style={styles.questionType}>
-              {currentQuestion.type === 'single' ? t('quiz.singleChoice') :
-               currentQuestion.type === 'multiple' ? t('quiz.multipleChoice') : t('quiz.shortAnswer')}
+            <Text style={styles.questionType} accessibilityRole="header">
+              {currentQuestion.type === 'single' ? t('accessibility.quizSingleChoice') :
+               currentQuestion.type === 'multiple' ? t('accessibility.quizMultipleChoice') : t('accessibility.quizShortAnswer')}
             </Text>
             <Text style={styles.questionText}>{currentQuestion.question}</Text>
 
             {/* 单选题 */}
-            {currentQuestion.type === 'single' && currentQuestion.options?.map((option, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.option, isOptionSelected(currentQuestion.id, option) && styles.optionSelected]}
-                onPress={() => handleSingleSelect(currentQuestion.id, option)}
-                onLongPress={() => handleOptionLongPress(option)}
-                delayLongPress={300}
-              >
-                <View style={[styles.optionRadio, isOptionSelected(currentQuestion.id, option) && styles.optionRadioSelected]}>
-                  {isOptionSelected(currentQuestion.id, option) && <View style={styles.optionRadioInner} />}
-                </View>
-                <Text style={styles.optionText}>{option}</Text>
-              </TouchableOpacity>
-            ))}
+            {currentQuestion.type === 'single' && currentQuestion.options?.map((option, i) => {
+              const isSelected = isOptionSelected(currentQuestion.id, option);
+              const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || String(i + 1);
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.option, isSelected && styles.optionSelected]}
+                  onPress={() => handleSingleSelect(currentQuestion.id, option)}
+                  onLongPress={() => handleOptionLongPress(option)}
+                  delayLongPress={300}
+                  accessibilityLabel={`${t('accessibility.quizOption', { letter })}，${option}`}
+                  accessibilityHint={isSelected ? t('accessibility.quizOptionSelected') : t('accessibility.quizOptionNotSelected')}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <View
+                    style={[styles.optionRadio, isSelected && styles.optionRadioSelected]}
+                    accessibilityRole="image"
+                    accessibilityLabel={isSelected ? '选中' : '未选中'}
+                  >
+                    {isSelected && <View style={styles.optionRadioInner} />}
+                  </View>
+                  <Text style={styles.optionText}>{option}</Text>
+                </TouchableOpacity>
+              );
+            })}
 
             {/* 多选题 */}
-            {currentQuestion.type === 'multiple' && currentQuestion.options?.map((option, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.option, isOptionSelected(currentQuestion.id, option) && styles.optionSelected]}
-                onPress={() => handleMultipleSelect(currentQuestion.id, option)}
-                onLongPress={() => handleOptionLongPress(option)}
-                delayLongPress={300}
-              >
-                <View style={[styles.optionCheckbox, isOptionSelected(currentQuestion.id, option) && styles.optionCheckboxSelected]}>
-                  {isOptionSelected(currentQuestion.id, option) && <Text style={styles.checkMark}>✓</Text>}
-                </View>
-                <Text style={styles.optionText}>{option}</Text>
-              </TouchableOpacity>
-            ))}
+            {currentQuestion.type === 'multiple' && currentQuestion.options?.map((option, i) => {
+              const isSelected = isOptionSelected(currentQuestion.id, option);
+              const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || String(i + 1);
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.option, isSelected && styles.optionSelected]}
+                  onPress={() => handleMultipleSelect(currentQuestion.id, option)}
+                  onLongPress={() => handleOptionLongPress(option)}
+                  delayLongPress={300}
+                  accessibilityLabel={`${t('accessibility.quizOption', { letter })}，${option}`}
+                  accessibilityHint={isSelected ? t('accessibility.quizOptionSelected') : t('accessibility.quizOptionNotSelected')}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isSelected }}
+                >
+                  <View
+                    style={[styles.optionCheckbox, isSelected && styles.optionCheckboxSelected]}
+                    accessibilityRole="image"
+                    accessibilityLabel={isSelected ? '勾选' : '未勾选'}
+                  >
+                    {isSelected && <Text style={styles.checkMark}>✓</Text>}
+                  </View>
+                  <Text style={styles.optionText}>{option}</Text>
+                </TouchableOpacity>
+              );
+            })}
 
             {/* 简答题 */}
             {currentQuestion.type === 'short' && (
@@ -359,6 +392,8 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
                 placeholder={t('quiz.placeholder')}
                 value={(answers[currentQuestion.id] as string) || ''}
                 onChangeText={(text) => handleShortAnswer(currentQuestion.id, text)}
+                accessibilityLabel={t('accessibility.quizShortAnswer')}
+                accessibilityHint="输入你的答案"
               />
             )}
           </ScrollView>
@@ -371,16 +406,32 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
           style={[styles.navButton, currentIndex === 0 && styles.navButtonDisabled]}
           onPress={handlePrev}
           disabled={currentIndex === 0}
+          accessibilityLabel={t('quiz.prevQuestion')}
+          accessibilityHint={currentIndex === 0 ? undefined : t('accessibility.quizPrevHint')}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: currentIndex === 0 }}
         >
           <Text style={styles.navButtonText}>{t('quiz.prevQuestion')}</Text>
         </TouchableOpacity>
 
         {!isLastQuestion ? (
-          <TouchableOpacity style={styles.navButton} onPress={handleNext}>
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={handleNext}
+            accessibilityLabel={t('quiz.nextQuestion')}
+            accessibilityHint={t('accessibility.quizNextHint')}
+            accessibilityRole="button"
+          >
             <Text style={styles.navButtonText}>{t('quiz.nextQuestion')}</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={handleSubmit}
+            accessibilityLabel={t('quiz.submit')}
+            accessibilityHint={t('accessibility.quizSubmitHint')}
+            accessibilityRole="button"
+          >
             <Text style={styles.submitButtonText}>{t('quiz.submit')}</Text>
           </TouchableOpacity>
         )}

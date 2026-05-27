@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 interface TabBarProps {
   onCreatePress?: () => void;
@@ -17,6 +18,7 @@ const tabs = [
 ];
 
 export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
+  const { t } = useI18n();
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -52,23 +54,36 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
       }
     ]}>
       {/* 左侧两个 Tab */}
-      {tabs.slice(0, 2).map((tab) => (
-        <TouchableOpacity
-          key={tab.name}
-          style={[styles.tabItem, isActive(tab.route) && styles.tabItemActive]}
-          onPress={() => handleTabPress(tab.route)}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabIcon, { fontSize: emojiSize }]}>{tab.emoji}</Text>
-          <Text style={[
-            styles.tabLabel,
-            { fontSize: labelSize },
-            isActive(tab.route) && styles.tabLabelActive
-          ]}>
-            {tab.name}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {tabs.slice(0, 2).map((tab) => {
+        const isActiveTab = isActive(tab.route);
+        const accessibilityLabelMap: Record<string, string> = {
+          '首页': t('accessibility.tabHome'),
+          '课程': t('accessibility.tabCourses'),
+          '笔记': t('accessibility.tabNotes'),
+          '我的': t('accessibility.tabProfile'),
+        };
+        return (
+          <TouchableOpacity
+            key={tab.name}
+            style={[styles.tabItem, isActiveTab && styles.tabItemActive]}
+            onPress={() => handleTabPress(tab.route)}
+            activeOpacity={0.7}
+            accessibilityLabel={accessibilityLabelMap[tab.name] || tab.name}
+            accessibilityHint={isActiveTab ? undefined : `点击进入${tab.name}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActiveTab }}
+          >
+            <Text style={[styles.tabIcon, { fontSize: emojiSize }]} accessibilityRole="image" accessibilityLabel={tab.emoji}>{tab.emoji}</Text>
+            <Text style={[
+              styles.tabLabel,
+              { fontSize: labelSize },
+              isActiveTab && styles.tabLabelActive
+            ]}>
+              {tab.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
 
       {/* 中间创建按钮 */}
       <TouchableOpacity
@@ -83,28 +98,44 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
         ]}
         onPress={onCreatePress || (() => router.push('/classroom/create'))}
         activeOpacity={0.85}
+        accessibilityLabel={t('accessibility.tabCreate')}
+        accessibilityHint="点击创建新的学习课程"
+        accessibilityRole="button"
       >
-        <Ionicons name="add" size={fabIconSize} color="white" />
+        <Ionicons name="add" size={fabIconSize} color="white" accessibilityRole="image" accessibilityLabel="添加图标" />
       </TouchableOpacity>
 
       {/* 右侧两个 Tab */}
-      {tabs.slice(2, 4).map((tab) => (
-        <TouchableOpacity
-          key={tab.name}
-          style={[styles.tabItem, isActive(tab.route) && styles.tabItemActive]}
-          onPress={() => handleTabPress(tab.route)}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabIcon, { fontSize: emojiSize }]}>{tab.emoji}</Text>
-          <Text style={[
-            styles.tabLabel,
-            { fontSize: labelSize },
-            isActive(tab.route) && styles.tabLabelActive
-          ]}>
-            {tab.name}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {tabs.slice(2, 4).map((tab) => {
+        const isActiveTab = isActive(tab.route);
+        const accessibilityLabelMap: Record<string, string> = {
+          '首页': t('accessibility.tabHome'),
+          '课程': t('accessibility.tabCourses'),
+          '笔记': t('accessibility.tabNotes'),
+          '我的': t('accessibility.tabProfile'),
+        };
+        return (
+          <TouchableOpacity
+            key={tab.name}
+            style={[styles.tabItem, isActiveTab && styles.tabItemActive]}
+            onPress={() => handleTabPress(tab.route)}
+            activeOpacity={0.7}
+            accessibilityLabel={accessibilityLabelMap[tab.name] || tab.name}
+            accessibilityHint={isActiveTab ? undefined : `点击进入${tab.name}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActiveTab }}
+          >
+            <Text style={[styles.tabIcon, { fontSize: emojiSize }]} accessibilityRole="image" accessibilityLabel={tab.emoji}>{tab.emoji}</Text>
+            <Text style={[
+              styles.tabLabel,
+              { fontSize: labelSize },
+              isActiveTab && styles.tabLabelActive
+            ]}>
+              {tab.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };

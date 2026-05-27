@@ -79,12 +79,19 @@ export function PointerOverlay({
   };
 
   return (
-    <View style={[styles.container, { width, height }]}>
+    <View
+      style={[styles.container, { width, height }]}
+      accessibilityLabel={active ? (pointerMode === 'laser' ? t('accessibility.laserPointer') : t('accessibility.spotlight')) : '指针工具'}
+      accessibilityHint={active ? (pointerMode === 'laser' ? t('accessibility.laserPointerHint') : t('accessibility.spotlightHint')) : undefined}
+    >
       {/* 触摸层 */}
       <View
         style={[styles.touchLayer, { width, height }]}
         onTouchStart={handleTouch}
         onTouchMove={handleTouchMove}
+        accessibilityRole="button"
+        accessibilityLabel="触摸区域"
+        accessibilityHint="触摸移动指针位置"
       />
 
       {/* 指针可视化 - 使用 Animated.View 替代 Skia */}
@@ -116,15 +123,19 @@ export function PointerOverlay({
       )}
 
       {/* 控制按钮 */}
-      <View style={styles.controls}>
+      <View style={styles.controls} accessibilityRole="tablist" accessibilityLabel="指针模式选择">
         <TouchableOpacity
           style={[styles.modeButton, active && pointerMode === 'laser' && styles.modeButtonActive]}
           onPress={() => {
             setActive(true);
             setPointerMode('laser');
           }}
+          accessibilityLabel={t('accessibility.laserPointer')}
+          accessibilityHint={active && pointerMode === 'laser' ? '当前选中' : '点击启用激光笔'}
+          accessibilityRole="button"
+          accessibilityState={{ selected: active && pointerMode === 'laser' }}
         >
-          <Text style={styles.modeButtonText}>🔴</Text>
+          <Text style={styles.modeButtonText} accessibilityRole="image" accessibilityLabel="红色圆点">🔴</Text>
           <Text style={styles.modeButtonLabel}>{t('pointer.laser')}</Text>
         </TouchableOpacity>
 
@@ -134,16 +145,24 @@ export function PointerOverlay({
             setActive(true);
             setPointerMode('spotlight');
           }}
+          accessibilityLabel={t('accessibility.spotlight')}
+          accessibilityHint={active && pointerMode === 'spotlight' ? '当前选中' : '点击启用聚光灯'}
+          accessibilityRole="button"
+          accessibilityState={{ selected: active && pointerMode === 'spotlight' }}
         >
-          <Text style={styles.modeButtonText}>💡</Text>
+          <Text style={styles.modeButtonText} accessibilityRole="image" accessibilityLabel="灯泡">💡</Text>
           <Text style={styles.modeButtonLabel}>{t('pointer.spotlight')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.modeButton, !active && styles.modeButtonActive]}
           onPress={() => setActive(false)}
+          accessibilityLabel={t('pointer.disable')}
+          accessibilityHint={!active ? '当前选中' : '点击关闭指针'}
+          accessibilityRole="button"
+          accessibilityState={{ selected: !active }}
         >
-          <Text style={styles.modeButtonText}>✕</Text>
+          <Text style={styles.modeButtonText} accessibilityRole="image" accessibilityLabel="关闭">✕</Text>
           <Text style={styles.modeButtonLabel}>{t('pointer.disable')}</Text>
         </TouchableOpacity>
       </View>

@@ -16,6 +16,7 @@ import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -58,6 +59,7 @@ const statusConfig = {
 };
 
 export default function CoursesScreen() {
+  const { t } = useI18n();
   const router = useRouter();
   const { onPress } = useFeedback();
   const haptics = useHaptics();
@@ -182,6 +184,9 @@ export default function CoursesScreen() {
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           activeOpacity={0.9}
+          accessibilityLabel={`${classroom.name}，${statusInfo.label}，进度${progress}%`}
+          accessibilityHint="点击查看课程详情"
+          accessibilityRole="button"
         >
           <Animated.View style={[styles.gridCard, { transform: [{ scale: scaleAnim }] }]}>
             {/* 缩略图 */}
@@ -216,6 +221,9 @@ export default function CoursesScreen() {
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={0.9}
+        accessibilityLabel={`${classroom.name}，${statusInfo.label}，进度${progress}%`}
+        accessibilityHint="点击查看课程详情"
+        accessibilityRole="button"
       >
         <Animated.View style={[styles.courseCard, { transform: [{ scale: scaleAnim }] }]}>
           {/* 缩略图 */}
@@ -265,7 +273,7 @@ export default function CoursesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={styles.center} accessibilityRole="text" accessibilityLabel={t('accessibility.loading')}>
         <ActivityIndicator size="large" color={iOSColors.accent} />
       </View>
     );
@@ -273,10 +281,16 @@ export default function CoursesScreen() {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+      <View style={styles.center} accessibilityRole="text" accessibilityLabel={t('accessibility.error')}>
+        <Ionicons name="alert-circle-outline" size={48} color="#ef4444" accessibilityRole="image" accessibilityLabel="错误图标" />
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={loadClassrooms}>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={loadClassrooms}
+          accessibilityLabel={t('common.retry')}
+          accessibilityHint={t('accessibility.errorHint')}
+          accessibilityRole="button"
+        >
           <Text style={styles.retryText}>重试</Text>
         </TouchableOpacity>
       </View>
@@ -292,10 +306,13 @@ export default function CoursesScreen() {
           style={styles.backBtn}
           onPress={() => router.back()}
           activeOpacity={0.7}
+          accessibilityLabel={t('accessibility.backButton')}
+          accessibilityHint={t('accessibility.backButtonHint')}
+          accessibilityRole="button"
         >
-          <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
+          <Ionicons name="chevron-back" size={20} color={iOSColors.fg} accessibilityRole="image" accessibilityLabel="返回箭头" />
         </TouchableOpacity>
-        <Text style={styles.pageTitle}>我的课程</Text>
+        <Text style={styles.pageTitle} accessibilityRole="header">我的课程</Text>
         <View style={styles.pageHeaderActions}>
           <TouchableOpacity
             style={styles.headerAction}
@@ -305,8 +322,11 @@ export default function CoursesScreen() {
               // 后续添加搜索功能
             }}
             activeOpacity={0.7}
+            accessibilityLabel={t('accessibility.searchButton')}
+            accessibilityHint={t('accessibility.searchButtonHint')}
+            accessibilityRole="button"
           >
-            <Ionicons name="search-outline" size={18} color={iOSColors.muted} />
+            <Ionicons name="search-outline" size={18} color={iOSColors.muted} accessibilityRole="image" accessibilityLabel="搜索图标" />
           </TouchableOpacity>
         </View>
       </View>
@@ -320,6 +340,10 @@ export default function CoursesScreen() {
             setActiveFilter('all');
           }}
           activeOpacity={0.7}
+          accessibilityLabel={t('accessibility.filterAll')}
+          accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterAll') })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: activeFilter === 'all' }}
         >
           <Text style={[styles.filterTabText, activeFilter === 'all' && styles.filterTabTextActive]}>
             全部 <Text style={{ opacity: 0.6 }}>({courseStats.total})</Text>
@@ -332,6 +356,10 @@ export default function CoursesScreen() {
             setActiveFilter('progress');
           }}
           activeOpacity={0.7}
+          accessibilityLabel={t('accessibility.filterInProgress')}
+          accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterInProgress') })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: activeFilter === 'progress' }}
         >
           <Text style={[styles.filterTabText, activeFilter === 'progress' && styles.filterTabTextActive]}>
             学习中 <Text style={{ opacity: 0.6 }}>({courseStats.inProgress})</Text>
@@ -344,6 +372,10 @@ export default function CoursesScreen() {
             setActiveFilter('completed');
           }}
           activeOpacity={0.7}
+          accessibilityLabel={t('accessibility.filterCompleted')}
+          accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterCompleted') })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: activeFilter === 'completed' }}
         >
           <Text style={[styles.filterTabText, activeFilter === 'completed' && styles.filterTabTextActive]}>
             已完成 <Text style={{ opacity: 0.6 }}>({courseStats.completed})</Text>
@@ -356,6 +388,10 @@ export default function CoursesScreen() {
             setActiveFilter('notstarted');
           }}
           activeOpacity={0.7}
+          accessibilityLabel={t('accessibility.filterNotStarted')}
+          accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterNotStarted') })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: activeFilter === 'notstarted' }}
         >
           <Text style={[styles.filterTabText, activeFilter === 'notstarted' && styles.filterTabTextActive]}>
             未开始 <Text style={{ opacity: 0.6 }}>({courseStats.notStarted})</Text>
@@ -365,22 +401,30 @@ export default function CoursesScreen() {
 
       {/* 排序栏 */}
       <View style={styles.sortBar}>
-        <Text style={styles.courseCount}>共 {filteredClassrooms.length} 门课程</Text>
+        <Text style={styles.courseCount} accessibilityRole="text">共 {filteredClassrooms.length} 门课程</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
           {/* 视图切换按钮 - 仅平板显示 */}
           {isTablet && (
-            <View style={{ flexDirection: 'row', gap: 4, backgroundColor: iOSColors.surface, borderRadius: 8, padding: 2 }}>
+            <View style={{ flexDirection: 'row', gap: 4, backgroundColor: iOSColors.surface, borderRadius: 8, padding: 2 }} accessibilityRole="tablist">
               <TouchableOpacity
                 style={[styles.viewModeBtn, viewMode === 'list' && styles.viewModeBtnActive]}
                 onPress={() => setViewMode('list')}
+                accessibilityLabel={t('accessibility.viewModeList')}
+                accessibilityHint={t('accessibility.viewModeHint', { mode: t('accessibility.viewModeList') })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: viewMode === 'list' }}
               >
-                <Ionicons name="list" size={16} color={viewMode === 'list' ? iOSColors.accent : iOSColors.muted} />
+                <Ionicons name="list" size={16} color={viewMode === 'list' ? iOSColors.accent : iOSColors.muted} accessibilityRole="image" accessibilityLabel="列表图标" />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.viewModeBtn, viewMode === 'grid' && styles.viewModeBtnActive]}
                 onPress={() => setViewMode('grid')}
+                accessibilityLabel={t('accessibility.viewModeGrid')}
+                accessibilityHint={t('accessibility.viewModeHint', { mode: t('accessibility.viewModeGrid') })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: viewMode === 'grid' }}
               >
-                <Ionicons name="grid" size={16} color={viewMode === 'grid' ? iOSColors.accent : iOSColors.muted} />
+                <Ionicons name="grid" size={16} color={viewMode === 'grid' ? iOSColors.accent : iOSColors.muted} accessibilityRole="image" accessibilityLabel="网格图标" />
               </TouchableOpacity>
             </View>
           )}
@@ -392,9 +436,12 @@ export default function CoursesScreen() {
               // 后续添加排序功能
             }}
             activeOpacity={0.7}
+            accessibilityLabel="排序"
+            accessibilityHint="按最近更新排序"
+            accessibilityRole="button"
           >
             <Text style={styles.sortBtnText}>最近更新</Text>
-            <Ionicons name="chevron-down" size={14} color={iOSColors.muted} />
+            <Ionicons name="chevron-down" size={14} color={iOSColors.muted} accessibilityRole="image" accessibilityLabel="下拉箭头" />
           </TouchableOpacity>
         </View>
       </View>
@@ -413,8 +460,8 @@ export default function CoursesScreen() {
         windowSize={5}
         removeClippedSubviews={true}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
+          <View style={styles.emptyState} accessibilityRole="text" accessibilityLabel={t('accessibility.empty')}>
+            <View style={styles.emptyIcon} accessibilityRole="image" accessibilityLabel="空文件夹图标">
               <Ionicons name="folder-open-outline" size={28} color={iOSColors.accent} />
             </View>
             <Text style={styles.emptyTitle}>暂无课程</Text>
