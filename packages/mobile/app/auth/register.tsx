@@ -180,8 +180,9 @@ export default function RegisterScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.link}>已有账户？返回登录</Text>
+          <TouchableOpacity style={styles.backLink} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={20} color="#c45a1a" />
+            <Text style={styles.linkText}>已有账户？返回登录</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -254,4 +255,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: Colors.neutral.disabled },
   buttonText: { color: Colors.neutral.white, fontSize: 18, fontWeight: '600' },
   link: { color: Colors.primary.main, textAlign: 'center', marginTop: Spacing.md, fontSize: 16, fontWeight: '500' },
+  backLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: Spacing.md },
+  linkText: { color: '#c45a1a', fontSize: 16, fontWeight: '500', marginLeft: 4 },
 });
