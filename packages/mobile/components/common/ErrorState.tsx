@@ -2,7 +2,7 @@
 
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Rounded, Typography } from '@/lib/constants/theme';
+import { Colors, Spacing, Rounded } from '@/lib/constants/theme';
 import { i18n } from '@/lib/i18n';
 
 interface ErrorStateProps {
@@ -41,7 +41,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral.background,
   },
   message: {
-    ...Typography.bodyMd,
+    fontSize: 16,
+    fontWeight: '500',
     color: Colors.neutral.textSecondary,
     textAlign: 'center',
     marginTop: Spacing.md,
@@ -55,11 +56,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     borderRadius: Rounded.sm,
-    gap: Spacing.xs,
   },
   retryText: {
-    ...Typography.bodySm,
-    color: Colors.neutral.white,
+    fontSize: 14,
     fontWeight: '600',
+    color: Colors.neutral.white,
+    marginLeft: Spacing.xs,
   },
 });
