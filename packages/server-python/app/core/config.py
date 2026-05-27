@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # 默认模型能力（当模型不在映射表中时使用）
     DEFAULT_MODEL_CAPABILITIES: dict = {"vision": False, "max_output_tokens": 2048}
 
+    # MAIC-UI 服务配置（交互式内容生成）
+    MAIC_UI_URL: str = ""  # MAIC-UI 服务地址（如 http://localhost:8927）
+    MAIC_UI_ENABLED: bool = False  # 是否启用 MAIC-UI 集成
+    MAIC_UI_SERVICE_TOKEN: str = ""  # MAIC-UI 服务账户令牌
+
     class Config:
         env_file = ".env"
         case_sensitive = True

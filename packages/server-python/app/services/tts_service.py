@@ -13,6 +13,7 @@ import asyncio
 import base64
 import logging
 import random
+import re
 from typing import Optional
 import dashscope
 from dashscope.audio.tts.speech_synthesizer import SpeechSynthesizer
@@ -20,6 +21,9 @@ import aiohttp
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# SSML 标签检测正则表达式
+SSML_TAGS = re.compile(r'<(break|speak|p|s|phoneme|emphasis|prosody|say-as|sub|voice)[^>]*>|</(speak|p|s|phoneme|emphasis|prosody|say-as|sub|voice)>')
 
 # 全局共享的 ClientSession，避免每次请求创建新 session
 _tts_session: Optional[aiohttp.ClientSession] = None
@@ -50,6 +54,16 @@ DASHSCOPE_MODELS = {
     "qwen-tts": "cosyvoice-v1",
     "sambert": "sambert-zhichu-v1",
 }
+
+
+def contains_ssml(text: str) -> bool:
+    """检测文本是否包含 SSML 标签"""
+    return bool(SSML_TAGS.search(text))
+
+
+def strip_ssml(text: str) -> str:
+    """移除 SSML 标签（用于不支持 SSML 的模型）"""
+    return SSML_TAGS.sub('', text).strip()
 
 
 async def get_tts_session() -> aiohttp.ClientSession:
@@ -112,6 +126,10 @@ async def _generate_qwen_tts(
     Qwen TTS (阿里云百炼 DashScope) - 使用官方 Python SDK
     当 CosyVoice 失败时自动降级到 Sambert
 
+    注意：
+    - CosyVoice 不支持 SSML 标签，如果文本包含 SSML 会自动切换到 Sambert
+    - CosyVoice 不支持 speed 参数，当用户调整语速时直接使用 Sambert
+
     Args:
         text: 要转换的文本
         voice: 语音 ID（默认随机分配）
@@ -132,6 +150,9 @@ async def _generate_qwen_tts(
     # 映射模型名称
     actual_model = DASHSCOPE_MODELS.get(model, model)
 
+    # 检测 SSML 标签
+    has_ssml = contains_ssml(text)
+
     # 随机分配音色（如果未指定）
     if voice is None:
         if actual_model.startswith("cosyvoice"):
@@ -141,9 +162,25 @@ async def _generate_qwen_tts(
         logger.info(f"[TTS] Random voice assigned: {voice}")
 
     # 根据模型类型选择不同的调用方式
-    # CosyVoice 不支持 speed 参数，当用户调整语速时直接使用 Sambert
-    if actual_model.startswith("cosyvoice") and speed != 1.0:
-        logger.info(f"[TTS] Speed={speed} requested, using Sambert instead of CosyVoice (不支持speed)")
+    # CosyVoice 不支持 SSML 和 speed 参数，需要切换到 Sambert
+    use_sambert_for_features = False
+    switch_reasons = []
+
+    if actual_model.startswith("cosyvoice"):
+        # CosyVoice 不支持 SSML，如果文本包含 SSML 标签则切换到 Sambert
+        if has_ssml:
+            use_sambert_for_features = True
+            switch_reasons.append("SSML detected")
+            logger.info(f"[TTS] SSML tags detected in text, switching to Sambert (CosyVoice不支持SSML)")
+
+        # CosyVoice 不支持 speed 参数
+        if speed != 1.0:
+            use_sambert_for_features = True
+            switch_reasons.append(f"speed={speed}")
+            logger.info(f"[TTS] Speed={speed} requested, switching to Sambert (CosyVoice不支持speed)")
+
+    if use_sambert_for_features:
+        logger.info(f"[TTS] Using Sambert instead of CosyVoice, reasons: {', '.join(switch_reasons)}")
         actual_model = "sambert-zhichu-v1"
         if voice is None or voice in COSYVOICE_VOICES:
             voice = random.choice(SAMBERT_VOICES)
@@ -156,7 +193,7 @@ async def _generate_qwen_tts(
         logger.info(f"[TTS] Generating audio - model={actual_model}, voice={voice}, text_len={len(text)}")
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             synthesizer = await loop.run_in_executor(
                 None,
                 lambda: CosyVoiceSynthesizer(
@@ -186,7 +223,7 @@ async def _generate_qwen_tts(
         fallback_voice = random.choice(SAMBERT_VOICES)
         logger.info(f"[TTS] Fallback to Sambert with voice={fallback_voice}")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
             lambda: SpeechSynthesizer.call(
@@ -214,7 +251,7 @@ async def _generate_qwen_tts(
         # Sambert 模型（使用 tts）
         logger.info(f"[TTS] Generating audio with Sambert - model={actual_model}, voice={voice}")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
             lambda: SpeechSynthesizer.call(

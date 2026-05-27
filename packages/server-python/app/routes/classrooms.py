@@ -42,7 +42,7 @@ async def list_classrooms(
 
     rows = await db.fetch(
         """
-        SELECT id, name, description, language_directive, tags, created_at, updated_at
+        SELECT id, name, description, language_directive, created_at, updated_at
         FROM stages
         WHERE user_id = $1
         ORDER BY updated_at DESC
@@ -55,7 +55,7 @@ async def list_classrooms(
             "name": row["name"],
             "description": row["description"],
             "language_directive": row["language_directive"],
-            "tags": row["tags"] if row["tags"] else [],
+            "tags": [],
             "created_at": row["created_at"].isoformat(),
             "updated_at": row["updated_at"].isoformat()
         }
@@ -77,7 +77,6 @@ async def create_classroom(
     description = body.get("description")
     language = validate_language(body.get("language_directive", "zh-CN"))
     agent_ids = body.get("agent_ids", [])
-    tags = body.get("tags", [])  # 课程标签
 
     from app.core.time_utils import utcnow
     now = utcnow()
@@ -89,7 +88,6 @@ async def create_classroom(
         description=description,
         language=language,
         agent_ids=agent_ids,
-        tags=tags,
         db=db
     )
 
@@ -113,7 +111,7 @@ async def get_classroom(
     # 验证用户所有权
     stage = await db.fetchrow(
         """
-        SELECT id, name, description, language_directive, style, agent_ids, tags, generated_agent_configs, pending_outlines, created_at, updated_at
+        SELECT id, name, description, language_directive, style, agent_ids, generated_agent_configs, pending_outlines, created_at, updated_at
         FROM stages
         WHERE id = $1 AND user_id = $2
         """,
@@ -123,14 +121,6 @@ async def get_classroom(
 
     if stage is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-
-    # 解析 tags
-    tags = []
-    if stage["tags"]:
-        if isinstance(stage["tags"], str):
-            tags = json.loads(stage["tags"])
-        else:
-            tags = stage["tags"]
 
     # 获取场景
     scenes = await db.fetch(
@@ -166,7 +156,7 @@ async def get_classroom(
             "description": stage["description"],
             "language_directive": stage["language_directive"],
             "style": stage["style"],
-            "tags": tags,  # 课程标签
+            "tags": [],  # 课程标签
             "agent_ids": stage["agent_ids"],
             "generatedAgentConfigs": generated_agent_configs,
             "pendingOutlines": pending_outlines,  # 返回待创建的大纲
@@ -257,7 +247,6 @@ async def create_full_classroom(
     agent_ids = body.get("agent_ids", [])
     agent_configs = body.get("agent_configs")
     outlines = body.get("outlines", [])
-    tags = body.get("tags", [])  # 课程标签
 
     # 验证大纲数量
     if outlines:
@@ -277,7 +266,6 @@ async def create_full_classroom(
         description=description,
         language=language,
         agent_ids=agent_ids,
-        tags=tags,
         generated_agent_configs=agent_configs,
         pending_outlines=outlines,  # 保存大纲数据
         db=db

@@ -159,6 +159,98 @@ def parse_agent_actions(response_text: str) -> tuple:
             except json.JSONDecodeError:
                 pass
 
+    # 方法4：从扁平化/拼接文本中提取 wb_* actions
+    # 当 LLM 输出类似 "typeactionnamewb_draw_shapeparamsshaperectanglex120y250..."
+    # 的扁平化文本时，用正则提取 action 片段
+    if not actions:
+        wb_action_names = [
+            'wb_open', 'wb_close', 'wb_clear',
+            'wb_draw_text', 'wb_draw_shape', 'wb_draw_line',
+            'wb_draw_latex', 'wb_draw_chart', 'wb_draw_table', 'wb_draw_code',
+            'wb_delete', 'wb_edit_code',
+        ]
+        for act_name in wb_action_names:
+            # 匹配 "name":"wb_draw_shape" 或 namewb_draw_shape (扁平化)
+            patterns = [
+                rf'"name"\s*:\s*"{re.escape(act_name)}"',  # 标准JSON
+                rf'name{re.escape(act_name)}',              # 扁平化
+                rf'{re.escape(act_name)}',                   # 裸action名
+            ]
+            for pat in patterns:
+                if re.search(pat, response_text):
+                    # 找到了 action，尝试提取 params
+                    # 对于 wb_open/wb_close/wb_clear 无需 params
+                    if act_name in ('wb_open', 'wb_close', 'wb_clear'):
+                        actions.append({"type": "action", "name": act_name, "params": {}})
+                    else:
+                        # 尝试从后续文本提取 params
+                        # 找到 action name 后的位置
+                        m = re.search(pat, response_text)
+                        after_name = response_text[m.end():]
+
+                        # 尝试提取 params JSON 对象
+                        params_match = re.search(r'"params"\s*:\s*(\{[^}]*\})', after_name)
+                        params = {}
+                        if params_match:
+                            try:
+                                params = json.loads(params_match.group(1))
+                            except json.JSONDecodeError:
+                                pass
+                        else:
+                            # 扁平化格式：提取 key-value 对
+                            # 已知 params 字段
+                            param_fields = {
+                                'wb_draw_text': ['content', 'x', 'y', 'width', 'height', 'fontSize', 'color', 'elementId'],
+                                'wb_draw_shape': ['shape', 'x', 'y', 'width', 'height', 'fillColor', 'elementId'],
+                                'wb_draw_line': ['startX', 'startY', 'endX', 'endY', 'color', 'width', 'style', 'points', 'elementId'],
+                                'wb_draw_latex': ['latex', 'x', 'y', 'height', 'width', 'color', 'elementId'],
+                                'wb_draw_chart': ['chartType', 'x', 'y', 'width', 'height', 'data'],
+                                'wb_draw_table': ['x', 'y', 'width', 'height', 'data'],
+                                'wb_draw_code': ['language', 'code', 'x', 'y', 'width', 'height', 'fileName', 'elementId'],
+                                'wb_delete': ['elementId'],
+                                'wb_edit_code': ['elementId', 'operations'],
+                            }
+                            fields = param_fields.get(act_name, [])
+                            for field in fields:
+                                # 匹配 "field":value 或 fieldvalue (扁平化)
+                                val_match = re.search(
+                                    rf'(?:params)?{re.escape(field)}\s*[:=]?\s*"?([^",\s\}}]+)"?',
+                                    after_name
+                                )
+                                if val_match:
+                                    val = val_match.group(1)
+                                    # 数值字段转换
+                                    if field in ('x', 'y', 'width', 'height', 'fontSize', 'startX', 'startY', 'endX', 'endY'):
+                                        try:
+                                            val = float(val)
+                                            if val == int(val):
+                                                val = int(val)
+                                        except ValueError:
+                                            pass
+                                    params[field] = val
+
+                        actions.append({"type": "action", "name": act_name, "params": params})
+                    break  # 找到这个 action 后跳出 patterns 循环
+            # 如果已找到 actions，不需要继续检查其他 action names
+            # 但允许多个不同 actions 存在
+
+        if actions:
+            # 从 display_text 中移除 action 相关内容
+            cleaned_text = response_text
+            for act in actions:
+                act_name = act.get("name", "")
+                cleaned_text = re.sub(rf'{re.escape(act_name)}', '', cleaned_text)
+                # 移除扁平化的 params 残留
+                for key in act.get("params", {}):
+                    cleaned_text = re.sub(rf'{re.escape(key)}\s*[:=]?\s*\S+', '', cleaned_text)
+            cleaned_text = re.sub(r'\b(type|action|name|params)\b', '', cleaned_text)
+            cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+            if cleaned_text and len(cleaned_text) > 10:
+                display_text = cleaned_text
+            elif not cleaned_text:
+                display_text = ""
+            logger.info(f"[Parse] 方法4提取: {len(actions)} actions from flattened text")
+
     # 第二步：校验 display_text 是否还包含 JSON 结构
     # 如果包含，再次清理
     def clean_json_from_text(text: str) -> str:
