@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
-import { useRef } from 'react';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
 
@@ -75,7 +74,6 @@ export default function CoursesScreen() {
 
   // 响应式尺寸
   const cardThumbSize = responsiveValue({ compact: 56, regular: 64, medium: 72, large: 80 }, breakpoint);
-  const filterTabPadding = responsiveValue({ compact: 10, regular: 14, medium: 16, large: 18 }, breakpoint);
 
   useEffect(() => {
     loadClassrooms();

@@ -133,6 +133,9 @@ export function responsiveValue<T>(
 
   // If nothing specified, return first available value
   const available = Object.values(values).filter(v => v !== undefined);
+  if (available.length === 0) {
+    throw new Error('responsiveValue: no value provided for any breakpoint');
+  }
   return available[0] as T;
 }
 

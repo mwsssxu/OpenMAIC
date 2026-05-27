@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, ViewStyle } from 'react-native';
 import { useResponsiveDimensions, responsiveValue, ResponsiveSpacing } from '@/lib/utils/responsive';
 
 interface ResponsiveContainerProps {
@@ -80,9 +80,5 @@ export function ResponsiveContainer({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  // Reserved for future use
-});
 
 export default ResponsiveContainer;
