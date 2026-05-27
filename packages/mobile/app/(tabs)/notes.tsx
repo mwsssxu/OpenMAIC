@@ -349,6 +349,10 @@ export default function NotesScreen() {
       </ScrollView>
 
       {/* 新建笔记按钮 */}
+      {/* TODO: When implementing the note creation dialog/screen, add character limit hints:
+          - Title: maxLength={50}, display "标题 ({title.length}/50)"
+          - Content: maxLength={1000}, display "内容 ({content.length}/1000)"
+      */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => {
