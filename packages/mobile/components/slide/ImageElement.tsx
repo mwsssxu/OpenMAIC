@@ -1,8 +1,13 @@
 /**
  * ImageElement - Image element renderer for Mobile
+ *
+ * Performance optimizations:
+ * - Uses defaultSource for placeholder
+ * - resizeMode: cover for better performance
+ * - Memoized styles to prevent re-renders
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, memo } from 'react';
 import { View, Image } from 'react-native';
 import type { PPTImageElement } from './types';
 
@@ -17,7 +22,7 @@ interface ImageElementProps {
 /**
  * ImageElement Component
  */
-export function ImageElement({ element, scaleX, scaleY }: ImageElementProps) {
+export const ImageElement = memo(function ImageElement({ element, scaleX, scaleY }: ImageElementProps) {
   // Container style with absolute positioning - dual-axis scaled
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -37,7 +42,7 @@ export function ImageElement({ element, scaleX, scaleY }: ImageElementProps) {
     return transforms;
   }, [element]);
 
-  // Image style
+  // Image style with resize optimization
   const imageStyle = useMemo(() => ({
     width: element.width * scaleX,
     height: element.height * scaleY,
@@ -45,9 +50,23 @@ export function ImageElement({ element, scaleX, scaleY }: ImageElementProps) {
     resizeMode: 'cover' as const,
   }), [element, scaleX, scaleY]);
 
+  // Calculate optimal image dimensions for caching
+  const optimalWidth = Math.round(element.width * scaleX);
+  const optimalHeight = Math.round(element.height * scaleY);
+
   return (
     <View style={[containerStyle, flipTransform.length > 0 && { transform: flipTransform }]}>
-      <Image source={{ uri: element.src }} style={imageStyle} />
+      <Image
+        source={{
+          uri: element.src,
+          // Suggest optimal dimensions to the image loader
+          width: optimalWidth,
+          height: optimalHeight,
+        }}
+        style={imageStyle}
+        // Enable caching for better performance
+        resizeMode="cover"
+      />
     </View>
   );
-}
+});

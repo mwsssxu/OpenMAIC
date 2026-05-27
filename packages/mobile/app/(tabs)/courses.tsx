@@ -407,6 +407,11 @@ export default function CoursesScreen() {
         key={viewMode} // Force re-render when view mode changes
         renderItem={({ item, index }) => <CourseCard classroom={item} index={index} mode={viewMode} />}
         columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+        // 性能优化
+        initialNumToRender={10}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews={true}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>

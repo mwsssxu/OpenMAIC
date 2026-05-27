@@ -5,7 +5,7 @@
  * Used during teaching and interactive scenes to display formulas and key points.
  */
 
-import React, { memo, useMemo, useState, useRef } from 'react';
+import React, { memo, useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Clipboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
@@ -74,11 +74,24 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
   const lines = code.split('\n');
   const shouldCollapse = lines.length > CODE_COLLAPSE_THRESHOLD;
   const displayLines = shouldCollapse && !expanded ? lines.slice(0, CODE_COLLAPSE_THRESHOLD) : lines;
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCopy = () => {
     Clipboard.setString(code);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   return (
