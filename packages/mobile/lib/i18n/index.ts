@@ -244,6 +244,16 @@ const translations = {
       notFound: '未找到内容',
       validationError: '输入有误',
     },
+    // WebView
+    webview: {
+      loadingContent: '加载互动内容...',
+      noContent: '暂无互动内容',
+      openInBrowser: '在浏览器中打开',
+      networkError: '网络连接失败，请检查网络设置',
+      timeoutError: '加载超时，请稍后重试',
+      serverError: '服务器错误，请稍后重试',
+      contentError: '内容解析错误',
+    },
   },
   'en-US': {
     common: {
@@ -435,6 +445,15 @@ const translations = {
       forbidden: 'Access denied',
       notFound: 'Not found',
       validationError: 'Invalid input',
+    },
+    webview: {
+      loadingContent: 'Loading interactive content...',
+      noContent: 'No interactive content',
+      openInBrowser: 'Open in Browser',
+      networkError: 'Network connection failed. Please check your network settings.',
+      timeoutError: 'Loading timeout. Please try again later.',
+      serverError: 'Server error. Please try again later.',
+      contentError: 'Content parsing error.',
     },
   },
 };
