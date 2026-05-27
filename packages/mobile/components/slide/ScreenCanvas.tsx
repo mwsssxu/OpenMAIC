@@ -24,7 +24,11 @@ import { SimplifiedLayout } from './SimplifiedLayout';
 import { detectLayoutMode } from './utils/layout-detection';
 import type { PPTElement, SlideBackground, SlideTheme, PPTLineElement } from './types';
 import { useSlideBackgroundStyle } from './hooks/useViewportSize';
-import { VIEWPORT_SIZE, VIEWPORT_HEIGHT, CANVAS_MARGIN_PRECISE, CANVAS_MARGIN_SIMPLIFIED } from './constants';
+import { VIEWPORT_SIZE, VIEWPORT_HEIGHT } from './constants';
+import { isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
+
+// 动态边距：小屏 12px，正常 20px，宽屏 30px
+const MARGIN = isSmallScreen ? 12 : isWideScreen ? 30 : 20;
 
 // Helper to check if element is a line
 function isLineElement(element: PPTElement): element is PPTLineElement {
@@ -101,13 +105,13 @@ export function ScreenCanvas({
   const canvasScaleX = useMemo(() => {
     if (layoutMode !== 'precise') return 1;
     if (effectiveWidth === 0) return 1;
-    return (effectiveWidth - CANVAS_MARGIN_PRECISE) / VIEWPORT_SIZE;
+    return (effectiveWidth - MARGIN) / VIEWPORT_SIZE;
   }, [layoutMode, effectiveWidth]);
 
   const canvasScaleY = useMemo(() => {
     if (layoutMode !== 'precise') return 1;
     if (containerSize.height === 0) return 1;
-    const targetHeight = containerSize.height - CANVAS_MARGIN_SIMPLIFIED;
+    const targetHeight = containerSize.height - MARGIN * 2;
     return targetHeight / VIEWPORT_HEIGHT;
   }, [layoutMode, containerSize.height]);
 
@@ -115,11 +119,7 @@ export function ScreenCanvas({
   // 简化格式：宽度固定，高度自适应（内容撑开）
   // scrollable 模式：使用 effectiveWidth（屏幕宽度）
   const canvasWidth = useMemo(() => {
-    if (layoutMode === 'simplified') {
-      return effectiveWidth - CANVAS_MARGIN_PRECISE;
-    }
-    // 精确格式：使用有效宽度计算
-    return effectiveWidth - CANVAS_MARGIN_PRECISE;
+    return effectiveWidth - MARGIN;
   }, [layoutMode, effectiveWidth]);
 
   // 计算元素所需的最小高度（防止内容溢出）
@@ -159,7 +159,7 @@ export function ScreenCanvas({
     }
 
     // 非滚动模式：使用容器可用高度
-    const availableHeight = containerSize.height - CANVAS_MARGIN_SIMPLIFIED;
+    const availableHeight = containerSize.height - MARGIN * 2;
     const contentNeededHeight = minContentHeight * canvasScaleY;
     return Math.max(availableHeight, contentNeededHeight);
   }, [layoutMode, containerSize.height, canvasScaleY, minContentHeight, scrollable]);

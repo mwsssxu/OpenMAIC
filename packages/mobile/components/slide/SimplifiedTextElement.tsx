@@ -15,6 +15,7 @@ import type { SlideTheme } from './types';
 import { getElementPosition } from './utils/layout-detection';
 import { getAutoBackgroundColor } from './utils/text-height-table';
 import { SIMPLIFIED_WIDTH } from './constants';
+import { sFont, isSmallScreen } from '@/lib/utils/scaling';
 
 interface SimplifiedTextElementProps {
   element: any; // PPTElement（简化格式）
@@ -41,19 +42,20 @@ export function SimplifiedTextElement({
 
   // 计算字体大小
   const fontSize = useMemo(() => {
+    const minSize = isSmallScreen ? 9 : 11;
     // 从style获取
     const styleSize = el.style?.fontSize;
     if (styleSize) {
-      return Math.max(14, styleSize * scale * 0.85);
+      return sFont(styleSize * scale * 0.85, minSize);
     }
 
     // 根据position.height推断
     if (position.height >= 60) {
-      return Math.max(18, 28 * scale); // 标题
+      return sFont(28 * scale, minSize); // 标题
     } else if (position.height >= 50) {
-      return Math.max(16, 20 * scale); // 描述
+      return sFont(20 * scale, minSize); // 描述
     } else {
-      return Math.max(14, 16 * scale); // 要点
+      return sFont(16 * scale, minSize); // 要点
     }
   }, [el, position.height, scale]);
 
@@ -110,7 +112,7 @@ export function SimplifiedTextElement({
           fontSize,
           color: textColor,
           fontWeight: fontWeight as any,
-          lineHeight: fontSize * 1.5,
+          lineHeight: fontSize * 1.4,
         }}
       >
         {textContent}

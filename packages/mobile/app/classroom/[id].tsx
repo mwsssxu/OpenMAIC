@@ -34,6 +34,8 @@ import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { BottomSheetModal } from '@/components/common/BottomSheetModal';
 import { HintToast } from '@/components/common/HintToast';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
+import { mobileActionEngine } from '@/lib/whiteboard/action-engine';
+import { whiteboardStore } from '@/lib/whiteboard/element-store';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import {
   readDraft,
@@ -215,7 +217,7 @@ export default function ClassroomScreen() {
 
   // 解析后的内容状态
   const [pendingThinkingPrompt, setPendingThinkingPrompt] = useState<string | null>(null); // 待处理的引导思考
-  const [whiteboardTextContent, setWhiteboardTextContent] = useState<string | null>(null); // 白板纯文本内容
+  const [whiteboardTextContent, setWhiteboardTextContent] = useState<string | null>(null); // 白板纯文本内容（legacy fallback）
   const [speakingAgentId, setSpeakingAgentId] = useState<string | null>(null); // 当前发言的Agent ID
 
   // Refs for async state access（避免 stale state 问题）
@@ -955,47 +957,15 @@ export default function ClassroomScreen() {
             if (actionName === 'wb_open') {
               setShowWhiteboard(true);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } else if (actionName === 'wb_draw_text' && params.content) {
-              // 解码 HTML 实体并转换 <br> 为换行
-              const decodedContent = params.content
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/<br\s*\/?>/gi, '\n')
-                .replace(/&amp;/g, '&')
-                .replace(/&nbsp;/g, ' ');
-              setWhiteboardTextContent(decodedContent);
-              setShowWhiteboard(true);
-            } else if (actionName === 'wb_draw_table' && params.data) {
-              let tableText = '';
-              (params.data as any[]).forEach((row: any[]) => {
-                tableText += row.map(cell => String(cell)).join(' | ') + '\n';
-              });
-              setWhiteboardTextContent(tableText);
-              setShowWhiteboard(true);
-            } else if (actionName === 'wb_draw_chart' || actionName === 'wb_draw_bar' || actionName === 'wb_draw_diagram') {
-              // 图表/柱状图 action - 将数据转换为文本表示
-              let chartText = '';
-              if (params.title) {
-                chartText += `【${params.title}】\n\n`;
-              }
-              if (params.data && Array.isArray(params.data)) {
-                const maxVal = Math.max(...params.data.map((d: any) => d.value || d));
-                params.data.forEach((item: any) => {
-                  const label = item.label || item.name || item.category || '';
-                  const value = item.value || item;
-                  const barCount = Math.round((value / maxVal) * 10);
-                  const bar = '█'.repeat(barCount);
-                  chartText += `${label.padEnd(8)} ${bar} ${value}\n`;
-                });
-              } else if (params.content) {
-                chartText = params.content;
-              }
-              if (chartText) {
-                setWhiteboardTextContent(chartText);
-                setShowWhiteboard(true);
-              }
-            } else if (actionName === 'wb_draw_code' && (params.code || params.content)) {
-              setWhiteboardTextContent(params.code || params.content);
+            } else if (actionName === 'wb_clear') {
+              whiteboardStore.clear();
+              setWhiteboardTextContent(null);
+            } else if (actionName === 'wb_close') {
+              setShowWhiteboard(false);
+              whiteboardStore.clear();
+              setWhiteboardTextContent(null);
+            } else if (actionName.startsWith('wb_')) {
+              mobileActionEngine.execute(actionName, params);
               setShowWhiteboard(true);
             }
           } else if (event.type === 'agent_end') {
@@ -1244,12 +1214,14 @@ export default function ClassroomScreen() {
       setShowWhiteboard(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-    if (actionName === 'wb_draw_text' || actionName === 'wb_draw_latex' || actionName === 'wb_draw_chart') {
-      const content = params.content || params.code || '';
-      if (content) {
-        const decoded = content.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/<br\s*\/?>/gi, '\n').replace(/&amp;/g, '&');
-        setWhiteboardTextContent(prev => prev ? prev + '\n\n' + decoded : decoded);
-      }
+    if (actionName === 'wb_clear') {
+      whiteboardStore.clear();
+      setWhiteboardTextContent(null);
+    } else if (actionName === 'wb_close') {
+      whiteboardStore.clear();
+      setWhiteboardTextContent(null);
+    } else if (actionName.startsWith('wb_')) {
+      mobileActionEngine.execute(actionName, params);
     }
   }
 
@@ -1666,12 +1638,9 @@ export default function ClassroomScreen() {
     {/* 白板区域 - 使用 absolute 定位，与聊天同时显示 */}
       <WhiteboardOverlay
         visible={showWhiteboard}
-        actions={(currentScene?.actions as any[])?.filter(
-          (a: any) => a.type === 'wb_draw_text' || a.type === 'wb_draw_shape'
-        ) || []}
         textContent={whiteboardTextContent}
         onClose={() => setShowWhiteboard(false)}
-        useAbsolute={showChatModal} // 聊天打开时使用 absolute 模式
+        useAbsolute={showChatModal}
       />
 
       {/* 场景缩略图导航（可展开） */}

@@ -15,7 +15,10 @@ import { View, StyleSheet } from 'react-native';
 import type { PPTElement, SlideTheme } from './types';
 import { SimplifiedTextElement } from './SimplifiedTextElement';
 import { getElementPosition } from './utils/layout-detection';
-import { SIMPLIFIED_WIDTH, CANVAS_MARGIN_SIMPLIFIED } from './constants';
+import { SIMPLIFIED_WIDTH } from './constants';
+import { isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
+
+const MARGIN = isSmallScreen ? 12 : isWideScreen ? 30 : 20;
 
 interface SimplifiedLayoutProps {
   elements: PPTElement[];
@@ -45,7 +48,7 @@ export function SimplifiedLayout({
   // 单轴缩放（基于SIMPLIFIED_WIDTH基准）
   const scale = useMemo(() => {
     if (containerSize.width === 0) return 1;
-    return (containerSize.width - CANVAS_MARGIN_SIMPLIFIED) / SIMPLIFIED_WIDTH;
+    return (containerSize.width - MARGIN) / SIMPLIFIED_WIDTH;
   }, [containerSize.width]);
 
   // 计算元素间距（根据原始 position）

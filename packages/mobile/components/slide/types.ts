@@ -105,6 +105,48 @@ export interface PPTVideoElement extends PPTBaseElement {
 }
 
 /**
+ * Chart element
+ */
+export interface PPTChartElement extends PPTBaseElement {
+  type: 'chart';
+  chartType: string;
+  data: any;
+  themeColors?: string[];
+}
+
+/**
+ * LaTeX element
+ */
+export interface PPTLatexElement extends PPTBaseElement {
+  type: 'latex';
+  latex: string;
+  color?: string;
+}
+
+/**
+ * Table element
+ */
+export interface PPTTableElement extends PPTBaseElement {
+  type: 'table';
+  data: Array<Array<{ id: string; colspan: number; rowspan: number; text: string }>>;
+  colWidths?: number[];
+  outline?: { width: number; style: string; color: string };
+  theme?: { color: string; rowHeader: boolean };
+}
+
+/**
+ * Code element
+ */
+export interface PPTCodeElement extends PPTBaseElement {
+  type: 'code';
+  language?: string;
+  lines: Array<{ id: string; content: string }>;
+  fileName?: string;
+  showLineNumbers?: boolean;
+  fontSize?: number;
+}
+
+/**
  * All element types union
  */
 export type PPTElement =
@@ -112,7 +154,11 @@ export type PPTElement =
   | PPTImageElement
   | PPTShapeElement
   | PPTLineElement
-  | PPTVideoElement;
+  | PPTVideoElement
+  | PPTChartElement
+  | PPTLatexElement
+  | PPTTableElement
+  | PPTCodeElement;
 
 /**
  * Slide background

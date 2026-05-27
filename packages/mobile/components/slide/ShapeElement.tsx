@@ -8,6 +8,7 @@ import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import type { PPTShapeElement, SlideTheme } from './types';
 import { parseHtmlToText } from './hooks/useViewportSize';
+import { sFont, isSmallScreen } from '@/lib/utils/scaling';
 
 interface ShapeElementProps {
   element: PPTShapeElement;
@@ -84,9 +85,10 @@ export function ShapeElement({ element, theme, scaleX, scaleY }: ShapeElementPro
   const textStyle = useMemo(() => ({
     color: element.text?.defaultColor || theme.fontColor,
     fontFamily: element.text?.defaultFontName || theme.fontName,
-    fontSize: 14 * scaleY,
+    fontSize: sFont(14 * Math.min(scaleX, scaleY), isSmallScreen ? 9 : 11),
+    lineHeight: sFont(14 * Math.min(scaleX, scaleY), isSmallScreen ? 9 : 11) * 1.4,
     textAlign: 'center' as const,
-  }), [element, theme, scaleY]);
+  }), [element, theme, scaleX, scaleY]);
 
   // Text container alignment
   const textContainerStyle = useMemo(() => {

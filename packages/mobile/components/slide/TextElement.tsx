@@ -1,40 +1,22 @@
 /**
- * TextElement - Text element renderer for Mobile
+ * TextElement - Mobile text element renderer with responsive scaling
  *
- * Renders text content with positioning matching Web's BaseTextElement
- *
- * Web端定位（BaseTextElement.tsx）：
- * - 元素使用原始坐标：left, top（基于viewportSize=1000）
- * - 容器尺寸：width, height（原始值）
- * - 内部padding：10px（固定值，不缩放）
- *
- * Mobile端适配：
- * - 元素坐标乘以scale：left * scale, top * scale
- * - 容器尺寸乘以scale：width * scale, height * scale
- * - 内部padding保持相对比例
+ * Uses canvas-scale-based font sizing with minimum readability threshold.
  */
 
 import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import type { PPTTextElement, SlideTheme } from './types';
+import { sFont, isSmallScreen } from '@/lib/utils/scaling';
 
 interface TextElementProps {
   element: PPTTextElement;
   theme: SlideTheme;
-  /** Scale factor for horizontal positioning */
   scaleX: number;
-  /** Scale factor for vertical positioning */
   scaleY: number;
 }
 
-/**
- * Extract position from element
- * 支持两种格式：
- * 1. 直接属性：element.left, element.top（PPTElement格式）
- * 2. 嵌套对象：element.position.left, element.position.top（Web端返回格式）
- */
-function getPosition(element: PPTTextElement): { top: number; left: number; width: number; height: number } {
-  // Web端返回嵌套的position对象
+function getPosition(element: PPTTextElement) {
   const el = element as any;
   if (el.position) {
     return {
@@ -44,7 +26,6 @@ function getPosition(element: PPTTextElement): { top: number; left: number; widt
       height: el.position.height || 50,
     };
   }
-  // PPTElement直接使用left/top属性
   return {
     top: element.top || 0,
     left: element.left || 0,
@@ -53,60 +34,45 @@ function getPosition(element: PPTTextElement): { top: number; left: number; widt
   };
 }
 
-/**
- * TextElement Component
- */
 export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps) {
-  // Get position
   const position = useMemo(() => getPosition(element), [element]);
+  const effectiveScale = Math.min(scaleX, scaleY);
 
-  // Parse HTML content to plain text
   const textContent = useMemo(() => {
-    // 移除HTML标签
     const text = element.content?.replace(/<[^>]+>/g, '') || '';
     return text;
   }, [element.content]);
 
-  // Calculate font size
-  // 使用较小的缩放因子（基于宽度），确保内容不溢出容器
-  const effectiveScale = Math.min(scaleX, scaleY);
+  // Font size: responsive with mobile-friendly minimums
   const fontSize = useMemo(() => {
-    // 优先从style对象获取fontSize（Web端格式）
     if ((element as any).style?.fontSize) {
       const styleFontSize = (element as any).style.fontSize;
-      return Math.max(12, Math.min(28, styleFontSize * effectiveScale));
+      return sFont(styleFontSize * effectiveScale, isSmallScreen ? 9 : 11);
     }
-
-    // 从HTML提取fontSize
     const htmlFontSizeMatch = element.content?.match(/font-size:\s*(\d+)px/i);
     if (htmlFontSizeMatch) {
       const htmlFontSize = parseInt(htmlFontSizeMatch[1], 10);
-      return Math.max(12, Math.min(28, htmlFontSize * effectiveScale));
+      return sFont(htmlFontSize * effectiveScale, isSmallScreen ? 9 : 11);
     }
-
-    // 根据元素类型计算（字体更小以适应窄屏）
+    // Fallback based on element height
     let baseFontSize;
     if (position.height >= 60) {
-      baseFontSize = 24; // 标题（原36）
+      baseFontSize = 24;
     } else if (position.height >= 50) {
-      baseFontSize = 16; // 描述（原24）
+      baseFontSize = 16;
     } else {
-      baseFontSize = 12; // 内容（原18）
+      baseFontSize = 12;
     }
-
-    return Math.max(10, Math.min(24, baseFontSize * effectiveScale));
+    return sFont(baseFontSize * effectiveScale, isSmallScreen ? 9 : 11);
   }, [element, position.height, effectiveScale]);
 
-  // Get color from style or defaultColor
   const textColor = useMemo(() => {
-    // 优先从style对象获取（Web端格式）
     if ((element as any).style?.color) {
       return (element as any).style.color;
     }
     return element.defaultColor || theme.fontColor;
   }, [element, theme]);
 
-  // Get fontWeight from style
   const fontWeight = useMemo(() => {
     if ((element as any).style?.fontWeight) {
       return (element as any).style.fontWeight as any;
@@ -114,34 +80,29 @@ export function TextElement({ element, theme, scaleX, scaleY }: TextElementProps
     return '400' as any;
   }, [element]);
 
-  // Container style - 使用双轴缩放
-  // 水平：scaleX，垂直：scaleY（更大）
   const containerStyle = useMemo(() => ({
     position: 'absolute' as const,
     left: position.left * scaleX,
     top: position.top * scaleY,
-    width: position.width * scaleX,
-    height: position.height * scaleY,
+    width: Math.max(position.width * scaleX, 40),
+    height: position.height > 0 ? position.height * scaleY : undefined,
     transform: [{ rotate: `${element.rotate || 0}deg` }],
     zIndex: 1,
   }), [position, element.rotate, scaleX, scaleY]);
 
-  // Text wrapper style - 使用元素自带的fill属性
-  // 精确格式数据自带fill属性，无需自动装饰
   const textWrapperStyle = useMemo(() => ({
     flex: 1,
-    padding: Math.max(4, 10 * effectiveScale), // 缩小padding以适应窄屏
+    padding: Math.max(4, 8 * effectiveScale),
     justifyContent: 'flex-start' as const,
     backgroundColor: element.fill || 'transparent',
     opacity: element.opacity || 1,
   }), [effectiveScale, element.fill, element.opacity]);
 
-  // Text style
   const textStyle = useMemo(() => ({
     color: textColor,
     fontFamily: element.defaultFontName || theme.fontName,
     fontSize,
-    lineHeight: fontSize * (element.lineHeight || 1.5),
+    lineHeight: fontSize * 1.4,
     letterSpacing: (element.wordSpace || 0) * scaleX,
     textAlign: 'left' as const,
     fontWeight,
