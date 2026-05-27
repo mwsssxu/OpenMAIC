@@ -80,6 +80,15 @@ export function Whiteboard({
     setPaths(elements);
   }, [elements]);
 
+  // 清理 timeout
+  useEffect(() => {
+    return () => {
+      if (zoomIndicatorTimeout.current) {
+        clearTimeout(zoomIndicatorTimeout.current);
+      }
+    };
+  }, []);
+
   // 更新缩放指示器
   const updateZoomIndicator = useCallback(() => {
     setShowZoomIndicator(true);
@@ -142,6 +151,19 @@ export function Whiteboard({
     setCurrentPath(newPath);
   }, []);
 
+  // 追加路径点
+  const appendPathPoint = useCallback((x: number, y: number) => {
+    setCurrentPath((prev) => prev ? `${prev} L ${x.toFixed(1)} ${y.toFixed(1)}` : `M ${x.toFixed(1)} ${y.toFixed(1)}`);
+  }, []);
+
+  // 使用 ref 存储当前路径，避免 worklet 中的闭包问题
+  const currentPathRef = useRef<string | null>(null);
+
+  // 同步 currentPath 到 ref
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
+
   // 单指绘制手势
   const drawGesture = Gesture.Pan()
     .minPointers(1)
@@ -157,11 +179,15 @@ export function Whiteboard({
       if (!editable) return;
       const x = (e.x - translateX.value) / scale.value;
       const y = (e.y - translateY.value) / scale.value;
-      setCurrentPath((prev) => prev ? `${prev} L ${x.toFixed(1)} ${y.toFixed(1)}` : `M ${x.toFixed(1)} ${y.toFixed(1)}`);
+      runOnJS(appendPathPoint)(x, y);
     })
     .onEnd(() => {
-      if (!editable || !currentPath) return;
-      runOnJS(addPath)(currentPath);
+      if (!editable) return;
+      // 使用 ref 获取最新的路径值
+      const pathToAdd = currentPathRef.current;
+      if (pathToAdd) {
+        runOnJS(addPath)(pathToAdd);
+      }
     });
 
   // 组合手势：绘制、缩放、平移
@@ -278,7 +304,7 @@ export function Whiteboard({
             style={styles.resetZoomButton}
             onPress={handleResetView}
           >
-            <Text style={styles.resetZoomText}>重置视图</Text>
+            <Text style={styles.resetZoomText}>{t('whiteboard.resetView')}</Text>
           </TouchableOpacity>
 
           {/* 颜色选择 */}

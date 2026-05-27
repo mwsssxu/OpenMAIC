@@ -89,6 +89,7 @@ const translations = {
       undo: '撤销',
       redo: '重做',
       history: '历史',
+      resetView: '重置视图',
     },
     // 激光笔/聚光灯
     pointer: {
@@ -335,6 +336,7 @@ const translations = {
       undo: 'Undo',
       redo: 'Redo',
       history: 'History',
+      resetView: 'Reset View',
     },
     pointer: {
       laser: 'Laser Pointer',
