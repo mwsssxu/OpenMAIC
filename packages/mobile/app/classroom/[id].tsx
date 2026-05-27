@@ -780,6 +780,8 @@ export default function ClassroomScreen() {
 
   function goToScene(index: number) {
     if (index !== currentSceneIndex) {
+      // 重置 WebView 状态（防止场景切换时状态泄漏）
+      interactiveWebViewRef.current?.reload();
       playbackEngineRef.current?.jumpToScene(index);
       setShowThumbnailNav(false);
       // 重置测验状态（新的场景会在useEffect中恢复持久化状态）
@@ -792,7 +794,7 @@ export default function ClassroomScreen() {
   // Interactive/PBL 场景 WebView 回调
   const handleInteractiveComplete = useCallback((data: any) => {
     console.log('[Interactive] Scene complete:', data);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // 触觉反馈已在 InteractiveWebView 组件中触发，此处仅记录日志
   }, []);
 
   const handleInteractiveMessage = useCallback((data: any) => {
