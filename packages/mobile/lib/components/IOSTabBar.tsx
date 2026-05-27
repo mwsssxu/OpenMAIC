@@ -69,7 +69,7 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
             onPress={() => handleTabPress(tab.route)}
             activeOpacity={0.7}
             accessibilityLabel={accessibilityLabelMap[tab.name] || tab.name}
-            accessibilityHint={isActiveTab ? undefined : `点击进入${tab.name}`}
+            accessibilityHint={isActiveTab ? undefined : t('accessibility.enterPage', { page: tab.name })}
             accessibilityRole="button"
             accessibilityState={{ selected: isActiveTab }}
           >
@@ -99,10 +99,10 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
         onPress={onCreatePress || (() => router.push('/classroom/create'))}
         activeOpacity={0.85}
         accessibilityLabel={t('accessibility.tabCreate')}
-        accessibilityHint="点击创建新的学习课程"
+        accessibilityHint={t('accessibility.enterPage', { page: '课程创建' })}
         accessibilityRole="button"
       >
-        <Ionicons name="add" size={fabIconSize} color="white" accessibilityRole="image" accessibilityLabel="添加图标" />
+        <Ionicons name="add" size={fabIconSize} color="white" accessibilityRole="image" accessibilityLabel={t('accessibility.addIcon')} />
       </TouchableOpacity>
 
       {/* 右侧两个 Tab */}
@@ -121,7 +121,7 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
             onPress={() => handleTabPress(tab.route)}
             activeOpacity={0.7}
             accessibilityLabel={accessibilityLabelMap[tab.name] || tab.name}
-            accessibilityHint={isActiveTab ? undefined : `点击进入${tab.name}`}
+            accessibilityHint={isActiveTab ? undefined : t('accessibility.enterPage', { page: tab.name })}
             accessibilityRole="button"
             accessibilityState={{ selected: isActiveTab }}
           >

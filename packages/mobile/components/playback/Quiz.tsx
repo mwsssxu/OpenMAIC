@@ -393,7 +393,7 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
                 value={(answers[currentQuestion.id] as string) || ''}
                 onChangeText={(text) => handleShortAnswer(currentQuestion.id, text)}
                 accessibilityLabel={t('accessibility.quizShortAnswer')}
-                accessibilityHint="输入你的答案"
+                accessibilityHint={t('accessibility.inputAnswerHint')}
               />
             )}
           </ScrollView>
