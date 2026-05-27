@@ -2,22 +2,32 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '@/lib/auth/auth-context';
-import { TouchableOpacity, Text, Platform } from 'react-native';
+import { TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 function CustomBackButton() {
   const router = useRouter();
+
+  const handleBack = () => {
+    // 尝试返回，如果失败则跳转到首页
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)');
+      }
+    } catch {
+      router.replace('/(tabs)');
+    }
+  };
+
   return (
     <TouchableOpacity
-      onPress={() => router.push('/(tabs)/courses')}
+      onPress={handleBack}
       style={{ marginLeft: Platform.OS === 'web' ? 10 : 0 }}
     >
-      {Platform.OS === 'web' ? (
-        <Text style={{ color: '#5b9bd5', fontSize: 16 }}>← 返回</Text>
-      ) : (
-        <Ionicons name="chevron-back" size={24} color="#5b9bd5" />
-      )}
+      <Ionicons name="chevron-back" size={24} color="#c45a1a" />
     </TouchableOpacity>
   );
 }

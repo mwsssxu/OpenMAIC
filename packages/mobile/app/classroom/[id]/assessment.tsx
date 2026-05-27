@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/lib/constants/theme';
@@ -144,7 +145,8 @@ export default function AssessmentScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.buttonOutline} onPress={() => router.back()}>
-            <Text style={styles.buttonText}>返回课程</Text>
+            <Ionicons name="chevron-back" size={20} color="#3b82f6" />
+            <Text style={[styles.buttonText, { marginLeft: 8 }]}>返回课程</Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
@@ -154,7 +156,7 @@ export default function AssessmentScreen() {
   if (assessment) {
     const question = assessment.questions[currentQuestion];
     const isLast = currentQuestion === assessment.questions.length - 1;
-    const progress = ((currentQuestion + 1) / assessment.questions.length) * 100;
+    const progress = (currentQuestion + 1) / assessment.questions.length;
 
     return (
       <SafeAreaView style={styles.container}>
@@ -164,7 +166,8 @@ export default function AssessmentScreen() {
         </View>
 
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          <View style={[styles.progressFill, { flex: progress }]} />
+          <View style={{ flex: 1 - progress }} />
         </View>
 
         <ScrollView style={styles.content}>
@@ -237,7 +240,7 @@ export default function AssessmentScreen() {
       </ScrollView>
 
       <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Text style={styles.backButtonText}>返回课程</Text>
+        <Ionicons name="chevron-back" size={20} color="#c45a1a" />
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -250,7 +253,7 @@ const styles = StyleSheet.create({
   header: { padding: 16, backgroundColor: Colors.neutral.card, borderBottomWidth: 1, borderBottomColor: '#eee' },
   title: { fontSize: 20, fontWeight: 'bold' },
   progress: { fontSize: 14, color: '#666', marginTop: 4 },
-  progressBar: { height: 4, backgroundColor: '#eee', marginHorizontal: 16 },
+  progressBar: { height: 4, backgroundColor: '#eee', marginHorizontal: 16, flexDirection: 'row' },
   progressFill: { height: 4, backgroundColor: '#3b82f6' },
   headerTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
   headerDesc: { fontSize: 14, color: '#666', marginBottom: 24 },
@@ -277,8 +280,7 @@ const styles = StyleSheet.create({
   statItem: { fontSize: 14, marginHorizontal: 12 },
   pointsText: { fontSize: 14, color: '#f59e0b', marginTop: 16 },
   button: { backgroundColor: '#3b82f6', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
-  buttonOutline: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#3b82f6' },
-  buttonText: { fontSize: 16, color: '#fff' },
-  backButton: { padding: 16, backgroundColor: Colors.neutral.card, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee' },
-  backButtonText: { fontSize: 16 },
+  buttonOutline: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center' },
+  buttonText: { fontSize: 16, color: '#3b82f6' },
+  backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.neutral.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: 16 },
 });
