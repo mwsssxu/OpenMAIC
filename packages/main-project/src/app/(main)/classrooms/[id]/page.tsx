@@ -266,6 +266,21 @@ export default function ClassroomPlayPage() {
     };
   }
 
+  // Calculate content height from elements
+  function calculateContentHeight(elements: any[]): number {
+    if (!elements || elements.length === 0) return VIEWPORT_HEIGHT;
+
+    let maxBottom = 0;
+    elements.forEach((el: any) => {
+      const top = el.top || 0;
+      const height = el.height || 50;
+      maxBottom = Math.max(maxBottom, top + height);
+    });
+
+    // Add padding at the bottom
+    return Math.max(VIEWPORT_HEIGHT, maxBottom + 40);
+  }
+
   // Cleanup playback engine on unmount
   useEffect(() => {
     return () => {
@@ -383,7 +398,7 @@ export default function ClassroomPlayPage() {
               </div>
             )}
 
-            <div className="card aspect-video relative overflow-hidden animate-fade-in">
+            <div className="card relative animate-fade-in">
               {/* 场景类型标签 */}
               <div className="absolute top-4 left-4 z-10">
                 <span className={`badge ${
@@ -397,23 +412,31 @@ export default function ClassroomPlayPage() {
                 </span>
               </div>
 
-              {/* 场景内容 */}
+              {/* 场景内容 - 添加滚动支持 */}
               <div
                 ref={canvasContainerRef}
-                className="p-8 pt-14 relative"
+                className="p-8 pt-14 relative overflow-auto max-h-[70vh]"
+                style={{ minHeight: '300px' }}
               >
-                {currentScene?.type === 'slide' && (
-                  <div className="animate-slide-in relative" style={{ minHeight: '300px' }}>
-                    {(() => {
-                      const { scaleX, scaleY } = getCanvasScale();
-                      const elements = currentScene.content?.canvas?.elements || [];
+                {currentScene?.type === 'slide' && (() => {
+                  const { scaleX, scaleY } = getCanvasScale();
+                  const elements = currentScene.content?.canvas?.elements || [];
+                  const contentHeight = calculateContentHeight(elements) * scaleY;
 
-                      return elements.map((el: any) => {
+                  return (
+                    <div
+                      className="animate-slide-in relative bg-white rounded-lg shadow-sm"
+                      style={{
+                        minHeight: `${contentHeight}px`,
+                        height: `${contentHeight}px`,
+                      }}
+                    >
+                      {elements.map((el: any) => {
                         // 精确坐标定位
                         const style: React.CSSProperties = {
                           position: 'absolute',
                           left: el.left * scaleX,
-                          top: el.top * scaleY - 56, // 减去 padding offset
+                          top: el.top * scaleY,
                           width: el.width * scaleX,
                           minHeight: el.height * scaleY,
                         };
@@ -462,10 +485,10 @@ export default function ClassroomPlayPage() {
                             )}
                           </div>
                         );
-                      });
-                    })()}
-                  </div>
-                )}
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {currentScene?.type === 'quiz' && (
                   <div className="animate-slide-in">
