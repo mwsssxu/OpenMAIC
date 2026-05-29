@@ -1,5 +1,6 @@
 import { whiteboardStore } from './element-store';
 import { screenW, getWhiteboardLayoutMode, WHITEBOARD_CARD_GAP, WHITEBOARD_CARD_PADDING, isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
+import { Spacing } from '@/lib/constants/theme';
 
 const SHAPE_PATHS: Record<string, string> = {
   rectangle: 'M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z',
@@ -19,6 +20,17 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
 }
 
 /**
+ * 计算白板实际可用宽度
+ * 白板容器有 padding (Spacing.sm * 2)，需要减去
+ */
+function getWhiteboardAvailableWidth(): number {
+  // WhiteboardOverlay 的 absoluteContainer 有 padding: Spacing.sm
+  // 所以实际可用宽度 = 屏幕宽度 - padding * 2
+  const padding = Spacing.sm ?? 8; // 默认 8px
+  return screenW - padding * 2;
+}
+
+/**
  * 根据屏幕宽度计算自适应的元素位置
  * 小屏手机：垂直堆叠，单列布局
  * 大屏手机：有限的双列布局
@@ -27,12 +39,13 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
 function getAdaptivePosition(
   yIndex: number,
   layoutMode: 'vertical' | 'limited-horizontal' | 'horizontal',
-  screenWidth: number,
   preferredHeight?: number,
 ): { x: number; y: number; width: number; height: number } {
-  // 可用宽度减去边距
+  // 白板容器宽度（减去容器 padding）
+  const containerWidth = getWhiteboardAvailableWidth();
   const margin = WHITEBOARD_CARD_GAP;
-  const availableWidth = screenWidth - margin * 2;
+  // 元素可用宽度 = 容器宽度 - 左右边距
+  const availableWidth = containerWidth - margin * 2;
 
   // 默认高度
   const defaultHeight = preferredHeight ?? (isSmallScreen ? 80 : isWideScreen ? 120 : 100);
@@ -79,14 +92,15 @@ function getAdaptivePosition(
 function getAdaptiveSize(
   type: 'chart' | 'table' | 'code' | 'latex',
   layoutMode: 'vertical' | 'limited-horizontal' | 'horizontal',
-  screenWidth: number,
   contentInfo?: { rows?: number; lines?: number },
 ): { width: number; height: number } {
-  const margin = WHITEBOARD_CARD_GAP;
-  const availableWidth = screenWidth - margin * 2;
+  // 白板容器宽度（减去容器 padding）
+  const containerWidth = getWhiteboardAvailableWidth();
+  // 元素可用宽度 = 容器宽度 - 左右边距
+  const availableWidth = containerWidth - WHITEBOARD_CARD_GAP * 2;
 
   if (layoutMode === 'vertical') {
-    // 垂直布局：宽度占满，高度自适应
+    // 垂直布局：宽度占满
     switch (type) {
       case 'chart':
         return { width: availableWidth, height: isSmallScreen ? 180 : isWideScreen ? 300 : 220 };
@@ -212,7 +226,6 @@ export class MobileActionEngine {
     const adaptivePos = getAdaptivePosition(
       this.elementIndex++,
       layoutMode,
-      screenW,
       estimatedHeight,
     );
 
@@ -235,7 +248,6 @@ export class MobileActionEngine {
     const adaptivePos = getAdaptivePosition(
       this.elementIndex++,
       layoutMode,
-      screenW,
       isSmallScreen ? 100 : isWideScreen ? 160 : 130,
     );
 
@@ -280,11 +292,10 @@ export class MobileActionEngine {
     if (!latex) return;
 
     const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('latex', layoutMode, screenW);
+    const size = getAdaptiveSize('latex', layoutMode);
     const adaptivePos = getAdaptivePosition(
       this.elementIndex++,
       layoutMode,
-      screenW,
       size.height,
     );
 
@@ -303,11 +314,10 @@ export class MobileActionEngine {
 
   private drawChart(params: Record<string, any>): void {
     const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('chart', layoutMode, screenW);
+    const size = getAdaptiveSize('chart', layoutMode);
     const adaptivePos = getAdaptivePosition(
       this.elementIndex++,
       layoutMode,
-      screenW,
       size.height,
     );
 
@@ -345,11 +355,10 @@ export class MobileActionEngine {
     );
 
     const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('table', layoutMode, screenW, { rows });
+    const size = getAdaptiveSize('table', layoutMode, { rows });
     const adaptivePos = getAdaptivePosition(
       this.elementIndex++,
       layoutMode,
-      screenW,
       size.height,
     );
 
@@ -378,11 +387,10 @@ export class MobileActionEngine {
     const codeLines = codeToLines(code);
 
     const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('code', layoutMode, screenW, { lines: codeLines.length });
+    const size = getAdaptiveSize('code', layoutMode, { lines: codeLines.length });
     const adaptivePos = getAdaptivePosition(
       this.elementIndex++,
       layoutMode,
-      screenW,
       size.height,
     );
 
