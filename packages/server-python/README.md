@@ -56,9 +56,10 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # LLM 提供商
 OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=...
-DEFAULT_MODEL=openai:gpt-4o
+OPENAI_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+DEFAULT_MODEL=qwen3.6-plus
+VISION_MODEL_ID=qwen-vl-max
+TTS_MODEL_ID=qwen3-tts-flash
 
 # CORS
 ALLOWED_ORIGINS=http://localhost:3030,http://localhost:3000
@@ -85,6 +86,8 @@ app/
 │   └── classroom_sessions.py  # 多人课堂 WebSocket
 ├── services/           # 业务服务
 │   ├── generation/     # 课程生成
+│   ├── llm.py          # LLM统一接口
+│   ├── model_router.py # 模型路由系统
 │   └── orchestration/  # 多智能体编排
 └── main.py             # FastAPI 入口
 alembic/                # 数据库迁移
@@ -123,6 +126,23 @@ tests/                  # 测试
 - Session 状态缓存（24 小时）
 - WebSocket 房间状态缓存（2 小时）
 - 分布式速率限制
+
+## 模型路由系统
+
+根据场景类型自动选择合适的模型（文本/视觉/TTS）。详见 [docs/model-routing.md](docs/model-routing.md)。
+
+### 快速配置
+
+```env
+# 文本模型
+DEFAULT_MODEL=qwen3.6-plus
+
+# 视觉模型（图片分析）
+VISION_MODEL_ID=qwen-vl-max
+
+# TTS模型（语音合成）
+TTS_MODEL_ID=qwen3-tts-flash
+```
 
 ## 安全措施
 

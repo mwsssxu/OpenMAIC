@@ -198,6 +198,9 @@ const translations = {
       newLessonReminder: '新课提醒',
       startLearning: '开始学习',
       remindLater: '稍后提醒',
+      recentCourses: '近期课程',
+      recommendedCourses: '推荐课程',
+      loading: '加载中...',
     },
     checkin: {
       today: '今日打卡',
@@ -569,6 +572,8 @@ const translations = {
       startLearning: 'Start',
       remindLater: 'Later',
       loading: 'Loading...',
+      recentCourses: 'Recent Courses',
+      recommendedCourses: 'Recommended',
     },
     profile: {
       title: 'Me',

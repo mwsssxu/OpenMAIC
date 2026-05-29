@@ -5,6 +5,7 @@ LLM 统一接口 - 支持 OpenAI 兼容 API
 - 多Provider调用
 - Thinking/Reasoning参数
 - 流式和非流式模式
+- 场景驱动的模型路由
 """
 
 import asyncio
@@ -15,6 +16,10 @@ import time
 
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
+from app.services.model_router import (
+    get_model_router,
+    SceneType,
+)
 
 logger = logging.getLogger(__name__)
 # 禁用 httpx 详细日志，避免泄露敏感信息
@@ -28,15 +33,15 @@ PROVIDER_MODEL_MAP = {
 }
 
 # 模型映射 - 将不支持的模型转换为 DashScope 支持的模型
-# DashScope API 支持的模型：qwen-plus, qwen-turbo, qwen-max, qwen3.5-plus 等
-# 注意：Chat 场景应该直接使用 qwen3.5-plus，不经过此映射
+# DashScope API 支持的模型：qwen-plus, qwen-turbo, qwen-max, qwen3.5-plus, qwen3.6-plus 等
+# 注意：Chat 场景应该直接使用 qwen3.6-plus，不经过此映射
 MODEL_REMAP = {
-    "gpt-4o-mini": "qwen-plus",
-    "gpt-4o": "qwen-plus",
-    "gpt-4-turbo": "qwen-plus",
-    "gpt-4": "qwen-plus",
-    "gpt-3.5-turbo": "qwen-turbo",
-    "claude-3-5-sonnet": "qwen-plus",
+    "gpt-4o-mini": "qwen3.6-plus",
+    "gpt-4o": "qwen3.6-plus",
+    "gpt-4-turbo": "qwen3.6-plus",
+    "gpt-4": "qwen3.6-plus",
+    "gpt-3.5-turbo": "qwen-plus",
+    "claude-3-5-sonnet": "qwen3.6-plus",
     "claude-3-opus": "qwen-max",
 }
 
@@ -77,9 +82,10 @@ async def call_llm(
     stream: bool = False,
     max_retries: int = 3,
     thinking_config: Optional[Dict[str, Any]] = None,
+    scene_type: Optional[SceneType] = None,
 ) -> str:
     """
-    调用 LLM（支持Thinking参数）
+    调用 LLM（支持Thinking参数和场景路由）
 
     Args:
         prompt: 用户提示
@@ -90,11 +96,18 @@ async def call_llm(
         stream: 是否流式
         max_retries: 最大重试次数
         thinking_config: Thinking配置 {"enabled": bool, "effort": str, "budget_tokens": int}
+        scene_type: 场景类型（用于自动选择模型）
 
     Returns:
         LLM响应文本
     """
     start_time = time.time()
+
+    # 场景驱动的模型选择
+    if scene_type and not model:
+        router = get_model_router()
+        model = router.get_model_for_scene(scene_type)
+        logger.info(f"[LLM] 场景 {scene_type.value} 选择模型: {model}")
 
     model_str = model or settings.DEFAULT_MODEL
 
@@ -140,10 +153,9 @@ async def call_llm(
     logger.info(f"[LLM] 开始调用 - provider={provider_id}, model={model_id}, api_base={api_base}, max_tokens={max_tokens}")
     logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
 
-    # DashScope Coding Plan API 有30秒超时限制，需要适配
-    # 使用较短timeout避免长时间等待后被断开
+    # DashScope API 响应较慢，增加超时时间
     # SSL问题需要增加重试次数
-    timeout = httpx.Timeout(60.0, connect=15.0)
+    timeout = httpx.Timeout(120.0, connect=30.0)
 
     # 代理配置：从 settings 获取（如果配置）
     proxy = settings.HTTP_PROXY if settings.HTTP_PROXY else None
@@ -173,14 +185,25 @@ async def call_llm(
                         "Content-Type": "application/json",
                     },
                     json=payload,
-                    timeout=(15, 60),  # connect timeout, read timeout
+                    timeout=(30, 120),  # connect timeout, read timeout
                     verify=False,  # 临时禁用SSL验证（DashScope SSL兼容性问题）
                 )
                 resp.raise_for_status()
                 return resp.json()
 
             result = await asyncio.to_thread(sync_call)
-            content = result["choices"][0]["message"]["content"]
+
+            # 安全解析响应
+            if "choices" not in result or len(result["choices"]) == 0:
+                logger.error(f"[LLM] 响应格式异常: {result}")
+                raise Exception("LLM response missing choices")
+
+            choice = result["choices"][0]
+            if "message" not in choice or "content" not in choice["message"]:
+                logger.error(f"[LLM] 响应缺少content: {choice}")
+                raise Exception("LLM response missing content")
+
+            content = choice["message"]["content"]
 
             elapsed = time.time() - attempt_start
             total_elapsed = time.time() - start_time
@@ -243,9 +266,10 @@ async def stream_llm(
     max_tokens: Optional[int] = None,
     max_retries: int = 3,
     thinking_config: Optional[Dict[str, Any]] = None,
+    scene_type: Optional[SceneType] = None,
 ):
     """
-    流式调用 LLM（支持Thinking参数）
+    流式调用 LLM（支持Thinking参数和场景路由）
 
     Args:
         prompt: 用户提示
@@ -255,10 +279,17 @@ async def stream_llm(
         max_tokens: 最大tokens
         max_retries: 最大重试次数
         thinking_config: Thinking配置
+        scene_type: 场景类型（用于自动选择模型）
 
     Yields:
         流式响应的每个chunk
     """
+    # 场景驱动的模型选择
+    if scene_type and not model:
+        router = get_model_router()
+        model = router.get_model_for_scene(scene_type)
+        logger.info(f"[LLM Stream] 场景 {scene_type.value} 选择模型: {model}")
+
     model_str = model or settings.DEFAULT_MODEL
 
     # 解析provider和model_id
@@ -325,7 +356,11 @@ async def stream_llm(
                                 break
                             try:
                                 data = json.loads(data_str)
-                                content = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                choices = data.get("choices", [])
+                                if not choices:
+                                    continue
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
                                 if content:
                                     buffer += content
                                     yield content
@@ -370,11 +405,32 @@ async def call_llm_with_vision(
     system_prompt: Optional[str] = None,
     model: Optional[str] = None,
     max_retries: int = 3,
+    scene_type: Optional[SceneType] = None,
 ) -> str:
     """
-    调用视觉模型（多模态）
+    调用视觉模型（多模态）- 支持场景路由
+
+    Args:
+        prompt: 用户提示
+        images: 图片列表 [{"url": "..."}]
+        system_prompt: 系统提示
+        model: 模型字符串
+        max_retries: 最大重试次数
+        scene_type: 场景类型（用于自动选择模型）
+
+    Returns:
+        LLM响应文本
     """
-    model_str = model or settings.DEFAULT_MODEL
+    # 场景驱动的模型选择
+    router = get_model_router()
+    if not model:
+        if scene_type:
+            model = router.get_model_for_scene(scene_type)
+            logger.info(f"[LLM Vision] 场景 {scene_type.value} 选择模型: {model}")
+        else:
+            model = router.default_vision_model
+
+    model_str = model
     if model_str.startswith("openai/"):
         model_str = model_str[7:]
     elif model_str.startswith("openai:"):

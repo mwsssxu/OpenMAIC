@@ -3,6 +3,8 @@
 
 使用Web端一致的模板化Prompt生成场景内容
 支持: slide, quiz, interactive (simulation, game, diagram, code, visualization3d)
+
+模型路由: 根据场景类型自动选择合适的模型
 """
 
 import json
@@ -11,6 +13,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from app.services.llm import call_llm, stream_llm
+from app.services.model_router import SceneType, get_model_router
 from app.services.generation.outline_generator import SceneOutline
 from app.services.generation.prompts import build_prompt, PROMPT_IDS
 from app.services.generation.prompts.slide_content_simple import TEXT_HEIGHT_TABLE
@@ -18,6 +21,25 @@ import uuid
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_scene_type_for_generation(outline_type: str) -> SceneType:
+    """
+    将大纲类型映射到场景类型（用于模型路由）
+
+    Args:
+        outline_type: 大纲类型 (slide, quiz, interactive, pbl)
+
+    Returns:
+        SceneType 枚举值
+    """
+    mapping = {
+        "slide": SceneType.SCENE_GENERATION,
+        "quiz": SceneType.SCENE_GENERATION,
+        "interactive": SceneType.INTERACTIVE_GENERATION,
+        "pbl": SceneType.SCENE_GENERATION,
+    }
+    return mapping.get(outline_type, SceneType.SCENE_GENERATION)
 
 
 def format_teacher_persona_for_prompt(agents: Optional[List[Dict[str, Any]]]) -> str:
@@ -263,17 +285,21 @@ async def generate_scene_content(
         widget_outline = getattr(outline, 'widget_outline', {}) or {}
         widget_prompt_id = _resolve_widget_prompt_id(widget_type)
 
+        # 构建模板参数，确保 language 参数存在
+        template_vars = {
+            "title": outline.title,
+            "description": outline.description,
+            "keyPoints": ", ".join(outline.key_points or []),
+            "languageDirective": lang_directive,
+            "language": language,  # 为 interactive-html 模板提供 language 参数
+            "teacherContext": teacher_context,
+            # Widget特定参数
+            **widget_outline,
+        }
+
         system_prompt, user_prompt = build_prompt(
             widget_prompt_id,
-            {
-                "title": outline.title,
-                "description": outline.description,
-                "keyPoints": ", ".join(outline.key_points or []),
-                "languageDirective": lang_directive,
-                "teacherContext": teacher_context,
-                # Widget特定参数
-                **widget_outline,
-            }
+            template_vars
         )
 
         if not system_prompt or not user_prompt:
@@ -287,15 +313,26 @@ async def generate_scene_content(
     logger.info(f"[SceneGenerator] Generating content for: {outline.title} ({outline.type})")
     logger.debug(f"[SceneGenerator] System prompt length: {len(system_prompt) if system_prompt else 0}, User prompt length: {len(user_prompt) if user_prompt else 0}")
 
+    # 场景驱动的模型选择
+    router = get_model_router()
+    scene_type = _get_scene_type_for_generation(outline.type)
+
+    if model:
+        selected_model = model
+    else:
+        selected_model = router.get_model_for_scene(scene_type)
+        logger.info(f"[SceneGenerator] 场景 {scene_type.value} 选择模型: {selected_model}")
+
     # 使用流式调用避免超时
     try:
         chunks = []
         async for chunk in stream_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=model,
+            model=selected_model,
             temperature=0.7,
             max_tokens=4096,
+            scene_type=scene_type,
         ):
             chunks.append(chunk)
 
@@ -306,9 +343,10 @@ async def generate_scene_content(
         response = await call_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=model,
+            model=selected_model,
             temperature=0.7,
             max_tokens=4096,
+            scene_type=scene_type,
         )
 
     # 解析JSON
@@ -605,15 +643,21 @@ async def generate_scene_actions(
 
     logger.info(f"[SceneGenerator] Generating actions for {outline.title} ({scene_type}) via {prompt_id}")
 
+    # 场景驱动的模型选择（actions使用AGENT_CHAT场景）
+    router = get_model_router()
+    selected_model = model or router.get_model_for_scene(SceneType.AGENT_CHAT)
+    logger.info(f"[SceneGenerator] Actions生成选择模型: {selected_model}")
+
     # 使用流式调用避免 DashScope 30s 超时
     try:
         chunks = []
         async for chunk in stream_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=model,
+            model=selected_model,
             temperature=0.7,
             max_tokens=2048,
+            scene_type=SceneType.AGENT_CHAT,
         ):
             chunks.append(chunk)
         response = "".join(chunks)
@@ -622,9 +666,10 @@ async def generate_scene_actions(
         response = await call_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=model,
+            model=selected_model,
             temperature=0.7,
             max_tokens=2048,
+            scene_type=SceneType.AGENT_CHAT,
         )
 
     # 解析 JSON 数组

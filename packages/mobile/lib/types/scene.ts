@@ -111,6 +111,9 @@ export interface QuizQuestion {
   question: string;
   options?: Array<{ label: string; value: string }>;
   answer?: string[];
+  points?: number;
+  hasAnswer?: boolean;
+  commentPrompt?: string; // AI批改提示
 }
 
 export interface QuizContent {

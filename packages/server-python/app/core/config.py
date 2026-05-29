@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
     MINIMAX_API_KEY: str = ""
-    DEFAULT_MODEL: str = "openai/glm-5"  # 默认使用阿里云百炼 GLM-5
+    DEFAULT_MODEL: str = "qwen3.6-plus"  # 默认使用阿里云 DashScope Qwen3.6-Plus
 
     # 阿里云 OSS
     OSS_ACCESS_KEY_ID: str = ""
@@ -74,7 +74,13 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""    # Tavily API Key
 
     # Vision 模型配置
-    VISION_MODEL_ID: str = ""  # Vision 模型 ID（如 gpt-4o, glm-4v）
+    VISION_MODEL_ID: str = ""  # Vision 模型 ID（如 gpt-4o, glm-4v, qwen-vl-max）
+
+    # TTS 模型配置
+    TTS_MODEL_ID: str = ""  # TTS 模型 ID（如 qwen3-tts-flash, cosyvoice-v1）
+
+    # 图像生成模型配置
+    IMAGE_GEN_MODEL_ID: str = ""  # 图像生成模型 ID（如 qwen-vl-image, wanx-v1）
 
     # 模型能力映射
     MODEL_CAPABILITIES: dict = {

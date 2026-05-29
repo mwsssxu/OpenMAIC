@@ -2,6 +2,7 @@
 大纲生成器 - 与Web端一致的实现
 
 使用模板化prompt + 流式生成 + heartbeat + 重试机制
+支持场景驱动的模型路由
 """
 
 import json
@@ -10,6 +11,7 @@ import re
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from app.services.llm import call_llm, stream_llm
+from app.services.model_router import SceneType, get_model_router
 from app.services.generation.prompts import build_prompt, PROMPT_IDS
 import uuid
 import logging
@@ -175,12 +177,18 @@ type可选：slide/quiz/interactive/pbl
         logger.info(f"[Outline] System prompt长度: {len(system_prompt)} 字符")
         logger.info(f"[Outline] User prompt长度: {len(user_prompt)} 字符")
 
+        # 场景驱动的模型选择
+        router = get_model_router()
+        selected_model = model or router.get_model_for_scene(SceneType.OUTLINE_GENERATION)
+        logger.info(f"[Outline] 场景 {SceneType.OUTLINE_GENERATION.value} 选择模型: {selected_model}")
+
         response = await call_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,  # 与Web端一致：分离system/user
-            model=model,
+            model=selected_model,
             temperature=0.7,
             max_tokens=4096,
+            scene_type=SceneType.OUTLINE_GENERATION,
         )
 
         elapsed = time.time() - start_time
@@ -244,6 +252,20 @@ type可选：slide/quiz/interactive/pbl
                 widget_type=item.get("widgetType"),
                 widget_outline=item.get("widgetOutline"),
             )
+
+            # 为 interactive 场景补充默认 widget 配置（如果 LLM 未提供）
+            if outline.type == "interactive" and not outline.widget_type:
+                outline.widget_type = "html"
+                outline.widget_outline = {
+                    "conceptName": outline.title,
+                    "subject": "综合学习",
+                    "conceptOverview": outline.description,
+                    "keyPoints": ", ".join(outline.key_points or []),
+                    "scientificConstraints": "互动内容需符合教学逻辑",
+                    "designIdea": "交互式学习界面"
+                }
+                logger.info(f"[Outline] 为 interactive 场景 '{outline.title}' 补充默认 widget 配置")
+
             # 存储 languageDirective 到大纲对象（传递给后续生成）
             if language_directive and i == 0:
                 outline.language_directive = language_directive
@@ -333,6 +355,11 @@ Design the course content and teaching style to match this teacher's persona."""
     full_text = ""
     parsed_count = 0
 
+    # 场景驱动的模型选择
+    router = get_model_router()
+    selected_model = model or router.get_model_for_scene(SceneType.OUTLINE_GENERATION)
+    logger.info(f"[StreamOutline] 场景 {SceneType.OUTLINE_GENERATION.value} 选择模型: {selected_model}")
+
     try:
         logger.info(f"[StreamOutline] System prompt长度: {len(system_prompt)} 字符")
         logger.info(f"[StreamOutline] User prompt长度: {len(user_prompt)} 字符")
@@ -340,9 +367,10 @@ Design the course content and teaching style to match this teacher's persona."""
         async for chunk in stream_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=model,
+            model=selected_model,
             temperature=0.7,
             max_tokens=4096,
+            scene_type=SceneType.OUTLINE_GENERATION,
         ):
             full_text += chunk
 
@@ -366,6 +394,20 @@ Design the course content and teaching style to match this teacher's persona."""
                     widget_type=outline_data.get("widgetType"),
                     widget_outline=outline_data.get("widgetOutline"),
                 )
+
+                # 为 interactive 场景补充默认 widget 配置（如果 LLM 未提供）
+                if outline.type == "interactive" and not outline.widget_type:
+                    outline.widget_type = "html"
+                    outline.widget_outline = {
+                        "conceptName": outline.title,
+                        "subject": "综合学习",
+                        "conceptOverview": outline.description,
+                        "keyPoints": ", ".join(outline.key_points or []),
+                        "scientificConstraints": "互动内容需符合教学逻辑",
+                        "designIdea": "交互式学习界面"
+                    }
+                    logger.info(f"[StreamOutline] 为 interactive 场景 '{outline.title}' 补充默认 widget 配置")
+
                 elapsed = time.time() - start_time
                 logger.info(f"[StreamOutline] 大纲 #{parsed_count} 解析完成 - {outline.title} (耗时: {elapsed:.1f}s)")
                 yield outline
@@ -660,7 +702,7 @@ def generate_smart_default_outlines(
     has_agents = agent_ids and len(agent_ids) > 0
 
     if language == "zh-CN":
-        outlines = [
+        outlines.extend([
             SceneOutline(id=str(uuid.uuid4()), title=f"{detected_topic}课程简介", type="slide",
                 description=f"介绍{detected_topic}课程的主题、学习目标",
                 order=1, key_points=["课程主题概述", "学习目标说明", "课程结构介绍"]),
@@ -670,9 +712,9 @@ def generate_smart_default_outlines(
             SceneOutline(id=str(uuid.uuid4()), title="核心内容深入", type="slide",
                 description=f"深入讲解{detected_topic}的核心内容和重要知识点",
                 order=3, key_points=["重点知识讲解", "典型案例分析", "实际应用示例"]),
-        ]
+        ])
         if has_agents:
-            outlines.append(SceneOutline(id=str(uuid.uuid4()), title="互动讨论环节", type="interactive",
+            outlines.append(SceneOutline(id=str(uuid.uuid4()), title="互动讨论环节", type="slide",
                 description="智能体与学员互动讨论，答疑解惑", order=4, key_points=["问题讨论", "案例互动", "答疑环节"]))
         outlines.extend([
             SceneOutline(id=str(uuid.uuid4()), title="知识检测", type="quiz",
@@ -682,9 +724,12 @@ def generate_smart_default_outlines(
             SceneOutline(id=str(uuid.uuid4()), title="总结与延伸", type="slide",
                 description=f"总结{detected_topic}课程要点，提供延伸学习建议",
                 order=6 if has_agents else 5, key_points=["要点总结回顾", "延伸学习建议", "课后作业布置"]),
+            SceneOutline(id=str(uuid.uuid4()), title="课程完成", type="slide",
+                description="恭喜完成课程学习，回顾学习成果",
+                order=7 if has_agents else 6, key_points=["学习成果回顾", "下一步建议", "鼓励与祝福"]),
         ])
     else:
-        outlines = [
+        outlines.extend([
             SceneOutline(id=str(uuid.uuid4()), title=f"{detected_topic} Introduction", type="slide",
                 description=f"Introduction to {detected_topic}",
                 order=1, key_points=["Course overview", "Learning objectives", "Course structure"]),
@@ -694,9 +739,9 @@ def generate_smart_default_outlines(
             SceneOutline(id=str(uuid.uuid4()), title="Core Content", type="slide",
                 description=f"Deep dive into {detected_topic}",
                 order=3, key_points=["Key topics", "Case analysis", "Practical examples"]),
-        ]
+        ])
         if has_agents:
-            outlines.append(SceneOutline(id=str(uuid.uuid4()), title="Interactive Discussion", type="interactive",
+            outlines.append(SceneOutline(id=str(uuid.uuid4()), title="Interactive Discussion", type="slide",
                 description="Interactive discussion with AI agents", order=4, key_points=["Discussion", "Q&A session"]))
         outlines.extend([
             SceneOutline(id=str(uuid.uuid4()), title="Knowledge Assessment", type="quiz",
@@ -706,6 +751,9 @@ def generate_smart_default_outlines(
             SceneOutline(id=str(uuid.uuid4()), title="Summary & Extension", type="slide",
                 description=f"Summary of {detected_topic} key points",
                 order=6 if has_agents else 5, key_points=["Key summary", "Extension suggestions", "Homework"]),
+            SceneOutline(id=str(uuid.uuid4()), title="Course Complete", type="slide",
+                description="Congratulations on completing the course, review your achievements",
+                order=7 if has_agents else 6, key_points=["Achievement review", "Next steps", "Encouragement"]),
         ])
 
     return outlines

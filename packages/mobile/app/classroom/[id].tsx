@@ -26,15 +26,17 @@ import Animated, {
 } from 'react-native-reanimated';
 import { apiClient } from '@/lib/api-client';
 import { saveAudioFile } from '@/lib/storage/audio-storage';
+import * as SecureStore from 'expo-secure-store';
 import { AudioPlayer } from '@/lib/playback/audio-player';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
-import { Scene, Agent as LibAgent } from '@/lib/types/scene';
+import { Scene, Agent as LibAgent, QuizQuestion, QuizContent } from '@/lib/types/scene';
 import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { BottomSheetModal } from '@/components/common/BottomSheetModal';
 import { HintToast } from '@/components/common/HintToast';
 import { InteractiveWebView, InteractiveWebViewRef } from '@/components/playback/InteractiveWebView';
+import { ClassroomCompletePage } from '@/components/classroom/ClassroomCompletePage';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 import { mobileActionEngine } from '@/lib/whiteboard/action-engine';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
@@ -49,6 +51,14 @@ import {
   clearSubmitted,
   type QuestionResult,
 } from '@/lib/quiz/persistence';
+import {
+  gradeChoiceQuestions,
+  isShortAnswer,
+  isMultipleChoice,
+  toArray,
+  arraysEqual,
+  type QuestionResult as GradingResult,
+} from '@/lib/quiz/grading';
 import {
   readChatHistory,
   saveChatHistory,
@@ -66,7 +76,7 @@ import {
   type ParsedContent,
 } from '@/lib/utils/sse-parser';
 
-// 清理 JSON 残留内容的辅助函数
+// 清理 JSON 残留内容和扁平化 action 格式的辅助函数
 function cleanJsonFromText(text: string): string {
   if (!text) return '';
 
@@ -110,6 +120,28 @@ function cleanJsonFromText(text: string): string {
     cleaned = cleaned.replace(/\n\s*\n/g, '\n\n').trim();
     return cleaned;
   }
+
+  // 检测扁平化 action 格式：typeactionnamewb_draw_text...
+  // 或者多行格式：action\nwb_draw_text\n...
+  if (text.includes('typeaction') || text.match(/^action\s+\w+/m)) {
+    let cleaned = text;
+    // 移除扁平化格式：typeactionname{action_name}...
+    cleaned = cleaned.replace(/typeactionname[a-z_]+\s*paramsshape[a-z_]+[^a-z\s]*/gi, '');
+    cleaned = cleaned.replace(/typeactionname[a-z_]+[^\n]*/gi, '');
+    // 移除多行 action 块：action wb_draw_text ... (直到遇到两个换行或文本开始)
+    cleaned = cleaned.replace(/^action\s+[a-z_]+\s*\n([^a-z\n][^\n]*\n)*/gim, '');
+    // 移除残留的关键字
+    cleaned = cleaned.replace(/\b(type|action|name|params|elementId|wb_open|wb_close|wb_clear|wb_draw_text|wb_draw_shape)\b/gi, '');
+    // 移除纯数字行（坐标等）
+    cleaned = cleaned.replace(/^\s*\d+\s*\n/gm, '');
+    // 移除颜色值行
+    cleaned = cleaned.replace(/#[0-f]{6}\s*/gi, '');
+    // 清理多余空白和空行
+    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n');
+    cleaned = cleaned.trim();
+    return cleaned;
+  }
+
   return text;
 }
 
@@ -121,16 +153,6 @@ interface SceneOutline {
   description: string;
   key_points: string[];
   order: number;
-}
-
-// Quiz 内容类型（类型安全）
-interface QuizContent {
-  questions: Array<{
-    id: string;
-    question: string;
-    options: Array<{ value: string; label: string }>;
-    answer: string | string[];
-  }>;
 }
 
 // 本地 Agent 类型（扩展自 lib/types）
@@ -276,7 +298,7 @@ export default function ClassroomScreen() {
   const [extractedCards, setExtractedCards] = useState<any[]>([]);
 
   // 测验交互状态
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string | string[]>>({});
   const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, boolean>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
 
@@ -802,8 +824,24 @@ export default function ClassroomScreen() {
   }, []);
 
   // 测验交互函数
-  const selectAnswer = (questionId: string, optionValue: string) => {
-    const newAnswers = { ...selectedAnswers, [questionId]: optionValue };
+  const selectAnswer = (questionId: string, optionValue: string, isMultiple: boolean = false) => {
+    console.log('[Quiz] selectAnswer called:', { questionId, optionValue, isMultiple, currentSelected: selectedAnswers });
+
+    let newAnswers: Record<string, string | string[]>;
+
+    if (isMultiple) {
+      // 多选题：切换选项
+      const currentValues = toArray(selectedAnswers[questionId]);
+      const newValues = currentValues.includes(optionValue)
+        ? currentValues.filter(v => v !== optionValue)
+        : [...currentValues, optionValue];
+      newAnswers = { ...selectedAnswers, [questionId]: newValues };
+    } else {
+      // 单选题
+      newAnswers = { ...selectedAnswers, [questionId]: optionValue };
+    }
+
+    console.log('[Quiz] newAnswers:', newAnswers);
     setSelectedAnswers(newAnswers);
     // 持久化草稿答案
     if (currentScene?.id) {
@@ -811,51 +849,130 @@ export default function ClassroomScreen() {
     }
   };
 
+  // 更新简答题答案
+  const updateShortAnswer = (questionId: string, text: string) => {
+    const newAnswers = { ...selectedAnswers, [questionId]: text };
+    setSelectedAnswers(newAnswers);
+    if (currentScene?.id) {
+      writeDraft(currentScene.id, newAnswers);
+    }
+  };
+
   const submitQuiz = async () => {
     const scene = currentScene;
-    if (!scene) return;
-    if (!(scene.content as any)?.questions) return;
+    if (!scene) {
+      console.log('[Quiz] No scene found');
+      return;
+    }
+    if (!(scene.content as any)?.questions) {
+      console.log('[Quiz] No questions in scene content');
+      return;
+    }
 
-    const questions = (scene.content as any).questions;
+    const questions = (scene.content as QuizContent).questions;
+    console.log('[Quiz] Questions:', questions.length);
+    console.log('[Quiz] Selected answers:', selectedAnswers);
 
-    // 检查是否所有问题都已选择答案
-    const unanswered = questions.filter((q: any) => !selectedAnswers[q.id]);
+    // 检查是否有未作答的问题
+    const unanswered = questions.filter((q) => {
+      const answer = selectedAnswers[q.id];
+      if (!answer) return true;
+      if (Array.isArray(answer) && answer.length === 0) return true;
+      return false;
+    });
+
     if (unanswered.length > 0) {
+      console.log('[Quiz] Unanswered questions:', unanswered.length);
       Alert.alert('提示', `还有 ${unanswered.length} 个问题未作答，请完成所有问题后再提交`);
       return;
     }
 
-    const results: Record<string, boolean> = {};
-    const questionResults: QuestionResult[] = [];
+    // 分离选择题和简答题
+    const shortAnswerQuestions = questions.filter(isShortAnswer);
 
-    // 检查答案
-    questions.forEach((q: any) => {
-      const correctAnswer = q.answer?.[0] || q.answer;
-      const isCorrect = selectedAnswers[q.id] === correctAnswer;
-      results[q.id] = isCorrect;
-      questionResults.push({
-        questionId: q.id,
-        correct: isCorrect,
-        feedback: isCorrect ? '回答正确' : `正确答案是: ${correctAnswer}`,
-      });
+    // 本地批改选择题
+    const choiceResults = gradeChoiceQuestions(questions, selectedAnswers);
+    const resultsMap: Record<string, boolean> = {};
+    choiceResults.forEach((r) => {
+      resultsMap[r.questionId] = r.correct === true;
     });
 
-    setSubmittedAnswers(results);
+    // AI批改简答题 - 使用 Promise.all 返回结果避免竞态
+    const shortAnswerResults = await Promise.all(
+      shortAnswerQuestions.map(async (q) => {
+        const userAnswer = selectedAnswers[q.id] as string;
+        const pts = q.points ?? 1;
+
+        try {
+          // 获取token
+          const token = await SecureStore.getItemAsync('access_token');
+          // 获取课程语言
+          const language = data?.stage?.language_directive?.includes('zh') ? 'zh-CN' : 'en-US';
+          // 直接使用fetch调用API
+          const response = await fetch(`${apiClient.getBaseUrl()}/quiz-grade`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              question: q.question,
+              userAnswer,
+              points: pts,
+              commentPrompt: q.commentPrompt,
+              language,
+            }),
+          });
+
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          const earned = Math.max(0, Math.min(pts, data.score || 0));
+          const correct = earned >= pts * 0.8;
+
+          return {
+            questionId: q.id,
+            correct,
+            status: correct ? 'correct' as const : 'incorrect' as const,
+            earned,
+            aiComment: data.comment,
+          };
+        } catch (error) {
+          console.error('[Quiz] AI grading failed for', q.id, error);
+          // Fallback: 给一半分数
+          return {
+            questionId: q.id,
+            correct: false,
+            status: 'incorrect' as const,
+            earned: Math.round(pts * 0.5),
+            aiComment: '评分服务暂时不可用，已给予基础分。',
+          };
+        }
+      })
+    );
+
+    // 合并结果
+    const allResults = [...choiceResults, ...shortAnswerResults];
+    const finalResultsMap: Record<string, boolean> = {};
+    allResults.forEach((r) => {
+      finalResultsMap[r.questionId] = r.correct === true;
+    });
+
+    setSubmittedAnswers(finalResultsMap);
     setQuizSubmitted(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // 持久化提交答案和结果
     if (currentScene?.id) {
       await writeSubmittedAnswers(currentScene.id, selectedAnswers);
-      await writeSubmittedResults(currentScene.id, questionResults);
+      await writeSubmittedResults(currentScene.id, allResults);
     }
 
     // 如果有错误答案，请求 Agent 解析（可选）
-    const wrongQuestions = questions.filter((q: any) => !results[q.id]);
+    const wrongQuestions = questions.filter((q) => !finalResultsMap[q.id]);
     if (wrongQuestions.length > 0 && agents.length > 0) {
       const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
       setSelectedAgent(teacherAgent);
-      const wrongSummary = wrongQuestions.map((q: any) => q.question).join('\n');
+      const wrongSummary = wrongQuestions.map((q) => q.question).join('\n');
       setChatHistory([
         { agent: '系统', message: `你在以下问题上有错误：\n${wrongSummary}` },
         { agent: teacherAgent.name, message: '让我帮你分析一下这些问题的正确答案...' }
@@ -1004,7 +1121,12 @@ export default function ClassroomScreen() {
             const textToSpeak = currentAgentTextRef.current.trim();
             if (textToSpeak) {
               console.log('[TTS] Speaking agent text:', textToSpeak.slice(0, 50));
-              Speech.speak(textToSpeak, { language: 'zh-CN', rate: 1.0 });
+              // 使用配置的语音速度
+              Speech.speak(textToSpeak, {
+                language: 'zh-CN',
+                rate: ttsConfig.speed,
+                pitch: 1.0,
+              });
             }
             // 保存聊天记录
             if (currentScene && textToSpeak) {
@@ -1374,11 +1496,8 @@ export default function ClassroomScreen() {
           </View>
         )}
 
-        {/* 头部：标题 + 返回按钮 */}
+        {/* 头部：标题 */}
         <View style={[styles.header, isLandscape && styles.headerLandscape, isCompactMode && styles.headerCompact]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={24} color="#c45a1a" />
-          </TouchableOpacity>
           <Text style={[styles.title, isCompactMode && styles.titleCompact]}>{data.stage.name}</Text>
           {/* 后台讨论进行中的指示器 */}
           {discussionRunning && !showChatModal && (
@@ -1410,8 +1529,20 @@ export default function ClassroomScreen() {
             animatedStyle,
             isTablet && styles.contentInnerTablet
           ]}>
-            {/* Slide类型：使用 ScreenCanvas 渲染 */}
-            {currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (
+            {/* 课程完成场景：显示庆祝页面 */}
+            {currentScene?.type === 'slide' && (currentScene.title === '课程完成' || currentScene.title === 'Course Complete') ? (
+              <ClassroomCompletePage
+                scenes={data?.scenes || []}
+                title={data?.stage?.name || ''}
+                quizAnswers={Object.fromEntries(
+                  (data?.scenes || [])
+                    .filter(s => s.type === 'quiz')
+                    .map(s => [s.id, selectedAnswers])
+                )}
+                onClose={() => router.back()}
+              />
+            ) : /* Slide类型：使用 ScreenCanvas 渲染 */
+            currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (
               <ScreenCanvas
                 elements={(currentScene.content as any)?.canvas?.elements || []}
                 background={convertToSlideBackground((currentScene.content as any)?.canvas?.background)}
@@ -1450,9 +1581,10 @@ export default function ClassroomScreen() {
 
         {/* Quiz 类型：测验问题 - 跟随滚动 */}
         {currentScene?.type === 'quiz' && (currentScene.content as QuizContent)?.questions && (() => {
-          const quizQuestions = (currentScene.content as QuizContent).questions;
+          const quizQuestions = (currentScene.content as QuizContent).questions as QuizQuestion[];
           const totalQuestions = quizQuestions.length;
           const correctCount = Object.values(submittedAnswers).filter(v => v).length;
+          console.log('[Quiz] Rendering quiz:', { totalQuestions, selectedAnswers, quizSubmitted });
 
           return (
           <View style={styles.quizOverlay}>
@@ -1467,26 +1599,51 @@ export default function ClassroomScreen() {
                 )}
               </View>
               {quizQuestions.map((q, idx) => {
-                const correctAnswer = q.answer?.[0] || q.answer;
+                const qId = q.id || `q${idx}`;
+                const correctAnswers = q.answer || [];
+                const isMultiple = isMultipleChoice(q);
+                const isShort = isShortAnswer(q);
+                const userAnswer = selectedAnswers[qId];
+                const userAnswerArray = toArray(userAnswer);
+                const showResult = quizSubmitted && submittedAnswers[qId] !== undefined;
 
                 return (
-                  <View key={q.id || idx} style={styles.questionContainer}>
-                    <Text style={styles.questionText}>{q.question}</Text>
-                    {q.options?.map((opt, optIdx) => {
-                      const optSelected = selectedAnswers[q.id] === opt.value;
-                      const optIsCorrect = opt.value === correctAnswer;
-                      const showResult = quizSubmitted && submittedAnswers[q.id] !== undefined;
+                  <View key={qId} style={styles.questionContainer}>
+                    {/* 题目标题和类型标识 */}
+                    <View style={styles.questionHeader}>
+                      <Text style={styles.questionText}>{q.question}</Text>
+                      {isMultiple && (
+                        <Text style={styles.questionTypeHint}>（多选）</Text>
+                      )}
+                      {isShort && (
+                        <Text style={styles.questionTypeHint}>（简答）</Text>
+                      )}
+                    </View>
+
+                    {/* 选择题选项 */}
+                    {!isShort && q.options?.map((opt, optIdx) => {
+                      const optValue = typeof opt === 'string' ? opt : opt.value;
+                      const optLabel = typeof opt === 'string' ? opt : opt.label;
+                      const optSelected = isMultiple
+                        ? userAnswerArray.includes(optValue)
+                        : userAnswer === optValue;
+                      const optIsCorrect = correctAnswers.includes(optValue);
 
                       return (
                         <TouchableOpacity
-                          key={opt.value ?? optIdx}
+                          key={optValue ?? optIdx}
                           style={[
                             styles.optionButton,
                             optSelected && styles.optionSelected,
                             showResult && optIsCorrect && styles.optionCorrect,
                             showResult && optSelected && !optIsCorrect && styles.optionWrong,
                           ]}
-                          onPress={() => !quizSubmitted && selectAnswer(q.id, opt.value)}
+                          onPress={() => {
+                            console.log('[Quiz] Option pressed:', { qId, optValue, isMultiple, quizSubmitted });
+                            if (!quizSubmitted) {
+                              selectAnswer(qId, optValue, isMultiple);
+                            }
+                          }}
                           disabled={quizSubmitted}
                         >
                           <Text style={[
@@ -1497,7 +1654,7 @@ export default function ClassroomScreen() {
                           <Text style={[
                             styles.optionText,
                             optSelected && styles.optionTextSelected,
-                          ]}>{opt.label}</Text>
+                          ]}>{optLabel}</Text>
                           {showResult && optIsCorrect && (
                             <Ionicons name="checkmark-circle" size={16} color="#22c55e" style={styles.optionIcon} />
                           )}
@@ -1507,9 +1664,33 @@ export default function ClassroomScreen() {
                         </TouchableOpacity>
                       );
                     })}
-                    {quizSubmitted && !submittedAnswers[q.id] && (
+
+                    {/* 简答题输入框 */}
+                    {isShort && !quizSubmitted && (
+                      <TextInput
+                        style={styles.shortAnswerInput}
+                        placeholder="请输入您的答案..."
+                        placeholderTextColor="#9ca3af"
+                        multiline
+                        numberOfLines={4}
+                        value={typeof userAnswer === 'string' ? userAnswer : ''}
+                        onChangeText={(text) => updateShortAnswer(qId, text)}
+                        editable={!quizSubmitted}
+                      />
+                    )}
+
+                    {/* 简答题答题回顾 */}
+                    {isShort && quizSubmitted && (
+                      <View style={styles.shortAnswerReview}>
+                        <Text style={styles.shortAnswerLabel}>您的答案：</Text>
+                        <Text style={styles.shortAnswerText}>{typeof userAnswer === 'string' ? userAnswer : '未作答'}</Text>
+                      </View>
+                    )}
+
+                    {/* 正确答案提示（选择题答错时） */}
+                    {quizSubmitted && !isShort && submittedAnswers[qId] === false && (
                       <Text style={styles.explanationText}>
-                        正确答案：{q.options?.find(o => o.value === correctAnswer)?.label || correctAnswer}
+                        正确答案：{q.options?.filter(o => correctAnswers.includes(typeof o === 'string' ? o : o.value)).map(o => typeof o === 'string' ? o : o.label).join('、')}
                       </Text>
                     )}
                   </View>
@@ -1518,7 +1699,13 @@ export default function ClassroomScreen() {
 
               {/* 提交按钮区域 */}
               {!quizSubmitted && Object.keys(selectedAnswers).length > 0 && (
-                <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
+                <TouchableOpacity
+                  style={styles.submitButton}
+                  onPress={() => {
+                    console.log('[Quiz] Submit button pressed, calling submitQuiz');
+                    submitQuiz();
+                  }}
+                >
                   <Text style={styles.submitButtonText}>提交答案</Text>
                 </TouchableOpacity>
               )}
@@ -1996,7 +2183,7 @@ export default function ClassroomScreen() {
                 Speech.stop();
               }
             }}>
-              <Ionicons name="close" size={22} color="#666" />
+              <Ionicons name="close" size={18} color="#666" />
             </TouchableOpacity>
           </View>
 
@@ -2258,14 +2445,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutral.border,
   },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary.transparent,
-    padding: Spacing.sm,
-    borderRadius: Rounded.lg,
-  },
-  backText: { color: Colors.primary.main, fontSize: 14, fontWeight: '500' },
   title: { flex: 1, fontSize: 18, fontWeight: '600', textAlign: 'center', color: Colors.neutral.textPrimary },
   progressBadge: {
     backgroundColor: Colors.primary.main,
@@ -2390,7 +2569,27 @@ const styles = StyleSheet.create({
   },
   quizTitle: { fontSize: 18, fontWeight: 'bold', marginLeft: Spacing.sm, color: '#333' },
   questionContainer: { marginVertical: Spacing.sm },
-  questionText: { fontSize: 15, color: '#333', marginBottom: Spacing.xs, fontWeight: '500' },
+  questionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.xs },
+  questionText: { fontSize: 15, color: '#333', flex: 1, fontWeight: '500' },
+  questionTypeHint: { fontSize: 12, color: '#888', marginLeft: Spacing.xs },
+  shortAnswerInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: Rounded.md,
+    padding: Spacing.sm,
+    fontSize: 14,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    backgroundColor: '#f9fafb',
+  },
+  shortAnswerReview: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: Rounded.md,
+    padding: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  shortAnswerLabel: { fontSize: 12, color: '#6b7280', marginBottom: Spacing.xs },
+  shortAnswerText: { fontSize: 14, color: '#1f2937' },
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2674,34 +2873,34 @@ const styles = StyleSheet.create({
   modalContentCompact: {
     backgroundColor: 'white',
     borderRadius: Rounded.lg,
-    padding: Spacing.sm, // 减少 padding
+    padding: Spacing.xs, // 减少 padding
     maxHeight: 350, // 固定最大高度，防止溢出
     minHeight: 200,
   },
   modalHeaderCompact: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.xs, // 减少 margin
+    marginBottom: 0, // 移除 margin
     paddingBottom: Spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
   modalAgentAvatarSmall: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24, // 缩小头像
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalAgentAvatarText: {
-    fontSize: 14,
+    fontSize: 12, // 缩小头像文字
     color: 'white',
   },
   modalTitleCompact: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14, // 缩小标题字体
     fontWeight: '600',
-    marginLeft: Spacing.sm,
+    marginLeft: Spacing.xs, // 缩小边距
     color: '#333',
   },
   modalHeader: {
@@ -2722,25 +2921,25 @@ const styles = StyleSheet.create({
   participantsBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs, // 缩小 padding
+    paddingHorizontal: Spacing.sm, // 缩小 padding
     backgroundColor: '#f5f7fa',
     borderRadius: Rounded.sm,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs, // 缩小 margin
   },
   participantsLabel: {
-    fontSize: 12,
+    fontSize: 11, // 缩小字体
     color: '#666',
-    marginRight: Spacing.sm,
+    marginRight: Spacing.xs, // 缩小边距
   },
   participantsAvatars: {
     flexDirection: 'row',
-    gap: Spacing.sm,
+    gap: Spacing.xs, // 缩小间距
   },
   participantAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26, // 缩小头像
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2754,17 +2953,17 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   participantAvatarText: {
-    fontSize: 14,
+    fontSize: 12, // 缩小字体
     fontWeight: '600',
     color: 'white',
   },
   speakingDot: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    bottom: -3, // 调整位置
+    right: -3,
+    width: 14, // 缩小
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#10b981',
     alignItems: 'center',
     justifyContent: 'center',

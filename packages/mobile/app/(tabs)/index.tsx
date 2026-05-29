@@ -44,19 +44,12 @@ const quickFunctions = [
   { key: 'enterprise', titleKey: 'home.enterpriseServices', icon: 'briefcase', color: '#8b5cf6', bgColor: '#ede9fe', route: '/enterprise' },
 ];
 
-// 近期课程数据
-const recentCourses = [
-  { id: 1, name: '数据分析基础', section: '第 12 节 · 数据可视化', progress: 68, icon: '📊', color: '#fce8e0' },
-  { id: 2, name: 'Python 编程入门', section: '第 8 节 · 函数与模块', progress: 45, icon: '💻', color: '#dbeafe' },
-  { id: 3, name: 'UI 设计原理', section: '第 5 节 · 色彩与排版', progress: 28, icon: '🎨', color: '#ede9fe' },
-];
-
-// 推荐课程数据
+// 推荐课程数据（静态展示）
 const recommendedCourses = [
-  { id: 1, name: '机器学习概论', category: '人工智能', icon: '🧮' },
-  { id: 2, name: '商业数据分析', category: '商业分析', icon: '📈' },
-  { id: 3, name: '写作与表达', category: '人文素养', icon: '📝' },
-  { id: 4, name: '科学思维方法', category: '思维方式', icon: '🔬' },
+  { id: '1', name: '机器学习概论', category: '人工智能', icon: '🧮' },
+  { id: '2', name: '商业数据分析', category: '商业分析', icon: '📈' },
+  { id: '3', name: '写作与表达', category: '人文素养', icon: '📝' },
+  { id: '4', name: '科学思维方法', category: '思维方式', icon: '🔬' },
 ];
 
 // 笔记分类数据
@@ -104,8 +97,9 @@ function QuickFunctionBtn({ item, onPress, t, iconSize }: { item: typeof quickFu
 }
 
 // 课程项组件（近期课程列表）
-function CourseItem({ course }: { course: typeof recentCourses[0] }) {
+function CourseItem({ course }: { course: { id: string; name: string; description?: string; language_directive?: string } }) {
   const router = useRouter();
+  const { t } = useI18n();
 
   return (
     <TouchableOpacity
@@ -113,18 +107,12 @@ function CourseItem({ course }: { course: typeof recentCourses[0] }) {
       onPress={() => router.push(`/course/${course.id}` as any)}
       activeOpacity={0.85}
     >
-      <View style={[styles.courseIcon, { backgroundColor: course.color }]}>
-        <Text style={styles.courseIconText}>{course.icon}</Text>
+      <View style={[styles.courseIcon, { backgroundColor: iOSColors.accentLight }]}>
+        <Text style={styles.courseIconText}>📚</Text>
       </View>
       <View style={styles.courseInfo}>
         <Text style={styles.courseName}>{course.name}</Text>
-        <Text style={styles.courseMeta}>{course.section}</Text>
-        <View style={styles.courseProgress}>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
-          </View>
-          <Text style={styles.progressNum}>{course.progress}%</Text>
-        </View>
+        <Text style={styles.courseMeta}>{course.description || t('home.myCourses')}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -225,6 +213,16 @@ const defaultStats: DashboardStats = {
   streak: 23,
 };
 
+// Recent course type
+interface RecentCourse {
+  id: string;
+  name: string;
+  description?: string;
+  language_directive?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -238,35 +236,50 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<DashboardStats>(defaultStats);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Fetch dashboard stats on mount
+  // Recent courses state
+  const [recentCourses, setRecentCourses] = useState<RecentCourse[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+
+  // Fetch dashboard stats and recent courses on mount
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchData = async () => {
+      // Fetch stats
       setStatsLoading(true);
       try {
         const userStats: UserStats = await apiClient.getStats();
-        // Transform API stats to dashboard stats
-        // UserStats has: total_classrooms, total_scenes, total_media_files, total_chat_sessions
-        // We'll use total_classrooms as courses count and derive other values
         setStats({
-          days: userStats.total_chat_sessions || defaultStats.days, // Use chat sessions as proxy for active days
+          days: userStats.total_chat_sessions || defaultStats.days,
           courses: userStats.total_classrooms || defaultStats.courses,
-          hours: Math.round((userStats.total_scenes || 0) * 0.5) || defaultStats.hours, // Estimate hours from scenes
-          streak: defaultStats.streak, // Streak data not available from UserStats, use placeholder
+          hours: Math.round((userStats.total_scenes || 0) * 0.5) || defaultStats.hours,
+          streak: defaultStats.streak,
         });
       } catch (error) {
-        // Gracefully handle errors - keep placeholder data
         console.warn('Failed to fetch dashboard stats:', error);
         setStats(defaultStats);
       } finally {
         setStatsLoading(false);
       }
+
+      // Fetch recent courses
+      setCoursesLoading(true);
+      try {
+        const classrooms = await apiClient.getClassrooms();
+        // Get the 3 most recent courses
+        const recent = (classrooms || []).slice(0, 3);
+        setRecentCourses(recent);
+      } catch (error) {
+        console.warn('Failed to fetch recent courses:', error);
+        setRecentCourses([]);
+      } finally {
+        setCoursesLoading(false);
+      }
     };
 
-    fetchStats();
+    fetchData();
   }, []);
 
   // Responsive sizes
-  const quickFnIconSize = responsiveValue({ compact: 14, regular: 16, medium: 18, large: 20 }, breakpoint);
+  const quickFnIconSize = responsiveValue({ compact: 28, regular: 32, medium: 36, large: 40 }, breakpoint);
   const recCardWidth = responsiveValue({ compact: 120, regular: 140, medium: 160, large: 180 }, breakpoint);
 
   const handlePress = (route: string) => {
@@ -403,9 +416,15 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.courseList}>
-            {recentCourses.map(course => (
-              <CourseItem key={course.id} course={course} />
-            ))}
+            {coursesLoading ? (
+              <Text style={styles.loadingText}>{t('home.loading')}</Text>
+            ) : recentCourses.length > 0 ? (
+              recentCourses.map(course => (
+                <CourseItem key={course.id} course={course} />
+              ))
+            ) : (
+              <Text style={styles.emptyText}>暂无课程，去创建一门吧！</Text>
+            )}
           </View>
         </View>
 
@@ -499,6 +518,12 @@ const styles = StyleSheet.create({
   loadingText: {
     color: iOSColors.muted,
     fontStyle: 'italic',
+  },
+  emptyText: {
+    color: iOSColors.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
   },
   headerBtn: {
     width: 44,
@@ -683,16 +708,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   quickFnIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickFnLabel: {
-    fontSize: 10,
+    fontSize: 13,
     color: iOSColors.muted,
-    marginTop: 4,
+    marginTop: 8,
     textAlign: 'center',
   },
   // Section 通用
