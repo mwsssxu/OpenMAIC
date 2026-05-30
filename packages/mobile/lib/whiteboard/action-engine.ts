@@ -1,6 +1,8 @@
 import { whiteboardStore } from './element-store';
-import { screenW, getWhiteboardLayoutMode, WHITEBOARD_CARD_GAP, WHITEBOARD_CARD_PADDING, isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
-import { Spacing } from '@/lib/constants/theme';
+import { WHITEBOARD_CARD_GAP, WHITEBOARD_CARD_PADDING } from '@/lib/utils/scaling';
+
+// 白板基准画布尺寸（与 ScreenCanvas.tsx 保持一致）
+const WHITEBOARD_CANVAS_WIDTH = 1000;
 
 const SHAPE_PATHS: Record<string, string> = {
   rectangle: 'M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z',
@@ -20,131 +22,54 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
 }
 
 /**
- * 计算白板实际可用宽度
- * 白板容器有 padding (Spacing.sm * 2)，需要减去
+ * 根据白板基准画布计算元素位置
+ * 使用 1000px 基准宽度，ScreenCanvas 会自动缩放
+ * 垂直排列：从上至下，宽度占满
  */
-function getWhiteboardAvailableWidth(): number {
-  // WhiteboardOverlay 的 absoluteContainer 有 padding: Spacing.sm
-  // 所以实际可用宽度 = 屏幕宽度 - padding * 2
-  const padding = Spacing.sm ?? 8; // 默认 8px
-  return screenW - padding * 2;
-}
-
-/**
- * 根据屏幕宽度计算自适应的元素位置
- * 小屏手机：垂直堆叠，单列布局
- * 大屏手机：有限的双列布局
- * iPad：保持原有水平布局
- */
-function getAdaptivePosition(
+function getWhiteboardPosition(
   yIndex: number,
-  layoutMode: 'vertical' | 'limited-horizontal' | 'horizontal',
   preferredHeight?: number,
 ): { x: number; y: number; width: number; height: number } {
-  // 白板容器宽度（减去容器 padding）
-  const containerWidth = getWhiteboardAvailableWidth();
   const margin = WHITEBOARD_CARD_GAP;
-  // 元素可用宽度 = 容器宽度 - 左右边距
-  const availableWidth = containerWidth - margin * 2;
+  // 基准画布上的可用宽度（1000px - 边距）
+  const availableWidth = WHITEBOARD_CANVAS_WIDTH - margin * 2;
 
-  // 默认高度
-  const defaultHeight = preferredHeight ?? (isSmallScreen ? 80 : isWideScreen ? 120 : 100);
+  // 默认高度（基准画布上的高度）
+  const defaultHeight = preferredHeight ?? 80;
   // 每个"行"的高度（考虑元素高度 + 间距）
   const rowHeight = defaultHeight + WHITEBOARD_CARD_GAP;
 
-  if (layoutMode === 'vertical') {
-    // 垂直布局：单列，宽度占满
-    return {
-      x: margin,
-      y: yIndex * rowHeight,
-      width: availableWidth,
-      height: defaultHeight,
-    };
-  } else if (layoutMode === 'limited-horizontal') {
-    // 大屏手机：双列布局
-    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP) / 2;
-    const col = yIndex % 2;
-    const row = Math.floor(yIndex / 2);
-    return {
-      x: margin + col * (colWidth + WHITEBOARD_CARD_GAP),
-      y: row * rowHeight,
-      width: colWidth,
-      height: defaultHeight,
-    };
-  } else {
-    // iPad：水平布局，最多3列
-    const colCount = 3;
-    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP * (colCount - 1)) / colCount;
-    const col = yIndex % colCount;
-    const row = Math.floor(yIndex / colCount);
-    return {
-      x: margin + col * (colWidth + WHITEBOARD_CARD_GAP),
-      y: row * rowHeight,
-      width: colWidth,
-      height: defaultHeight,
-    };
-  }
+  // 垂直布局：单列，从上至下排列
+  return {
+    x: margin,
+    y: yIndex * rowHeight,
+    width: availableWidth,
+    height: defaultHeight,
+  };
 }
 
 /**
- * 获取自适应的元素宽高（用于图表、表格等大型元素）
+ * 获取白板元素的基准尺寸（用于图表、表格等大型元素）
  */
-function getAdaptiveSize(
+function getWhiteboardSize(
   type: 'chart' | 'table' | 'code' | 'latex',
-  layoutMode: 'vertical' | 'limited-horizontal' | 'horizontal',
   contentInfo?: { rows?: number; lines?: number },
 ): { width: number; height: number } {
-  // 白板容器宽度（减去容器 padding）
-  const containerWidth = getWhiteboardAvailableWidth();
-  // 元素可用宽度 = 容器宽度 - 左右边距
-  const availableWidth = containerWidth - WHITEBOARD_CARD_GAP * 2;
+  const availableWidth = WHITEBOARD_CANVAS_WIDTH - WHITEBOARD_CARD_GAP * 2;
 
-  if (layoutMode === 'vertical') {
-    // 垂直布局：宽度占满
-    switch (type) {
-      case 'chart':
-        return { width: availableWidth, height: isSmallScreen ? 180 : isWideScreen ? 300 : 220 };
-      case 'table':
-        const tableRows = contentInfo?.rows ?? 3;
-        return { width: availableWidth, height: tableRows * (isSmallScreen ? 32 : isWideScreen ? 40 : 36) + 20 };
-      case 'code':
-        const codeLines = contentInfo?.lines ?? 10;
-        return { width: availableWidth, height: codeLines * (isSmallScreen ? 16 : isWideScreen ? 20 : 18) + 40 };
-      case 'latex':
-        return { width: availableWidth, height: isSmallScreen ? 60 : isWideScreen ? 100 : 80 };
-      default:
-        return { width: availableWidth, height: 100 };
-    }
-  } else if (layoutMode === 'limited-horizontal') {
-    // 大屏手机：宽度减半
-    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP) / 2;
-    switch (type) {
-      case 'chart':
-        return { width: colWidth, height: isSmallScreen ? 180 : 220 };
-      case 'table':
-        return { width: colWidth, height: (contentInfo?.rows ?? 3) * 36 + 20 };
-      case 'code':
-        return { width: colWidth, height: (contentInfo?.lines ?? 10) * 18 + 40 };
-      case 'latex':
-        return { width: colWidth, height: 80 };
-      default:
-        return { width: colWidth, height: 100 };
-    }
-  } else {
-    // iPad：保持原有尺寸（但宽度不超过1/3）
-    const colWidth = (availableWidth - WHITEBOARD_CARD_GAP * 2) / 3;
-    switch (type) {
-      case 'chart':
-        return { width: Math.min(400, colWidth), height: 280 };
-      case 'table':
-        return { width: Math.min(500, colWidth), height: (contentInfo?.rows ?? 3) * 40 + 20 };
-      case 'code':
-        return { width: Math.min(500, colWidth), height: 300 };
-      case 'latex':
-        return { width: Math.min(400, colWidth), height: 100 };
-      default:
-        return { width: colWidth, height: 100 };
-    }
+  switch (type) {
+    case 'chart':
+      return { width: availableWidth, height: 200 };
+    case 'table':
+      const tableRows = contentInfo?.rows ?? 3;
+      return { width: availableWidth, height: tableRows * 30 + 20 };
+    case 'code':
+      const codeLines = contentInfo?.lines ?? 10;
+      return { width: availableWidth, height: codeLines * 15 + 40 };
+    case 'latex':
+      return { width: availableWidth, height: 60 };
+    default:
+      return { width: availableWidth, height: 80 };
   }
 }
 
@@ -213,19 +138,12 @@ export class MobileActionEngine {
       content = `<p style="font-size: ${fontSize}px;">${content}</p>`;
     }
 
-    // 根据屏幕宽度自适应布局
-    const layoutMode = getWhiteboardLayoutMode();
-
-    // 计算文本高度（根据内容长度估算）
+    // 计算文本高度（基准画布上的高度）
     const lines = content.split('\n').length;
-    const estimatedHeight = Math.max(
-      isSmallScreen ? 60 : isWideScreen ? 100 : 80,
-      lines * (fontSize * 1.4) + WHITEBOARD_CARD_PADDING * 2,
-    );
+    const estimatedHeight = Math.max(60, lines * 25 + WHITEBOARD_CARD_PADDING);
 
-    const adaptivePos = getAdaptivePosition(
+    const pos = getWhiteboardPosition(
       this.elementIndex++,
-      layoutMode,
       estimatedHeight,
     );
 
@@ -233,10 +151,10 @@ export class MobileActionEngine {
       id: params.elementId || generateId('text'),
       type: 'text',
       content,
-      left: adaptivePos.x,
-      top: adaptivePos.y,
-      width: adaptivePos.width,
-      height: adaptivePos.height,
+      left: pos.x,
+      top: pos.y,
+      width: pos.width,
+      height: pos.height,
       rotate: 0,
       defaultFontName: 'Microsoft YaHei',
       defaultColor: params.color ?? '#333333',
@@ -244,11 +162,9 @@ export class MobileActionEngine {
   }
 
   private drawShape(params: Record<string, any>): void {
-    const layoutMode = getWhiteboardLayoutMode();
-    const adaptivePos = getAdaptivePosition(
+    const pos = getWhiteboardPosition(
       this.elementIndex++,
-      layoutMode,
-      isSmallScreen ? 100 : isWideScreen ? 160 : 130,
+      100,
     );
 
     whiteboardStore.addElement({
@@ -256,10 +172,10 @@ export class MobileActionEngine {
       type: 'shape',
       viewBox: [1000, 1000] as [number, number],
       path: SHAPE_PATHS[params.shape] ?? SHAPE_PATHS.rectangle,
-      left: adaptivePos.x,
-      top: adaptivePos.y,
-      width: Math.min(adaptivePos.width, adaptivePos.height * 1.5),
-      height: adaptivePos.height,
+      left: pos.x,
+      top: pos.y,
+      width: Math.min(pos.width, pos.height * 1.5),
+      height: pos.height,
       rotate: 0,
       fill: params.fillColor ?? '#5b9bd5',
       fixedRatio: false,
@@ -291,20 +207,18 @@ export class MobileActionEngine {
     const latex = params.latex ?? params.content ?? '';
     if (!latex) return;
 
-    const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('latex', layoutMode);
-    const adaptivePos = getAdaptivePosition(
+    const size = getWhiteboardSize('latex');
+    const pos = getWhiteboardPosition(
       this.elementIndex++,
-      layoutMode,
       size.height,
     );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('latex'),
       type: 'latex',
-      left: adaptivePos.x,
-      top: adaptivePos.y,
-      width: adaptivePos.width,
+      left: pos.x,
+      top: pos.y,
+      width: pos.width,
       height: size.height,
       rotate: 0,
       latex,
@@ -313,20 +227,18 @@ export class MobileActionEngine {
   }
 
   private drawChart(params: Record<string, any>): void {
-    const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('chart', layoutMode);
-    const adaptivePos = getAdaptivePosition(
+    const size = getWhiteboardSize('chart');
+    const pos = getWhiteboardPosition(
       this.elementIndex++,
-      layoutMode,
       size.height,
     );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('chart'),
       type: 'chart',
-      left: adaptivePos.x,
-      top: adaptivePos.y,
-      width: adaptivePos.width,
+      left: pos.x,
+      top: pos.y,
+      width: pos.width,
       height: size.height,
       rotate: 0,
       chartType: params.chartType ?? 'bar',
@@ -354,24 +266,22 @@ export class MobileActionEngine {
       })),
     );
 
-    const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('table', layoutMode, { rows });
-    const adaptivePos = getAdaptivePosition(
+    const size = getWhiteboardSize('table', { rows });
+    const pos = getWhiteboardPosition(
       this.elementIndex++,
-      layoutMode,
       size.height,
     );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('table'),
       type: 'table',
-      left: adaptivePos.x,
-      top: adaptivePos.y,
-      width: adaptivePos.width,
+      left: pos.x,
+      top: pos.y,
+      width: pos.width,
       height: size.height,
       rotate: 0,
       colWidths,
-      cellMinHeight: isSmallScreen ? 32 : isWideScreen ? 40 : 36,
+      cellMinHeight: 30,
       data: tableData,
       outline: params.outline ?? { width: 2, style: 'solid', color: '#eeece1' },
       theme: params.theme
@@ -386,27 +296,25 @@ export class MobileActionEngine {
 
     const codeLines = codeToLines(code);
 
-    const layoutMode = getWhiteboardLayoutMode();
-    const size = getAdaptiveSize('code', layoutMode, { lines: codeLines.length });
-    const adaptivePos = getAdaptivePosition(
+    const size = getWhiteboardSize('code', { lines: codeLines.length });
+    const pos = getWhiteboardPosition(
       this.elementIndex++,
-      layoutMode,
       size.height,
     );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('code'),
       type: 'code',
-      left: adaptivePos.x,
-      top: adaptivePos.y,
-      width: adaptivePos.width,
+      left: pos.x,
+      top: pos.y,
+      width: pos.width,
       height: size.height,
       rotate: 0,
       language: params.language ?? 'text',
       lines: codeLines,
       fileName: params.fileName,
       showLineNumbers: true,
-      fontSize: isSmallScreen ? 12 : isWideScreen ? 16 : 14,
+      fontSize: 14,
     } as any);
   }
 
