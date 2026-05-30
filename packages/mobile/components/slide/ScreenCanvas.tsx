@@ -131,7 +131,8 @@ export function ScreenCanvas({
   }, [isWhiteboard, effectiveWidth, layoutMode]);
 
   // 计算元素所需的最小高度（防止内容溢出）
-  // 白板模式/scrollable模式下计算完整高度，精确模式下也需要考虑所有元素
+  // 白板模式：基于基准画布坐标计算，然后缩放
+  // 非 whiteboard 模式：直接计算像素高度
   const minContentHeight = useMemo(() => {
     if (elements.length === 0) {
       // 白板模式没有元素时，使用默认高度
@@ -150,11 +151,17 @@ export function ScreenCanvas({
       maxBottom = Math.max(maxBottom, bottom);
     });
 
-    // 基础高度：白板模式使用元素最大底部坐标，精确模式使用 VIEWPORT_HEIGHT
-    const padding = scrollable || isWhiteboard ? 40 : 20;
-    const baseHeight = scrollable || isWhiteboard ? maxBottom : VIEWPORT_HEIGHT;
-    return Math.max(baseHeight, maxBottom + padding);
-  }, [elements, scrollable, isWhiteboard]);
+    // 白板模式：maxBottom 是基准画布坐标，需要缩放
+    if (isWhiteboard) {
+      const scaledHeight = maxBottom * canvasScaleX; // 使用 scaleX 作为统一缩放
+      console.log(`[ScreenCanvas] minContentHeight: maxBottom=${maxBottom}, scaledHeight=${scaledHeight}, scaleX=${canvasScaleX}`);
+      return scaledHeight + 40; // 加上底部 padding
+    }
+
+    // 非白板模式：直接使用像素值
+    const padding = scrollable ? 40 : 20;
+    return Math.max(VIEWPORT_HEIGHT, maxBottom + padding);
+  }, [elements, scrollable, isWhiteboard, canvasScaleX]);
 
   // 精确格式：根据内容高度计算canvas尺寸
   const canvasHeight = useMemo(() => {
@@ -252,7 +259,7 @@ export function ScreenCanvas({
               backgroundStyle,
               {
                 width: canvasWidth,
-                minHeight: (canvasHeight || minContentHeight * canvasScaleY),
+                minHeight: canvasHeight || minContentHeight,
               },
             ]}
           >
