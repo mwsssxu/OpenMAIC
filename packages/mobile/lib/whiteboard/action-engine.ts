@@ -115,6 +115,7 @@ export class MobileActionEngine {
         this.drawCode(params);
         break;
       case 'wb_clear':
+        console.log('[ActionEngine] wb_clear: resetting elementIndex to 0');
         whiteboardStore.clear();
         this.elementIndex = 0; // 清空时重置计数器
         break;
@@ -151,12 +152,15 @@ export class MobileActionEngine {
     const padding = WHITEBOARD_CARD_PADDING * 2; // 上下 padding
     const estimatedHeight = Math.max(80, lines * lineHeight + padding);
 
-    console.log(`[ActionEngine] drawText: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}`);
+    const currentIndex = this.elementIndex;
+    console.log(`[ActionEngine] drawText #${currentIndex}: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}`);
 
     const pos = getWhiteboardPosition(
-      this.elementIndex++,
+      currentIndex,
       estimatedHeight,
     );
+
+    this.elementIndex++; // 递增计数器
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('text'),

@@ -1369,6 +1369,12 @@ export default function ClassroomScreen() {
       mobileActionEngine.execute('wb_clear', {});
       setWhiteboardTextContent(null);
     } else if (actionName.startsWith('wb_')) {
+      // 如果是第一次添加白板内容，先清空并重置
+      const currentElements = whiteboardStore.getElements();
+      if (currentElements.length === 0) {
+        console.log('[Discussion] First whiteboard action, resetting layout');
+        mobileActionEngine.resetLayout();
+      }
       mobileActionEngine.execute(actionName, params);
       setShowWhiteboard(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
