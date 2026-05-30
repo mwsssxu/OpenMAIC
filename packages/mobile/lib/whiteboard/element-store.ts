@@ -12,6 +12,10 @@ class WhiteboardElementStore {
     return this.elements;
   }
 
+  isEmpty(): boolean {
+    return this.elements.length === 0;
+  }
+
   addElement(el: PPTElement): void {
     let withId = { ...el } as PPTElement;
     if (!withId.id) {

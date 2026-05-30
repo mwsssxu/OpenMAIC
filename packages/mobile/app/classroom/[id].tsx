@@ -104,45 +104,75 @@ function cleanJsonFromText(text: string): string {
     // 不是完整 JSON，继续清理
   }
 
+  let cleaned = text;
+
   // 检测是否包含 JSON 结构片段
-  if (text.includes('{"type"') || text.includes('[{"type"') || text.includes('"content":')) {
-    let cleaned = text;
+  if (cleaned.includes('{"type"') || cleaned.includes('[{"type"') || cleaned.includes('"content":')) {
     // 移除完整的 JSON 数组
-    cleaned = cleaned.replace(/\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]/g, '');
+    cleaned = cleaned.replace(/\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]/gs, '');
     // 移除单个 JSON 对象
-    cleaned = cleaned.replace(/\{\s*"type"\s*:\s*"[^"]*"[^}]*\}/g, '');
+    cleaned = cleaned.replace(/\{\s*"type"\s*:\s*"[^"]*"[^}]*\}/gs, '');
     // 移除 JSON 字段残留
     cleaned = cleaned.replace(/"(?:type|content|name|params|x|y|width|height|fontSize|color)"\s*:\s*"[^"]*"/g, '');
     cleaned = cleaned.replace(/"(?:x|y|width|height|fontSize)"\s*:\s*\d+/g, '');
-    // 移除符号残留
-    cleaned = cleaned.replace(/[\[\]{},]/g, '');
-    // 清理多余空白
-    cleaned = cleaned.replace(/\n\s*\n/g, '\n\n').trim();
-    return cleaned;
   }
 
-  // 检测扁平化 action 格式：typeactionnamewb_draw_text...
-  // 或者多行格式：action\nwb_draw_text\n...
-  if (text.includes('typeaction') || text.match(/^action\s+\w+/m)) {
-    let cleaned = text;
+  // 检测扁平化/损坏的 action 格式
+  // 包括：typeactionnamewb_draw_text..., w_textparamscontent..., nnamewb_dra... (截断格式)
+  const hasActionResidue = cleaned.includes('typeaction') ||
+    cleaned.match(/^(action|w_\w+)\s/m) ||
+    cleaned.match(/w_(text|shape|latex|chart|table|code|open|close|clear)/) ||
+    cleaned.match(/namewb_/) ||
+    cleaned.match(/[a-z]*wb_dra/);
+
+  if (hasActionResidue) {
     // 移除扁平化格式：typeactionname{action_name}...
     cleaned = cleaned.replace(/typeactionname[a-z_]+\s*paramsshape[a-z_]+[^a-z\s]*/gi, '');
     cleaned = cleaned.replace(/typeactionname[a-z_]+[^\n]*/gi, '');
-    // 移除多行 action 块：action wb_draw_text ... (直到遇到两个换行或文本开始)
+    // 移除截断/损坏的格式：nnamewb_dra..., namewb_draw...
+    cleaned = cleaned.replace(/[a-z]*namewb_[a-z_]*[^\n]*/gi, '');
+    cleaned = cleaned.replace(/[a-z]*wb_dra[a-z_]*[^\n]*/gi, '');
+    cleaned = cleaned.replace(/w_(text|shape|latex|chart|table|code|open|close|clear|delete|edit_code)\w*/gi, '');
+    // 移除 params 关键字及其后的参数块
+    cleaned = cleaned.replace(/params[a-z]*\s*[^\n]*/gi, '');
+    // 移除多行 action 块
     cleaned = cleaned.replace(/^action\s+[a-z_]+\s*\n([^a-z\n][^\n]*\n)*/gim, '');
-    // 移除残留的关键字
-    cleaned = cleaned.replace(/\b(type|action|name|params|elementId|wb_open|wb_close|wb_clear|wb_draw_text|wb_draw_shape)\b/gi, '');
-    // 移除纯数字行（坐标等）
-    cleaned = cleaned.replace(/^\s*\d+\s*\n/gm, '');
-    // 移除颜色值行
-    cleaned = cleaned.replace(/#[0-f]{6}\s*/gi, '');
-    // 清理多余空白和空行
-    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n');
-    cleaned = cleaned.trim();
-    return cleaned;
   }
 
-  return text;
+  // 统一清理所有残留的无效字符
+  // 移除残留的关键字
+  cleaned = cleaned.replace(/\b(type|action|name|params|elementId|wb_open|wb_close|wb_clear|wb_draw_text|wb_draw_shape|wb_draw_latex|wb_draw_chart|wb_draw_table|wb_draw_code|wb_draw_line|wb_delete|wb_edit_code)\b/gi, '');
+  // 移除参数字段名
+  cleaned = cleaned.replace(/\b(content|x|y|width|height|fontSize|color|shape|data|latex|code|language|fileName|fillColor|startX|startY|endX|endY|points|style|chartType)\b/gi, '');
+  // 移除 JSON 符号残留
+  cleaned = cleaned.replace(/[\[\]{}]/g, '');
+  // 移除引号残留
+  cleaned = cleaned.replace(/""\s*:\s*""/g, '');
+  cleaned = cleaned.replace(/""\s*,?\s*""/g, '');
+  cleaned = cleaned.replace(/:\s*""/g, '');
+  cleaned = cleaned.replace(/"[^"]*":\s*"[^"]*"/g, '');
+  cleaned = cleaned.replace(/""/g, '');
+  // 移除纯数字行（坐标等）
+  cleaned = cleaned.replace(/^\s*\d+\s*\n/gm, '');
+  cleaned = cleaned.replace(/\b\d{2,}\b/g, '');
+  // 移除颜色值
+  cleaned = cleaned.replace(/#[0-9a-fA-F]{3,6}\s*/g, '');
+  // 移除反斜杠转义序列（LaTeX 残留）
+  cleaned = cleaned.replace(/\\[a-zA-Z]+\s*\{[^}]*\}/g, '');
+  cleaned = cleaned.replace(/\\[a-zA-Z]+/g, '');
+  // 移除代码块残留
+  cleaned = cleaned.replace(/```\w*\n?/g, '');
+
+  // 最终清理：移除连续的无效字符
+  cleaned = cleaned.replace(/[,:;]+/g, ' '); // 移除连续的标点
+  cleaned = cleaned.replace(/\s+/g, ' ').trim(); // 合并空白
+
+  // 检查清理后是否有有效内容（至少有一些字母或中文）
+  if (!cleaned.match(/[一-鿿\w]{3,}/)) {
+    return ''; // 无有效内容，返回空字符串
+  }
+
+  return cleaned;
 }
 
 // 场景大纲类型（用于后台创建）
@@ -792,6 +822,7 @@ export default function ClassroomScreen() {
   useEffect(() => {
     return () => {
       playbackEngineRef.current?.dispose();
+      mobileActionEngine.resetLayout();
       whiteboardStore.clear();
     };
   }, []);
@@ -812,6 +843,27 @@ export default function ClassroomScreen() {
       setQuizSubmitted(false);
     }
   }
+
+  // 统一的白板动作处理（Chat 和 Discussion 模式共用）
+  const handleWhiteboardAction = useCallback((actionName: string, params: any, context: 'Chat' | 'Discussion') => {
+    if (actionName === 'wb_clear') {
+      mobileActionEngine.execute('wb_clear', {});
+      setWhiteboardTextContent(null);
+    } else if (actionName === 'wb_close') {
+      setShowWhiteboard(false);
+      mobileActionEngine.execute('wb_clear', {});
+      setWhiteboardTextContent(null);
+    } else if (actionName.startsWith('wb_')) {
+      // 如果是第一次添加白板内容，先重置布局
+      if (whiteboardStore.isEmpty()) {
+        console.log(`[${context}] First whiteboard action, resetting layout`);
+        mobileActionEngine.resetLayout();
+      }
+      mobileActionEngine.execute(actionName, params);
+      setShowWhiteboard(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, []);
 
   // Interactive/PBL 场景 WebView 回调
   const handleInteractiveComplete = useCallback((data: any) => {
@@ -1101,19 +1153,7 @@ export default function ClassroomScreen() {
             const actionName = event.actionName || '';
             const params = event.params || {};
             console.log('[Chat] Action:', actionName);
-
-            if (actionName === 'wb_clear') {
-              mobileActionEngine.execute('wb_clear', {});
-              setWhiteboardTextContent(null);
-            } else if (actionName === 'wb_close') {
-              setShowWhiteboard(false);
-              mobileActionEngine.execute('wb_clear', {});
-              setWhiteboardTextContent(null);
-            } else if (actionName.startsWith('wb_')) {
-              mobileActionEngine.execute(actionName, params);
-              setShowWhiteboard(true);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
+            handleWhiteboardAction(actionName, params, 'Chat');
           } else if (event.type === 'agent_end') {
             const agentId = event.agentId || '';
             setSpeakingAgentId(null);
@@ -1361,24 +1401,7 @@ export default function ClassroomScreen() {
 
   // 处理讨论中的 action
   function handleDiscussionAction(actionName: string, params: any) {
-    if (actionName === 'wb_clear') {
-      mobileActionEngine.execute('wb_clear', {});
-      setWhiteboardTextContent(null);
-    } else if (actionName === 'wb_close') {
-      setShowWhiteboard(false);
-      mobileActionEngine.execute('wb_clear', {});
-      setWhiteboardTextContent(null);
-    } else if (actionName.startsWith('wb_')) {
-      // 如果是第一次添加白板内容，先清空并重置
-      const currentElements = whiteboardStore.getElements();
-      if (currentElements.length === 0) {
-        console.log('[Discussion] First whiteboard action, resetting layout');
-        mobileActionEngine.resetLayout();
-      }
-      mobileActionEngine.execute(actionName, params);
-      setShowWhiteboard(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
+    handleWhiteboardAction(actionName, params, 'Discussion');
   }
 
   // 播放讨论 TTS

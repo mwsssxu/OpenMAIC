@@ -27,7 +27,7 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
  * 垂直排列：从上至下，宽度占满
  */
 function getWhiteboardPosition(
-  yIndex: number,
+  startY: number,
   preferredHeight?: number,
 ): { x: number; y: number; width: number; height: number } {
   const margin = WHITEBOARD_CARD_GAP;
@@ -36,18 +36,14 @@ function getWhiteboardPosition(
 
   // 默认高度（基准画布上的高度）- 根据内容类型调整
   // 文本元素需要更大的高度以容纳内容
-  const defaultHeight = preferredHeight ?? 80;
-  // 每个"行"的高度（考虑元素高度 + 间距）
-  const rowHeight = defaultHeight + WHITEBOARD_CARD_GAP;
+  const height = preferredHeight ?? 80;
 
   const position = {
     x: margin,
-    y: yIndex * rowHeight,
+    y: startY,
     width: availableWidth,
-    height: defaultHeight,
+    height,
   };
-
-  console.log(`[ActionEngine] element ${yIndex}: y=${position.y}, height=${position.height}, rowHeight=${rowHeight}, preferredHeight=${preferredHeight}`);
 
   return position;
 }
@@ -79,11 +75,31 @@ function getWhiteboardSize(
 
 export class MobileActionEngine {
   private lineIdCounter = 0;
-  private elementIndex = 0; // 用于自适应布局的计数器
+  private currentY = 0; // 当前累计 Y 坐标
 
-  /** 重置元素计数器（用于新白板内容） */
+  /** 重置布局（用于新白板内容） */
   resetLayout(): void {
-    this.elementIndex = 0;
+    this.currentY = 0;
+  }
+
+  /** 从现有元素重新计算 currentY（用于删除元素后保持布局一致） */
+  private recalculateCurrentY(): void {
+    const elements = whiteboardStore.getElements();
+    if (elements.length === 0) {
+      this.currentY = 0;
+      return;
+    }
+    // 找到最底部的元素位置
+    let maxBottom = 0;
+    for (const el of elements) {
+      const top = (el as any).top || 0;
+      const height = (el as any).height || 80;
+      const bottom = top + height;
+      if (bottom > maxBottom) {
+        maxBottom = bottom;
+      }
+    }
+    this.currentY = maxBottom + WHITEBOARD_CARD_GAP;
   }
 
   execute(actionName: string, params: Record<string, any>): void {
@@ -115,13 +131,15 @@ export class MobileActionEngine {
         this.drawCode(params);
         break;
       case 'wb_clear':
-        console.log('[ActionEngine] wb_clear: resetting elementIndex to 0');
+        console.log('[ActionEngine] wb_clear: resetting currentY to 0');
         whiteboardStore.clear();
-        this.elementIndex = 0; // 清空时重置计数器
+        this.currentY = 0;
         break;
       case 'wb_delete':
         if (params.elementId) {
           whiteboardStore.deleteElement(params.elementId);
+          // 删除元素后重新计算 currentY
+          this.recalculateCurrentY();
         }
         break;
     }
@@ -152,15 +170,15 @@ export class MobileActionEngine {
     const padding = WHITEBOARD_CARD_PADDING * 2; // 上下 padding
     const estimatedHeight = Math.max(80, lines * lineHeight + padding);
 
-    const currentIndex = this.elementIndex;
-    console.log(`[ActionEngine] drawText #${currentIndex}: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}`);
+    console.log(`[ActionEngine] drawText: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}, currentY=${this.currentY}`);
 
     const pos = getWhiteboardPosition(
-      currentIndex,
+      this.currentY,
       estimatedHeight,
     );
 
-    this.elementIndex++; // 递增计数器
+    // 更新累计 Y 坐标（当前元素高度 + 间距）
+    this.currentY += estimatedHeight + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('text'),
@@ -177,10 +195,12 @@ export class MobileActionEngine {
   }
 
   private drawShape(params: Record<string, any>): void {
+    const height = 100;
     const pos = getWhiteboardPosition(
-      this.elementIndex++,
-      100,
+      this.currentY,
+      height,
     );
+    this.currentY += height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('shape'),
@@ -224,9 +244,10 @@ export class MobileActionEngine {
 
     const size = getWhiteboardSize('latex');
     const pos = getWhiteboardPosition(
-      this.elementIndex++,
+      this.currentY,
       size.height,
     );
+    this.currentY += size.height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('latex'),
@@ -244,9 +265,10 @@ export class MobileActionEngine {
   private drawChart(params: Record<string, any>): void {
     const size = getWhiteboardSize('chart');
     const pos = getWhiteboardPosition(
-      this.elementIndex++,
+      this.currentY,
       size.height,
     );
+    this.currentY += size.height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('chart'),
@@ -283,9 +305,10 @@ export class MobileActionEngine {
 
     const size = getWhiteboardSize('table', { rows });
     const pos = getWhiteboardPosition(
-      this.elementIndex++,
+      this.currentY,
       size.height,
     );
+    this.currentY += size.height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('table'),
@@ -313,9 +336,10 @@ export class MobileActionEngine {
 
     const size = getWhiteboardSize('code', { lines: codeLines.length });
     const pos = getWhiteboardPosition(
-      this.elementIndex++,
+      this.currentY,
       size.height,
     );
+    this.currentY += size.height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('code'),

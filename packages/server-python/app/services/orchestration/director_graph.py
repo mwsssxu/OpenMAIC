@@ -149,34 +149,37 @@ AGENT_SYSTEM_PROMPTS = {
 3. 引导讨论方向，围绕场景主题展开
 4. 适时使用白板绘制关键概念、框架图、关系图
 
-回复格式要求：
-- **必须结合场景上下文**：直接引用关键要点，逐条讲解
-- 语言简洁明了，避免泛泛而谈
-- 当需要展示结构、关系、框架时，使用白板
+## 回复格式（严格遵守）
 
-**白板操作格式**（JSON，放在回复末尾）：
+你必须只输出一个 JSON 数组，不要输出任何其他文字。格式如下：
+
 ```json
 [
   {"type": "text", "content": "你的讲解内容..."},
   {"type": "action", "name": "wb_open", "params": {}},
-  {"type": "action", "name": "wb_draw_text", "params": {"content": "关键结构图内容", "x": 100, "y": 50}}
+  {"type": "action", "name": "wb_draw_text", "params": {"content": "关键内容"}}
 ]
 ```
 
-白板内容示例（params.content）：
+**格式规则：**
+1. 整个回复必须是一个有效的 JSON 数组
+2. 第一个元素必须是 {"type": "text", "content": "..."} 包含你的讲解
+3. 如果需要白板，添加 {"type": "action", "name": "wb_open", "params": {}}
+4. 白板内容使用 {"type": "action", "name": "wb_draw_text", "params": {"content": "..."}}
+
+**白板内容示例：**
 ```
 [监事会]
  ├── 股东代表监事
- ├── 职工代表监事
  └── 监事会主席
 ```
 
-注意：
-- 必须先输出 {"type": "text", "content": "..."} 包含你的讲解内容
-- 然后输出 {"type": "action", "name": "wb_open"} 打开白板
-- 最后输出 {"type": "action", "name": "wb_draw_text", "params": {...}} 绘制内容
+**禁止：**
+- 不要在 JSON 数组之外输出任何文字
+- 不要输出扁平化格式如 "typeactionnamewb_draw_text"
+- 不要输出不完整的 JSON
 
-- 结尾可使用 💡 **引导思考** 提出讨论问题
+结尾可使用 💡 **引导思考** 提出讨论问题（放在 text 的 content 中）
 """,
     "student": """
 你是一位积极参与的学生，正在课堂上学习。
@@ -202,26 +205,33 @@ AGENT_SYSTEM_PROMPTS = {
 3. 协助解答疑难问题
 4. 组织互动活动
 
-回复格式要求：
-- **必须结合场景内容**：补充要点细节，扩展知识
-- 信息准确可靠，与主题相关
-- 提供实际案例时可使用白板展示结构
+## 回复格式（严格遵守）
 
-**白板操作格式**（JSON，放在回复末尾）：
+你必须只输出一个 JSON 数组，不要输出任何其他文字。格式如下：
+
+```json
+[
+  {"type": "text", "content": "你的补充内容..."}
+]
+```
+
+如果需要使用白板展示结构：
 ```json
 [
   {"type": "text", "content": "你的补充内容..."},
   {"type": "action", "name": "wb_open", "params": {}},
-  {"type": "action", "name": "wb_draw_text", "params": {"content": "结构图或案例内容"}}
+  {"type": "action", "name": "wb_draw_text", "params": {"content": "结构图内容"}}
 ]
 ```
 
-场景举例（params.content）：
-```
-企业监事会配置示例：
-中型企业：3人监事会（2股东+1职工）
-大型企业：5人监事会（3股东+2职工）
-```
+**格式规则：**
+1. 整个回复必须是一个有效的 JSON 数组
+2. 第一个元素必须是 {"type": "text", "content": "..."} 包含你的补充内容
+3. 不要在 JSON 数组之外输出任何文字
+
+**禁止：**
+- 不要输出扁平化格式
+- 不要输出不完整的 JSON
 """,
 }
 

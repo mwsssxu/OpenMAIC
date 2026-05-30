@@ -66,11 +66,11 @@ export function getWhiteboardLayoutMode(): WhiteboardLayoutMode {
   }
 }
 
-/** 白板卡片间距 */
-export const WHITEBOARD_CARD_GAP = isSmallScreen ? 8 : isWideScreen ? 16 : 12;
+/** 白板卡片间距（元素之间的垂直间距） */
+export const WHITEBOARD_CARD_GAP = isSmallScreen ? 16 : isWideScreen ? 28 : 20;
 
 /** 白板卡片内边距 */
-export const WHITEBOARD_CARD_PADDING = isSmallScreen ? 12 : isWideScreen ? 16 : 14;
+export const WHITEBOARD_CARD_PADDING = isSmallScreen ? 16 : isWideScreen ? 24 : 20;
 
 /**
  * 获取当前设备断点（与 responsive.ts 保持一致）

@@ -154,8 +154,11 @@ export function ScreenCanvas({
     // 白板模式：maxBottom 是基准画布坐标，需要缩放
     if (isWhiteboard) {
       const scaledHeight = maxBottom * canvasScaleX; // 使用 scaleX 作为统一缩放
-      console.log(`[ScreenCanvas] minContentHeight: maxBottom=${maxBottom}, scaledHeight=${scaledHeight}, scaleX=${canvasScaleX}`);
-      return scaledHeight + 40; // 加上底部 padding
+      // 白板元素使用 minHeight，实际高度可能超出预设值
+      // 增加安全边距：每个元素可能额外扩展 20-40px
+      const safetyMargin = elements.length * 30;
+      console.log(`[ScreenCanvas] minContentHeight: maxBottom=${maxBottom}, scaledHeight=${scaledHeight}, scaleX=${canvasScaleX}, safetyMargin=${safetyMargin}`);
+      return scaledHeight + 60 + safetyMargin; // 加上顶部和底部 padding + 安全边距
     }
 
     // 非白板模式：直接使用像素值
