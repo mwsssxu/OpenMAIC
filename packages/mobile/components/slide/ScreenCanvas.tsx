@@ -1,22 +1,10 @@
 /**
  * ScreenCanvas - Main slide canvas for Mobile
- *
  * Renders slide content using the same positioning algorithm as Web
- *
- * Web端定位算法（关键）：
- * - viewportSize = 1000, viewportRatio = 0.5625 (16:9)
- * - 外层容器：缩放后的尺寸 (viewportWidth * scale, viewportHeight * scale)
- * - 内层内容：原始尺寸 (viewportWidth, viewportHeight)，通过CSS scale变换
- * - 元素坐标：基于原始viewport的left/top
- *
- * Mobile端适配：
- * - React Native不支持CSS transform scale
- * - 采用Web端相同的scale计算
- * - 元素直接使用缩放后的坐标（原始坐标 * scale）
  */
 
 import React, { useRef, useMemo, useCallback, useState } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, ScrollView } from 'react-native';
 import { ScreenElement } from './ScreenElement';
 import { SpotlightOverlay } from './SpotlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
@@ -27,7 +15,6 @@ import { useSlideBackgroundStyle } from './hooks/useViewportSize';
 import { VIEWPORT_SIZE, VIEWPORT_HEIGHT } from './constants';
 import { isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
 
-// 动态边距：小屏 12px，正常 20px，宽屏 30px
 const MARGIN = isSmallScreen ? 12 : isWideScreen ? 30 : 20;
 
 // Helper to check if element is a line
@@ -95,40 +82,61 @@ export function ScreenCanvas({
   const layoutMode = useMemo(() => detectLayoutMode(elements), [elements]);
 
   // 精确格式：双轴缩放
-  // scrollable 模式下使用屏幕宽度，非 scrollable 使用 containerSize
+  // 白板模式：使用固定画布尺寸（与 Web 端一致：1000×562.5）
   const effectiveWidth = useMemo(() => {
+    // 白板模式：使用容器实际宽度
+    if (isWhiteboard && containerSize.width > 0) {
+      return containerSize.width;
+    }
     if (scrollable) {
-      // scrollable 模式：使用屏幕宽度减去 padding
-      return screenWidth - 40; // 左右各 20 padding
+      return containerSize.width > 0 ? containerSize.width : screenWidth;
     }
     // 非 scrollable 模式：使用 containerSize
     return containerSize.width > 0 ? containerSize.width : screenWidth - 40;
-  }, [scrollable, containerSize.width, screenWidth]);
+  }, [scrollable, isWhiteboard, containerSize.width, screenWidth]);
+
+  // 白板画布基准尺寸（与 Web 端一致）
+  const whiteboardCanvasWidth = 1000;
 
   const canvasScaleX = useMemo(() => {
+    // 白板模式：将 1000px 基准画布缩放到容器宽度
+    if (isWhiteboard && effectiveWidth > 0) {
+      const scale = effectiveWidth / whiteboardCanvasWidth;
+      console.log(`[ScreenCanvas] whiteboard scale: effectiveWidth=${effectiveWidth}, scaleX=${scale}`);
+      return scale;
+    }
     if (layoutMode !== 'precise') return 1;
     if (effectiveWidth === 0) return 1;
     return (effectiveWidth - MARGIN) / VIEWPORT_SIZE;
-  }, [layoutMode, effectiveWidth]);
+  }, [isWhiteboard, effectiveWidth, layoutMode]);
 
+  // 白板模式使用统一的缩放比例
   const canvasScaleY = useMemo(() => {
+    // 白板模式：使用 X 轴缩放（保持宽高比）
+    if (isWhiteboard) return canvasScaleX;
     if (layoutMode !== 'precise') return 1;
     if (containerSize.height === 0) return 1;
     const targetHeight = containerSize.height - MARGIN * 2;
     return targetHeight / VIEWPORT_HEIGHT;
-  }, [layoutMode, containerSize.height]);
+  }, [isWhiteboard, canvasScaleX, layoutMode, containerSize.height]);
 
   // Canvas尺寸计算
-  // 简化格式：宽度固定，高度自适应（内容撑开）
-  // scrollable 模式：使用 effectiveWidth（屏幕宽度）
+  // 白板模式：宽度使用容器宽度，高度根据内容计算
   const canvasWidth = useMemo(() => {
+    if (isWhiteboard) {
+      // 白板模式：使用容器实际宽度
+      return effectiveWidth;
+    }
     return effectiveWidth - MARGIN;
-  }, [layoutMode, effectiveWidth]);
+  }, [isWhiteboard, effectiveWidth, layoutMode]);
 
   // 计算元素所需的最小高度（防止内容溢出）
-  // scrollable模式下计算完整高度，精确模式下也需要考虑所有元素
+  // 白板模式/scrollable模式下计算完整高度，精确模式下也需要考虑所有元素
   const minContentHeight = useMemo(() => {
-    if (elements.length === 0) return VIEWPORT_HEIGHT;
+    if (elements.length === 0) {
+      // 白板模式没有元素时，使用默认高度
+      return isWhiteboard ? 200 : VIEWPORT_HEIGHT;
+    }
 
     // 遍历所有元素计算最大底部坐标
     let maxBottom = 0;
@@ -142,30 +150,29 @@ export function ScreenCanvas({
       maxBottom = Math.max(maxBottom, bottom);
     });
 
-    // 基础高度：至少VIEWPORT_HEIGHT，加上底部边距
-    // scrollable模式：使用实际内容高度（更宽松）
-    const padding = scrollable ? 40 : 20;
-    const baseHeight = scrollable ? maxBottom : VIEWPORT_HEIGHT;
+    // 基础高度：白板模式使用元素最大底部坐标，精确模式使用 VIEWPORT_HEIGHT
+    const padding = scrollable || isWhiteboard ? 40 : 20;
+    const baseHeight = scrollable || isWhiteboard ? maxBottom : VIEWPORT_HEIGHT;
     return Math.max(baseHeight, maxBottom + padding);
-  }, [elements, scrollable]);
+  }, [elements, scrollable, isWhiteboard]);
 
   // 精确格式：根据内容高度计算canvas尺寸
   const canvasHeight = useMemo(() => {
     if (layoutMode === 'simplified') {
       return undefined; // 简化格式自适应高度
     }
-    if (containerSize.height === 0) return undefined;
+    if (containerSize.height === 0 && !isWhiteboard) return undefined;
 
-    // scrollable模式：使用完整内容高度
-    if (scrollable) {
-      return minContentHeight * canvasScaleY;
+    // 白板模式/scrollable模式：使用完整内容高度（无需缩放）
+    if (scrollable || isWhiteboard) {
+      return minContentHeight;
     }
 
     // 非滚动模式：使用容器可用高度
     const availableHeight = containerSize.height - MARGIN * 2;
     const contentNeededHeight = minContentHeight * canvasScaleY;
     return Math.max(availableHeight, contentNeededHeight);
-  }, [layoutMode, containerSize.height, canvasScaleY, minContentHeight, scrollable]);
+  }, [layoutMode, containerSize.height, canvasScaleY, minContentHeight, scrollable, isWhiteboard]);
 
   // Canvas位置
   const viewportLeft = 10;
@@ -231,39 +238,26 @@ export function ScreenCanvas({
       style={styles.container}
       onLayout={handleLayout}
     >
-      {/* Canvas容器 */}
-      <View
-        style={[
-          styles.canvas,
-          backgroundStyle,
-          layoutMode === 'simplified' ? {
-            position: 'absolute',
-            left: viewportLeft,
-            top: viewportTop,
-            width: canvasWidth,
-          } : {
-            position: 'absolute',
-            left: viewportLeft,
-            top: viewportTop,
-            width: canvasWidth,
-            height: canvasHeight,
-          },
-        ]}
-      >
-        {/* 简化格式渲染 */}
-        {layoutMode === 'simplified' && (
-          <SimplifiedLayout
-            elements={elements}
-            theme={activeTheme}
-            containerSize={containerSize}
-          />
-        )}
-
-        {/* 精确格式渲染 */}
-        {layoutMode === 'precise' && (
-          <>
-            {/* 内容层 - 元素使用缩放后的坐标 */}
-            {elements.map((element) => (
+      {/* 白板模式：使用 ScrollView 支持滚动 */}
+      {isWhiteboard ? (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollViewContent, styles.scrollViewContentWhiteboard]}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled
+        >
+          <View
+            style={[
+              styles.canvas,
+              backgroundStyle,
+              {
+                width: canvasWidth,
+                minHeight: (canvasHeight || minContentHeight * canvasScaleY),
+              },
+            ]}
+          >
+            {/* 精确格式渲染 */}
+            {layoutMode === 'precise' && elements.map((element) => (
               <ScreenElement
                 key={element.id}
                 element={element}
@@ -273,34 +267,88 @@ export function ScreenCanvas({
                 isWhiteboard={isWhiteboard}
               />
             ))}
-
-            {/* Spotlight overlay */}
-            {spotlightGeometry && canvasHeight && (
-              <SpotlightOverlay
-                geometry={spotlightGeometry}
-                dimness={spotlightOptions?.dimness ?? 0.7}
-                scaleX={canvasScaleX}
-                scaleY={canvasScaleY}
-                canvasWidth={canvasWidth}
-                canvasHeight={canvasHeight}
+            {/* 简化格式渲染 */}
+            {layoutMode === 'simplified' && (
+              <SimplifiedLayout
+                elements={elements}
+                theme={activeTheme}
+                containerSize={containerSize}
               />
             )}
+          </View>
+        </ScrollView>
+      ) : (
+        /* 普通模式 */
+        <View
+          style={[
+            styles.canvas,
+            backgroundStyle,
+            layoutMode === 'simplified' ? {
+              position: 'absolute',
+              left: viewportLeft,
+              top: viewportTop,
+              width: canvasWidth,
+            } : {
+              position: 'absolute',
+              left: viewportLeft,
+              top: viewportTop,
+              width: canvasWidth,
+              height: canvasHeight,
+            },
+          ]}
+        >
+          {/* 简化格式渲染 */}
+          {layoutMode === 'simplified' && (
+            <SimplifiedLayout
+              elements={elements}
+              theme={activeTheme}
+              containerSize={containerSize}
+            />
+          )}
 
-            {/* Laser pointer overlay */}
-            {laserPosition && canvasHeight && (
-              <LaserOverlay
-                position={laserPosition}
-                color={laserOptions?.color ?? '#ff3b30'}
-                duration={laserOptions?.duration ?? 500}
-                scaleX={canvasScaleX}
-                scaleY={canvasScaleY}
-                canvasWidth={canvasWidth}
-                canvasHeight={canvasHeight}
-              />
-            )}
-          </>
-        )}
-      </View>
+          {/* 精确格式渲染 */}
+          {layoutMode === 'precise' && (
+            <>
+              {/* 内容层 - 元素使用缩放后的坐标 */}
+              {elements.map((element) => (
+                <ScreenElement
+                  key={element.id}
+                  element={element}
+                  theme={activeTheme}
+                  scaleX={canvasScaleX}
+                  scaleY={canvasScaleY}
+                  isWhiteboard={isWhiteboard}
+                />
+              ))}
+
+              {/* Spotlight overlay */}
+              {spotlightGeometry && canvasHeight && (
+                <SpotlightOverlay
+                  geometry={spotlightGeometry}
+                  dimness={spotlightOptions?.dimness ?? 0.7}
+                  scaleX={canvasScaleX}
+                  scaleY={canvasScaleY}
+                  canvasWidth={canvasWidth}
+                  canvasHeight={canvasHeight}
+                />
+              )}
+
+              {/* Laser pointer overlay */}
+              {laserPosition && canvasHeight && (
+                <LaserOverlay
+                  position={laserPosition}
+                  color={laserOptions?.color ?? '#ff3b30'}
+                  duration={laserOptions?.duration ?? 500}
+                  scaleX={canvasScaleX}
+                  scaleY={canvasScaleY}
+                  canvasWidth={canvasWidth}
+                  canvasHeight={canvasHeight}
+                />
+              )}
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -309,6 +357,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f7fa',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    padding: 10,
+  },
+  scrollViewContentWhiteboard: {
+    padding: 0, // 白板模式不需要额外 padding
   },
   canvas: {
     backgroundColor: '#ffffff',

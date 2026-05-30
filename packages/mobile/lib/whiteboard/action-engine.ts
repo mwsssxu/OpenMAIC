@@ -34,18 +34,22 @@ function getWhiteboardPosition(
   // 基准画布上的可用宽度（1000px - 边距）
   const availableWidth = WHITEBOARD_CANVAS_WIDTH - margin * 2;
 
-  // 默认高度（基准画布上的高度）
+  // 默认高度（基准画布上的高度）- 根据内容类型调整
+  // 文本元素需要更大的高度以容纳内容
   const defaultHeight = preferredHeight ?? 80;
   // 每个"行"的高度（考虑元素高度 + 间距）
   const rowHeight = defaultHeight + WHITEBOARD_CARD_GAP;
 
-  // 垂直布局：单列，从上至下排列
-  return {
+  const position = {
     x: margin,
     y: yIndex * rowHeight,
     width: availableWidth,
     height: defaultHeight,
   };
+
+  console.log(`[ActionEngine] element ${yIndex}: y=${position.y}, height=${position.height}, rowHeight=${rowHeight}, preferredHeight=${preferredHeight}`);
+
+  return position;
 }
 
 /**
@@ -139,8 +143,15 @@ export class MobileActionEngine {
     }
 
     // 计算文本高度（基准画布上的高度）
-    const lines = content.split('\n').length;
-    const estimatedHeight = Math.max(60, lines * 25 + WHITEBOARD_CARD_PADDING);
+    // 需要考虑：字体大小、行数、padding、边框等
+    const cleanText = content.replace(/<[^>]+>/g, '');
+    const lines = cleanText.split('\n').length;
+    // 每行高度 = fontSize * 1.5 (line-height)，加上 padding
+    const lineHeight = fontSize * 1.5;
+    const padding = WHITEBOARD_CARD_PADDING * 2; // 上下 padding
+    const estimatedHeight = Math.max(80, lines * lineHeight + padding);
+
+    console.log(`[ActionEngine] drawText: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}`);
 
     const pos = getWhiteboardPosition(
       this.elementIndex++,
