@@ -487,10 +487,10 @@ export class PlaybackEngine {
       const filePath = getAudioPath(cacheKey);
       if (filePath) {
         try {
-          // Read base64 from file using expo-file-system base64Sync()
           const { File } = require('expo-file-system');
           const file = new File(filePath);
           const base64 = file.base64Sync();
+          // Determine format from file extension
           const format = filePath.endsWith('.wav') ? 'wav' : 'mp3';
           this.audioCache.set(cacheKey, { base64, format });
           this.audioPlayer.cacheAudio(cacheKey, base64, format);

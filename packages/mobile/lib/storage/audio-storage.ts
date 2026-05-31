@@ -24,7 +24,8 @@ export function initAudioStorage(): void {
 }
 
 /**
- * 保存音频文件（同步版本，适用于小文件）
+ * 保存音频文件
+ * If a file with the same audioId already exists, delete it first to avoid errors.
  *
  * @param audioId - 音频 ID（不含扩展名）
  * @param base64 - base64 编码的音频数据
@@ -41,7 +42,12 @@ export function saveAudioFile(
   const audioDir = getAudioDirectory();
   const fileName = `${audioId}.${format}`;
 
-  // Create file and write base64 data
+  // Delete existing file first (avoid createFile error if file exists)
+  const existing = new File(audioDir, fileName);
+  if (existing.exists) {
+    existing.delete();
+  }
+
   const file = audioDir.createFile(fileName, `audio/${format}`);
   file.write(base64, { encoding: 'base64' });
 
@@ -75,10 +81,9 @@ export async function saveAudioFileAsync(
 }
 
 /**
- * 获取音频文件路径
+ * 获取音频文件路径（自动检测 mp3/wav 格式）
  *
- * @param audioId - 音频 ID
- * @param format - 音频格式（默认 mp3）
+ * @param audioId - 音频 ID（不含扩展名）
  * @returns 文件路径（如果不存在返回 null）
  */
 export function getAudioPath(
@@ -86,31 +91,40 @@ export function getAudioPath(
   format: string = 'mp3'
 ): string | null {
   const audioDir = getAudioDirectory();
-  const fileName = `${audioId}.${format}`;
-  const file = new File(audioDir, fileName);
 
-  if (file.exists) {
-    return file.uri;
+  // Try specified format first, then fallback to other formats
+  const formatsToTry = [format];
+  if (format !== 'mp3') formatsToTry.push('mp3');
+  if (format !== 'wav') formatsToTry.push('wav');
+
+  for (const fmt of formatsToTry) {
+    const fileName = `${audioId}.${fmt}`;
+    const file = new File(audioDir, fileName);
+    if (file.exists) {
+      return file.uri;
+    }
   }
   return null;
 }
 
 /**
- * 删除音频文件
+ * 删除音频文件（自动检测 mp3/wav 格式）
  *
- * @param audioId - 音频 ID
- * @param format - 音频格式
+ * @param audioId - 音频 ID（不含扩展名）
  */
 export function deleteAudioFile(
   audioId: string,
   format: string = 'mp3'
 ): void {
   const audioDir = getAudioDirectory();
-  const fileName = `${audioId}.${format}`;
-  const file = new File(audioDir, fileName);
 
-  if (file.exists) {
-    file.delete();
+  // Delete in all possible formats
+  for (const fmt of ['mp3', 'wav']) {
+    const fileName = `${audioId}.${fmt}`;
+    const file = new File(audioDir, fileName);
+    if (file.exists) {
+      file.delete();
+    }
   }
 }
 
