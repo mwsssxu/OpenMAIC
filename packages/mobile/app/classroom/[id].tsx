@@ -26,7 +26,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { apiClient } from '@/lib/api-client';
 import { saveAudioFile } from '@/lib/storage/audio-storage';
-import * as SecureStore from 'expo-secure-store';
 import { AudioPlayer } from '@/lib/playback/audio-player';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
@@ -330,7 +329,9 @@ export default function ClassroomScreen() {
   // 测验交互状态
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string | string[]>>({});
   const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, boolean>>({});
+  const [answerDetails, setAnswerDetails] = useState<Record<string, { correctAnswer?: string; aiComment?: string; isCorrect?: boolean }>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
 
   // ScrollView refs - 用于滚动定位
   const quizScrollRef = useRef<ScrollView>(null);
@@ -754,6 +755,32 @@ export default function ClassroomScreen() {
         onModeChange: (mode) => {
           setPlaybackMode(mode);
         },
+        onSpotlight: (elementId, dimness) => {
+          setSpotlightElementId(elementId);
+          // Compute spotlight rect from scene element bounds
+          const scene = engineRef.current?.getCurrentScene();
+          const content = (scene?.content as any)?.canvas;
+          if (content?.elements) {
+            const el = content.elements.find((e: any) => e.id === elementId);
+            if (el) {
+              // Scale element bounds to screen coordinates
+              const canvasWidth = content.width || 1280;
+              const canvasHeight = content.height || 720;
+              const { width: screenWidth } = require('react-native').Dimensions.get('window');
+              const scale = screenWidth / canvasWidth;
+              setSpotlightRect({
+                x: (el.left || 0) * scale,
+                y: (el.top || 0) * scale,
+                width: (el.width || 100) * scale,
+                height: (el.height || 100) * scale,
+              });
+            }
+          }
+        },
+        onClearEffects: () => {
+          setSpotlightElementId(null);
+          setSpotlightRect(null);
+        },
         onComplete: () => {
           // 播放完成
         },
@@ -911,6 +938,10 @@ export default function ClassroomScreen() {
   };
 
   const submitQuiz = async () => {
+    if (quizSubmitting) return;
+    setQuizSubmitting(true);
+
+    try {
     const scene = currentScene;
     if (!scene) {
       console.log('[Quiz] No scene found');
@@ -956,29 +987,16 @@ export default function ClassroomScreen() {
         const pts = q.points ?? 1;
 
         try {
-          // 获取token
-          const token = await SecureStore.getItemAsync('access_token');
-          // 获取课程语言
-          const language = data?.stage?.language_directive?.includes('zh') ? 'zh-CN' : 'en-US';
-          // 直接使用fetch调用API
-          const response = await fetch(`${apiClient.getBaseUrl()}/quiz-grade`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              question: q.question,
-              userAnswer,
-              points: pts,
-              commentPrompt: q.commentPrompt,
-              language,
-            }),
+          const lang = data?.stage?.language_directive?.includes('zh') ? 'zh-CN' : 'en-US';
+          const res = await apiClient.post('/quiz-grade', {
+            question: q.question,
+            userAnswer,
+            points: pts,
+            commentPrompt: q.commentPrompt,
+            language: lang,
           });
 
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const data = await response.json();
-          const earned = Math.max(0, Math.min(pts, data.score || 0));
+          const earned = Math.max(0, Math.min(pts, res.data?.score || 0));
           const correct = earned >= pts * 0.8;
 
           return {
@@ -986,11 +1004,10 @@ export default function ClassroomScreen() {
             correct,
             status: correct ? 'correct' as const : 'incorrect' as const,
             earned,
-            aiComment: data.comment,
+            aiComment: res.data?.comment,
           };
         } catch (error) {
           console.error('[Quiz] AI grading failed for', q.id, error);
-          // Fallback: 给一半分数
           return {
             questionId: q.id,
             correct: false,
@@ -1005,12 +1022,38 @@ export default function ClassroomScreen() {
     // 合并结果
     const allResults = [...choiceResults, ...shortAnswerResults];
     const finalResultsMap: Record<string, boolean> = {};
+    const detailsMap: Record<string, { correctAnswer?: string; aiComment?: string; isCorrect?: boolean }> = {};
     allResults.forEach((r) => {
       finalResultsMap[r.questionId] = r.correct === true;
     });
 
+    // 构建每题详情（正确答案 + AI 评语）
+    questions.forEach((q) => {
+      const result = allResults.find(r => r.questionId === q.id);
+      const isCorrect = finalResultsMap[q.id];
+      let correctAnswer: string | undefined;
+      if (!isShortAnswer(q) && q.answer && q.options) {
+        // 选择题：匹配 option 的 value 或 label
+        const matched = q.options.filter(o => {
+          const optVal = typeof o === 'string' ? o : o.value;
+          const optLabel = typeof o === 'string' ? o : o.label;
+          return q.answer!.includes(optVal) || q.answer!.includes(optLabel);
+        });
+        correctAnswer = matched.map(o => typeof o === 'string' ? o : o.label).join('、');
+      } else if (q.answer) {
+        correctAnswer = q.answer.join('、');
+      }
+      detailsMap[q.id] = {
+        correctAnswer: correctAnswer || undefined,
+        aiComment: (result as any)?.aiComment || undefined,
+        isCorrect,
+      };
+    });
+
     setSubmittedAnswers(finalResultsMap);
+    setAnswerDetails(detailsMap);
     setQuizSubmitted(true);
+    setQuizSubmitting(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // 持久化提交答案和结果
@@ -1018,25 +1061,19 @@ export default function ClassroomScreen() {
       await writeSubmittedAnswers(currentScene.id, selectedAnswers);
       await writeSubmittedResults(currentScene.id, allResults);
     }
-
-    // 如果有错误答案，请求 Agent 解析（可选）
-    const wrongQuestions = questions.filter((q) => !finalResultsMap[q.id]);
-    if (wrongQuestions.length > 0 && agents.length > 0) {
-      const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
-      setSelectedAgent(teacherAgent);
-      const wrongSummary = wrongQuestions.map((q) => q.question).join('\n');
-      setChatHistory([
-        { agent: '系统', message: `你在以下问题上有错误：\n${wrongSummary}` },
-        { agent: teacherAgent.name, message: '让我帮你分析一下这些问题的正确答案...' }
-      ]);
-      setShowChatModal(true);
+    } catch (error) {
+      console.error('[Quiz] submitQuiz failed:', error);
+      setQuizSubmitting(false);
+      Alert.alert('提交失败', '请检查网络后重试');
     }
   };
 
   const resetQuiz = async () => {
     setSelectedAnswers({});
     setSubmittedAnswers({});
+    setAnswerDetails({});
     setQuizSubmitted(false);
+    setQuizSubmitting(false);
     // 清除持久化数据
     if (currentScene?.id) {
       await clearSubmitted(currentScene.id);
@@ -1695,7 +1732,7 @@ export default function ClassroomScreen() {
                     })}
 
                     {/* 简答题输入框 */}
-                    {isShort && !quizSubmitted && (
+                    {isShort && !quizSubmitted && !quizSubmitting && (
                       <TextInput
                         style={styles.shortAnswerInput}
                         placeholder="请输入您的答案..."
@@ -1708,26 +1745,55 @@ export default function ClassroomScreen() {
                       />
                     )}
 
-                    {/* 简答题答题回顾 */}
-                    {isShort && quizSubmitted && (
-                      <View style={styles.shortAnswerReview}>
-                        <Text style={styles.shortAnswerLabel}>您的答案：</Text>
-                        <Text style={styles.shortAnswerText}>{typeof userAnswer === 'string' ? userAnswer : '未作答'}</Text>
+                    {/* 提交中：显示加载提示 */}
+                    {quizSubmitting && (
+                      <View style={styles.gradingContainer}>
+                        <Text style={styles.gradingText}>AI 正在批改...</Text>
+                        <ActivityIndicator size="small" color="#3b82f6" />
                       </View>
                     )}
 
-                    {/* 正确答案提示（选择题答错时） */}
-                    {quizSubmitted && !isShort && submittedAnswers[qId] === false && (
-                      <Text style={styles.explanationText}>
-                        正确答案：{q.options?.filter(o => correctAnswers.includes(typeof o === 'string' ? o : o.value)).map(o => typeof o === 'string' ? o : o.label).join('、')}
-                      </Text>
+                    {/* 提交后：统一显示结果 */}
+                    {showResult && !quizSubmitting && (
+                      <View style={styles.answerResultSection}>
+                        {/* 正确/错误标记 */}
+                        <View style={[styles.resultBadge, { backgroundColor: submittedAnswers[qId] ? '#dcfce7' : '#fef2f2' }]}>
+                          <Text style={[styles.resultBadgeText, { color: submittedAnswers[qId] ? '#16a34a' : '#dc2626' }]}>
+                            {submittedAnswers[qId] ? '✓ 正确' : '✗ 错误'}
+                          </Text>
+                        </View>
+
+                        {/* 简答题：显示用户答案 */}
+                        {isShort && (
+                          <View style={styles.userAnswerBox}>
+                            <Text style={styles.userAnswerLabel}>你的答案</Text>
+                            <Text style={styles.userAnswerText}>{typeof userAnswer === 'string' ? userAnswer : '未作答'}</Text>
+                          </View>
+                        )}
+
+                        {/* 错误时显示正确答案 */}
+                        {!submittedAnswers[qId] && answerDetails[qId]?.correctAnswer && (
+                          <View style={styles.correctAnswerBox}>
+                            <Text style={styles.correctAnswerLabel}>正确答案</Text>
+                            <Text style={styles.correctAnswerText}>{answerDetails[qId].correctAnswer}</Text>
+                          </View>
+                        )}
+
+                        {/* AI 评语（简答题） */}
+                        {isShort && answerDetails[qId]?.aiComment && (
+                          <View style={styles.aiCommentBox}>
+                            <Text style={styles.aiCommentLabel}>AI 点评</Text>
+                            <Text style={styles.aiCommentText}>{answerDetails[qId].aiComment}</Text>
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 );
               })}
 
               {/* 提交按钮区域 */}
-              {!quizSubmitted && Object.keys(selectedAnswers).length > 0 && (
+              {!quizSubmitted && !quizSubmitting && Object.keys(selectedAnswers).length > 0 && (
                 <TouchableOpacity
                   style={styles.submitButton}
                   onPress={() => {
@@ -1737,6 +1803,13 @@ export default function ClassroomScreen() {
                 >
                   <Text style={styles.submitButtonText}>提交答案</Text>
                 </TouchableOpacity>
+              )}
+
+              {/* 提交中按钮 */}
+              {quizSubmitting && (
+                <View style={[styles.submitButton, { opacity: 0.7 }]}>
+                  <ActivityIndicator size="small" color="white" />
+                </View>
               )}
 
               {quizSubmitted && (
@@ -2638,7 +2711,20 @@ const styles = StyleSheet.create({
   optionTextSelected: { color: '#3b82f6', fontWeight: '500' },
   optionIcon: { marginLeft: Spacing.sm },
   quizResult: { fontSize: 14, color: '#22c55e', fontWeight: 'bold', marginLeft: Spacing.sm },
-  explanationText: { fontSize: 13, color: '#ef4444', marginTop: Spacing.sm, padding: Spacing.sm, backgroundColor: '#fef2f2', borderRadius: Rounded.sm },
+  answerResultSection: { marginTop: Spacing.sm },
+  resultBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Rounded.sm, alignSelf: 'flex-start', marginBottom: Spacing.xs },
+  resultBadgeText: { fontSize: 12, fontWeight: '600' },
+  userAnswerBox: { backgroundColor: '#f3f4f6', borderRadius: Rounded.md, padding: Spacing.sm, marginTop: Spacing.xs },
+  userAnswerLabel: { fontSize: 12, color: '#6b7280', marginBottom: 2 },
+  userAnswerText: { fontSize: 14, color: '#1f2937' },
+  correctAnswerBox: { backgroundColor: '#dcfce7', borderRadius: Rounded.md, padding: Spacing.sm, marginTop: Spacing.xs, borderWidth: 1, borderColor: '#bbf7d0' },
+  correctAnswerLabel: { fontSize: 12, color: '#16a34a', fontWeight: '600', marginBottom: 2 },
+  correctAnswerText: { fontSize: 14, color: '#15803d' },
+  aiCommentBox: { backgroundColor: '#eff6ff', borderRadius: Rounded.md, padding: Spacing.sm, marginTop: Spacing.xs, borderWidth: 1, borderColor: '#bfdbfe' },
+  aiCommentLabel: { fontSize: 12, color: '#2563eb', fontWeight: '600', marginBottom: 2 },
+  aiCommentText: { fontSize: 13, color: '#1e40af', lineHeight: 18 },
+  gradingContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: Spacing.md, backgroundColor: '#eff6ff', borderRadius: Rounded.md, marginTop: Spacing.sm },
+  gradingText: { fontSize: 14, color: '#3b82f6', fontWeight: '500', marginRight: Spacing.sm },
   submitButton: { backgroundColor: '#3b82f6', padding: Spacing.sm + 2, borderRadius: Rounded.md, alignItems: 'center', flex: 1, marginRight: Spacing.sm },
   submitButtonText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
   resetButton: { backgroundColor: '#6b7280', padding: Spacing.sm + 2, borderRadius: Rounded.md, alignItems: 'center', flex: 1 },
