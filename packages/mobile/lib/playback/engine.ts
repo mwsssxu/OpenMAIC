@@ -573,9 +573,10 @@ export class PlaybackEngine {
       if (filePath) {
         console.log(`[PlaybackEngine] Using file cached audio: ${cacheKey}`);
         try {
-          // Read base64 from file using expo-file-system
-          const { readAsStringAsync } = require('expo-file-system');
-          const base64 = await readAsStringAsync(filePath, { encoding: 'base64' });
+          // Read base64 from file using expo-file-system new API
+          const { File } = require('expo-file-system');
+          const file = new File(filePath);
+          const base64 = file.text({ encoding: 'base64' });
           this.audioCache.set(cacheKey, { base64, format: 'mp3' });
           await this.audioPlayer.play(cacheKey, 'mp3');
           return;
