@@ -43,6 +43,9 @@ const DEFAULT_TTS_CONFIG: TTSConfig = {
 // 不需要播放音频的场景类型
 const NON_SPEECH_SCENE_TYPES = ['quiz', 'interactive', 'pbl'];
 
+// Fire-and-forget effects auto-clear after 5 seconds (aligned with web)
+const EFFECT_AUTO_CLEAR_MS = 5000;
+
 export type PlaybackEngineCallbacks = {
   onSceneChange?: (index: number, scene: Scene | null) => void;
   onActionExecute?: (action: SceneAction) => void;
@@ -75,6 +78,8 @@ export class PlaybackEngine {
   private audioCache: Map<string, { base64: string; format: string }> = new Map();
   // expo-speech 状态跟踪
   private speechPlaying: boolean = false;
+  // Fire-and-forget effect auto-clear timer
+  private effectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(scenes: Scene[], callbacks?: PlaybackEngineCallbacks, ttsConfig?: TTSConfig) {
     this.scenes = scenes;
@@ -182,10 +187,9 @@ export class PlaybackEngine {
 
     await this.processSceneActions(scene);
 
-    // After processing, set mode to idle (single scene playback)
+    // After processing, stay in playing mode (aligned with web)
+    // The caller (or auto-play) will decide when to go idle
     this.processing = false;
-    this.mode = 'idle';
-    this.callbacks.onModeChange?.(this.mode);
   }
 
   /**
@@ -336,18 +340,18 @@ export class PlaybackEngine {
 
   /**
    * 继续播放
+   * Aligned with web: resume audio if playing, otherwise continue from current position
    */
   async resume(): Promise<void> {
     this.mode = 'playing';
     this.callbacks.onModeChange?.(this.mode);
 
-    // 继续音频播放
-    await this.audioPlayer.resume();
-
-    // 如果没有音频正在播放，重新开始当前场景
-    if (!this.audioPlayer.isPlaying() && !this.speechPlaying) {
-      await this.playCurrentScene();
+    // Resume audio if it was paused
+    if (this.audioPlayer.isPlaying() || this.speechPlaying) {
+      await this.audioPlayer.resume();
     }
+    // If nothing is playing, the onPlayEnd callback or speech onDone
+    // will naturally advance. No need to restart the scene.
   }
 
   /**
@@ -431,8 +435,8 @@ export class PlaybackEngine {
     }
 
     if (textToSpeak && textToSpeak.length > 10) {
-      // 使用 TTS API 或 expo-speech
-      await this.speakText(textToSpeak, `scene_${scene.id}`);
+      // Use scene-specific audio ID (aligned with web)
+      await this.speakText(textToSpeak, `tts_s${this.sceneIndex}_scene_${scene.id}`);
     }
   }
 
@@ -455,6 +459,7 @@ export class PlaybackEngine {
 
   /**
    * 执行 speech action（单场景模式）
+   * Audio ID format aligned with web: tts_s{sceneOrder}_{actionId}
    */
   private async executeSpeech(action: SceneAction<'speech'>): Promise<void> {
     const data = action.data as SpeechActionData;
@@ -465,7 +470,9 @@ export class PlaybackEngine {
       return;
     }
 
-    await this.speakText(text, `tts_${action.id}`);
+    // Use scene-specific audio ID (aligned with web: tts_s{sceneOrder}_{actionId})
+    const audioId = `tts_s${this.sceneIndex}_${action.id}`;
+    await this.speakText(text, audioId);
   }
 
   /**
@@ -487,12 +494,13 @@ export class PlaybackEngine {
 
   /**
    * 执行 spotlight action（非阻塞）
-   * 触发视觉聚焦效果
+   * 触发视觉聚焦效果，5秒后自动清除（与Web端对齐）
    */
   private executeSpotlight(action: SceneAction): void {
     const data = action.data as SpotlightActionData;
+    // Web uses action.elementId directly; mobile action data uses target_element_id
     const elementId = data.target_element_id;
-    const dimness = data.dim_opacity ?? 0.7; // 默认变暗程度
+    const dimness = data.dim_opacity ?? 0.7;
 
     if (!elementId) {
       console.warn('[PlaybackEngine] Spotlight action has no target_element_id');
@@ -500,15 +508,15 @@ export class PlaybackEngine {
     }
 
     this.callbacks.onSpotlight?.(elementId, dimness);
+    this.scheduleEffectClear();
   }
 
   /**
    * 执行 laser action（非阻塞）
-   * 触发激光笔动画
+   * 触发激光笔动画，5秒后自动清除（与Web端对齐）
    */
   private executeLaser(action: SceneAction): void {
     const data = action.data as LaserActionData;
-    // 使用 target_element_id（如果存在）或从 end_position 推断
     const elementId = data.target_element_id || action.id;
     const color = data.color || '#ff3b30';
 
@@ -518,6 +526,20 @@ export class PlaybackEngine {
     }
 
     this.callbacks.onLaser?.(elementId, color);
+    this.scheduleEffectClear();
+  }
+
+  /**
+   * Schedule auto-clear for fire-and-forget effects (5s, aligned with web)
+   */
+  private scheduleEffectClear(): void {
+    if (this.effectTimer) {
+      clearTimeout(this.effectTimer);
+    }
+    this.effectTimer = setTimeout(() => {
+      this.callbacks.onClearEffects?.();
+      this.effectTimer = null;
+    }, EFFECT_AUTO_CLEAR_MS);
   }
 
   /**
@@ -533,19 +555,14 @@ export class PlaybackEngine {
       return;
     }
 
-    // Generate cache key with scene index to ensure scene-specific caching
-    const sceneIndex = this.sceneIndex;
-    const cacheKey = `tts_s${sceneIndex}_${audioId}_${this.ttsConfig.provider}_${this.ttsConfig.voice}_${this.ttsConfig.speed}`;
+    // Cache key includes provider/voice/speed for uniqueness
+    // audioId already contains scene index (format: tts_s{sceneIndex}_{actionId})
+    const cacheKey = `${audioId}_${this.ttsConfig.provider}_${this.ttsConfig.voice}_${this.ttsConfig.speed}`;
 
     // 1. Check memory cache
     const memoryCached = this.audioCache.get(cacheKey);
     if (memoryCached) {
       console.log(`[PlaybackEngine] Using memory cached audio: ${cacheKey}`);
-      if (Platform.OS === 'web') {
-        this.audioPlayer.cacheAudio(cacheKey, memoryCached.base64, memoryCached.format);
-      } else {
-        saveAudioFile(cacheKey, memoryCached.base64, memoryCached.format);
-      }
       await this.audioPlayer.play(cacheKey, memoryCached.format);
       return;
     }
@@ -556,7 +573,9 @@ export class PlaybackEngine {
       if (filePath) {
         console.log(`[PlaybackEngine] Using file cached audio: ${cacheKey}`);
         try {
-          const base64 = await fetch(`file://${filePath}`).then(r => r.text());
+          // Read base64 from file using expo-file-system
+          const { readAsStringAsync } = require('expo-file-system');
+          const base64 = await readAsStringAsync(filePath, { encoding: 'base64' });
           this.audioCache.set(cacheKey, { base64, format: 'mp3' });
           await this.audioPlayer.play(cacheKey, 'mp3');
           return;
@@ -573,7 +592,7 @@ export class PlaybackEngine {
 
         const result = await apiClient.generateTTS(
           cleanText, // Use cleaned text
-          cacheKey, // Use scene-specific cache key
+          audioId, // Pass audioId (with scene index) to API
           this.ttsConfig.provider,
           this.ttsConfig.voice,
           this.ttsConfig.speed,
@@ -586,19 +605,19 @@ export class PlaybackEngine {
         );
 
         if (result.success && result.base64) {
-          // Cache to memory
+          // Cache to memory with full cacheKey
           this.audioCache.set(cacheKey, { base64: result.base64, format: result.format });
 
-          // Web environment: cache base64 to AudioPlayer
-          if (Platform.OS === 'web') {
-            this.audioPlayer.cacheAudio(result.audioId, result.base64, result.format);
-          } else {
-            // Native environment: save to file system for persistence
+          // Cache base64 to AudioPlayer for playback
+          this.audioPlayer.cacheAudio(cacheKey, result.base64, result.format);
+
+          // Native: save to file system for persistent caching
+          if (Platform.OS !== 'web') {
             saveAudioFile(cacheKey, result.base64, result.format);
           }
 
-          this.callbacks.onTTSReady?.(result.audioId);
-          await this.audioPlayer.play(result.audioId, result.format);
+          this.callbacks.onTTSReady?.(cacheKey);
+          await this.audioPlayer.play(cacheKey, result.format);
           return;
         }
       } catch (err) {
@@ -628,6 +647,10 @@ export class PlaybackEngine {
    * 释放资源
    */
   async dispose(): Promise<void> {
+    if (this.effectTimer) {
+      clearTimeout(this.effectTimer);
+      this.effectTimer = null;
+    }
     await this.audioPlayer.dispose();
     Speech.stop();
     this.mode = 'idle';
