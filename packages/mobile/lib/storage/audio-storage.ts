@@ -126,6 +126,37 @@ export function clearAllAudioFiles(): void {
 }
 
 /**
+ * Check if audio exists for a given pattern (prefix match)
+ *
+ * @param pattern - Pattern to match (e.g., "tts_s0_" for scene 0)
+ * @returns Array of matching audio IDs
+ */
+export function findAudioByPattern(pattern: string): string[] {
+  initAudioStorage();
+
+  const audioDir = getAudioDirectory();
+  const files = audioDir.list();
+
+  return files
+    .filter(f => f instanceof File && f.name.startsWith(pattern))
+    .map(f => (f as File).name.replace(/\.(mp3|wav)$/, ''));
+}
+
+/**
+ * Clear audio files for a specific scene
+ *
+ * @param sceneIndex - Scene index to clear
+ */
+export function clearSceneAudio(sceneIndex: number): void {
+  const pattern = `tts_s${sceneIndex}_`;
+  const audioIds = findAudioByPattern(pattern);
+
+  for (const audioId of audioIds) {
+    deleteAudioFile(audioId);
+  }
+}
+
+/**
  * 获取所有已存储的音频 ID 列表
  */
 export function listStoredAudioIds(): string[] {
