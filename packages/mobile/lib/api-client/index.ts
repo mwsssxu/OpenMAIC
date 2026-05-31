@@ -195,6 +195,11 @@ class ApiClient {
     return API_BASE_URL;
   }
 
+  /** Generic POST — uses the authenticated axios instance */
+  async post<T = any>(url: string, data?: any): Promise<{ data: T }> {
+    return this.client.post(url, data);
+  }
+
   constructor() {
     // 自动添加 Authorization header
     this.client.interceptors.request.use((config) => {
@@ -1087,7 +1092,7 @@ class ApiClient {
   // ==================== Questions ====================
 
   async getQuestions(page?: number, limit?: number, sort?: string) {
-    const { data } = await this.client.get('/questions', {
+    const { data } = await this.client.get('/questions/', {
       params: { page, limit, sort },
     });
     return data;
@@ -1099,7 +1104,7 @@ class ApiClient {
   }
 
   async createQuestion(title: string, content: string, bounty?: number, tags?: string) {
-    const { data } = await this.client.post('/questions', { title, content, bounty, tags });
+    const { data } = await this.client.post('/questions/', { title, content, bounty, tags });
     return data;
   }
 
@@ -1151,7 +1156,7 @@ class ApiClient {
 
   async createPaymentOrder(packageId: string, paymentMethod: string) {
     const { data } = await this.client.post('/payment/create-order', {
-      package_id: packageId,
+      package: packageId,
       payment_method: paymentMethod,
     });
     return data;
@@ -1968,6 +1973,80 @@ class ApiClient {
   async getNotesStats() {
     const { data } = await this.client.get('/personal-notes/stats');
     return data;
+  }
+
+  // ==================== Shared Notes (共享笔记) ====================
+
+  // 获取共享笔记列表（市场）
+  async getSharedNotes(params?: {
+    page?: number;
+    limit?: number;
+    visibility?: string;
+    sort?: string;
+    search?: string;
+  }) {
+    const { data } = await this.client.get('/notes/', { params });
+    return data;
+  }
+
+  // 获取共享笔记详情
+  async getSharedNoteDetail(noteId: string) {
+    const { data } = await this.client.get(`/notes/${noteId}`);
+    return data;
+  }
+
+  // 购买共享笔记
+  async purchaseSharedNote(noteId: string) {
+    const { data } = await this.client.post(`/notes/${noteId}/purchase`);
+    return data;
+  }
+
+  // 评分共享笔记
+  async rateSharedNote(noteId: string, rating: number) {
+    const { data } = await this.client.post(`/notes/${noteId}/rating`, { rating });
+    return data;
+  }
+
+  // 获取我发布的共享笔记
+  async getMySharedNotes() {
+    const { data } = await this.client.get('/notes/my-shares');
+    return data;
+  }
+
+  // 发布共享笔记
+  async createSharedNote(note: {
+    title: string;
+    content: string;
+    course_id?: string;
+    visibility?: 'public' | 'paid';
+    price?: number;
+    tags?: string;
+  }) {
+    const { data } = await this.client.post('/notes/', note);
+    return data;
+  }
+
+  // 获取共享笔记收益统计
+  async getMyEarnings() {
+    const { data } = await this.client.get('/notes/my/earnings');
+    return data;
+  }
+
+  // 将个人笔记转为共享笔记
+  async convertToSharedNote(personalNoteId: string, options: {
+    visibility: 'public' | 'paid';
+    price?: number;
+  }) {
+    // 先获取个人笔记内容
+    const personalNote = await this.getPersonalNote(personalNoteId);
+    // 创建共享笔记
+    return this.createSharedNote({
+      title: personalNote.title,
+      content: personalNote.content,
+      course_id: personalNote.course_id,
+      visibility: options.visibility,
+      price: options.price || 0,
+    });
   }
 
   // ==================== Profile ====================

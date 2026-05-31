@@ -59,6 +59,19 @@ async def get_current_user_id(
     return current_user.id
 
 
+async def get_optional_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(
+        HTTPBearer(auto_error=False)
+    )
+) -> str | None:
+    """可选认证 - 未登录返回 None"""
+    if credentials is None:
+        return None
+    token = credentials.credentials
+    user_id = verify_token(token, expected_type="access")
+    return user_id
+
+
 async def verify_token_from_ws(token: str) -> str | None:
     """WebSocket token 验证（无数据库依赖）"""
     user_id = verify_token(token, expected_type="access")

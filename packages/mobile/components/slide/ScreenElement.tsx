@@ -32,19 +32,19 @@ export function ScreenElement({ element, theme, scaleX, scaleY, isWhiteboard = f
     case 'image':
       return <ImageElement element={element} scaleX={scaleX} scaleY={scaleY} />;
     case 'shape':
-      return <ShapeElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
+      return <ShapeElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'line':
-      return <LineElement element={element} scaleX={scaleX} scaleY={scaleY} />;
+      return <LineElement element={element} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'video':
       return <VideoElement element={element} scaleX={scaleX} scaleY={scaleY} />;
     case 'chart':
-      return <ChartElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
+      return <ChartElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'latex':
-      return <LatexElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
+      return <LatexElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'table':
-      return <TableElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
+      return <TableElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'code':
-      return <CodeElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} />;
+      return <CodeElement element={element as any} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     default:
       return null;
   }

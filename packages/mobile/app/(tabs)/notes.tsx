@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Animated,
   RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
@@ -188,6 +188,13 @@ export default function NotesScreen() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 页面获得焦点时刷新
+  useFocusEffect(
+    useCallback(() => {
+      loadNotes();
+    }, [activeFilter])
+  );
 
   useEffect(() => {
     loadNotes();

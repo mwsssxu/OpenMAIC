@@ -8,9 +8,10 @@ interface TableElementProps {
   theme: SlideTheme;
   scaleX: number;
   scaleY: number;
+  isWhiteboard?: boolean;
 }
 
-export function TableElement({ element, theme, scaleX, scaleY }: TableElementProps) {
+export function TableElement({ element, theme, scaleX, scaleY, isWhiteboard = false }: TableElementProps) {
   const effectiveScale = Math.min(scaleX, scaleY);
   const data = element.data ?? [];
   const rows = data.length;
@@ -22,13 +23,22 @@ export function TableElement({ element, theme, scaleX, scaleY }: TableElementPro
   const headerBg = element.theme?.color ?? '#5b9bd5';
   const showRowHeader = element.theme?.rowHeader ?? false;
 
-  const containerStyle = useMemo(() => ({
-    position: 'absolute' as const,
-    left: element.left * scaleX,
-    top: element.top * scaleY,
-    width: Math.max(element.width * scaleX, 60),
-    zIndex: 1,
-  }), [element, scaleX, scaleY]);
+  const containerStyle = useMemo(() => {
+    if (isWhiteboard) {
+      return {
+        width: '100%' as const,
+        marginBottom: 8,
+        zIndex: 1,
+      };
+    }
+    return {
+      position: 'absolute' as const,
+      left: element.left * scaleX,
+      top: element.top * scaleY,
+      width: Math.max(element.width * scaleX, 60),
+      zIndex: 1,
+    };
+  }, [element, scaleX, scaleY, isWhiteboard]);
 
   const fontSize = Math.max(isSmallScreen ? 8 : 10, Math.round(12 * effectiveScale));
 

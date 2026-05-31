@@ -1,5 +1,8 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
@@ -14,6 +17,7 @@ interface Transaction {
 
 export default function WalletScreen() {
   const { onPress } = useFeedback();
+  const router = useRouter();
   const [tokenBalance, setTokenBalance] = useState(0);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [tokenTransactions, setTokenTransactions] = useState<Transaction[]>([]);
@@ -72,7 +76,15 @@ export default function WalletScreen() {
   const transactions = activeTab === 'token' ? tokenTransactions : pointsTransactions;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      {/* 导航栏 */}
+      <View style={styles.navBar}>
+        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+        </TouchableOpacity>
+        <Text style={styles.navTitle}>钱包</Text>
+        <View style={styles.navRight} />
+      </View>
       {/* 余额显示 */}
       <View style={styles.balanceHeader}>
         <View style={styles.balanceBox}>
@@ -118,12 +130,32 @@ export default function WalletScreen() {
         }
         contentContainerStyle={styles.listContent}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  navBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.neutral.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  navTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary },
+  navRight: { width: 44 },
   balanceHeader: {
     backgroundColor: Colors.neutral.card,
     padding: Spacing.lg,

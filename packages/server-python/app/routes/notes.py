@@ -17,6 +17,7 @@ router = APIRouter()
 
 AUTHOR_RATIO = 0.70  # 作者70%
 PLATFORM_RATIO = 0.30  # 平台30%
+MIN_AUTHOR_REWARD = 1  # 作者最低收益
 
 
 # ==================== 笔记发布 ====================
@@ -73,6 +74,7 @@ async def get_notes_list(
     limit: int = 20,
     visibility: str = None,
     course_id: str = None,
+    search: str = None,
     sort: str = "recent",  # recent, popular, rating
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
@@ -94,6 +96,11 @@ async def get_notes_list(
     if course_id:
         conditions.append(f"course_id = ${param_idx}")
         params.append(uuid.UUID(course_id))
+        param_idx += 1
+
+    if search:
+        conditions.append(f"(title ILIKE ${param_idx} OR content ILIKE ${param_idx})")
+        params.append(f"%{search}%")
         param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions)
@@ -148,6 +155,78 @@ async def get_notes_list(
     }
 
 
+# ==================== 我的笔记（必须在 /{note_id} 之前）====================
+
+@router.get("/my-shares")
+async def get_my_shared_notes(
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """获取我发布的共享笔记列表"""
+    user_uuid = uuid.UUID(current_user_id)
+
+    rows = await db.fetch(
+        """
+        SELECT id, title, visibility, price, rating, rating_count,
+               purchase_count, status, created_at
+        FROM shared_notes
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        """,
+        user_uuid
+    )
+
+    return {
+        "shares": [
+            {
+                "id": str(row["id"]),
+                "title": row["title"],
+                "visibility": row["visibility"],
+                "price": row["price"],
+                "rating": float(row["rating"]) if row["rating"] else 0,
+                "rating_count": row["rating_count"],
+                "purchase_count": row["purchase_count"],
+                "status": row["status"],
+                "created_at": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/my/earnings")
+async def get_my_earnings(
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """获取笔记收益统计"""
+    user_uuid = uuid.UUID(current_user_id)
+
+    total = await db.fetchrow(
+        """
+        SELECT COALESCE(SUM(author_reward), 0) as total_earnings,
+               COUNT(*) as total_purchases
+        FROM note_purchases WHERE note_id IN (
+            SELECT id FROM shared_notes WHERE user_id = $1
+        )
+        """,
+        user_uuid
+    )
+
+    notes_count = await db.fetchval(
+        "SELECT COUNT(*) FROM shared_notes WHERE user_id = $1",
+        user_uuid
+    )
+
+    return {
+        "total_earnings": total["total_earnings"] or 0,
+        "total_purchases": total["total_purchases"] or 0,
+        "notes_count": notes_count,
+    }
+
+
+# ==================== 笔记详情（动态路由放最后）===================
+
 @router.get("/{note_id}")
 async def get_note_detail(
     note_id: str,
@@ -181,6 +260,15 @@ async def get_note_detail(
     is_purchased = purchased is not None
     is_author = note["user_id"] == user_uuid
 
+    # 检查用户评分
+    user_rating_row = await db.fetchrow(
+        """
+        SELECT rating FROM note_ratings WHERE user_id = $1 AND note_id = $2
+        """,
+        user_uuid, n_uuid
+    )
+    user_rating = user_rating_row["rating"] if user_rating_row else 0
+
     # 非公开笔记需要购买或作者是当前用户
     if note["visibility"] != "public" and not is_purchased and not is_author:
         return {
@@ -190,6 +278,7 @@ async def get_note_detail(
             "price": note["price"],
             "is_purchased": False,
             "is_author": False,
+            "user_rating": 0,
             "preview": note["content"][:200] + "...",  # 仅显示预览
             "message": "需要购买后查看完整内容",
         }
@@ -208,6 +297,7 @@ async def get_note_detail(
         "purchase_count": note["purchase_count"],
         "is_purchased": is_purchased,
         "is_author": is_author,
+        "user_rating": user_rating,
         "created_at": note["created_at"].isoformat(),
     }
 
@@ -249,7 +339,8 @@ async def purchase_note(
     if price <= 0:
         raise HTTPException(status_code=400, detail="此笔记无需购买")
 
-    author_reward = int(price * AUTHOR_RATIO)
+    # 计算作者收益（最低为1积分）
+    author_reward = max(int(price * AUTHOR_RATIO), MIN_AUTHOR_REWARD if price >= 1 else 0)
     platform_fee = price - author_reward
 
     async with db.transaction():
@@ -321,7 +412,7 @@ async def rate_note(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """评分笔记（购买后）"""
+    """评分笔记（购买后，每个用户只能评一次）"""
     user_uuid = uuid.UUID(current_user_id)
     n_uuid = uuid.UUID(note_id)
     rating = body.get("rating", 0)
@@ -337,46 +428,47 @@ async def rate_note(
     if not purchased:
         raise HTTPException(status_code=403, detail="购买后才能评分")
 
-    # 更新评分（简化：直接更新平均值）
-    await db.execute(
-        """
-        UPDATE shared_notes
-        SET rating = (rating * rating_count + $1) / (rating_count + 1),
-            rating_count = rating_count + 1
-        WHERE id = $2
-        """,
-        rating, n_uuid
+    # 检查是否已评分
+    existing_rating = await db.fetchrow(
+        "SELECT id, rating FROM note_ratings WHERE user_id = $1 AND note_id = $2",
+        user_uuid, n_uuid
     )
+
+    async with db.transaction():
+        if existing_rating:
+            # 更新评分：先减去旧评分，再加上新评分
+            old_rating = existing_rating["rating"]
+            await db.execute(
+                """
+                UPDATE shared_notes
+                SET rating = (rating * rating_count - $1 + $2) / rating_count
+                WHERE id = $3
+                """,
+                old_rating, rating, n_uuid
+            )
+            # 更新评分记录
+            await db.execute(
+                "UPDATE note_ratings SET rating = $1 WHERE id = $2",
+                rating, existing_rating["id"]
+            )
+        else:
+            # 新增评分
+            await db.execute(
+                """
+                UPDATE shared_notes
+                SET rating = (rating * rating_count + $1) / (rating_count + 1),
+                    rating_count = rating_count + 1
+                WHERE id = $2
+                """,
+                rating, n_uuid
+            )
+            # 插入评分记录
+            await db.execute(
+                """
+                INSERT INTO note_ratings (id, user_id, note_id, rating, created_at)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                uuid.uuid4(), user_uuid, n_uuid, rating, utcnow()
+            )
 
     return {"rating": rating, "message": "评分已记录"}
-
-
-@router.get("/my/earnings")
-async def get_my_earnings(
-    current_user_id: str = Depends(get_current_user_id),
-    db: asyncpg.Connection = Depends(get_db)
-):
-    """获取笔记收益统计"""
-    user_uuid = uuid.UUID(current_user_id)
-
-    total = await db.fetchrow(
-        """
-        SELECT COALESCE(SUM(author_reward), 0) as total_earnings,
-               COUNT(*) as total_purchases
-        FROM note_purchases WHERE note_id IN (
-            SELECT id FROM shared_notes WHERE user_id = $1
-        )
-        """,
-        user_uuid
-    )
-
-    notes_count = await db.fetchval(
-        "SELECT COUNT(*) FROM shared_notes WHERE user_id = $1",
-        user_uuid
-    )
-
-    return {
-        "total_earnings": total["total_earnings"] or 0,
-        "total_purchases": total["total_purchases"] or 0,
-        "notes_count": notes_count,
-    }

@@ -116,12 +116,11 @@ export function LineElement({ element, scaleX, scaleY, isWhiteboard }) {
 
 **Problem:** TTS always uses first scene content.
 
-**Root cause analysis:**
-- `playCurrentScene()` correctly uses `this.getCurrentScene()`
-- `sceneIndex` is updated by `jumpToScene()`, `nextScene()`, `prevScene()`
-- Need to verify `sceneIndex` is correct when play button is pressed
+**Root cause:** The `PlaybackEngine` is recreated when `ttsConfig` changes (via `initPlaybackEngine` callback dependency). When recreated, `sceneIndex` resets to 0. Additionally, the `autoPlayEnabled` effect triggers `playCurrentScene()` which may play scene 0 before the user navigates to their desired scene.
 
-**Fix:** Add logging and ensure `sceneIndex` is passed correctly to TTS generation.
+**Fix:**
+- Preserve `sceneIndex` when recreating the engine
+- Ensure `jumpToScene()` is called before `playCurrentScene()` when user is on a different scene
 
 #### 2.2 Prevent TTS Looping
 
@@ -267,7 +266,7 @@ private async speakText(text: string, audioId: string): Promise<void> {
 
 ## Dependencies
 
-- `react-native-svg` - for SVG rendering (check if already installed)
+- `react-native-svg` - for SVG rendering (**NOT currently installed**, must add via `npx expo install react-native-svg`)
 
 ---
 

@@ -20,6 +20,14 @@ import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionD
 import { apiClient } from '../api-client';
 import { stripHtmlAndSSML } from '../utils/html-stripper';
 
+// Static import for File class (consistent with audio-storage.ts)
+let FileClass: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    FileClass = require('expo-file-system').File;
+  } catch {}
+}
+
 export type EngineMode = 'idle' | 'playing' | 'paused';
 
 // TTS 配置（可由外部设置）

@@ -135,33 +135,24 @@ export function ScreenCanvas({
   // 非 whiteboard 模式：直接计算像素高度
   const minContentHeight = useMemo(() => {
     if (elements.length === 0) {
-      // 白板模式没有元素时，使用默认高度
       return isWhiteboard ? 200 : VIEWPORT_HEIGHT;
     }
 
-    // 遍历所有元素计算最大底部坐标
     let maxBottom = 0;
     elements.forEach(el => {
-      // 获取元素位置（支持嵌套的position对象）
       const elTop = el.top || (el as any).position?.top || 0;
       const elHeight = isLineElement(el)
         ? Math.abs(el.end[1] - el.start[1])
         : (el.height || (el as any).position?.height || 50);
-      const bottom = elTop + elHeight;
-      maxBottom = Math.max(maxBottom, bottom);
+      maxBottom = Math.max(maxBottom, elTop + elHeight);
     });
 
-    // 白板模式：maxBottom 是基准画布坐标，需要缩放
     if (isWhiteboard) {
-      const scaledHeight = maxBottom * canvasScaleX; // 使用 scaleX 作为统一缩放
-      // 白板元素使用 minHeight，实际高度可能超出预设值
-      // 增加安全边距：每个元素可能额外扩展 20-40px
-      const safetyMargin = elements.length * 30;
-      console.log(`[ScreenCanvas] minContentHeight: maxBottom=${maxBottom}, scaledHeight=${scaledHeight}, scaleX=${canvasScaleX}, safetyMargin=${safetyMargin}`);
-      return scaledHeight + 60 + safetyMargin; // 加上顶部和底部 padding + 安全边距
+      // 白板模式：基于基准画布坐标缩放，使用较大的安全系数
+      const scaledHeight = maxBottom * canvasScaleX;
+      return Math.max(scaledHeight + 100, 300);
     }
 
-    // 非白板模式：直接使用像素值
     const padding = scrollable ? 40 : 20;
     return Math.max(VIEWPORT_HEIGHT, maxBottom + padding);
   }, [elements, scrollable, isWhiteboard, canvasScaleX]);
@@ -248,7 +239,7 @@ export function ScreenCanvas({
       style={styles.container}
       onLayout={handleLayout}
     >
-      {/* 白板模式：使用 ScrollView 支持滚动 */}
+      {/* 白板模式：使用 ScrollView 支持滚动，绝对定位渲染 */}
       {isWhiteboard ? (
         <ScrollView
           style={styles.scrollView}
@@ -266,25 +257,16 @@ export function ScreenCanvas({
               },
             ]}
           >
-            {/* 精确格式渲染 */}
-            {layoutMode === 'precise' && elements.map((element) => (
+            {elements.map((element) => (
               <ScreenElement
                 key={element.id}
                 element={element}
                 theme={activeTheme}
                 scaleX={canvasScaleX}
                 scaleY={canvasScaleY}
-                isWhiteboard={isWhiteboard}
+                isWhiteboard={false}
               />
             ))}
-            {/* 简化格式渲染 */}
-            {layoutMode === 'simplified' && (
-              <SimplifiedLayout
-                elements={elements}
-                theme={activeTheme}
-                containerSize={containerSize}
-              />
-            )}
           </View>
         </ScrollView>
       ) : (
@@ -375,7 +357,8 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   scrollViewContentWhiteboard: {
-    padding: 0, // 白板模式不需要额外 padding
+    padding: 12,
+    flexGrow: 1,
   },
   canvas: {
     backgroundColor: '#ffffff',

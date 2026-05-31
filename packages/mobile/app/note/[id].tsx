@@ -6,6 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Animated,
+  Modal,
+  TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -134,6 +138,12 @@ export default function NoteDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 分享到市场相关状态
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [shareVisibility, setShareVisibility] = useState<'public' | 'paid'>('public');
+  const [sharePrice, setSharePrice] = useState('10');
+  const [isSharing, setIsSharing] = useState(false);
+
   useEffect(() => {
     loadNote();
   }, [params.id]);
@@ -200,6 +210,40 @@ export default function NoteDetailScreen() {
     return elements;
   };
 
+  // 分享到市场
+  const handleShareToMarket = async () => {
+    if (!noteData) return;
+
+    const priceNum = parseInt(sharePrice) || 0;
+    if (shareVisibility === 'paid' && priceNum < 1) {
+      Alert.alert('提示', '付费笔记请设置价格');
+      return;
+    }
+
+    setIsSharing(true);
+    try {
+      await apiClient.convertToSharedNote(params.id!, {
+        visibility: shareVisibility,
+        price: shareVisibility === 'paid' ? priceNum : 0,
+      });
+
+      haptics.medium();
+      Alert.alert('分享成功', '笔记已发布到共享市场', [
+        { text: '留在当前页', style: 'cancel' },
+        {
+          text: '前往查看',
+          onPress: () => router.push('/shared-notes' as any),
+        },
+      ]);
+      setShareModalVisible(false);
+    } catch (err: any) {
+      console.error('Share to market error:', err);
+      Alert.alert('分享失败', err?.response?.data?.detail || '请稍后重试');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -251,7 +295,11 @@ export default function NoteDetailScreen() {
           <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
         </TouchableOpacity>
         <View style={styles.navRight}>
-          <TouchableOpacity style={styles.navBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => { haptics.light(); setShareModalVisible(true); }}
+            activeOpacity={0.7}
+          >
             <Ionicons name="share-outline" size={20} color={iOSColors.fg} />
           </TouchableOpacity>
         </View>
@@ -334,6 +382,95 @@ export default function NoteDetailScreen() {
         {/* 占位 */}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* 分享到市场弹窗 */}
+      <Modal
+        visible={shareModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShareModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>分享到市场</Text>
+              <TouchableOpacity
+                onPress={() => setShareModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={24} color={iOSColors.fg} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalHint}>
+              将笔记《{noteData?.title || '未加载'}》发布到共享市场
+            </Text>
+
+            {/* 可见性选择 */}
+            <View style={styles.shareOptions}>
+              <TouchableOpacity
+                style={[styles.shareOption, shareVisibility === 'public' && styles.shareOptionActive]}
+                onPress={() => { haptics.light(); setShareVisibility('public'); }}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="globe-outline"
+                  size={20}
+                  color={shareVisibility === 'public' ? '#fff' : iOSColors.muted}
+                />
+                <Text style={[styles.shareOptionText, shareVisibility === 'public' && styles.shareOptionTextActive]}>
+                  免费公开
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.shareOption, shareVisibility === 'paid' && styles.shareOptionActive]}
+                onPress={() => { haptics.light(); setShareVisibility('paid'); }}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="diamond"
+                  size={20}
+                  color={shareVisibility === 'paid' ? '#fff' : iOSColors.gold}
+                />
+                <Text style={[styles.shareOptionText, shareVisibility === 'paid' && styles.shareOptionTextActive]}>
+                  付费笔记
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 价格设置 */}
+            {shareVisibility === 'paid' && (
+              <View style={styles.priceSection}>
+                <Text style={styles.priceLabel}>定价（积分）</Text>
+                <TextInput
+                  style={styles.priceInput}
+                  value={sharePrice}
+                  onChangeText={setSharePrice}
+                  keyboardType="number-pad"
+                  maxLength={5}
+                />
+                <Text style={styles.priceHint}>
+                  购买者支付 {sharePrice || 0} 积分，您获得 {Math.floor((parseInt(sharePrice) || 0) * 0.7)} 积分
+                </Text>
+              </View>
+            )}
+
+            {/* 确认按钮 */}
+            <TouchableOpacity
+              style={[styles.shareBtn, isSharing && styles.shareBtnDisabled]}
+              onPress={handleShareToMarket}
+              disabled={isSharing}
+              activeOpacity={0.8}
+            >
+              {isSharing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.shareBtnText}>确认分享</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -597,5 +734,101 @@ const styles = StyleSheet.create({
   relatedMeta: {
     fontSize: 11,
     color: iOSColors.muted,
+  },
+
+  // Share Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: iOSColors.bgSolid,
+    borderTopLeftRadius: Rounded.lg,
+    borderTopRightRadius: Rounded.lg,
+    padding: Spacing.md,
+    paddingBottom: Spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: iOSColors.fg,
+  },
+  modalHint: {
+    fontSize: 14,
+    color: iOSColors.muted,
+    marginBottom: Spacing.md,
+  },
+  shareOptions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  shareOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: 14,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    backgroundColor: iOSColors.surfaceSolid,
+  },
+  shareOptionActive: {
+    backgroundColor: iOSColors.accent,
+    borderColor: iOSColors.accent,
+  },
+  shareOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: iOSColors.fg,
+  },
+  shareOptionTextActive: {
+    color: '#fff',
+  },
+  priceSection: {
+    marginBottom: Spacing.md,
+  },
+  priceLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginBottom: Spacing.xs,
+  },
+  priceInput: {
+    backgroundColor: iOSColors.surfaceSolid,
+    borderRadius: Rounded.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    padding: Spacing.sm,
+    fontSize: 16,
+    color: iOSColors.fg,
+    marginBottom: Spacing.xs,
+  },
+  priceHint: {
+    fontSize: 12,
+    color: iOSColors.muted,
+  },
+  shareBtn: {
+    backgroundColor: iOSColors.accent,
+    borderRadius: Rounded.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  shareBtnDisabled: {
+    opacity: 0.6,
+  },
+  shareBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

@@ -98,7 +98,7 @@ export function ResponsiveGrid({
             {item}
           </View>
         ))}
-        // Fill empty slots to maintain grid alignment
+        {/* Fill empty slots to maintain grid alignment */}
         {rowItems.length < numColumns &&
           Array.from({ length: numColumns - rowItems.length }).map((_, k) => (
             <View key={`empty-${i + rowItems.length + k}`} style={[styles.item, { flex: 1 }]} />

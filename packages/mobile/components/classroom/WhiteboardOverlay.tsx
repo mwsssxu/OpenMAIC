@@ -509,14 +509,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  // absolute 模式容器 - 白板占上方 2/3
+  // absolute 模式容器 - 白板占满全屏，遮挡讨论弹框
   absoluteContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: '33%', // 为底部对话框留出 1/3 空间
-    zIndex: 5, // 比聊天面板层级低
+    bottom: 80,
+    zIndex: 25,
     paddingHorizontal: Spacing.sm,
     paddingTop: Spacing.sm,
   },
@@ -536,9 +536,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral.white,
     borderRadius: Rounded.lg,
     width: '92%',
-    maxWidth: undefined, // 移除固定 maxWidth，让白板充分利用移动端屏幕
-    minHeight: 280,
-    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -563,9 +560,7 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
   },
   contentArea: {
-    flex: 1,
     backgroundColor: '#f8f9fa',
-    minHeight: 200,
   },
   emptyState: {
     flex: 1,

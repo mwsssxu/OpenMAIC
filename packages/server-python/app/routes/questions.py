@@ -3,7 +3,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from app.middleware.auth import get_current_user_id
+from app.middleware.auth import get_current_user_id, get_optional_user_id
 from app.db.database import get_db
 from app.core.redis import invalidate_balance_cache
 import asyncpg
@@ -124,10 +124,10 @@ async def get_questions(
     status: str = None,
     tags: str = None,
     sort: str = "recent",  # recent, bounty, hot
-    current_user_id: str = Depends(get_current_user_id),
+    current_user_id: str | None = Depends(get_optional_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """获取问题列表"""
+    """获取问题列表（公开访问）"""
     offset = (page - 1) * limit
 
     # 构建查询条件
@@ -157,7 +157,7 @@ async def get_questions(
     # 查询问题
     rows = await db.fetch(
         f"""
-        SELECT id, user_id, title, bounty, bounty_status, tags, view_count, answer_count,
+        SELECT id, user_id, title, content, bounty, bounty_status, tags, view_count, answer_count,
                accepted_answer_id, created_at
         FROM questions
         {where_clause}
@@ -190,11 +190,12 @@ async def get_questions(
                 "user_id": str(row["user_id"]),
                 "user_nickname": user_map.get(row["user_id"], "匿名"),
                 "title": row["title"],
+                "content": row["content"][:200] + "..." if len(row["content"]) > 200 else row["content"],
                 "bounty": row["bounty"],
                 "bounty_status": row["bounty_status"],
-                "tags": row["tags"],
-                "view_count": row["view_count"],
-                "answer_count": row["answer_count"],
+                "tags": row["tags"] or "",
+                "view_count": row["view_count"] or 0,
+                "answer_count": row["answer_count"] or 0,
                 "has_accepted": row["accepted_answer_id"] is not None,
                 "created_at": row["created_at"].isoformat(),
             }
@@ -212,10 +213,10 @@ async def get_questions(
 @router.get("/{question_id}")
 async def get_question_detail(
     question_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    current_user_id: str | None = Depends(get_optional_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """获取问题详情"""
+    """获取问题详情（公开访问）"""
     q_uuid = uuid.UUID(question_id)
 
     question = await db.fetchrow(
@@ -250,9 +251,9 @@ async def get_question_detail(
         "content": question["content"],
         "bounty": question["bounty"],
         "bounty_status": question["bounty_status"],
-        "tags": question["tags"],
-        "view_count": question["view_count"] + 1,  # 返回更新后的值
-        "answer_count": question["answer_count"],
+        "tags": question["tags"] or "",
+        "view_count": (question["view_count"] or 0) + 1,  # 返回更新后的值
+        "answer_count": question["answer_count"] or 0,
         "accepted_answer_id": str(question["accepted_answer_id"]) if question["accepted_answer_id"] else None,
         "created_at": question["created_at"].isoformat(),
         "updated_at": question["updated_at"].isoformat() if question["updated_at"] else None,

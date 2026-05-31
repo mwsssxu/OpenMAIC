@@ -8,6 +8,7 @@ interface LatexElementProps {
   theme: SlideTheme;
   scaleX: number;
   scaleY: number;
+  isWhiteboard?: boolean;
 }
 
 /**
@@ -87,15 +88,25 @@ function simplifyLatex(latex: string): string {
   return result.trim() || latex;
 }
 
-export function LatexElement({ element, theme, scaleX, scaleY }: LatexElementProps) {
-  const containerStyle = useMemo(() => ({
-    position: 'absolute' as const,
-    left: element.left * scaleX,
-    top: element.top * scaleY,
-    width: Math.max(element.width * scaleX, 60),
-    height: element.height > 0 ? element.height * scaleY : undefined,
-    zIndex: 1,
-  }), [element, scaleX, scaleY]);
+export function LatexElement({ element, theme, scaleX, scaleY, isWhiteboard = false }: LatexElementProps) {
+  const containerStyle = useMemo(() => {
+    if (isWhiteboard) {
+      return {
+        width: '100%' as const,
+        minHeight: 40,
+        marginBottom: 8,
+        zIndex: 1,
+      };
+    }
+    return {
+      position: 'absolute' as const,
+      left: element.left * scaleX,
+      top: element.top * scaleY,
+      width: Math.max(element.width * scaleX, 60),
+      height: element.height > 0 ? element.height * scaleY : undefined,
+      zIndex: 1,
+    };
+  }, [element, scaleX, scaleY, isWhiteboard]);
 
   const fontSize = sFont(16, isSmallScreen ? 10 : 12);
   const displayText = useMemo(() => simplifyLatex(element.latex), [element.latex]);

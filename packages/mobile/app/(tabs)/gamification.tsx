@@ -1,573 +1,191 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, Animated } from 'react-native';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
-import { CelebrationPopup } from '@/components/common/CelebrationPopup';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
-import { useHaptics } from '@/lib/hooks/use-haptics';
-
-interface DailyTask {
-  id: string;
-  name: string;
-  description: string;
-  reward_points: number;
-  type: string;
-  completed: boolean;
-  progress: number;
-  target: number;
-  percentage: number;
-  icon?: string;
-  animation?: string;
-}
-
-interface LeagueInfo {
-  tier: string;
-  name: string;
-  icon: string;
-  current_points: number;
-  next_tier: string | null;
-  points_to_next: number | null;
-  rank: number;
-}
-
-interface CelebrationConfig {
-  animation: string;
-  duration: number;
-  sound: string;
-  vibration: string;
-  message: string;
-  color: string;
-  particles?: {
-    count: number;
-    colors: string[];
-    spread: number;
-    origin: { y: number };
-  };
-}
 
 export default function GamificationScreen() {
-  const haptics = useHaptics();
-  const [league, setLeague] = useState<LeagueInfo | null>(null);
-  const [tasks, setTasks] = useState<DailyTask[]>([]);
-  const [streakInfo, setStreakInfo] = useState<any>(null);
+  const router = useRouter();
+  const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [overview, setOverview] = useState<any>(null);
-  const [celebrationVisible, setCelebrationVisible] = useState(false);
-  const [celebrationConfig, setCelebrationConfig] = useState<CelebrationConfig | null>(null);
-  const [celebrationPoints, setCelebrationPoints] = useState(0);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     loadData();
   }, []);
 
-  // 激励卡片脉冲动画
-  useEffect(() => {
-    if (overview?.pending_milestones?.length > 0) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.05,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    }
-  }, [overview]);
-
   async function loadData() {
     setIsLoading(true);
     try {
-      const [leagueData, tasksData, streakData, overviewData] = await Promise.all([
-        apiClient.getMyLeague(),
-        apiClient.getDailyTasks(),
-        apiClient.getStreakRewards(),
-        apiClient.getGamificationOverview(),
-      ]);
-      setLeague(leagueData);
-      setTasks(tasksData.tasks || []);
-      setStreakInfo(streakData);
-      setOverview(overviewData);
+      const data = await apiClient.getGamificationProfile();
+      setProfile(data);
     } catch (error) {
-      console.error('Load gamification data error:', error);
+      console.error('Load gamification error:', error);
     } finally {
       setIsLoading(false);
     }
   }
 
-  const onRefresh = useCallback(() => {
-    loadData();
-  }, []);
-
-  const completeTask = async (taskId: string) => {
-    haptics.medium();
-    try {
-      const result = await apiClient.completeTaskWithCelebration(taskId, 1);
-      if (result.reward_issued && result.celebration) {
-        haptics.success();
-        // 显示庆典效果
-        setCelebrationConfig(result.celebration);
-        setCelebrationPoints(result.reward_points);
-        setCelebrationVisible(true);
-
-        // 刷新数据
-        loadData();
-      } else if (result.completed) {
-        haptics.success();
-        Alert.alert('任务完成', `获得 ${result.reward_points} 积分！`);
-        loadData();
-      }
-    } catch (error) {
-      haptics.error();
-      Alert.alert('失败', '操作失败，请稍后重试');
-    }
-  };
-
-  const checkHiddenAchievements = async (triggerType: string) => {
-    haptics.light();
-    try {
-      const result = await apiClient.checkHiddenAchievements(triggerType, {});
-      if (result.unlocked_count > 0) {
-        haptics.success();
-        // 显示隐藏成就庆典
-        const achievement = result.unlocked_achievements[0];
-        setCelebrationConfig(achievement.celebration);
-        setCelebrationPoints(achievement.reward_points);
-        setCelebrationVisible(true);
-        loadData();
-      }
-    } catch (error) {
-      haptics.error();
-      console.error('Check hidden achievements error:', error);
-    }
-  };
-
-  const renderTask = ({ item }: { item: DailyTask }) => {
-    const taskAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-      Animated.timing(taskAnim, {
-        toValue: 1,
-        duration: 300,
-        delay: parseInt(item.id.slice(-1)) * 100 || 0,
-        useNativeDriver: true,
-      }).start();
-    }, []);
-
-    return (
-      <Animated.View
-        style={[
-          styles.taskItem,
-          item.completed && styles.completedTask,
-          {
-            transform: [
-              {
-                scale: taskAnim.interpolate({
-                  inputRange: [0, 0.5, 1],
-                  outputRange: [0.8, 1.05, 1],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <View style={styles.taskLeft}>
-          <View style={styles.taskHeader}>
-            <Text style={styles.taskIcon}>{item.icon || '📋'}</Text>
-            <Text style={styles.taskName}>{item.name}</Text>
-          </View>
-          <Text style={styles.taskDesc}>{item.description}</Text>
-          <View style={styles.progressRow}>
-            <View style={styles.progressBar}>
-              <Animated.View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${item.percentage}%`,
-                    backgroundColor: item.completed ? Colors.secondary.success : Colors.primary.main,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={styles.progressText}>
-              {item.progress}/{item.target}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.taskRight}>
-          <Text style={[styles.rewardText, item.completed && styles.rewardCompleted]}>
-            +{item.reward_points}
-          </Text>
-          {!item.completed ? (
-            <TouchableOpacity
-              style={[styles.taskButton, { backgroundColor: Colors.primary.main }]}
-              onPress={() => completeTask(item.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.taskButtonText}>完成</Text>
-            </TouchableOpacity>
-          ) : (
-            <Animated.View style={styles.completedBadge}>
-              <Text style={styles.completedText}>✓</Text>
-            </Animated.View>
-          )}
-        </View>
-      </Animated.View>
-    );
-  };
-
-  const renderMilestoneCard = (milestone: any) => (
-    <Animated.View
-      key={milestone.id}
-      style={[
-        styles.milestoneCard,
-        {
-          transform: [{ scale: pulseAnim }],
-          borderColor: milestone.rarity === 'legendary' ? Colors.primary.main : milestone.rarity === 'epic' ? Colors.accent.main : Colors.secondary.info,
-        },
-      ]}
-    >
-      <Text style={styles.milestoneIcon}>{milestone.icon}</Text>
-      <Text style={styles.milestoneName}>{milestone.name}</Text>
-      <Text style={styles.milestoneHint}>连续打卡 {milestone.streak_target} 天可解锁</Text>
-      <TouchableOpacity
-        style={styles.unlockButton}
-        onPress={() => checkHiddenAchievements('streak')}
-      >
-        <Text style={styles.unlockButtonText}>检查解锁</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={tasks}
-        renderItem={renderTask}
-        keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />}
-        ListHeaderComponent={
-          <View>
-            {/* 激励总览 */}
-            {overview && (
-              <View style={styles.motivationCard}>
-                <Text style={styles.motivationMessage}>{overview.motivation_message}</Text>
-              </View>
-            )}
+    <SafeAreaView style={styles.container}>
+      <View style={styles.navBar}>
+        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+        </TouchableOpacity>
+        <Text style={styles.navTitle}>成长体系</Text>
+        <View style={styles.navRight} />
+      </View>
 
-            {/* 联赛等级 */}
-            {league && (
-              <View style={[styles.leagueCard, { backgroundColor: league.tier === 'champion' ? Colors.feedback.warningBg : Colors.primary.main }]}>
-                <Text style={styles.leagueIcon}>{league.icon}</Text>
-                <Text style={styles.leagueName}>{league.name}</Text>
-                <Text style={styles.leaguePoints}>
-                  {league.current_points} 积分
-                </Text>
-                {league.next_tier && (
-                  <View style={styles.progressContainer}>
-                    <View style={styles.nextTierBar}>
-                      <View
-                        style={[
-                          styles.nextTierProgress,
-                          { width: `${Math.min(100, (league.current_points / (league.points_to_next || 1)) * 100)}%` }
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.nextTier}>
-                      还需 {league.points_to_next} 积分升至下一级
-                    </Text>
-                  </View>
-                )}
-                <Text style={styles.rank}>全服排名 #{league.rank}</Text>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={loadData} />}
+      >
+        {profile ? (
+          <>
+            {/* 等级信息 */}
+            <View style={styles.levelCard}>
+              <View style={styles.levelIcon}>
+                <Ionicons name="trophy" size={32} color={Colors.primary.main} />
               </View>
-            )}
+              <Text style={styles.levelText}>Lv.{profile.level || 1}</Text>
+              <Text style={styles.xpText}>{profile.xp || 0} XP</Text>
+              <Text style={styles.xpNextText}>
+                下一级还需 {(profile.xp_to_next_level || 100) - (profile.xp || 0)} XP
+              </Text>
+            </View>
 
-            {/* 打卡奖励预览 */}
-            {streakInfo && (
-              <View style={styles.streakCard}>
-                <View style={styles.streakHeader}>
-                  <Text style={styles.streakTitle}>连续打卡奖励</Text>
-                  <Text style={styles.streakFire}>🔥</Text>
-                </View>
-                <Text style={styles.streakDays}>
-                  当前: 第 {streakInfo.current_streak} 天
-                </Text>
-                <Text style={styles.streakReward}>
-                  今日奖励: {streakInfo.current_reward} 积分
-                </Text>
-                {streakInfo.next_reward_info && (
-                  <Text style={styles.nextReward}>
-                    明日奖励: {streakInfo.next_reward_info.next_reward} 积分
-                    {streakInfo.next_reward_info.reward_increase > 0 &&
-                      ` (+${streakInfo.next_reward_info.reward_increase})`}
-                  </Text>
-                )}
-                {/* 7天奖励预览 */}
-                <View style={styles.rewardPreview}>
-                  {streakInfo.reward_preview?.slice(0, 7).map((day: any, i: number) => (
-                    <View key={i} style={styles.previewDay}>
-                      <Text style={styles.previewDayNum}>D{day.day}</Text>
-                      <Text style={[styles.previewReward, day.is_cycle_end && styles.cycleEndReward]}>
-                        {day.reward}
-                      </Text>
+            {/* 成就 */}
+            {profile.badges?.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>成就徽章</Text>
+                <View style={styles.badgeRow}>
+                  {profile.badges.map((badge: any, idx: number) => (
+                    <View key={idx} style={styles.badge}>
+                      <Ionicons name={badge.icon || 'star'} size={24} color={Colors.primary.main} />
+                      <Text style={styles.badgeName}>{badge.name}</Text>
                     </View>
                   ))}
                 </View>
               </View>
             )}
 
-            {/* 待解锁里程碑 */}
-            {overview?.pending_milestones?.length > 0 && (
-              <View style={styles.milestoneSection}>
-                <Text style={styles.milestoneSectionTitle}>待解锁里程碑</Text>
-                <View style={styles.milestoneList}>
-                  {overview.pending_milestones.map(renderMilestoneCard)}
+            {/* 统计 */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>学习统计</Text>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{profile.study_streak || 0}</Text>
+                  <Text style={styles.statLabel}>连续学习天数</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{profile.total_study_hours || 0}</Text>
+                  <Text style={styles.statLabel}>累计学习小时</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{profile.courses_completed || 0}</Text>
+                  <Text style={styles.statLabel}>完成课程</Text>
                 </View>
               </View>
-            )}
-
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>每日任务</Text>
-              <Text style={styles.taskCount}>
-                {tasks.filter(t => t.completed).length}/{tasks.length} 已完成
-              </Text>
             </View>
+          </>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Ionicons name="trending-up-outline" size={64} color={Colors.neutral.textSecondary} />
+            <Text style={styles.emptyTitle}>开始你的成长之旅</Text>
+            <Text style={styles.emptyDesc}>学习课程获取经验值</Text>
           </View>
-        }
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>暂无任务</Text>
-        }
-        contentContainerStyle={styles.listContent}
-      />
+        )}
 
-      {/* 庆典弹窗 */}
-      <CelebrationPopup
-        visible={celebrationVisible}
-        config={celebrationConfig}
-        rewardPoints={celebrationPoints}
-        onClose={() => setCelebrationVisible(false)}
-      />
-    </View>
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
-  listContent: { padding: Spacing.sm, paddingBottom: Spacing.lg + 4 },
-
-  // 激励总览
-  motivationCard: {
-    backgroundColor: Colors.neutral.card,
-    padding: Spacing.md,
-    borderRadius: Rounded.lg,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.secondary.success,
-  },
-  motivationMessage: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.neutral.textPrimary,
-  },
-
-  // 联赛卡片
-  leagueCard: {
-    padding: Spacing.lg,
-    borderRadius: Rounded.lg,
-    marginBottom: Spacing.sm,
-    alignItems: 'center',
-    backgroundColor: Colors.primary.main,
-  },
-  leagueIcon: { fontSize: 40 },
-  leagueName: { fontSize: 24, fontWeight: 'bold', color: 'white' },
-  leaguePoints: { fontSize: 16, color: 'white', marginTop: 5 },
-  progressContainer: {
-    width: '100%',
-    marginTop: Spacing.sm,
-  },
-  nextTierBar: {
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: Rounded.sm - 2,
-    overflow: 'hidden',
-  },
-  nextTierProgress: {
-    height: 8,
-    backgroundColor: Colors.neutral.card,
-    borderRadius: Rounded.sm - 2,
-  },
-  nextTier: { fontSize: 14, color: '#ddd', marginTop: 5 },
-  rank: { fontSize: 14, color: '#ddd', marginTop: 5 },
-
-  // 打卡卡片
-  streakCard: {
-    backgroundColor: Colors.neutral.card,
-    padding: Spacing.md,
-    borderRadius: Rounded.lg,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-  },
-  streakHeader: {
+  navBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  streakTitle: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
-  streakFire: { fontSize: 24 },
-  streakDays: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: 5 },
-  streakReward: { fontSize: 14, color: Colors.primary.main, marginTop: 5, fontWeight: '600' },
-  nextReward: { fontSize: 12, color: Colors.neutral.textMuted, marginTop: 5 },
-  rewardPreview: {
-    flexDirection: 'row',
-    marginTop: Spacing.sm,
-    justifyContent: 'space-between',
-  },
-  previewDay: {
-    alignItems: 'center',
-  },
-  previewDayNum: {
-    fontSize: 10,
-    color: Colors.neutral.textMuted,
-  },
-  previewReward: {
-    fontSize: 12,
-    color: Colors.primary.main,
-  },
-  cycleEndReward: {
-    color: Colors.primary.main,
-    fontWeight: 'bold',
-  },
-
-  // 里程碑
-  milestoneSection: {
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  milestoneSectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: Spacing.sm,
-    color: Colors.neutral.textPrimary,
-  },
-  milestoneList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  milestoneCard: {
-    backgroundColor: Colors.neutral.card,
-    padding: Spacing.sm + 7,
-    borderRadius: Rounded.lg,
-    borderWidth: 2,
-    alignItems: 'center',
-    width: 150,
-    marginRight: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  milestoneIcon: {
-    fontSize: 30,
-  },
-  milestoneName: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 5,
-    color: Colors.neutral.textPrimary,
-  },
-  milestoneHint: {
-    fontSize: 12,
-    color: Colors.neutral.textMuted,
-    marginTop: 5,
-    textAlign: 'center',
-  },
-  unlockButton: {
-    marginTop: Spacing.sm,
-    paddingHorizontal: Spacing.sm + 7,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.primary.main,
-    borderRadius: Rounded.lg - 1,
-  },
-  unlockButtonText: {
-    color: Colors.neutral.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  // 任务列表
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 5,
-    marginBottom: Spacing.sm,
-    marginTop: 5,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary },
-  taskCount: { fontSize: 14, color: Colors.neutral.textSecondary },
-  taskItem: {
-    backgroundColor: Colors.neutral.card,
-    padding: Spacing.md,
-    borderRadius: Rounded.lg,
-    marginBottom: Spacing.sm,
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
-  },
-  completedTask: { backgroundColor: Colors.neutral.backgroundAlt, borderColor: Colors.secondary.success },
-  taskLeft: { flex: 1 },
-  taskHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  taskIcon: {
-    fontSize: 20,
-    marginRight: Spacing.sm,
-  },
-  taskName: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
-  taskDesc: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-  },
-  progressBar: {
-    width: 100,
-    height: 8,
-    backgroundColor: Colors.neutral.border,
-    borderRadius: Rounded.sm - 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 8,
-    borderRadius: Rounded.sm - 2,
-  },
-  progressText: { fontSize: 12, color: Colors.neutral.textMuted, marginLeft: Spacing.sm },
-  taskRight: { alignItems: 'center', paddingLeft: Spacing.sm + 3 },
-  rewardText: { fontSize: 16, fontWeight: '600', color: Colors.feedback.warningText },
-  rewardCompleted: { color: Colors.secondary.success },
-  taskButton: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Rounded.lg,
-    marginTop: Spacing.sm,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
   },
-  taskButtonText: { color: Colors.neutral.white, fontSize: 12, fontWeight: '600' },
-  completedBadge: {
-    marginTop: Spacing.sm,
-    width: 24,
-    height: 24,
-    borderRadius: Rounded.md,
-    backgroundColor: Colors.secondary.success,
+  navBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.neutral.card,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
   },
-  completedText: { color: Colors.neutral.white, fontWeight: 'bold' },
-  emptyText: { color: Colors.neutral.textMuted, textAlign: 'center', padding: Spacing.lg + 4 },
+  navTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary },
+  navRight: { width: 44 },
+  scrollView: { flex: 1, paddingHorizontal: Spacing.md },
+  levelCard: {
+    backgroundColor: Colors.neutral.card,
+    padding: Spacing.lg,
+    borderRadius: Rounded.lg,
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  levelIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.primary.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  levelText: { fontSize: 28, fontWeight: '700', color: Colors.primary.main },
+  xpText: { fontSize: 16, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
+  xpNextText: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
+  section: {
+    backgroundColor: Colors.neutral.card,
+    padding: Spacing.md,
+    borderRadius: Rounded.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: Spacing.md, color: Colors.neutral.textPrimary },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
+  badge: {
+    alignItems: 'center',
+    width: 70,
+  },
+  badgeName: {
+    fontSize: 11,
+    color: Colors.neutral.textSecondary,
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: { alignItems: 'center' },
+  statValue: { fontSize: 24, fontWeight: '700', color: Colors.primary.main },
+  statLabel: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
+  emptyCard: {
+    backgroundColor: Colors.neutral.card,
+    padding: Spacing.xl,
+    borderRadius: Rounded.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary, marginTop: Spacing.md },
+  emptyDesc: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
 });

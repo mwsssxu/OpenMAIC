@@ -34,7 +34,7 @@ const iOSColors = {
 const quickFunctions = [
   { key: 'courses', titleKey: 'home.myCourses', icon: 'book', color: '#f45a1a', bgColor: '#fce8e0', route: '/courses' },
   { key: 'qa', titleKey: 'home.qaBounty', icon: 'help-circle', color: '#d97706', bgColor: '#fef3c7', route: '/questions' },
-  { key: 'notes', titleKey: 'home.sharedNotes', icon: 'document-text', color: '#14b8a6', bgColor: '#e8f5f5', route: '/notes' },
+  { key: 'notes', titleKey: 'home.sharedNotes', icon: 'document-text', color: '#14b8a6', bgColor: '#e8f5f5', route: '/shared-notes' },
   { key: 'buddy', titleKey: 'home.studyBuddy', icon: 'happy', color: '#2563eb', bgColor: '#dbeafe', route: '/buddy' },
   { key: 'matching', titleKey: 'home.studyMatching', icon: 'people', color: '#8b5cf6', bgColor: '#ede9fe', route: '/matching' },
   { key: 'growth', titleKey: 'home.growthSystem', icon: 'trending-up', color: '#f45a1a', bgColor: '#fce8e0', route: '/gamification' },
@@ -300,13 +300,9 @@ export default function HomeScreen() {
             <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
             <Text style={styles.userStats}>
               {statsLoading ? (
-                <Text style={styles.loadingText}>{t('home.loading') || 'Loading...'}</Text>
+                t('home.loading') || 'Loading...'
               ) : (
-                <>
-                  <Text style={styles.statValue}>{stats.days}</Text>{t('home.days')} ·
-                  <Text style={styles.statValue}>{stats.courses}</Text>{t('home.courses')} ·
-                  <Text style={styles.statValue}>{stats.hours}</Text>{t('home.hours')}
-                </>
+                `${stats.days}${t('home.days')} · ${stats.courses}${t('home.courses')} · ${stats.hours}${t('home.hours')}`
               )}
             </Text>
           </View>

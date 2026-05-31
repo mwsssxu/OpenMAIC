@@ -586,6 +586,12 @@ CREATE TABLE IF NOT EXISTS questions (
     scene_id UUID REFERENCES scenes(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
+    bounty INTEGER DEFAULT 0,
+    bounty_status VARCHAR(20) DEFAULT 'open',
+    tags TEXT,
+    view_count INTEGER DEFAULT 0,
+    answer_count INTEGER DEFAULT 0,
+    accepted_answer_id UUID,
     is_resolved BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now()
@@ -596,10 +602,34 @@ CREATE TABLE IF NOT EXISTS answers (
     question_id UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
+    rating DECIMAL(3,2) DEFAULT 0,
+    vote_count INTEGER DEFAULT 0,
     is_accepted BOOLEAN DEFAULT false,
+    accepted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS answer_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    answer_id UUID NOT NULL REFERENCES answers(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vote INTEGER NOT NULL CHECK (vote IN (1, -1)),
+    created_at TIMESTAMP DEFAULT now(),
+    UNIQUE(answer_id, user_id)
+);
+
+-- 为问答系统添加索引
+CREATE INDEX IF NOT EXISTS idx_questions_user_id ON questions(user_id);
+CREATE INDEX IF NOT EXISTS idx_questions_created_at ON questions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_questions_bounty ON questions(bounty DESC);
+CREATE INDEX IF NOT EXISTS idx_questions_bounty_status ON questions(bounty_status);
+CREATE INDEX IF NOT EXISTS idx_answers_question_id ON answers(question_id);
+CREATE INDEX IF NOT EXISTS idx_answers_user_id ON answers(user_id);
+CREATE INDEX IF NOT EXISTS idx_answers_vote_count ON answers(vote_count DESC);
+CREATE INDEX IF NOT EXISTS idx_answers_is_accepted ON answers(is_accepted);
+CREATE INDEX IF NOT EXISTS idx_answer_votes_answer_id ON answer_votes(answer_id);
+CREATE INDEX IF NOT EXISTS idx_answer_votes_user_id ON answer_votes(user_id);
 
 -- ============================================
 -- 18. Personas (personas_schema)

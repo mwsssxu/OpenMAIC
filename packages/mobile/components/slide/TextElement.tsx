@@ -300,19 +300,26 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
   }, [position.width, scaleX]);
 
   const containerStyle = useMemo(() => {
-    // 白板模式下，高度应该基于内容自适应，而不是被缩放限制
-    // minHeight 设置一个合理的最小值，让内容可以自然扩展
-    const minH = isWhiteboard
-      ? Math.max(40, baseFontSize * 1.5) // 白板模式：基于字体大小的最小高度
-      : (position.height > 0 ? position.height * scaleY : 40);
+    // 白板模式：使用相对定位（流式布局），不依赖预计算的 top 值
+    if (isWhiteboard) {
+      return {
+        width: '100%' as const,
+        minHeight: Math.max(40, baseFontSize * 1.5),
+        maxHeight: 500,
+        marginBottom: 8,
+        zIndex: 1,
+        opacity: fadeAnim,
+      };
+    }
 
+    // 非白板模式：使用绝对定位
+    const minH = position.height > 0 ? position.height * scaleY : 40;
     return {
       position: 'absolute' as const,
       left: position.left * scaleX,
       top: position.top * scaleY,
       width: effectiveWidth,
       minHeight: minH,
-      maxHeight: isWhiteboard ? 300 : undefined,
       transform: [{ rotate: `${element.rotate || 0}deg` }],
       zIndex: 1,
       opacity: fadeAnim,
@@ -360,18 +367,10 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
     flexWrap: 'wrap' as any,
   }), [element, theme, titleStyle, scaleX, textColor]);
 
-  // 判断是否需要滚动（白板模式下文本较长时）
-  const needsScroll = useMemo(() => {
-    if (!isWhiteboard) return false;
-    // 估算文本行数
-    const estimatedLines = textContent.length / 20;
-    return estimatedLines > 3;
-  }, [isWhiteboard, textContent]);
-
   return (
     <Animated.View style={[containerStyle, { transform: [{ translateY: slideAnim }] }]}>
-      {needsScroll ? (
-        <ScrollView style={{ flex: 1 }} nestedScrollEnabled>
+      {isWhiteboard ? (
+        <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled>
           <View style={textWrapperStyle}>
             <Text style={textStyle}>
               {textContent}

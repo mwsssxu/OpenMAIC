@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
@@ -132,6 +133,14 @@ export default function EnterpriseScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        {/* 导航栏 */}
+        <View style={styles.navBar}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+          </TouchableOpacity>
+          <Text style={styles.navTitle}>企业服务</Text>
+          <View style={styles.navRight} />
+        </View>
         <View style={styles.center}>
           <Text>加载中...</Text>
         </View>
@@ -142,6 +151,14 @@ export default function EnterpriseScreen() {
   if (showCreate) {
     return (
       <SafeAreaView style={styles.container}>
+        {/* 导航栏 */}
+        <View style={styles.navBar}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+          </TouchableOpacity>
+          <Text style={styles.navTitle}>创建企业账户</Text>
+          <View style={styles.navRight} />
+        </View>
         <ScrollView style={styles.content}>
           <Text style={styles.title}>创建企业账户</Text>
           <TextInput
@@ -182,6 +199,14 @@ export default function EnterpriseScreen() {
   if (!enterprise?.has_enterprise) {
     return (
       <SafeAreaView style={styles.container}>
+        {/* 导航栏 */}
+        <View style={styles.navBar}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+          </TouchableOpacity>
+          <Text style={styles.navTitle}>企业服务</Text>
+          <View style={styles.navRight} />
+        </View>
         <View style={styles.center}>
           <Text style={styles.noEnterpriseTitle}>企业功能</Text>
           <Text style={styles.noEnterpriseDesc}>创建企业账户，管理团队学习</Text>
@@ -195,6 +220,14 @@ export default function EnterpriseScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 导航栏 */}
+      <View style={styles.navBar}>
+        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+        </TouchableOpacity>
+        <Text style={styles.navTitle}>企业服务</Text>
+        <View style={styles.navRight} />
+      </View>
       <View style={styles.header}>
         <Text style={styles.enterpriseName}>{enterprise?.name}</Text>
         <Text style={styles.enterpriseInfo}>
@@ -263,6 +296,26 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
   content: { flex: 1, padding: Spacing.md },
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  navBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.neutral.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  navTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary },
+  navRight: { width: 44 },
   header: {
     padding: Spacing.md,
     backgroundColor: Colors.neutral.card,
