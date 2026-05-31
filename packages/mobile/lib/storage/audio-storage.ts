@@ -149,10 +149,14 @@ export function findAudioByPattern(pattern: string): string[] {
  */
 export function clearSceneAudio(sceneIndex: number): void {
   const pattern = `tts_s${sceneIndex}_`;
-  const audioIds = findAudioByPattern(pattern);
+  const audioDir = getAudioDirectory();
+  const files = audioDir.list();
 
-  for (const audioId of audioIds) {
-    deleteAudioFile(audioId);
+  // Delete files matching the pattern, handling both mp3 and wav
+  for (const f of files) {
+    if (f instanceof File && f.name.startsWith(pattern)) {
+      (f as File).delete();
+    }
   }
 }
 
