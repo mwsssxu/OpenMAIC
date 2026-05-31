@@ -154,25 +154,38 @@ export class PlaybackEngine {
 
   /**
    * 播放当前场景（不自动切换到下一个）
+   * Guard: prevent re-entry if already playing or processing
    */
   async playCurrentScene(): Promise<void> {
-    const scene = this.getCurrentScene();
-    if (!scene) {
+    // Guard: prevent re-entry
+    if (this.mode === 'playing' || this.processing) {
+      console.log('[PlaybackEngine] Already playing, skip playCurrentScene');
       return;
     }
 
-    // 检查场景类型
+    const scene = this.getCurrentScene();
+    if (!scene) {
+      console.log('[PlaybackEngine] No current scene');
+      return;
+    }
+
+    // Check scene type
     if (NON_SPEECH_SCENE_TYPES.includes(scene.type)) {
-      // 互动/测验/PBL 场景不播放音频
       console.log(`[PlaybackEngine] Skipping speech for ${scene.type} scene`);
       return;
     }
 
     this.mode = 'playing';
+    this.processing = true;
     this.callbacks.onModeChange?.(this.mode);
     this.actionIndex = 0;
 
     await this.processSceneActions(scene);
+
+    // After processing, set mode to idle (single scene playback)
+    this.processing = false;
+    this.mode = 'idle';
+    this.callbacks.onModeChange?.(this.mode);
   }
 
   /**
@@ -192,8 +205,12 @@ export class PlaybackEngine {
     // 先清除之前的视觉效果
     this.callbacks.onClearEffects?.();
 
-    // 按顺序处理所有 actions
+    // 按顺序处理所有 actions，检查播放状态防止循环
     for (const action of actions) {
+      if (this.mode !== 'playing') {
+        console.log('[PlaybackEngine] Playback stopped, exiting processSceneActions');
+        return;
+      }
       this.callbacks.onActionExecute?.(action);
 
       if (action.type === 'spotlight') {
@@ -505,35 +522,63 @@ export class PlaybackEngine {
 
   /**
    * 播放文本（TTS API 或 expo-speech fallback）
+   * Strip HTML/SSML tags and use scene-specific cache keys
    */
   private async speakText(text: string, audioId: string): Promise<void> {
-    // 1. 检查缓存（包含 speed 以确保不同语速使用不同缓存）
-    const cacheKey = `${this.ttsConfig.provider}_${this.ttsConfig.voice}_${this.ttsConfig.speed}_${text.length}_${text.slice(0, 100)}`;
-    const cached = this.audioCache.get(cacheKey);
-    if (cached) {
-      // Web 环境：直接缓存到 AudioPlayer
-      if (Platform.OS === 'web') {
-        this.audioPlayer.cacheAudio(audioId, cached.base64, cached.format);
-      } else {
-        saveAudioFile(audioId, cached.base64, cached.format);
-      }
-      await this.audioPlayer.play(audioId, cached.format);
+    // Strip HTML/SSML tags from text
+    const cleanText = stripHtmlAndSSML(text);
+
+    if (!cleanText || cleanText.length < 2) {
+      console.warn('[PlaybackEngine] Text too short after stripping HTML, skip TTS');
       return;
     }
 
-    // 2. 请求 TTS API
+    // Generate cache key with scene index to ensure scene-specific caching
+    const sceneIndex = this.sceneIndex;
+    const cacheKey = `tts_s${sceneIndex}_${audioId}_${this.ttsConfig.provider}_${this.ttsConfig.voice}_${this.ttsConfig.speed}`;
+
+    // 1. Check memory cache
+    const memoryCached = this.audioCache.get(cacheKey);
+    if (memoryCached) {
+      console.log(`[PlaybackEngine] Using memory cached audio: ${cacheKey}`);
+      if (Platform.OS === 'web') {
+        this.audioPlayer.cacheAudio(cacheKey, memoryCached.base64, memoryCached.format);
+      } else {
+        saveAudioFile(cacheKey, memoryCached.base64, memoryCached.format);
+      }
+      await this.audioPlayer.play(cacheKey, memoryCached.format);
+      return;
+    }
+
+    // 2. Check file system cache (native only)
+    if (Platform.OS !== 'web') {
+      const filePath = getAudioPath(cacheKey);
+      if (filePath) {
+        console.log(`[PlaybackEngine] Using file cached audio: ${cacheKey}`);
+        try {
+          const base64 = await fetch(`file://${filePath}`).then(r => r.text());
+          this.audioCache.set(cacheKey, { base64, format: 'mp3' });
+          await this.audioPlayer.play(cacheKey, 'mp3');
+          return;
+        } catch (err) {
+          console.warn('[PlaybackEngine] Failed to load cached file:', err);
+        }
+      }
+    }
+
+    // 3. Request TTS API
     if (this.ttsConfig.provider !== 'browser') {
       try {
-        this.callbacks.onTTSGenerate?.(audioId);
+        this.callbacks.onTTSGenerate?.(cacheKey);
 
         const result = await apiClient.generateTTS(
-          text,
-          audioId,
+          cleanText, // Use cleaned text
+          cacheKey, // Use scene-specific cache key
           this.ttsConfig.provider,
           this.ttsConfig.voice,
           this.ttsConfig.speed,
           this.ttsConfig.model,
-          // VoxCPM 特有配置
+          // VoxCPM specific config
           this.ttsConfig.provider === 'voxcpm' ? {
             backend: this.ttsConfig.backend,
             voicePrompt: this.ttsConfig.voicePrompt,
@@ -541,15 +586,15 @@ export class PlaybackEngine {
         );
 
         if (result.success && result.base64) {
-          // 缓存音频数据
+          // Cache to memory
           this.audioCache.set(cacheKey, { base64: result.base64, format: result.format });
 
-          // Web 环境：直接缓存 base64 到 AudioPlayer，无需文件存储
+          // Web environment: cache base64 to AudioPlayer
           if (Platform.OS === 'web') {
             this.audioPlayer.cacheAudio(result.audioId, result.base64, result.format);
           } else {
-            // Native 环境：保存到文件系统
-            saveAudioFile(result.audioId, result.base64, result.format);
+            // Native environment: save to file system for persistence
+            saveAudioFile(cacheKey, result.base64, result.format);
           }
 
           this.callbacks.onTTSReady?.(result.audioId);
@@ -561,10 +606,10 @@ export class PlaybackEngine {
       }
     }
 
-    // 3. expo-speech fallback
+    // 4. expo-speech fallback
     this.speechPlaying = true;
     try {
-      await Speech.speak(text, {
+      await Speech.speak(cleanText, { // Use cleaned text
         language: 'zh-CN',
         rate: this.ttsConfig.speed * 0.9,
         onDone: () => {
