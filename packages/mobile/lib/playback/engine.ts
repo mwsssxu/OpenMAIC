@@ -12,11 +12,12 @@
  */
 
 import { AudioPlayer } from './audio-player';
-import { saveAudioFile } from '../storage/audio-storage';
+import { saveAudioFile, getAudioPath } from '../storage/audio-storage';
 import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
 import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData } from '../types';
 import { apiClient } from '../api-client';
+import { stripHtmlAndSSML } from '../utils/html-stripper';
 
 export type EngineMode = 'idle' | 'playing' | 'paused';
 
