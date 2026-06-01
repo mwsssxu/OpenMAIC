@@ -317,3 +317,4 @@ Rules:
 9. **Language**: Infer from the user's requirement text and context. Output all scene content in the inferred language.
 10. Regardless of information completeness, always output conforming JSON - do not ask questions or request more information
 11. **No teacher identity on slides**: Scene titles and keyPoints must be neutral and topic-focused. Never include the teacher's name or role (e.g., avoid "Teacher Wang's Tips", "Teacher's Wishes"). Use generic labels like "Tips", "Summary", "Key Takeaways" instead.
+12. **Course Completion Scene**: The last scene MUST be a "课程完成" / "Course Complete" slide that congratulates the learner, summarizes key achievements, and optionally suggests next steps. This provides a satisfying end to the course experience.

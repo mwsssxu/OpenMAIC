@@ -37,7 +37,7 @@ import {
 
 interface QuizQuestion {
   id: string;
-  type: 'single' | 'multiple' | 'short';
+  type: 'single' | 'multiple' | 'short_answer';
   question: string;
   options?: string[];
   correctAnswer?: string | string[];
@@ -384,7 +384,7 @@ export function Quiz({ questions, sceneId, onSubmit, onComplete }: QuizProps) {
             })}
 
             {/* 简答题 */}
-            {currentQuestion.type === 'short' && (
+            {currentQuestion.type === 'short_answer' && (
               <TextInput
                 style={styles.shortAnswerInput}
                 multiline

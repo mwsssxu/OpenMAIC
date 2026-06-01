@@ -77,13 +77,6 @@ function CourseHero() {
     <View style={styles.courseHero}>
       <View style={styles.heroPattern} />
       <TouchableOpacity
-        style={styles.heroBackBtn}
-        onPress={() => useRouter().back()}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="chevron-back" size={18} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity
         style={styles.heroShareBtn}
         onPress={() => {
           // 后续添加分享功能
@@ -377,18 +370,6 @@ const styles = StyleSheet.create({
     inset: 0,
     opacity: 0.08,
     backgroundColor: '#fff',
-  },
-  heroBackBtn: {
-    position: 'absolute',
-    top: 58,
-    left: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
   },
   heroShareBtn: {
     position: 'absolute',

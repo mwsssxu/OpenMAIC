@@ -74,6 +74,13 @@ interface WebViewMessage {
   payload?: any;
 }
 
+// 消息格式类型守卫
+function isValidMessage(data: unknown): data is WebViewMessage {
+  if (typeof data !== 'object' || data === null) return false;
+  const msg = data as Record<string, unknown>;
+  return typeof msg.type === 'string' && ['message', 'complete', 'error', 'state'].includes(msg.type);
+}
+
 // 错误信息映射
 const ERROR_MESSAGES: Record<string, string> = {
   NETWORK_ERROR: '网络连接失败，请检查网络设置',
@@ -158,7 +165,11 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
     // 处理 WebView 消息
     const handleMessage = useCallback((event: any) => {
       try {
-        const data: WebViewMessage = JSON.parse(event.nativeEvent?.data || '{}');
+        const data: unknown = JSON.parse(event.nativeEvent?.data || '{}');
+        if (!isValidMessage(data)) {
+          console.warn('[InteractiveWebView] Invalid message format:', data);
+          return;
+        }
         switch (data.type) {
           case 'complete':
             haptics.success();

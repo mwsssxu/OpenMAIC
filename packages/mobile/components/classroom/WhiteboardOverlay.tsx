@@ -5,8 +5,8 @@
  * Used during teaching and interactive scenes to display formulas and key points.
  */
 
-import React, { memo, useMemo, useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Clipboard } from 'react-native';
+import React, { memo, useMemo, useState, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { ScreenCanvas } from '@/components/slide/ScreenCanvas';
@@ -19,12 +19,27 @@ const MATH_SYMBOLS = ['∑', '∫', '∂', '√', '∞', 'π', 'α', 'β', 'γ',
 const CODE_COLLAPSE_THRESHOLD = 10;
 
 /**
+ * 解码 HTML 实体
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+/**
  * 预处理内容，提取代码块
  * 返回分段数组，每段可以是普通文本或代码块
  */
 function parseContentSegments(content: string): Array<{ type: 'text' | 'code'; content: string; lang?: string }> {
+  // 先解码 HTML 实体
+  const decodedContent = decodeHtmlEntities(content);
   const segments: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = [];
-  const lines = content.split('\n');
+  const lines = decodedContent.split('\n');
   let inCodeBlock = false;
   let codeLang = '';
   let codeContent = '';
@@ -66,47 +81,18 @@ function parseContentSegments(content: string): Array<{ type: 'text' | 'code'; c
 }
 
 /**
- * 代码块渲染组件 - 支持折叠/展开和复制
+ * 代码块渲染组件 - 支持折叠/展开
  */
 const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
   const lines = code.split('\n');
   const shouldCollapse = lines.length > CODE_COLLAPSE_THRESHOLD;
   const displayLines = shouldCollapse && !expanded ? lines.slice(0, CODE_COLLAPSE_THRESHOLD) : lines;
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = () => {
-    Clipboard.setString(code);
-    setCopied(true);
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
-    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <View style={styles.codeBlock}>
       <View style={styles.codeHeader}>
         <Text style={styles.codeLang}>{lang || 'code'}</Text>
-        <View style={styles.codeActions}>
-          <TouchableOpacity onPress={handleCopy} style={styles.codeActionBtn}>
-            <Ionicons
-              name={copied ? 'checkmark' : 'copy-outline'}
-              size={16}
-              color={copied ? Colors.secondary.success : '#666'}
-            />
-          </TouchableOpacity>
-        </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <Text style={styles.codeText}>
@@ -442,10 +428,10 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
     <View style={[styles.whiteboard, useAbsolute && styles.whiteboardAbsolute]}>
       {/* Header */}
       <View style={styles.header}>
-        <Ionicons name="pencil" size={20} color="#5b9bd5" />
+        <Ionicons name="pencil" size={16} color="#5b9bd5" />
         <Text style={styles.title}>白板</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-          <Ionicons name="close" size={20} color="#666" />
+          <Ionicons name="close" size={16} color="#666" />
         </TouchableOpacity>
       </View>
 
@@ -453,7 +439,7 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
       <View style={styles.contentArea}>
         {!hasElements && !hasTextContent ? (
           <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={40} color="#ccc" />
+            <Ionicons name="document-text-outline" size={32} color="#ccc" />
             <Text style={styles.emptyText}>暂无白板内容</Text>
           </View>
         ) : hasElements ? (
@@ -474,9 +460,18 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
     </View>
   );
 
-  // absolute 模式：直接渲染 View
+  // absolute 模式：直接渲染 View（讨论框打开时留出底部空间）
   if (useAbsolute) {
     if (!visible) return null;
+    return (
+      <View style={[styles.absoluteContainer, styles.absoluteContainerWithChat]}>
+        {content}
+      </View>
+    );
+  }
+
+  // 非 absolute 模式（讨论框关闭）：满屏显示白板
+  if (visible) {
     return (
       <View style={styles.absoluteContainer}>
         {content}
@@ -484,58 +479,34 @@ export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute =
     );
   }
 
-  // Modal 模式：使用 Modal 包裹，支持滚动查看长内容
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <ScrollView
-        style={styles.modalScrollView}
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={true}
-      >
-        {content}
-      </ScrollView>
-    </Modal>
-  );
+  return null;
 }
 
 const styles = StyleSheet.create({
-  // Modal 滚动容器
-  modalScrollView: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  // absolute 模式容器 - 白板占满全屏，遮挡讨论弹框
+  // absolute 模式容器 - 白板满屏或占上方 2/3
   absoluteContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 80,
-    zIndex: 25,
-    paddingHorizontal: Spacing.sm,
-    paddingTop: Spacing.sm,
+    bottom: 0, // 默认满屏
+    zIndex: 100, // 提高 zIndex 确保覆盖其他元素
+    padding: Spacing.sm, // 使用 padding 让子元素测量正确宽度
+  },
+  absoluteContainerWithChat: {
+    bottom: '33%', // 为底部对话框留出 1/3 空间
   },
   whiteboardAbsolute: {
-    flex: 1, // 填满上方区域，允许内容扩展
+    flex: 1,
     borderRadius: Rounded.lg,
-  },
-  // Modal 模式容器 - 支持白板动态扩展
-  container: {
-    justifyContent: 'flex-start', // 靠上方
-    alignItems: 'center',
-    paddingTop: Spacing.md, // 顶部留出一点间距
-    paddingBottom: Spacing.xl, // 底部留出滚动空间
-    // 允许滚动查看更多内容
   },
   whiteboard: {
     backgroundColor: Colors.neutral.white,
     borderRadius: Rounded.lg,
-    width: '92%',
+    width: '100%',
+    maxWidth: undefined,
+    minHeight: 280,
+    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -545,22 +516,24 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.md,
+    padding: Spacing.sm, // 减小 padding
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutral.border,
   },
   title: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 14, // 减小字体
     fontWeight: '600',
-    marginLeft: Spacing.sm,
+    marginLeft: Spacing.xs, // 减小边距
     color: Colors.neutral.textPrimary,
   },
   closeBtn: {
-    padding: Spacing.sm,
+    padding: Spacing.xs, // 减小 padding
   },
   contentArea: {
+    flex: 1,
     backgroundColor: '#f8f9fa',
+    minHeight: 200,
   },
   emptyState: {
     flex: 1,

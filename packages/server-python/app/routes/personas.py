@@ -272,16 +272,16 @@ async def generate_persona_response(
     logger.info(f"[Persona] 系统提示词长度: {len(system_prompt)}")
     logger.debug(f"[Persona] 用户提示词(截断): {user_prompt[:LOG_TRUNCATION_LENGTH]}...")
 
-    # Chat 专用模型（参考Web端，使用 qwen3.5-plus）
-    CHAT_MODEL = "qwen3.5-plus"
+    # Chat 专用模型（使用 qwen3.6-plus）
+    CHAT_MODEL = "qwen3.6-plus"
 
     try:
-        # 调用 LLM（使用 qwen3.5-plus，参考Web端）
+        # 调用 LLM（使用 qwen3.6-plus）
         llm_start = time.time()
         response = await call_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=CHAT_MODEL,  # 直接使用 qwen3.5-plus，不经过模型映射
+            model=CHAT_MODEL,  # 直接使用 qwen3.6-plus，不经过模型映射
             temperature=0.8,  # 更高的温度让回答更有个性
             max_tokens=1024,
         )

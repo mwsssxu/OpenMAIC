@@ -6,4 +6,4 @@
 **语言要求**：题目和选项必须与上述标题和描述的语言一致。
 
 直接输出 JSON 数组（无解释、无代码块、无 LaTeX）：
-[{"id":"q1","type":"single","question":"题目文本","options":["选项A","选项B","选项C","选项D"],"correctAnswer":"选项A","analysis":"解析","points":5}]
+[{"id":"q1","type":"single","question":"题目文本","options":[{"value":"A","label":"选项A内容"},{"value":"B","label":"选项B内容"},{"value":"C","label":"选项C内容"},{"value":"D","label":"选项D内容"}],"answer":["A"],"analysis":"解析","points":5}]

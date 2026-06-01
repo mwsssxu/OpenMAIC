@@ -156,18 +156,18 @@ const styles = StyleSheet.create({
   },
   handleArea: {
     alignItems: 'center',
-    paddingTop: Spacing.sm,
-    paddingBottom: 4,
+    paddingTop: Spacing.xs, // 缩小 padding
+    paddingBottom: 2, // 缩小 padding
   },
   handleBar: {
-    width: 40,
-    height: 4,
+    width: 32, // 缩小把手
+    height: 3, // 缩小把手
     borderRadius: 2,
     backgroundColor: '#D1D5DB',
   },
   swipeHintText: {
-    marginTop: 4,
-    fontSize: 11,
+    marginTop: 2, // 缩小 margin
+    fontSize: 10, // 缩小字体
     color: '#9CA3AF',
     fontWeight: '500',
   },
