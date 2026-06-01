@@ -51,13 +51,13 @@ import {
   type QuestionResult,
 } from '@/lib/quiz/persistence';
 import {
-  gradeChoiceQuestions,
   isShortAnswer,
   isMultipleChoice,
   toArray,
   arraysEqual,
-  type QuestionResult as GradingResult,
 } from '@/lib/quiz/grading';
+import { QUIZ_LEVEL_CONFIG } from '@/lib/quiz/levelConfig';
+import type { QuizLevel } from '@/lib/quiz/types';
 import {
   readChatHistory,
   saveChatHistory,
@@ -326,15 +326,20 @@ export default function ClassroomScreen() {
   const [showExtractResult, setShowExtractResult] = useState(false);
   const [extractedCards, setExtractedCards] = useState<any[]>([]);
 
-  // 测验交互状态
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string | string[]>>({});
-  const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, boolean>>({});
-  const [answerDetails, setAnswerDetails] = useState<Record<string, { correctAnswer?: string; aiComment?: string; isCorrect?: boolean }>>({});
-  const [quizSubmitted, setQuizSubmitted] = useState(false);
-  const [quizSubmitting, setQuizSubmitting] = useState(false);
-
-  // ScrollView refs - 用于滚动定位
-  const quizScrollRef = useRef<ScrollView>(null);
+  // 测验交互状态 - Duolingo 逐题模式
+  type QuestionPhase = 'answering' | 'grading' | 'feedback' | 'completed';
+  interface QuestionState {
+    phase: QuestionPhase;
+    answer: string | string[];
+    result?: { correct: boolean; earned: number; correctAnswer?: string; aiComment?: string };
+  }
+  interface QuizFlowState {
+    currentIndex: number;
+    questions: Record<string, QuestionState>;
+    phase: 'active' | 'summary';
+    showAnalysis?: boolean;
+  }
+  const [quizFlow, setQuizFlow] = useState<QuizFlowState>({ currentIndex: 0, questions: {}, phase: 'active' });
 
   // 场景切换动画 - 使用 Reanimated
   const translateX = useSharedValue(0);
@@ -359,44 +364,49 @@ export default function ClassroomScreen() {
   }, [id, authLoading, isAuthenticated]);
 
   // Quiz场景状态恢复 - 当切换到Quiz场景时加载持久化状态
-  // 注意：必须在所有条件返回之前声明（遵循 React Hooks 规则）
   useEffect(() => {
     const scene = data?.scenes?.[currentSceneIndex];
     if (scene?.type === 'quiz' && scene?.id) {
+      const questions = (scene.content as QuizContent)?.questions;
+      if (!questions) return;
+
       const loadQuizState = async () => {
         const submittedState = await readSubmittedState(scene.id);
-        if (submittedState) {
-          if (submittedState.kind === 'reviewing') {
-            // 已提交并批改 - 转换类型：QuizAnswers是string | string[]，单选转为string
-            const answers: Record<string, string> = {};
-            Object.entries(submittedState.answers).forEach(([key, value]) => {
-              answers[key] = typeof value === 'string' ? value : value[0] || '';
-            });
-            setSelectedAnswers(answers);
-            const resultsMap: Record<string, boolean> = {};
-            submittedState.results.forEach(r => {
-              resultsMap[r.questionId] = r.correct === true;
-            });
-            setSubmittedAnswers(resultsMap);
-            setQuizSubmitted(true);
-          } else if (submittedState.kind === 'answering') {
-            // 已提交但未批改
-            const answers: Record<string, string> = {};
-            Object.entries(submittedState.answers).forEach(([key, value]) => {
-              answers[key] = typeof value === 'string' ? value : value[0] || '';
-            });
-            setSelectedAnswers(answers);
-            setQuizSubmitted(true);
-          }
+        if (submittedState?.kind === 'reviewing') {
+          // 已完成 - 转换为 summary 阶段
+          const flowQuestions: Record<string, QuestionState> = {};
+          submittedState.results.forEach(r => {
+            const q = questions.find(qq => qq.id === r.questionId);
+            flowQuestions[r.questionId] = {
+              phase: 'completed',
+              answer: submittedState.answers[r.questionId] ?? '',
+              result: {
+                correct: r.correct === true,
+                earned: r.correct ? (q?.points ?? 1) : 0,
+                aiComment: r.feedback,
+              },
+            };
+          });
+          setQuizFlow({ currentIndex: questions.length, questions: flowQuestions, phase: 'summary' });
+        } else if (submittedState?.kind === 'answering') {
+          // 旧格式部分提交 - 显示 summary
+          const flowQuestions: Record<string, QuestionState> = {};
+          Object.entries(submittedState.answers).forEach(([qId, ans]) => {
+            flowQuestions[qId] = { phase: 'completed', answer: ans, result: { correct: false, earned: 0 } };
+          });
+          setQuizFlow({ currentIndex: questions.length, questions: flowQuestions, phase: 'summary' });
         } else {
-          // 没有提交状态，加载草稿
+          // 加载草稿
           const draft = await readDraft(scene.id);
           if (draft && Object.keys(draft).length > 0) {
-            const answers: Record<string, string> = {};
-            Object.entries(draft).forEach(([key, value]) => {
-              answers[key] = typeof value === 'string' ? value : value[0] || '';
+            const flowQuestions: Record<string, QuestionState> = {};
+            Object.entries(draft).forEach(([qId, ans]) => {
+              flowQuestions[qId] = { phase: 'answering', answer: ans };
             });
-            setSelectedAnswers(answers);
+            const firstUnanswered = questions.findIndex(q => !flowQuestions[q.id]);
+            setQuizFlow({ currentIndex: firstUnanswered >= 0 ? firstUnanswered : 0, questions: flowQuestions, phase: 'active' });
+          } else {
+            setQuizFlow({ currentIndex: 0, questions: {}, phase: 'active', showAnalysis: false });
           }
         }
       };
@@ -492,7 +502,7 @@ export default function ClassroomScreen() {
   }));
 
   // 后台创建剩余场景（从API获取大纲 - 更可靠）
-  async function startBackgroundSceneCreationFromAPI(outlines: SceneOutline[]) {
+  async function createAllScenesInBackground(outlines: SceneOutline[]) {
     if (!id || !outlines || outlines.length === 0 || backgroundCreatingRef.current) return;
 
     backgroundCreatingRef.current = true;
@@ -500,41 +510,56 @@ export default function ClassroomScreen() {
     setPendingScenesTotal(outlines.length);
     setCreatedScenesCount(0);
 
-    console.log(`[Background] 开始创建 ${outlines.length} 个剩余场景（从API获取）`);
-
-    // 获取已有场景数量（在调用此函数时 data 可能还未设置，使用 1 作为默认值）
-    const existingCount = 1;
-
-    // 获取课程语言设置
     const language = data?.stage?.language_directive || 'zh-CN';
+    console.log(`[Background] 并行创建 ${outlines.length} 个场景`);
 
-    // 逐个创建剩余场景
-    for (let i = 0; i < outlines.length; i++) {
-      const outline = outlines[i];
-      const orderIndex = existingCount + i + 1;
-      console.log(`[Background] 创建场景 ${orderIndex}/${existingCount + outlines.length}: ${outline.title}`);
-
+    // 启动轮询，每 5 秒检查已创建场景数
+    const pollInterval = setInterval(async () => {
       try {
-        await apiClient.createScene(id, outline, orderIndex, language);
-        setCreatedScenesCount(i + 1);
+        const pollData = await apiClient.getClassroom(id);
+        setData(pollData);
+        const created = pollData?.scenes?.length || 0;
+        const initialCount = data?.scenes?.length || 0;
+        setCreatedScenesCount(created - initialCount);
+      } catch {}
+    }, 5000);
 
-        // 创建成功后刷新课程数据（每 2 个场景刷新一次）
-        if ((i + 1) % 2 === 0 || i === outlines.length - 1) {
-          const updatedData = await apiClient.getClassroom(id);
-          setData(updatedData);
+    try {
+      await apiClient.createAllScenes(id, outlines, language);
+      clearInterval(pollInterval);
+      const finalData = await apiClient.getClassroom(id);
+      setData(finalData);
+      const initialCount = data?.scenes?.length || 0;
+      setCreatedScenesCount((finalData?.scenes?.length || 0) - initialCount);
+      console.log(`[Background] 所有场景创建完成`);
+    } catch (err: any) {
+      clearInterval(pollInterval);
+      console.error('[Background] 并行创建失败，尝试逐个创建:', err.message);
+
+      // 降级：逐个创建未完成的场景
+      const freshData = await apiClient.getClassroom(id);
+      setData(freshData);
+      const existingScenes = freshData?.scenes?.length || 0;
+      const remaining = outlines.length - (existingScenes - (freshData?.scenes?.length || 0));
+
+      for (let i = 0; i < remaining; i++) {
+        try {
+          const currentData = await apiClient.getClassroom(id);
+          const currentCount = currentData?.scenes?.length || 0;
+          await apiClient.createScene(id, outlines[outlines.length - remaining + i], currentCount + 1, language);
+          setCreatedScenesCount(existingScenes + i + 1);
+          if ((i + 1) % 2 === 0 || i === remaining - 1) {
+            setData(await apiClient.getClassroom(id));
+          }
+        } catch (sceneErr: any) {
+          console.warn(`[Background] 场景创建失败:`, sceneErr.message);
         }
-      } catch (sceneErr: any) {
-        console.warn(`[Background] 场景 ${outline.title} 创建失败:`, sceneErr.message);
       }
+      setData(await apiClient.getClassroom(id));
+    } finally {
+      backgroundCreatingRef.current = false;
+      setBackgroundCreating(false);
     }
-
-    // 最终刷新并清除 pendingOutlines
-    const finalData = await apiClient.getClassroom(id);
-    setData(finalData);
-    console.log(`[Background] 所有场景创建完成`);
-
-    backgroundCreatingRef.current = false;
-    setBackgroundCreating(false);
   }
 
   async function loadClassroom() {
@@ -569,14 +594,21 @@ export default function ClassroomScreen() {
 
       // 优先使用从API获取的大纲（更可靠）
       if (pendingOutlinesFromAPI && pendingOutlinesFromAPI.length > 0 && !backgroundCreatingRef.current) {
-        console.log('[LoadClassroom] Starting background scene creation from API outlines...');
+        console.log('[LoadClassroom] Starting parallel scene creation from API outlines...');
         setShowManualCreateHint(false);
-        startBackgroundSceneCreationFromAPI(pendingOutlinesFromAPI);
+        createAllScenesInBackground(pendingOutlinesFromAPI);
       } else if (pendingOutlinesParam && !backgroundCreatingRef.current) {
-        // 有完整大纲数据（URL参数），自动后台创建
-        console.log('[LoadClassroom] Starting background scene creation from URL param...');
+        // 有完整大纲数据（URL参数），解析后并行创建
+        console.log('[LoadClassroom] Starting parallel scene creation from URL param...');
         setShowManualCreateHint(false);
-        startBackgroundSceneCreation();
+        try {
+          const decoded = JSON.parse(decodeURIComponent(pendingOutlinesParam));
+          if (Array.isArray(decoded) && decoded.length > 0) {
+            createAllScenesInBackground(decoded);
+          }
+        } catch (parseErr) {
+          console.error('[LoadClassroom] JSON解析失败:', parseErr);
+        }
       } else if (remainingCountParam > 0 && !backgroundCreatingRef.current) {
         // 只有剩余数量，显示手动创建提示
         console.log(`[LoadClassroom] ${remainingCountParam} scenes remaining, showing manual create hint`);
@@ -589,75 +621,6 @@ export default function ClassroomScreen() {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
       setLoading(false);
-    }
-  }
-
-  // 后台创建剩余场景（优化用户体验）
-  async function startBackgroundSceneCreation() {
-    if (!id || !pendingOutlines || backgroundCreatingRef.current) return;
-
-    try {
-      // 解码 URL 参数
-      const decodedOutlines = decodeURIComponent(pendingOutlines);
-
-      // 解析 JSON（可能失败）
-      let outlines: SceneOutline[];
-      try {
-        outlines = JSON.parse(decodedOutlines);
-      } catch (parseErr) {
-        console.error('[Background] JSON解析失败:', parseErr);
-        setBackgroundCreating(false);
-        return;
-      }
-
-      if (!Array.isArray(outlines) || outlines.length === 0) {
-        console.warn('[Background] 无有效大纲数据');
-        setBackgroundCreating(false);
-        return;
-      }
-
-      backgroundCreatingRef.current = true;
-      setBackgroundCreating(true);
-      setPendingScenesTotal(outlines.length);
-      setCreatedScenesCount(0);
-
-      console.log(`[Background] 开始创建 ${outlines.length} 个剩余场景`);
-
-      // 获取已有场景数量（第一个场景已创建，顺序从 2 开始）
-      const existingCount = 1; // 第一个场景在创建页面已生成
-
-      // 获取课程语言设置
-      const language = data?.stage?.language_directive || 'zh-CN';
-
-      // 逐个创建剩余场景
-      for (let i = 0; i < outlines.length; i++) {
-        const outline = outlines[i];
-        const orderIndex = existingCount + i + 1; // 第一个场景是 1，剩余场景从 2 开始
-        console.log(`[Background] 创建场景 ${orderIndex}/${totalScenes || outlines.length + existingCount}: ${outline.title}`);
-
-        try {
-          await apiClient.createScene(id, outline, orderIndex, language);
-          setCreatedScenesCount(i + 1);
-
-          // 创建成功后刷新课程数据（每 2 个场景刷新一次，避免频繁请求）
-          if ((i + 1) % 2 === 0 || i === outlines.length - 1) {
-            const updatedData = await apiClient.getClassroom(id);
-            setData(updatedData);
-          }
-        } catch (sceneErr: any) {
-          console.warn(`[Background] 场景 ${outline.title} 创建失败:`, sceneErr.message);
-        }
-      }
-
-      // 最终刷新
-      const finalData = await apiClient.getClassroom(id);
-      setData(finalData);
-      console.log(`[Background] 所有场景创建完成`);
-
-    } catch (err) {
-      console.error('[Background] 后台创建失败:', err);
-    } finally {
-      setBackgroundCreating(false);
     }
   }
 
@@ -755,32 +718,6 @@ export default function ClassroomScreen() {
         onModeChange: (mode) => {
           setPlaybackMode(mode);
         },
-        onSpotlight: (elementId, dimness) => {
-          setSpotlightElementId(elementId);
-          // Compute spotlight rect from scene element bounds
-          const scene = engineRef.current?.getCurrentScene();
-          const content = (scene?.content as any)?.canvas;
-          if (content?.elements) {
-            const el = content.elements.find((e: any) => e.id === elementId);
-            if (el) {
-              // Scale element bounds to screen coordinates
-              const canvasWidth = content.width || 1280;
-              const canvasHeight = content.height || 720;
-              const { width: screenWidth } = require('react-native').Dimensions.get('window');
-              const scale = screenWidth / canvasWidth;
-              setSpotlightRect({
-                x: (el.left || 0) * scale,
-                y: (el.top || 0) * scale,
-                width: (el.width || 100) * scale,
-                height: (el.height || 100) * scale,
-              });
-            }
-          }
-        },
-        onClearEffects: () => {
-          setSpotlightElementId(null);
-          setSpotlightRect(null);
-        },
         onComplete: () => {
           // 播放完成
         },
@@ -865,9 +802,7 @@ export default function ClassroomScreen() {
       playbackEngineRef.current?.jumpToScene(index);
       setShowThumbnailNav(false);
       // 重置测验状态（新的场景会在useEffect中恢复持久化状态）
-      setSelectedAnswers({});
-      setSubmittedAnswers({});
-      setQuizSubmitted(false);
+      setQuizFlow({ currentIndex: 0, questions: {}, phase: 'active', showAnalysis: false });
     }
   }
 
@@ -902,179 +837,293 @@ export default function ClassroomScreen() {
     console.log('[Interactive] Message:', data);
   }, []);
 
-  // 测验交互函数
-  const selectAnswer = (questionId: string, optionValue: string, isMultiple: boolean = false) => {
-    console.log('[Quiz] selectAnswer called:', { questionId, optionValue, isMultiple, currentSelected: selectedAnswers });
+  // 测验交互函数 - Duolingo 逐题模式
 
-    let newAnswers: Record<string, string | string[]>;
+  // 选择题：选择后立即评分
+  const handleAnswerChoice = (questionId: string, optionValue: string, isMultiple: boolean = false) => {
+    const questions = (currentScene?.content as QuizContent)?.questions;
+    if (!questions) return;
+    const q = questions.find(qq => qq.id === questionId);
+    if (!q) return;
 
     if (isMultiple) {
-      // 多选题：切换选项
-      const currentValues = toArray(selectedAnswers[questionId]);
+      // 多选题：切换选项，不立即评分
+      const currentQState = quizFlow.questions[questionId];
+      const currentAnswer = currentQState?.answer ?? [];
+      const currentValues = toArray(currentAnswer);
       const newValues = currentValues.includes(optionValue)
         ? currentValues.filter(v => v !== optionValue)
         : [...currentValues, optionValue];
-      newAnswers = { ...selectedAnswers, [questionId]: newValues };
+
+      setQuizFlow(prev => ({
+        ...prev,
+        questions: {
+          ...prev.questions,
+          [questionId]: { phase: 'answering', answer: newValues },
+        },
+      }));
+
+      // 持久化草稿
+      if (currentScene?.id) {
+        const allDrafts: Record<string, string | string[]> = {};
+        Object.entries(quizFlow.questions).forEach(([qId, qs]) => {
+          if (qId !== questionId) allDrafts[qId] = qs.answer;
+        });
+        allDrafts[questionId] = newValues;
+        writeDraft(currentScene.id, allDrafts);
+      }
     } else {
-      // 单选题
-      newAnswers = { ...selectedAnswers, [questionId]: optionValue };
-    }
+      // 单选题：立即评分
+      const userAnswer = [optionValue];
+      const correctAnswer = toArray(q.answer);
+      const correct = arraysEqual(userAnswer, correctAnswer);
+      const pts = q.points ?? 1;
 
-    console.log('[Quiz] newAnswers:', newAnswers);
-    setSelectedAnswers(newAnswers);
-    // 持久化草稿答案
-    if (currentScene?.id) {
-      writeDraft(currentScene.id, newAnswers);
+      let correctAnswerDisplay: string | undefined;
+      if (q.options) {
+        const matched = q.options.filter(o => correctAnswer.includes(o.value));
+        correctAnswerDisplay = matched.map(o => o.label).join('、');
+      }
+
+      setQuizFlow(prev => {
+        const updated: QuizFlowState = {
+          ...prev,
+          questions: {
+            ...prev.questions,
+            [questionId]: {
+              phase: 'feedback' as const,
+              answer: optionValue,
+              result: { correct, earned: correct ? pts : 0, correctAnswer: correctAnswerDisplay },
+            },
+          },
+        };
+        // 持久化
+        persistQuizProgress(updated.questions, questionId, optionValue, correct, correct ? pts : 0, correctAnswerDisplay);
+        return updated;
+      });
+
+      Haptics.notificationAsync(
+        correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error
+      );
     }
   };
 
-  // 更新简答题答案
-  const updateShortAnswer = (questionId: string, text: string) => {
-    const newAnswers = { ...selectedAnswers, [questionId]: text };
-    setSelectedAnswers(newAnswers);
+  // 多选题：确认选择后评分
+  const handleConfirmMultiple = (questionId: string) => {
+    const questions = (currentScene?.content as QuizContent)?.questions;
+    if (!questions) return;
+    const q = questions.find(qq => qq.id === questionId);
+    if (!q) return;
+    const qState = quizFlow.questions[questionId];
+    if (!qState || qState.phase !== 'answering') return;
+
+    const userAnswer = toArray(qState.answer);
+    if (userAnswer.length === 0) return;
+
+    const correctAnswer = toArray(q.answer);
+    const correct = arraysEqual(userAnswer, correctAnswer);
+    const pts = q.points ?? 1;
+
+    let correctAnswerDisplay: string | undefined;
+    if (q.options) {
+      const matched = q.options.filter(o => correctAnswer.includes(o.value));
+      correctAnswerDisplay = matched.map(o => o.label).join('、');
+    }
+
+    setQuizFlow(prev => {
+      const updated: QuizFlowState = {
+        ...prev,
+        questions: {
+          ...prev.questions,
+          [questionId]: {
+            ...prev.questions[questionId],
+            phase: 'feedback' as const,
+            result: { correct, earned: correct ? pts : 0, correctAnswer: correctAnswerDisplay },
+          },
+        },
+      };
+      persistQuizProgress(updated.questions, questionId, qState.answer, correct, correct ? pts : 0, correctAnswerDisplay);
+      return updated;
+    });
+
+    Haptics.notificationAsync(
+      correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error
+    );
+  };
+
+  // 简答题：更新文本
+  const handleShortAnswerInput = (questionId: string, text: string) => {
+    setQuizFlow(prev => ({
+      ...prev,
+      questions: {
+        ...prev.questions,
+        [questionId]: { phase: 'answering', answer: text },
+      },
+    }));
+
+    // 持久化草稿
     if (currentScene?.id) {
-      writeDraft(currentScene.id, newAnswers);
+      const allDrafts: Record<string, string | string[]> = {};
+      Object.entries(quizFlow.questions).forEach(([qId, qs]) => {
+        if (qId !== questionId) allDrafts[qId] = qs.answer;
+      });
+      allDrafts[questionId] = text;
+      writeDraft(currentScene.id, allDrafts);
     }
   };
 
-  const submitQuiz = async () => {
-    if (quizSubmitting) return;
-    setQuizSubmitting(true);
+  // 简答题：提交并调用AI评分
+  const handleConfirmShortAnswer = async (questionId: string) => {
+    const questions = (currentScene?.content as QuizContent)?.questions;
+    if (!questions) return;
+    const q = questions.find(qq => qq.id === questionId);
+    if (!q) return;
+    const qState = quizFlow.questions[questionId];
+    if (!qState || qState.phase !== 'answering') return;
+
+    const userAnswer = typeof qState.answer === 'string' ? qState.answer : '';
+    if (!userAnswer.trim()) {
+      Alert.alert('提示', '请输入答案后再提交');
+      return;
+    }
+
+    // 进入评分阶段
+    setQuizFlow(prev => ({
+      ...prev,
+      questions: {
+        ...prev.questions,
+        [questionId]: { ...prev.questions[questionId], phase: 'grading' },
+      },
+    }));
+
+    const pts = q.points ?? 1;
 
     try {
-    const scene = currentScene;
-    if (!scene) {
-      console.log('[Quiz] No scene found');
-      return;
-    }
-    if (!(scene.content as any)?.questions) {
-      console.log('[Quiz] No questions in scene content');
-      return;
-    }
+      const lang = data?.stage?.language_directive?.includes('zh') ? 'zh-CN' : 'en-US';
+      const res = await apiClient.post('/quiz-grade', {
+        question: q.question,
+        userAnswer,
+        points: pts,
+        commentPrompt: q.commentPrompt,
+        language: lang,
+      });
 
-    const questions = (scene.content as QuizContent).questions;
-    console.log('[Quiz] Questions:', questions.length);
-    console.log('[Quiz] Selected answers:', selectedAnswers);
+      const earned = Math.max(0, Math.min(pts, res.data?.score || 0));
+      const correct = earned >= pts * 0.8;
 
-    // 检查是否有未作答的问题
-    const unanswered = questions.filter((q) => {
-      const answer = selectedAnswers[q.id];
-      if (!answer) return true;
-      if (Array.isArray(answer) && answer.length === 0) return true;
-      return false;
-    });
+      setQuizFlow(prev => {
+        const updated: QuizFlowState = {
+          ...prev,
+          questions: {
+            ...prev.questions,
+            [questionId]: {
+              ...prev.questions[questionId],
+              phase: 'feedback' as const,
+              result: { correct, earned, aiComment: res.data?.comment },
+            },
+          },
+        };
+        persistQuizProgress(updated.questions, questionId, qState.answer, correct, earned, undefined, res.data?.comment);
+        return updated;
+      });
 
-    if (unanswered.length > 0) {
-      console.log('[Quiz] Unanswered questions:', unanswered.length);
-      Alert.alert('提示', `还有 ${unanswered.length} 个问题未作答，请完成所有问题后再提交`);
-      return;
-    }
-
-    // 分离选择题和简答题
-    const shortAnswerQuestions = questions.filter(isShortAnswer);
-
-    // 本地批改选择题
-    const choiceResults = gradeChoiceQuestions(questions, selectedAnswers);
-    const resultsMap: Record<string, boolean> = {};
-    choiceResults.forEach((r) => {
-      resultsMap[r.questionId] = r.correct === true;
-    });
-
-    // AI批改简答题 - 使用 Promise.all 返回结果避免竞态
-    const shortAnswerResults = await Promise.all(
-      shortAnswerQuestions.map(async (q) => {
-        const userAnswer = selectedAnswers[q.id] as string;
-        const pts = q.points ?? 1;
-
-        try {
-          const lang = data?.stage?.language_directive?.includes('zh') ? 'zh-CN' : 'en-US';
-          const res = await apiClient.post('/quiz-grade', {
-            question: q.question,
-            userAnswer,
-            points: pts,
-            commentPrompt: q.commentPrompt,
-            language: lang,
-          });
-
-          const earned = Math.max(0, Math.min(pts, res.data?.score || 0));
-          const correct = earned >= pts * 0.8;
-
-          return {
-            questionId: q.id,
-            correct,
-            status: correct ? 'correct' as const : 'incorrect' as const,
-            earned,
-            aiComment: res.data?.comment,
-          };
-        } catch (error) {
-          console.error('[Quiz] AI grading failed for', q.id, error);
-          return {
-            questionId: q.id,
-            correct: false,
-            status: 'incorrect' as const,
-            earned: Math.round(pts * 0.5),
-            aiComment: '评分服务暂时不可用，已给予基础分。',
-          };
-        }
-      })
-    );
-
-    // 合并结果
-    const allResults = [...choiceResults, ...shortAnswerResults];
-    const finalResultsMap: Record<string, boolean> = {};
-    const detailsMap: Record<string, { correctAnswer?: string; aiComment?: string; isCorrect?: boolean }> = {};
-    allResults.forEach((r) => {
-      finalResultsMap[r.questionId] = r.correct === true;
-    });
-
-    // 构建每题详情（正确答案 + AI 评语）
-    questions.forEach((q) => {
-      const result = allResults.find(r => r.questionId === q.id);
-      const isCorrect = finalResultsMap[q.id];
-      let correctAnswer: string | undefined;
-      if (!isShortAnswer(q) && q.answer && q.options) {
-        // 选择题：匹配 option 的 value 或 label
-        const matched = q.options.filter(o => {
-          const optVal = typeof o === 'string' ? o : o.value;
-          const optLabel = typeof o === 'string' ? o : o.label;
-          return q.answer!.includes(optVal) || q.answer!.includes(optLabel);
-        });
-        correctAnswer = matched.map(o => typeof o === 'string' ? o : o.label).join('、');
-      } else if (q.answer) {
-        correctAnswer = q.answer.join('、');
-      }
-      detailsMap[q.id] = {
-        correctAnswer: correctAnswer || undefined,
-        aiComment: (result as any)?.aiComment || undefined,
-        isCorrect,
-      };
-    });
-
-    setSubmittedAnswers(finalResultsMap);
-    setAnswerDetails(detailsMap);
-    setQuizSubmitted(true);
-    setQuizSubmitting(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    // 持久化提交答案和结果
-    if (currentScene?.id) {
-      await writeSubmittedAnswers(currentScene.id, selectedAnswers);
-      await writeSubmittedResults(currentScene.id, allResults);
-    }
+      Haptics.notificationAsync(
+        correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error
+      );
     } catch (error) {
-      console.error('[Quiz] submitQuiz failed:', error);
-      setQuizSubmitting(false);
-      Alert.alert('提交失败', '请检查网络后重试');
+      console.error('[Quiz] AI grading failed:', error);
+      setQuizFlow(prev => {
+        const updated: QuizFlowState = {
+          ...prev,
+          questions: {
+            ...prev.questions,
+            [questionId]: {
+              ...prev.questions[questionId],
+              phase: 'feedback' as const,
+              result: { correct: false, earned: Math.round(pts * 0.5), aiComment: '评分服务暂时不可用，已给予基础分。' },
+            },
+          },
+        };
+        persistQuizProgress(updated.questions, questionId, qState.answer, false, Math.round(pts * 0.5), undefined, '评分服务暂时不可用');
+        return updated;
+      });
     }
+  };
+
+  // 前进到下一题
+  const advanceToNextQuestion = (completedQuestionId: string) => {
+    const questions = (currentScene?.content as QuizContent)?.questions;
+    if (!questions) return;
+
+    setQuizFlow(prev => {
+      const updated = {
+        ...prev,
+        questions: {
+          ...prev.questions,
+          [completedQuestionId]: { ...prev.questions[completedQuestionId], phase: 'completed' as const },
+        },
+      };
+
+      // 跳过已完成的题目，找到下一个未完成的
+      let nextIndex = prev.currentIndex + 1;
+      while (nextIndex < questions.length) {
+        const nextQ = questions[nextIndex];
+        const nextQS = updated.questions[nextQ.id];
+        if (!nextQS || nextQS.phase === 'answering') break;
+        nextIndex++;
+      }
+
+      if (nextIndex >= questions.length) {
+        // 检查是否所有题目都已完成
+        const allCompleted = questions.every(q => updated.questions[q.id]?.phase === 'completed' || updated.questions[q.id]?.phase === 'feedback');
+        if (allCompleted) {
+          return { ...updated, phase: 'summary' as const };
+        }
+        // 回到第一个未完成的题目
+        const firstUnfinished = questions.findIndex(q => {
+          const qs = updated.questions[q.id];
+          return !qs || qs.phase === 'answering';
+        });
+        if (firstUnfinished >= 0) {
+          return { ...updated, currentIndex: firstUnfinished };
+        }
+        return { ...updated, phase: 'summary' as const };
+      }
+      return { ...updated, currentIndex: nextIndex };
+    });
+  };
+
+  // 持久化测验进度
+  const persistQuizProgress = async (
+    currentQuestions: Record<string, QuestionState>,
+    questionId: string,
+    answer: string | string[],
+    correct: boolean,
+    earned: number,
+    correctAnswer?: string,
+    aiComment?: string,
+  ) => {
+    if (!currentScene?.id) return;
+
+    const allAnswers: Record<string, string | string[]> = {};
+    const allResults: QuestionResult[] = [];
+    Object.entries(currentQuestions).forEach(([qId, qs]) => {
+      if (qs.phase !== 'answering' || qId === questionId) {
+        allAnswers[qId] = qId === questionId ? answer : qs.answer;
+      }
+      if (qs.result && qId !== questionId) {
+        allResults.push({ questionId: qId, correct: qs.result.correct, feedback: qs.result.aiComment });
+      }
+    });
+    allAnswers[questionId] = answer;
+    allResults.push({ questionId, correct, feedback: aiComment });
+
+    await writeSubmittedAnswers(currentScene.id, allAnswers);
+    await writeSubmittedResults(currentScene.id, allResults);
   };
 
   const resetQuiz = async () => {
-    setSelectedAnswers({});
-    setSubmittedAnswers({});
-    setAnswerDetails({});
-    setQuizSubmitted(false);
-    setQuizSubmitting(false);
-    // 清除持久化数据
+    setQuizFlow({ currentIndex: 0, questions: {}, phase: 'active', showAnalysis: false });
     if (currentScene?.id) {
       await clearSubmitted(currentScene.id);
     }
@@ -1600,11 +1649,17 @@ export default function ClassroomScreen() {
               <ClassroomCompletePage
                 scenes={data?.scenes || []}
                 title={data?.stage?.name || ''}
-                quizAnswers={Object.fromEntries(
-                  (data?.scenes || [])
-                    .filter(s => s.type === 'quiz')
-                    .map(s => [s.id, selectedAnswers])
-                )}
+                quizAnswers={
+                currentScene?.id
+                  ? {
+                      [currentScene.id]: Object.fromEntries(
+                        Object.entries(quizFlow.questions)
+                          .filter(([, qs]) => qs.phase !== 'answering')
+                          .map(([qId, qs]) => [qId, qs.answer])
+                      ) as Record<string, string | string[]>,
+                    } as Record<string, Record<string, string | string[]>>
+                  : undefined
+              }
                 onClose={() => router.back()}
               />
             ) : /* Slide类型：使用 ScreenCanvas 渲染 */
@@ -1645,180 +1700,380 @@ export default function ClassroomScreen() {
           </View>
         )}
 
-        {/* Quiz 类型：测验问题 - 跟随滚动 */}
+        {/* Quiz 类型：Duolingo 逐题模式 */}
         {currentScene?.type === 'quiz' && (currentScene.content as QuizContent)?.questions && (() => {
           const quizQuestions = (currentScene.content as QuizContent).questions as QuizQuestion[];
           const totalQuestions = quizQuestions.length;
-          const correctCount = Object.values(submittedAnswers).filter(v => v).length;
-          console.log('[Quiz] Rendering quiz:', { totalQuestions, selectedAnswers, quizSubmitted });
+
+          // 计算总分
+          const totalEarned = Object.values(quizFlow.questions).reduce((sum, qs) => sum + (qs.result?.earned ?? 0), 0);
+          const totalPoints = quizQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+          const correctCount = Object.values(quizFlow.questions).filter(qs => qs.result?.correct).length;
+
+          // Summary 阶段：测验奖励效果卡片
+          if (quizFlow.phase === 'summary') {
+            const showAnalysis = quizFlow.showAnalysis;
+            const percentage = totalPoints > 0 ? totalEarned / totalPoints : 0;
+            const isPerfect = percentage >= 1;
+            const isGreat = percentage >= 0.8;
+            const isPass = percentage >= 0.6;
+
+            // 根据得分率决定层级
+            const level: QuizLevel = isPerfect ? 'perfect' : isGreat ? 'great' : isPass ? 'good' : 'retry';
+            const config = QUIZ_LEVEL_CONFIG[level];
+
+            return (
+              <View style={styles.quizOverlay}>
+                <ScrollView style={[styles.rewardCard, { borderColor: config.color }]} contentContainerStyle={styles.rewardCardContent} bounces={false}>
+                  {/* 动画效果 */}
+                  <View style={styles.rewardAnimationContainer}>
+                    <Text style={styles.rewardEmoji}>{config.emoji}</Text>
+                  </View>
+
+                  {/* 激励标题 */}
+                  <Text style={[styles.rewardTitle, { color: config.color }]}>{config.title}</Text>
+                  <Text style={styles.rewardSubtitle}>{config.subtitle}</Text>
+
+                  {/* 分数圆圈 */}
+                  <View style={[styles.summaryScoreCircle, { borderColor: config.color, backgroundColor: config.bgColor }]}>
+                    <Text style={[styles.summaryScoreText, { color: config.color }]}>{totalEarned}/{totalPoints}</Text>
+                    <Text style={styles.summaryScoreLabel}>得分</Text>
+                  </View>
+
+                  {/* 正确率条 */}
+                  <View style={styles.percentageBarContainer}>
+                    <View style={styles.percentageBarBg}>
+                      <View style={[styles.percentageBarFill, { width: `${Math.round(percentage * 100)}%`, backgroundColor: config.color }]} />
+                    </View>
+                    <Text style={[styles.percentageText, { color: config.color }]}>{Math.round(percentage * 100)}%</Text>
+                  </View>
+
+                  {/* 每题结果缩略 */}
+                  <View style={styles.summaryQuestionGrid}>
+                    {quizQuestions.map((q, idx) => {
+                      const qState = quizFlow.questions[q.id];
+                      const isCorrect = qState?.result?.correct;
+                      return (
+                        <TouchableOpacity
+                          key={q.id}
+                          style={[
+                            styles.summaryQuestionChip,
+                            { backgroundColor: isCorrect ? '#dcfce7' : '#fef2f2' },
+                          ]}
+                          onPress={() => setQuizFlow(prev => ({
+                            ...prev,
+                            currentIndex: idx,
+                            phase: 'active',
+                            questions: {
+                              ...prev.questions,
+                              [q.id]: { phase: 'answering', answer: prev.questions[q.id]?.answer ?? '' },
+                            },
+                          }))}
+                        >
+                          <Ionicons
+                            name={isCorrect ? "checkmark-circle" : "close-circle"}
+                            size={14}
+                            color={isCorrect ? "#22c55e" : "#ef4444"}
+                          />
+                          <Text style={styles.summaryChipText}>{idx + 1}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* 展开的完整解析 */}
+                  {showAnalysis && quizQuestions.map((q, idx) => {
+                    const qState = quizFlow.questions[q.id];
+                    const earned = qState?.result?.earned ?? 0;
+                    const pts = q.points ?? 1;
+                    const isCorrect = qState?.result?.correct;
+                    const isShort = isShortAnswer(q);
+                    const correctAnswers = toArray(q.answer);
+                    const correctAnswerDisplay = !isShort && q.options
+                      ? q.options.filter(o => correctAnswers.includes(o.value)).map(o => o.label).join('、')
+                      : q.answer?.join('、');
+
+                    return (
+                      <View key={q.id} style={styles.analysisDetail}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                          <Ionicons
+                            name={isCorrect ? "checkmark-circle" : "close-circle"}
+                            size={16}
+                            color={isCorrect ? "#22c55e" : "#ef4444"}
+                          />
+                          <Text style={styles.analysisQuestionNum}>第{idx + 1}题</Text>
+                          <Text style={styles.analysisPoints}>{earned}/{pts}</Text>
+                        </View>
+                        <Text style={styles.analysisQuestionText}>{q.question}</Text>
+
+                        {isShort ? (
+                          <>
+                            <Text style={styles.analysisLabel}>你的答案</Text>
+                            <Text style={styles.analysisValue}>{typeof qState?.answer === 'string' ? qState.answer : '未作答'}</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.analysisLabel}>你的选择</Text>
+                            <Text style={styles.analysisValue}>
+                              {q.options?.filter(o => toArray(qState?.answer).includes(o.value)).map(o => o.label).join('、') || '未作答'}
+                            </Text>
+                          </>
+                        )}
+
+                        {!isCorrect && correctAnswerDisplay && (
+                          <>
+                            <Text style={styles.analysisLabel}>正确答案</Text>
+                            <Text style={[styles.analysisValue, { color: '#16a34a' }]}>{correctAnswerDisplay}</Text>
+                          </>
+                        )}
+
+                        {qState?.result?.aiComment && (
+                          <>
+                            <Text style={styles.analysisLabel}>AI 点评</Text>
+                            <Text style={[styles.analysisValue, { color: '#2563eb' }]}>{qState.result.aiComment}</Text>
+                          </>
+                        )}
+
+                        {q.analysis && (
+                          <>
+                            <Text style={styles.analysisLabel}>解析</Text>
+                            <Text style={styles.analysisValue}>{q.analysis}</Text>
+                          </>
+                        )}
+                      </View>
+                    );
+                  })}
+
+                  {/* 操作按钮 */}
+                  <TouchableOpacity
+                    style={[styles.analysisButton, { backgroundColor: config.bgColor }]}
+                    onPress={() => setQuizFlow(prev => ({ ...prev, showAnalysis: !prev.showAnalysis }))}
+                  >
+                    <Ionicons name={showAnalysis ? "chevron-up" : "document-text-outline"} size={18} color={config.color} />
+                    <Text style={[styles.analysisButtonText, { color: config.color }]}>{showAnalysis ? '收起解析' : '查看完整解析'}</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.summaryActions}>
+                    <TouchableOpacity style={styles.resetButton} onPress={resetQuiz}>
+                      <Text style={styles.resetButtonText}>重新作答</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.continueButton, { backgroundColor: config.color }]} onPress={() => goToNextScene()}>
+                      <Ionicons name="arrow-forward" size={18} color="white" />
+                      <Text style={styles.continueButtonText}>继续学习</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </View>
+            );
+          }
+
+          // Active 阶段：逐题卡片
+          const currentQ = quizQuestions[quizFlow.currentIndex];
+          if (!currentQ) return null;
+
+          const qState = quizFlow.questions[currentQ.id];
+          const phase = qState?.phase ?? 'answering';
+          const isMultiple = isMultipleChoice(currentQ);
+          const isShort = isShortAnswer(currentQ);
+          const userAnswer = qState?.answer;
+          const userAnswerArray = toArray(userAnswer);
+          const result = qState?.result;
 
           return (
-          <View style={styles.quizOverlay}>
-            <View style={styles.quizCard}>
-              <View style={styles.quizHeader}>
-                <Ionicons name="help-circle" size={20} color="#f59e0b" />
-                <Text style={styles.quizTitle}>测验</Text>
-                {quizSubmitted && (
-                  <Text style={styles.quizResult}>
-                    {correctCount}/{totalQuestions} 正确
-                  </Text>
-                )}
+            <View style={styles.quizOverlay}>
+              {/* 进度条 - 点击题号可跳回重答 */}
+              <View style={styles.quizProgressBar}>
+                {quizQuestions.map((q, idx) => {
+                  const qs = quizFlow.questions[q.id];
+                  let color = '#e5e7eb'; // 未答 - 灰色
+                  if (qs?.phase === 'feedback' || qs?.phase === 'completed') {
+                    color = qs?.result?.correct ? '#22c55e' : '#ef4444'; // 已答 - 绿/红
+                  } else if (idx === quizFlow.currentIndex) {
+                    color = '#3b82f6'; // 当前 - 蓝
+                  } else if (qs?.phase === 'answering' || qs?.phase === 'grading') {
+                    color = '#f59e0b'; // 进行中 - 黄色
+                  }
+                  return (
+                    <TouchableOpacity
+                      key={q.id}
+                      style={[styles.quizProgressDot, { backgroundColor: color }]}
+                      onPress={() => {
+                        // 跳回该题重新作答
+                        setQuizFlow(prev => ({
+                          ...prev,
+                          currentIndex: idx,
+                          phase: 'active',
+                          questions: {
+                            ...prev.questions,
+                            [q.id]: { phase: 'answering', answer: qs?.answer ?? '' },
+                          },
+                        }));
+                      }}
+                    >
+                      {(qs?.phase === 'feedback' || qs?.phase === 'completed') && (
+                        <Ionicons name={qs?.result?.correct ? "checkmark" : "close"} size={10} color="white" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              {quizQuestions.map((q, idx) => {
-                const qId = q.id || `q${idx}`;
-                const correctAnswers = q.answer || [];
-                const isMultiple = isMultipleChoice(q);
-                const isShort = isShortAnswer(q);
-                const userAnswer = selectedAnswers[qId];
-                const userAnswerArray = toArray(userAnswer);
-                const showResult = quizSubmitted && submittedAnswers[qId] !== undefined;
 
-                return (
-                  <View key={qId} style={styles.questionContainer}>
-                    {/* 题目标题和类型标识 */}
-                    <View style={styles.questionHeader}>
-                      <Text style={styles.questionText}>{q.question}</Text>
-                      {isMultiple && (
-                        <Text style={styles.questionTypeHint}>（多选）</Text>
-                      )}
-                      {isShort && (
-                        <Text style={styles.questionTypeHint}>（简答）</Text>
-                      )}
+              <View style={styles.quizCard}>
+                <View style={styles.quizHeader}>
+                  <Ionicons name="help-circle" size={20} color="#f59e0b" />
+                  <Text style={styles.quizTitle}>
+                    第 {quizFlow.currentIndex + 1}/{totalQuestions} 题
+                    {isMultiple && '（多选）'}
+                    {isShort && '（简答）'}
+                  </Text>
+                </View>
+
+                {/* 题目 */}
+                <Text style={styles.questionText}>{currentQ.question}</Text>
+
+                {/* answering 阶段：选择题选项 */}
+                {phase === 'answering' && !isShort && currentQ.options?.map((opt, optIdx) => {
+                  const optValue = typeof opt === 'string' ? opt : opt.value;
+                  const optLabel = typeof opt === 'string' ? opt : opt.label;
+                  const optSelected = isMultiple
+                    ? userAnswerArray.includes(optValue)
+                    : userAnswer === optValue;
+
+                  return (
+                    <TouchableOpacity
+                      key={optValue ?? optIdx}
+                      style={[
+                        styles.optionButton,
+                        optSelected && styles.optionSelected,
+                      ]}
+                      onPress={() => handleAnswerChoice(currentQ.id, optValue, isMultiple)}
+                    >
+                      <Text style={[styles.optionLabel, optSelected && styles.optionLabelSelected]}>
+                        {String.fromCharCode(65 + optIdx)}.
+                      </Text>
+                      <Text style={[styles.optionText, optSelected && styles.optionTextSelected]}>
+                        {optLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* 多选题确认按钮 */}
+                {phase === 'answering' && isMultiple && userAnswerArray.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.submitButton}
+                    onPress={() => handleConfirmMultiple(currentQ.id)}
+                  >
+                    <Text style={styles.submitButtonText}>确认选择</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* answering 阶段：简答题输入 */}
+                {phase === 'answering' && isShort && (
+                  <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <TextInput
+                      style={styles.shortAnswerInput}
+                      placeholder="请输入您的答案..."
+                      placeholderTextColor="#9ca3af"
+                      multiline
+                      numberOfLines={4}
+                      value={typeof userAnswer === 'string' ? userAnswer : ''}
+                      onChangeText={(text) => handleShortAnswerInput(currentQ.id, text)}
+                    />
+                    <TouchableOpacity
+                      style={styles.submitButton}
+                      onPress={() => handleConfirmShortAnswer(currentQ.id)}
+                    >
+                      <Text style={styles.submitButtonText}>提交答案</Text>
+                    </TouchableOpacity>
+                  </KeyboardAvoidingView>
+                )}
+
+                {/* grading 阶段：AI 评分中 */}
+                {phase === 'grading' && (
+                  <View style={styles.gradingContainer}>
+                    <ActivityIndicator size="small" color="#3b82f6" />
+                    <Text style={styles.gradingText}>AI 正在批改...</Text>
+                  </View>
+                )}
+
+                {/* feedback 阶段：显示结果 */}
+                {phase === 'feedback' && (
+                  <View style={styles.answerResultSection}>
+                    {/* 正确/错误标记 */}
+                    <View style={[styles.resultBadge, { backgroundColor: result?.correct ? '#dcfce7' : '#fef2f2' }]}>
+                      <Text style={[styles.resultBadgeText, { color: result?.correct ? '#16a34a' : '#dc2626' }]}>
+                        {result?.correct ? '✓ 正确' : '✗ 错误'}
+                        {result?.earned !== undefined && result?.earned !== (currentQ.points ?? 1) && ` (${result.earned}分)`}
+                      </Text>
                     </View>
 
-                    {/* 选择题选项 */}
-                    {!isShort && q.options?.map((opt, optIdx) => {
+                    {/* 选择题：显示选项对错 */}
+                    {!isShort && phase === 'feedback' && currentQ.options?.map((opt, optIdx) => {
                       const optValue = typeof opt === 'string' ? opt : opt.value;
                       const optLabel = typeof opt === 'string' ? opt : opt.label;
-                      const optSelected = isMultiple
-                        ? userAnswerArray.includes(optValue)
-                        : userAnswer === optValue;
+                      const correctAnswers = toArray(currentQ.answer);
                       const optIsCorrect = correctAnswers.includes(optValue);
+                      const optWasSelected = toArray(userAnswer).includes(optValue);
 
                       return (
                         <TouchableOpacity
                           key={optValue ?? optIdx}
                           style={[
                             styles.optionButton,
-                            optSelected && styles.optionSelected,
-                            showResult && optIsCorrect && styles.optionCorrect,
-                            showResult && optSelected && !optIsCorrect && styles.optionWrong,
+                            optIsCorrect && styles.optionCorrect,
+                            optWasSelected && !optIsCorrect && styles.optionWrong,
                           ]}
-                          onPress={() => {
-                            console.log('[Quiz] Option pressed:', { qId, optValue, isMultiple, quizSubmitted });
-                            if (!quizSubmitted) {
-                              selectAnswer(qId, optValue, isMultiple);
-                            }
-                          }}
-                          disabled={quizSubmitted}
+                          disabled
                         >
-                          <Text style={[
-                            styles.optionLabel,
-                            optSelected && styles.optionLabelSelected,
-                            showResult && optIsCorrect && styles.optionLabelCorrect,
-                          ]}>{String.fromCharCode(65 + optIdx)}.</Text>
-                          <Text style={[
-                            styles.optionText,
-                            optSelected && styles.optionTextSelected,
-                          ]}>{optLabel}</Text>
-                          {showResult && optIsCorrect && (
-                            <Ionicons name="checkmark-circle" size={16} color="#22c55e" style={styles.optionIcon} />
-                          )}
-                          {showResult && optSelected && !optIsCorrect && (
-                            <Ionicons name="close-circle" size={16} color="#ef4444" style={styles.optionIcon} />
-                          )}
+                          <Text style={[styles.optionLabel, optIsCorrect && styles.optionLabelCorrect]}>
+                            {String.fromCharCode(65 + optIdx)}.
+                          </Text>
+                          <Text style={styles.optionText}>{optLabel}</Text>
+                          {optIsCorrect && <Ionicons name="checkmark-circle" size={16} color="#22c55e" style={styles.optionIcon} />}
+                          {optWasSelected && !optIsCorrect && <Ionicons name="close-circle" size={16} color="#ef4444" style={styles.optionIcon} />}
                         </TouchableOpacity>
                       );
                     })}
 
-                    {/* 简答题输入框 */}
-                    {isShort && !quizSubmitted && !quizSubmitting && (
-                      <TextInput
-                        style={styles.shortAnswerInput}
-                        placeholder="请输入您的答案..."
-                        placeholderTextColor="#9ca3af"
-                        multiline
-                        numberOfLines={4}
-                        value={typeof userAnswer === 'string' ? userAnswer : ''}
-                        onChangeText={(text) => updateShortAnswer(qId, text)}
-                        editable={!quizSubmitted}
-                      />
-                    )}
-
-                    {/* 提交中：显示加载提示 */}
-                    {quizSubmitting && (
-                      <View style={styles.gradingContainer}>
-                        <Text style={styles.gradingText}>AI 正在批改...</Text>
-                        <ActivityIndicator size="small" color="#3b82f6" />
+                    {/* 简答题：显示用户答案 */}
+                    {isShort && (
+                      <View style={styles.userAnswerBox}>
+                        <Text style={styles.userAnswerLabel}>你的答案</Text>
+                        <Text style={styles.userAnswerText}>{typeof userAnswer === 'string' ? userAnswer : '未作答'}</Text>
                       </View>
                     )}
 
-                    {/* 提交后：统一显示结果 */}
-                    {showResult && !quizSubmitting && (
-                      <View style={styles.answerResultSection}>
-                        {/* 正确/错误标记 */}
-                        <View style={[styles.resultBadge, { backgroundColor: submittedAnswers[qId] ? '#dcfce7' : '#fef2f2' }]}>
-                          <Text style={[styles.resultBadgeText, { color: submittedAnswers[qId] ? '#16a34a' : '#dc2626' }]}>
-                            {submittedAnswers[qId] ? '✓ 正确' : '✗ 错误'}
-                          </Text>
-                        </View>
-
-                        {/* 简答题：显示用户答案 */}
-                        {isShort && (
-                          <View style={styles.userAnswerBox}>
-                            <Text style={styles.userAnswerLabel}>你的答案</Text>
-                            <Text style={styles.userAnswerText}>{typeof userAnswer === 'string' ? userAnswer : '未作答'}</Text>
-                          </View>
-                        )}
-
-                        {/* 错误时显示正确答案 */}
-                        {!submittedAnswers[qId] && answerDetails[qId]?.correctAnswer && (
-                          <View style={styles.correctAnswerBox}>
-                            <Text style={styles.correctAnswerLabel}>正确答案</Text>
-                            <Text style={styles.correctAnswerText}>{answerDetails[qId].correctAnswer}</Text>
-                          </View>
-                        )}
-
-                        {/* AI 评语（简答题） */}
-                        {isShort && answerDetails[qId]?.aiComment && (
-                          <View style={styles.aiCommentBox}>
-                            <Text style={styles.aiCommentLabel}>AI 点评</Text>
-                            <Text style={styles.aiCommentText}>{answerDetails[qId].aiComment}</Text>
-                          </View>
-                        )}
+                    {/* 错误时显示正确答案 */}
+                    {!result?.correct && result?.correctAnswer && (
+                      <View style={styles.correctAnswerBox}>
+                        <Text style={styles.correctAnswerLabel}>正确答案</Text>
+                        <Text style={styles.correctAnswerText}>{result.correctAnswer}</Text>
                       </View>
                     )}
+
+                    {/* AI 评语 */}
+                    {result?.aiComment && (
+                      <View style={styles.aiCommentBox}>
+                        <Text style={styles.aiCommentLabel}>AI 点评</Text>
+                        <Text style={styles.aiCommentText}>{result.aiComment}</Text>
+                      </View>
+                    )}
+
+                    {/* 继续按钮 */}
+                    <TouchableOpacity
+                      style={styles.continueButton}
+                      onPress={() => advanceToNextQuestion(currentQ.id)}
+                    >
+                      <Ionicons name="arrow-forward" size={18} color="white" />
+                      <Text style={styles.continueButtonText}>
+                        {quizFlow.currentIndex + 1 < totalQuestions ? '下一题' : '查看结果'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                );
-              })}
-
-              {/* 提交按钮区域 */}
-              {!quizSubmitted && !quizSubmitting && Object.keys(selectedAnswers).length > 0 && (
-                <TouchableOpacity
-                  style={styles.submitButton}
-                  onPress={() => {
-                    console.log('[Quiz] Submit button pressed, calling submitQuiz');
-                    submitQuiz();
-                  }}
-                >
-                  <Text style={styles.submitButtonText}>提交答案</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* 提交中按钮 */}
-              {quizSubmitting && (
-                <View style={[styles.submitButton, { opacity: 0.7 }]}>
-                  <ActivityIndicator size="small" color="white" />
-                </View>
-              )}
-
-              {quizSubmitted && (
-                <TouchableOpacity style={styles.resetButton} onPress={resetQuiz}>
-                  <Text style={styles.resetButtonText}>重新作答</Text>
-                </TouchableOpacity>
-              )}
+                )}
+              </View>
             </View>
-          </View>
           );
         })()}
 
@@ -2729,6 +2984,176 @@ const styles = StyleSheet.create({
   submitButtonText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
   resetButton: { backgroundColor: '#6b7280', padding: Spacing.sm + 2, borderRadius: Rounded.md, alignItems: 'center', flex: 1 },
   resetButtonText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  // Duolingo 逐题模式新增样式
+  quizProgressBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: 'white',
+    borderTopLeftRadius: Rounded.lg,
+    borderTopRightRadius: Rounded.lg,
+  },
+  quizProgressDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  continueButton: {
+    backgroundColor: '#22c55e',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.sm + 2,
+    borderRadius: Rounded.md,
+    marginTop: Spacing.md,
+  },
+  continueButtonText: { color: 'white', fontSize: 14, fontWeight: 'bold', marginLeft: Spacing.xs },
+  summaryScoreCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 3,
+    borderColor: '#22c55e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginVertical: Spacing.md,
+  },
+  summaryScoreText: { fontSize: 28, fontWeight: 'bold', color: '#16a34a' },
+  summaryScoreLabel: { fontSize: 14, color: '#4ade80', marginTop: 2 },
+  summaryActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  analysisDetail: {
+    backgroundColor: '#f8fafc',
+    borderRadius: Rounded.sm,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+    marginLeft: Spacing.lg,
+  },
+  analysisLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
+    marginTop: Spacing.xs,
+  },
+  analysisValue: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+  },
+  analysisButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.sm,
+    borderRadius: Rounded.md,
+    backgroundColor: '#eff6ff',
+    flex: 1,
+  },
+  analysisButtonText: {
+    color: '#3b82f6',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: Spacing.xs,
+  },
+  // 奖励效果卡片样式
+  rewardCard: {
+    backgroundColor: 'white',
+    borderRadius: Rounded.lg,
+    borderWidth: 2,
+    maxHeight: '85%',
+  },
+  rewardCardContent: {
+    padding: Spacing.lg,
+  },
+  rewardAnimationContainer: {
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rewardEmoji: {
+    fontSize: 64,
+  },
+  rewardTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  rewardSubtitle: {
+    fontSize: 15,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  percentageBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  percentageBarBg: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  percentageBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  percentageText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    width: 42,
+    textAlign: 'right',
+  },
+  summaryQuestionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  summaryQuestionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Rounded.full,
+    gap: 2,
+  },
+  summaryChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  analysisQuestionNum: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginLeft: 4,
+    flex: 1,
+  },
+  analysisPoints: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  analysisQuestionText: {
+    fontSize: 14,
+    color: '#1f2937',
+    marginBottom: Spacing.xs,
+    lineHeight: 20,
+  },
   quizHintContainer: { marginTop: Spacing.lg },
   quizHintText: { fontSize: 14, color: '#666', marginVertical: Spacing.xs + 1 },
   quizHint: { fontSize: 14, color: '#666', textAlign: 'center' },

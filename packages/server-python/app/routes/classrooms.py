@@ -400,6 +400,82 @@ async def create_scene_for_classroom(
     }
 
 
+@router.post("/{classroom_id}/scenes/create-all")
+async def create_all_scenes_for_classroom(
+    classroom_id: str,
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    并行创建所有场景（替代前端逐个调用 /scenes/create）
+
+    请求体参数:
+    - outlines: 场景大纲列表 [{title, type, description, key_points}, ...]
+    - language: 语言设置
+    - agents: 智能体列表（可选，如不提供则从课程配置获取）
+    """
+    start_time = time.time()
+
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
+    stage = await db.fetchrow(
+        "SELECT id, name, language_directive, generated_agent_configs FROM stages WHERE id = $1 AND user_id = $2",
+        classroom_uuid,
+        user_uuid
+    )
+    if stage is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+
+    outlines = body.get("outlines", [])
+    if not outlines:
+        raise HTTPException(status_code=400, detail="大纲列表不能为空")
+
+    language = validate_language(body.get("language", stage["language_directive"] or "zh-CN"))
+
+    agents = body.get("agents")
+    if not agents and stage["generated_agent_configs"]:
+        try:
+            if isinstance(stage["generated_agent_configs"], str):
+                agents = json.loads(stage["generated_agent_configs"])
+            else:
+                agents = stage["generated_agent_configs"]
+            logger.info(f"[SceneCreateAll] 从课程配置获取 {len(agents)} 个智能体")
+        except Exception as e:
+            logger.warning(f"[SceneCreateAll] 解析智能体配置失败: {e}")
+            agents = None
+
+    logger.info(f"[SceneCreateAll] 并行创建 {len(outlines)} 个场景 - classroom={classroom_id}")
+
+    existing_scenes = await db.fetch(
+        "SELECT order_index FROM scenes WHERE stage_id = $1 ORDER BY order_index DESC LIMIT 1",
+        classroom_uuid
+    )
+    existing_count = existing_scenes[0]["order_index"] if existing_scenes else 0
+
+    scenes = await create_all_scenes(
+        outlines=outlines,
+        stage_id=classroom_uuid,
+        user_uuid=user_uuid,
+        db=db,
+        language=language,
+        start_order_index=existing_count,
+    )
+
+    total_elapsed = time.time() - start_time
+    logger.info(f"[SceneCreateAll] 全部场景创建完成 (耗时: {total_elapsed:.2f}s)")
+
+    await db.execute(
+        "UPDATE stages SET pending_outlines = NULL WHERE id = $1", classroom_uuid
+    )
+
+    return {
+        "scenes": scenes,
+        "elapsed_seconds": round(total_elapsed, 2)
+    }
+
+
 @router.get("/supported-languages")
 async def get_supported_languages():
     """获取支持的语言列表"""

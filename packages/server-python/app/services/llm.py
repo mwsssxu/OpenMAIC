@@ -6,6 +6,7 @@ LLM 统一接口 - 支持 OpenAI 兼容 API
 - Thinking/Reasoning参数
 - 流式和非流式模式
 - 场景驱动的模型路由
+- 全局限流（多用户并发场景）
 """
 
 import asyncio
@@ -13,6 +14,7 @@ import httpx
 import json
 import logging
 import time
+import threading
 
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
@@ -22,19 +24,89 @@ from app.services.model_router import (
 )
 
 logger = logging.getLogger(__name__)
-# 禁用 httpx 详细日志，避免泄露敏感信息
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# 提供商映射
+
+# ============================================================================
+# 全局限流器 - 多用户并发场景下的 LLM 调用控制
+# ============================================================================
+
+class LLMRateLimiter:
+    """LLM 全局限流器：并发限制 + 速率限制"""
+
+    def __init__(self, max_concurrent: int = 10, requests_per_minute: int = 60):
+        self.max_concurrent = max_concurrent
+        self.requests_per_minute = requests_per_minute
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._tokens = requests_per_minute
+        self._last_refill = time.time()
+        self._lock = threading.RLock()
+        self._total_requests = 0
+        self._rejected_requests = 0
+
+    def _refill_tokens(self):
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_refill
+            new_tokens = elapsed * (self.requests_per_minute / 60.0)
+            self._tokens = min(self.requests_per_minute, self._tokens + new_tokens)
+            self._last_refill = now
+
+    def _consume_token(self) -> bool:
+        self._refill_tokens()
+        with self._lock:
+            if self._tokens >= 1:
+                self._tokens -= 1
+                return True
+            return False
+
+    async def acquire(self, timeout: float = 30.0) -> bool:
+        self._total_requests += 1
+        try:
+            await asyncio.wait_for(self._semaphore.acquire(), timeout=timeout)
+        except asyncio.TimeoutError:
+            self._rejected_requests += 1
+            logger.warning(f"[RateLimiter] 并发等待超时")
+            return False
+
+        start_wait = time.time()
+        while not self._consume_token():
+            if time.time() - start_wait > timeout:
+                self._semaphore.release()
+                self._rejected_requests += 1
+                logger.warning(f"[RateLimiter] 速率等待超时")
+                return False
+            await asyncio.sleep(0.1)
+
+        return True
+
+    def release(self):
+        self._semaphore.release()
+
+    def get_stats(self) -> Dict[str, int]:
+        return {
+            "total_requests": self._total_requests,
+            "rejected_requests": self._rejected_requests,
+            "current_tokens": int(self._tokens),
+            "max_concurrent": self.max_concurrent,
+            "requests_per_minute": self.requests_per_minute,
+        }
+
+
+# 全局限流器实例
+_rate_limiter = LLMRateLimiter(max_concurrent=10, requests_per_minute=60)
+
+
+# ============================================================================
+# 原有代码
+# ============================================================================
+
 PROVIDER_MODEL_MAP = {
     "openai": "gpt-4o",
     "anthropic": "claude-3-5-sonnet-20241022",
     "deepseek": "deepseek-chat",
 }
 
-# 模型映射 - 将不支持的模型转换为 DashScope 支持的模型
-# DashScope API 支持的模型：qwen-plus, qwen-turbo, qwen-max, qwen3.5-plus, qwen3.6-plus 等
-# 注意：Chat 场景应该直接使用 qwen3.6-plus，不经过此映射
 MODEL_REMAP = {
     "gpt-4o-mini": "qwen3.6-plus",
     "gpt-4o": "qwen3.6-plus",
@@ -47,18 +119,7 @@ MODEL_REMAP = {
 
 
 def parse_model_string(model_str: str) -> tuple:
-    """
-    解析模型字符串，提取provider和model_id
-
-    Args:
-        model_str: 模型字符串，如 "openai:gpt-5.5" 或 "gpt-5.5"
-
-    Returns:
-        (provider_id, model_id) tuple
-    """
-    # 支持多种格式: "openai:gpt-5.5", "openai/gpt-5.5", "gpt-5.5"
-    provider_id = "openai"  # 默认provider
-
+    provider_id = "openai"
     if "/" in model_str:
         parts = model_str.split("/", 1)
         provider_id = parts[0]
@@ -69,8 +130,136 @@ def parse_model_string(model_str: str) -> tuple:
         model_id = parts[1]
     else:
         model_id = model_str
-
     return provider_id, model_id
+
+
+async def _call_llm_internal(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: float = 0.7,
+    max_tokens: Optional[int] = None,
+    max_retries: int = 3,
+    thinking_config: Optional[Dict[str, Any]] = None,
+    scene_type: Optional[SceneType] = None,
+) -> str:
+    """内部 LLM 调用（不含限流）"""
+    start_time = time.time()
+
+    if scene_type and not model:
+        router = get_model_router()
+        model = router.get_model_for_scene(scene_type)
+        logger.info(f"[LLM] 场景 {scene_type.value} 选择模型: {model}")
+
+    model_str = model or settings.DEFAULT_MODEL
+    provider_id, model_id = parse_model_string(model_str)
+
+    if model_id in MODEL_REMAP:
+        original_model = model_id
+        model_id = MODEL_REMAP[model_id]
+        provider_id = "qwen"
+        logger.info(f"[LLM] 模型映射: {original_model} -> {model_id}")
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
+    api_key = settings.OPENAI_API_KEY
+
+    payload = {"model": model_id, "messages": messages, "temperature": temperature}
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
+
+    if thinking_config:
+        try:
+            from app.services.model_metadata import build_thinking_params
+            thinking_params = build_thinking_params(provider_id, model_id, thinking_config)
+            if thinking_params:
+                payload.update(thinking_params)
+                logger.info(f"[LLM] Thinking参数: {thinking_params}")
+        except ImportError:
+            logger.warning("[LLM] model_metadata not available")
+
+    url = f"{api_base}/chat/completions"
+    logger.info(f"[LLM] 开始调用 - provider={provider_id}, model={model_id}")
+
+    effective_max_retries = max_retries * 2
+
+    for attempt in range(effective_max_retries):
+        attempt_start = time.time()
+        try:
+            logger.info(f"[LLM] 尝试 #{attempt + 1}/{effective_max_retries}")
+
+            def sync_call():
+                import requests
+                from urllib3.exceptions import InsecureRequestWarning
+                requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+                session = requests.Session()
+                resp = session.post(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=(30, 120),
+                    verify=False,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+            result = await asyncio.to_thread(sync_call)
+
+            if "choices" not in result or len(result["choices"]) == 0:
+                logger.error(f"[LLM] 响应格式异常: {result}")
+                raise Exception("LLM response missing choices")
+
+            choice = result["choices"][0]
+            if "message" not in choice or "content" not in choice["message"]:
+                logger.error(f"[LLM] 响应缺少content: {choice}")
+                raise Exception("LLM response missing content")
+
+            content = choice["message"]["content"]
+            elapsed = time.time() - attempt_start
+            total_elapsed = time.time() - start_time
+            logger.info(f"[LLM] 调用成功 (耗时: {elapsed:.1f}s, 总耗时: {total_elapsed:.1f}s)")
+
+            return content
+
+        except httpx.TimeoutException as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 超时 (尝试 #{attempt + 1}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < effective_max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise Exception(f"LLM API timeout after {effective_max_retries} retries: {e}")
+
+        except httpx.ConnectError as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 连接错误 (尝试 #{attempt + 1}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < effective_max_retries - 1:
+                await asyncio.sleep(3)
+            else:
+                raise Exception(f"LLM API connection error after {effective_max_retries} retries: {e}")
+
+        except httpx.RemoteProtocolError as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 服务器断开 (尝试 #{attempt + 1}, 耗时: {elapsed:.1f}s): {e}")
+            if attempt < effective_max_retries - 1:
+                await asyncio.sleep(3)
+            else:
+                raise Exception(f"LLM API server disconnected after {effective_max_retries} retries: {e}")
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[LLM] HTTP错误: {e.response.status_code} - {e.response.text[:500]}")
+            raise Exception(f"LLM API error: {e.response.status_code}")
+
+        except Exception as e:
+            elapsed = time.time() - attempt_start
+            logger.warning(f"[LLM] 未预期错误 (尝试 #{attempt + 1}): {type(e).__name__}: {e}")
+            if attempt < effective_max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise
 
 
 async def call_llm(
@@ -84,181 +273,20 @@ async def call_llm(
     thinking_config: Optional[Dict[str, Any]] = None,
     scene_type: Optional[SceneType] = None,
 ) -> str:
-    """
-    调用 LLM（支持Thinking参数和场景路由）
+    """调用 LLM（带全局限流）"""
+    acquired = await _rate_limiter.acquire(timeout=30.0)
+    if not acquired:
+        raise Exception(f"LLM rate limit exceeded. Stats: {_rate_limiter.get_stats()}")
 
-    Args:
-        prompt: 用户提示
-        system_prompt: 系统提示
-        model: 模型字符串 (支持 "provider:model" 格式)
-        temperature: 温度参数
-        max_tokens: 最大tokens
-        stream: 是否流式
-        max_retries: 最大重试次数
-        thinking_config: Thinking配置 {"enabled": bool, "effort": str, "budget_tokens": int}
-        scene_type: 场景类型（用于自动选择模型）
-
-    Returns:
-        LLM响应文本
-    """
-    start_time = time.time()
-
-    # 场景驱动的模型选择
-    if scene_type and not model:
-        router = get_model_router()
-        model = router.get_model_for_scene(scene_type)
-        logger.info(f"[LLM] 场景 {scene_type.value} 选择模型: {model}")
-
-    model_str = model or settings.DEFAULT_MODEL
-
-    # 解析provider和model_id
-    provider_id, model_id = parse_model_string(model_str)
-
-    # 模型映射 - 转换为 DashScope 支持的模型
-    if model_id in MODEL_REMAP:
-        original_model = model_id
-        model_id = MODEL_REMAP[model_id]
-        provider_id = "qwen"  # 映射后使用qwen provider
-        logger.info(f"[LLM] 模型映射: {original_model} -> {model_id}")
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
-
-    api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
-    api_key = settings.OPENAI_API_KEY
-
-    payload = {
-        "model": model_id,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    if max_tokens:
-        payload["max_tokens"] = max_tokens
-
-    # 添加thinking参数（如果配置）
-    if thinking_config:
-        try:
-            from app.services.model_metadata import build_thinking_params
-            thinking_params = build_thinking_params(provider_id, model_id, thinking_config)
-            if thinking_params:
-                payload.update(thinking_params)
-                logger.info(f"[LLM] Thinking参数: {thinking_params}")
-        except ImportError:
-            logger.warning("[LLM] model_metadata not available, skipping thinking params")
-
-    url = f"{api_base}/chat/completions"
-
-    logger.info(f"[LLM] 开始调用 - provider={provider_id}, model={model_id}, api_base={api_base}, max_tokens={max_tokens}")
-    logger.debug(f"[LLM] prompt长度: {len(prompt)}, system_prompt长度: {len(system_prompt) if system_prompt else 0}")
-
-    # DashScope API 响应较慢，增加超时时间
-    # SSL问题需要增加重试次数
-    timeout = httpx.Timeout(120.0, connect=30.0)
-
-    # 代理配置：从 settings 获取（如果配置）
-    proxy = settings.HTTP_PROXY if settings.HTTP_PROXY else None
-    if proxy:
-        logger.info(f"[LLM] 使用代理: {proxy}")
-    else:
-        logger.debug("[LLM] 直接访问API（无代理）")
-
-    # 增加重试次数处理SSL不稳定
-    effective_max_retries = max_retries * 2  # SSL问题需要更多重试
-
-    for attempt in range(effective_max_retries):
-        attempt_start = time.time()
-        try:
-            logger.info(f"[LLM] 尝试 #{attempt + 1}/{effective_max_retries}")
-
-            # 使用 requests 库（更稳定的SSL处理）
-            def sync_call():
-                import requests
-                from urllib3.exceptions import InsecureRequestWarning
-                requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-                session = requests.Session()
-                resp = session.post(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                    timeout=(30, 120),  # connect timeout, read timeout
-                    verify=False,  # 临时禁用SSL验证（DashScope SSL兼容性问题）
-                )
-                resp.raise_for_status()
-                return resp.json()
-
-            result = await asyncio.to_thread(sync_call)
-
-            # 安全解析响应
-            if "choices" not in result or len(result["choices"]) == 0:
-                logger.error(f"[LLM] 响应格式异常: {result}")
-                raise Exception("LLM response missing choices")
-
-            choice = result["choices"][0]
-            if "message" not in choice or "content" not in choice["message"]:
-                logger.error(f"[LLM] 响应缺少content: {choice}")
-                raise Exception("LLM response missing content")
-
-            content = choice["message"]["content"]
-
-            elapsed = time.time() - attempt_start
-            total_elapsed = time.time() - start_time
-            logger.info(f"[LLM] 调用成功 (本次耗时: {elapsed:.1f}s, 总耗时: {total_elapsed:.1f}s)")
-            logger.debug(f"[LLM] 响应长度: {len(content)}")
-
-            return content
-
-        except httpx.TimeoutException as e:
-            elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 超时 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {e}")
-            if attempt < effective_max_retries - 1:
-                await asyncio.sleep(2)  # 等待后重试
-            else:
-                total_elapsed = time.time() - start_time
-                logger.error(f"[LLM] 最终超时 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API timeout after {effective_max_retries} retries: {e}")
-
-        except httpx.ConnectError as e:
-            elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 连接错误 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {e}")
-            if attempt < effective_max_retries - 1:
-                await asyncio.sleep(3)  # 等待后重试
-            else:
-                total_elapsed = time.time() - start_time
-                logger.error(f"[LLM] 最终连接错误 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API connection error after {effective_max_retries} retries: {e}")
-
-        except httpx.RemoteProtocolError as e:
-            elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 服务器断开连接 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {e}")
-            if attempt < effective_max_retries - 1:
-                await asyncio.sleep(3)  # 等待后重试
-            else:
-                total_elapsed = time.time() - start_time
-                logger.error(f"[LLM] 最终服务器断开 (总耗时: {total_elapsed:.1f}s)")
-                raise Exception(f"LLM API server disconnected after {effective_max_retries} retries: {e}")
-
-        except httpx.HTTPStatusError as e:
-            elapsed = time.time() - attempt_start
-            logger.error(f"[LLM] HTTP错误 (耗时: {elapsed:.1f}s): {e.response.status_code} - {e.response.text}")
-            raise Exception(f"LLM API error: {e.response.status_code}")
-
-        except Exception as e:
-            elapsed = time.time() - attempt_start
-            logger.warning(f"[LLM] 未预期错误 (尝试 #{attempt + 1}/{effective_max_retries}, 耗时: {elapsed:.1f}s): {type(e).__name__}: {e}")
-            if attempt < effective_max_retries - 1:
-                await asyncio.sleep(2)
-            else:
-                total_elapsed = time.time() - start_time
-                logger.error(f"[LLM] 最终失败 (总耗时: {total_elapsed:.1f}s): {e}")
-                raise
+    try:
+        return await _call_llm_internal(
+            prompt, system_prompt, model, temperature, max_tokens, max_retries, thinking_config, scene_type
+        )
+    finally:
+        _rate_limiter.release()
 
 
-async def stream_llm(
+async def _stream_llm_internal(
     prompt: str,
     system_prompt: Optional[str] = None,
     model: Optional[str] = None,
@@ -268,34 +296,15 @@ async def stream_llm(
     thinking_config: Optional[Dict[str, Any]] = None,
     scene_type: Optional[SceneType] = None,
 ):
-    """
-    流式调用 LLM（支持Thinking参数和场景路由）
-
-    Args:
-        prompt: 用户提示
-        system_prompt: 系统提示
-        model: 模型字符串
-        temperature: 温度参数
-        max_tokens: 最大tokens
-        max_retries: 最大重试次数
-        thinking_config: Thinking配置
-        scene_type: 场景类型（用于自动选择模型）
-
-    Yields:
-        流式响应的每个chunk
-    """
-    # 场景驱动的模型选择
+    """内部流式调用（不含限流）"""
     if scene_type and not model:
         router = get_model_router()
         model = router.get_model_for_scene(scene_type)
         logger.info(f"[LLM Stream] 场景 {scene_type.value} 选择模型: {model}")
 
     model_str = model or settings.DEFAULT_MODEL
-
-    # 解析provider和model_id
     provider_id, model_id = parse_model_string(model_str)
 
-    # 模型映射
     if model_id in MODEL_REMAP:
         original_model = model_id
         model_id = MODEL_REMAP[model_id]
@@ -310,16 +319,10 @@ async def stream_llm(
     api_base = settings.OPENAI_API_BASE or "https://api.openai.com/v1"
     api_key = settings.OPENAI_API_KEY
 
-    payload = {
-        "model": model_id,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": True,  # 启用流式输出
-    }
+    payload = {"model": model_id, "messages": messages, "temperature": temperature, "stream": True}
     if max_tokens:
         payload["max_tokens"] = max_tokens
 
-    # 添加thinking参数
     if thinking_config:
         try:
             from app.services.model_metadata import build_thinking_params
@@ -335,17 +338,11 @@ async def stream_llm(
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                ) as response:
+                async with client.stream("POST", url, headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                }, json=payload) as response:
                     response.raise_for_status()
-
                     buffer = ""
                     async for line in response.aiter_lines():
                         if not line:
@@ -367,10 +364,8 @@ async def stream_llm(
                             except json.JSONDecodeError:
                                 continue
 
-                    # 如果没有流式内容，返回整个 buffer
                     if not buffer:
                         yield buffer
-
                     return
 
         except httpx.TimeoutException as e:
@@ -392,11 +387,27 @@ async def stream_llm(
             if attempt < max_retries - 1:
                 await asyncio.sleep(2)
             else:
-                # 最后一次失败，使用非流式作为备用
                 logger.warning("Stream failed, falling back to non-stream")
-                result = await call_llm(prompt, system_prompt, model, temperature, max_tokens, max_retries=1)
+                result = await _call_llm_internal(prompt, system_prompt, model, temperature, max_tokens, max_retries=1)
                 yield result
                 return
+
+
+async def stream_llm(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: float = 0.7,
+    max_tokens: Optional[int] = None,
+    max_retries: int = 3,
+    thinking_config: Optional[Dict[str, Any]] = None,
+    scene_type: Optional[SceneType] = None,
+):
+    """流式调用 LLM（不经过全局限流，流式连接使用单个连接不会淹没 API）"""
+    async for chunk in _stream_llm_internal(
+        prompt, system_prompt, model, temperature, max_tokens, max_retries, thinking_config, scene_type
+    ):
+        yield chunk
 
 
 async def call_llm_with_vision(
@@ -407,21 +418,7 @@ async def call_llm_with_vision(
     max_retries: int = 3,
     scene_type: Optional[SceneType] = None,
 ) -> str:
-    """
-    调用视觉模型（多模态）- 支持场景路由
-
-    Args:
-        prompt: 用户提示
-        images: 图片列表 [{"url": "..."}]
-        system_prompt: 系统提示
-        model: 模型字符串
-        max_retries: 最大重试次数
-        scene_type: 场景类型（用于自动选择模型）
-
-    Returns:
-        LLM响应文本
-    """
-    # 场景驱动的模型选择
+    """调用视觉模型（多模态）"""
     router = get_model_router()
     if not model:
         if scene_type:
@@ -436,19 +433,14 @@ async def call_llm_with_vision(
     elif model_str.startswith("openai:"):
         model_str = model_str[7:]
 
-    # 模型映射 - 转换为 DashScope 支持的模型（视觉模型使用 qwen-vl）
     if model_str in MODEL_REMAP:
         original_model = model_str
-        # 视觉模型使用 qwen-vl-max
         model_str = "qwen-vl-max" if "gpt-4" in model_str or "claude" in model_str else MODEL_REMAP[model_str]
         logger.info(f"[LLM Vision] 模型映射: {original_model} -> {model_str}")
 
     content = [{"type": "text", "text": prompt}]
     for img in images:
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": img.get("url")}
-        })
+        content.append({"type": "image_url", "image_url": {"url": img.get("url")}})
 
     messages = []
     if system_prompt:
@@ -459,10 +451,7 @@ async def call_llm_with_vision(
     api_key = settings.OPENAI_API_KEY
 
     url = f"{api_base}/chat/completions"
-    payload = {
-        "model": model_str,
-        "messages": messages,
-    }
+    payload = {"model": model_str, "messages": messages}
 
     timeout = httpx.Timeout(120.0, connect=30.0)
 
@@ -471,10 +460,7 @@ async def call_llm_with_vision(
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     url,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json=payload,
                 )
                 response.raise_for_status()
@@ -496,7 +482,7 @@ async def call_llm_with_vision(
                 raise Exception(f"Vision API connection closed after {max_retries} retries: {e}")
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Vision API HTTP error: {e.response.status_code} - {e.response.text}")
+            logger.error(f"Vision API HTTP error: {e.response.status_code}")
             raise Exception(f"Vision API error: {e.response.status_code}")
 
         except Exception as e:

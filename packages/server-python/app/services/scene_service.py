@@ -297,20 +297,36 @@ async def create_single_scene(
 
     logger.info(f"[Scene] #{order_index}: 开始生成 - {scene_title}, agents={len(agents) if agents else 0}")
 
-    # 生成内容（第一阶段）
-    try:
-        logger.info(f"[Scene] #{order_index}: 开始调用LLM生成内容 - model={settings.DEFAULT_MODEL}")
-        content = await generate_scene_content(
+    # 并行策略：content生成 + fallback actions生成 同时进行
+    # fallback actions 不依赖 content，可并行执行
+    content_task = asyncio.create_task(
+        generate_scene_content(
             outline_obj,
             language=language,
             model=settings.DEFAULT_MODEL,
             agents=agents,
         )
+    )
+
+    # 并行启动 fallback actions 生成（使用 outline 信息，不依赖 content）
+    fallback_actions_task = asyncio.create_task(
+        generate_scene_actions_with_tts(
+            scene_title, scene_desc, key_points, language, None  # content=None，仅使用 outline
+        )
+    )
+
+    # 等待 content 完成
+    content = None
+    content_success = False
+    try:
+        logger.info(f"[Scene] #{order_index}: 等待内容生成...")
+        content = await content_task
         # 格式标准化：确保 elements 在 canvas 中
         if "elements" in content and "canvas" not in content:
             content = {"type": "slide", "canvas": {"width": 1000, "height": 562.5, "background": {"color": "#ffffff"}, "elements": content["elements"]}}
         elif "canvas" in content and "elements" not in content["canvas"] and "elements" in content:
             content["canvas"]["elements"] = content.pop("elements")
+        content_success = True
         logger.info(f"[Scene] #{order_index}: 内容生成成功 - elements={len(content.get('canvas', {}).get('elements', []))}")
     except asyncio.TimeoutError as e:
         logger.warning(f"[Scene] #{order_index}: 内容生成超时，使用fallback")
@@ -321,28 +337,33 @@ async def create_single_scene(
         fallback_content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
         content = fix_element_format(fallback_content)
 
-    # 生成动作（第二阶段）- 使用实际内容
+    # 获取 fallback actions 结果（此时应该已完成或接近完成）
+    fallback_actions = None
     try:
-        logger.info(f"[Scene] #{order_index}: 开始调用LLM生成动作")
-        actions = await generate_scene_actions(
-            outline_obj,
-            content,
-            language=language,
-            model=settings.DEFAULT_MODEL,
-            agents=agents,
-        )
-        actions_data = [a.model_dump() for a in actions]
-        logger.info(f"[Scene] #{order_index}: Actions生成成功 ({len(actions_data)}个)")
-    except asyncio.TimeoutError as e:
-        logger.warning(f"[Scene] #{order_index}: 动作生成超时，使用fallback")
-        actions_data = await generate_scene_actions_with_tts(
-            scene_title, scene_desc, key_points, language, content
-        )
+        # fallback actions 应该很快完成（不调用 LLM）
+        fallback_actions = await fallback_actions_task
+        logger.info(f"[Scene] #{order_index}: Fallback actions 就绪 ({len(fallback_actions)}个)")
     except Exception as e:
-        logger.warning(f"[Scene] #{order_index}: 动作生成失败 - {type(e).__name__}: {e}")
-        actions_data = await generate_scene_actions_with_tts(
-            scene_title, scene_desc, key_points, language, content
-        )
+        logger.warning(f"[Scene] #{order_index}: Fallback actions 失败: {e}")
+        fallback_actions = []
+
+    # 如果 content 成功，尝试用真实 content 生成更精确的 actions
+    # 失败时直接使用 fallback，不再重复调用 generate_scene_actions_with_tts
+    actions_data = fallback_actions
+    if content_success and content:
+        try:
+            logger.info(f"[Scene] #{order_index}: 尝试生成精确 actions...")
+            actions = await generate_scene_actions(
+                outline_obj,
+                content,
+                language=language,
+                model=settings.DEFAULT_MODEL,
+                agents=agents,
+            )
+            actions_data = [a.model_dump() for a in actions]
+            logger.info(f"[Scene] #{order_index}: 精确 actions 成功 ({len(actions_data)}个)")
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.warning(f"[Scene] #{order_index}: 精确 actions 失败，使用 fallback ({type(e).__name__})")
 
     # 存储到数据库
     content_json = json.dumps(content)
@@ -519,9 +540,10 @@ async def create_all_scenes(
     user_uuid: uuid.UUID,
     db: Any,
     language: str = "zh-CN",
+    max_concurrent: int = 2,
 ) -> List[Dict[str, Any]]:
     """
-    批量创建所有场景
+    批量创建所有场景（并行执行，带并发控制）
 
     Args:
         outlines: 大纲列表
@@ -529,33 +551,75 @@ async def create_all_scenes(
         user_uuid: 用户 UUID
         db: 数据库连接
         language: 语言设置
+        max_concurrent: 最大并发数（默认3，避免API限流）
 
     Returns:
         场景列表
     """
-    scenes = []
+    if not outlines:
+        return []
 
-    for i, outline in enumerate(outlines):
-        try:
-            scene = await create_single_scene(
-                outline=outline,
-                stage_id=stage_id,
-                user_uuid=user_uuid,
-                order_index=i + 1,
-                db=db,
-                language=language,
-            )
-            scenes.append(scene)
-        except Exception as e:
-            logger.warning(f"[Scene] #{i+1} 创建失败: {e}")
-            # 创建降级场景
-            fallback_scene = await create_fallback_scene(
-                outline=outline,
+    total = len(outlines)
+    logger.info(f"[Scene] 开始并行创建 {total} 个场景，并发数={max_concurrent}")
+
+    # 使用 Semaphore 控制并发数
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def create_scene_with_semaphore(index: int, outline: Dict[str, Any]) -> Dict[str, Any]:
+        """带并发控制的场景创建"""
+        async with semaphore:
+            try:
+                logger.info(f"[Scene] #{index + 1}/{total} 开始创建...")
+                scene = await create_single_scene(
+                    outline=outline,
+                    stage_id=stage_id,
+                    user_uuid=user_uuid,
+                    order_index=index + 1,
+                    db=db,
+                    language=language,
+                )
+                logger.info(f"[Scene] #{index + 1}/{total} 创建成功")
+                return scene
+            except Exception as e:
+                logger.warning(f"[Scene] #{index + 1}/{total} 创建失败: {e}")
+                # 创建降级场景
+                fallback_scene = await create_fallback_scene(
+                    outline=outline,
+                    stage_id=stage_id,
+                    user_uuid=user_uuid,
+                    order_index=index + 1,
+                    db=db
+                )
+                logger.info(f"[Scene] #{index + 1}/{total} 使用降级场景")
+                return fallback_scene
+
+    # 并行创建所有场景
+    start_time = time.time()
+    tasks = [
+        create_scene_with_semaphore(i, outline)
+        for i, outline in enumerate(outlines)
+    ]
+
+    # 使用 gather 并行执行，return_exceptions=True 确保单场景失败不影响整体
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    scenes = []
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(f"[Scene] #{i + 1} 异常: {result}")
+            # 异常时创建降级场景
+            fallback = await create_fallback_scene(
+                outline=outlines[i],
                 stage_id=stage_id,
                 user_uuid=user_uuid,
                 order_index=i + 1,
                 db=db
             )
-            scenes.append(fallback_scene)
+            scenes.append(fallback)
+        else:
+            scenes.append(result)
+
+    elapsed = time.time() - start_time
+    logger.info(f"[Scene] 全部 {total} 个场景创建完成，总耗时: {elapsed:.2f}s")
 
     return scenes

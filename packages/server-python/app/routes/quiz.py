@@ -74,7 +74,6 @@ async def grade_answer(body: GradeRequest):
             else:
                 json_str = text[first_brace:]
             parsed = json.loads(json_str)
-        else:
             score = max(0, min(body.points, round(float(parsed.get("score", 0)))))
             comment = str(parsed.get("comment", ""))
         else:

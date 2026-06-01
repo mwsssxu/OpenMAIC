@@ -114,6 +114,7 @@ export interface QuizQuestion {
   points?: number;
   hasAnswer?: boolean;
   commentPrompt?: string; // AI批改提示
+  analysis?: string; // 解析
 }
 
 export interface QuizContent {
