@@ -37,6 +37,7 @@ import { HintToast } from '@/components/common/HintToast';
 import { InteractiveWebView, InteractiveWebViewRef } from '@/components/playback/InteractiveWebView';
 import { ClassroomCompletePage } from '@/components/classroom/ClassroomCompletePage';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
+import { useLearningTracker } from '@/lib/hooks/use-learning-tracker';
 import { mobileActionEngine } from '@/lib/whiteboard/action-engine';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
@@ -230,6 +231,32 @@ function safeColorWithAlpha(color: string, alpha: string = '20'): string {
   return '#888888' + alpha;
 }
 
+// 计算测验分数
+function calculateQuizScore(
+  scenes: Scene[],
+  quizQuestions: Record<string, { phase: string; result?: { correct: boolean; earned: number } }>
+): number | undefined {
+  // 检查是否有测验场景
+  const hasQuizScene = scenes.some(s => s.type === 'quiz');
+  if (!hasQuizScene) return undefined;
+
+  // 计算正确率
+  let totalQuestions = 0;
+  let correctQuestions = 0;
+
+  for (const [qId, qs] of Object.entries(quizQuestions)) {
+    if (qs.result) {
+      totalQuestions++;
+      if (qs.result.correct) {
+        correctQuestions++;
+      }
+    }
+  }
+
+  if (totalQuestions === 0) return undefined;
+  return Math.round((correctQuestions / totalQuestions) * 100);
+}
+
 export default function ClassroomScreen() {
   const { id, pendingOutlines, totalScenes, remainingCount } = useLocalSearchParams<{ id: string; pendingOutlines?: string; totalScenes?: string; remainingCount?: string }>();
   const router = useRouter();
@@ -254,6 +281,15 @@ export default function ClassroomScreen() {
   const [pendingScenesTotal, setPendingScenesTotal] = useState(0);
   const [showManualCreateHint, setShowManualCreateHint] = useState(false); // 显示手动创建提示
   const backgroundCreatingRef = useRef(false); // 防止重复创建
+
+  // 学习时长追踪
+  const { updateScenesCompleted, completeLearning } = useLearningTracker({
+    courseId: id || '',
+    totalScenes: data?.scenes?.length || 0,
+    onComplete: (result) => {
+      console.log('Learning completed:', result);
+    },
+  });
 
   // 教学工具状态
   const [showWhiteboard, setShowWhiteboard] = useState(false);
@@ -434,6 +470,21 @@ export default function ClassroomScreen() {
       loadChatHistory();
     }
   }, [data, currentSceneIndex]);
+
+  // 课程完成时记录学习数据
+  useEffect(() => {
+    const currentScene = data?.scenes?.[currentSceneIndex];
+    const isCompleteScene = currentScene?.type === 'slide' &&
+      (currentScene?.title === '课程完成' || currentScene?.title === 'Course Complete');
+
+    if (isCompleteScene && data?.scenes && data.scenes.length > 0) {
+      // 计算测验分数（quizFlow.questions 在此时读取最新值）
+      const quizScore = calculateQuizScore(data.scenes, quizFlow.questions);
+
+      // 调用完成学习API
+      completeLearning(quizScore);
+    }
+  }, [data, currentSceneIndex, completeLearning]); // quizFlow.questions 不需要作为依赖，只在到达完成场景时读取
 
   // 场景切换函数 - 添加触觉反馈
   const goToNextScene = useCallback(() => {
@@ -710,6 +761,8 @@ export default function ClassroomScreen() {
       {
         onSceneChange: (index) => {
           setCurrentSceneIndex(index);
+          // 更新已完成的场景数（当前场景之前的都算已完成）
+          updateScenesCompleted(index);
           // 切换场景时清除视觉效果和白板
           setSpotlightElementId(null);
           setLaserElementId(null);
