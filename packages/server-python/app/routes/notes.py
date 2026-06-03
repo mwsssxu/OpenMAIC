@@ -2,7 +2,7 @@
 共享笔记路由 - 笔记发布、购买、收益统计
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.core.redis import invalidate_balance_cache
@@ -70,8 +70,8 @@ async def publish_note(
 
 @router.get("/")
 async def get_notes_list(
-    page: int = 1,
-    limit: int = 20,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     visibility: str = None,
     course_id: str = None,
     search: str = None,
@@ -99,8 +99,10 @@ async def get_notes_list(
         param_idx += 1
 
     if search:
+        # [W-1 fix] Escape LIKE wildcards to prevent injection
+        escaped_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         conditions.append(f"(title ILIKE ${param_idx} OR content ILIKE ${param_idx})")
-        params.append(f"%{search}%")
+        params.append(f"%{escaped_search}%")
         param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions)
@@ -339,9 +341,10 @@ async def purchase_note(
     if price <= 0:
         raise HTTPException(status_code=400, detail="此笔记无需购买")
 
-    # 计算作者收益（最低为1积分）
+    # 计算作者收益（最低为1积分，但不超过price）
     author_reward = max(int(price * AUTHOR_RATIO), MIN_AUTHOR_REWARD if price >= 1 else 0)
-    platform_fee = price - author_reward
+    author_reward = min(author_reward, price)  # 确保作者收益不超过价格
+    platform_fee = max(0, price - author_reward)  # 确保平台费不为负
 
     async with db.transaction():
         # 检查积分余额
@@ -435,33 +438,19 @@ async def rate_note(
     )
 
     async with db.transaction():
+        # [C-5 fix] Lock the row to prevent concurrent rating race condition
+        await db.fetchrow(
+            "SELECT id FROM shared_notes WHERE id = $1 FOR UPDATE",
+            n_uuid
+        )
+
         if existing_rating:
-            # 更新评分：先减去旧评分，再加上新评分
-            old_rating = existing_rating["rating"]
-            await db.execute(
-                """
-                UPDATE shared_notes
-                SET rating = (rating * rating_count - $1 + $2) / rating_count
-                WHERE id = $3
-                """,
-                old_rating, rating, n_uuid
-            )
             # 更新评分记录
             await db.execute(
                 "UPDATE note_ratings SET rating = $1 WHERE id = $2",
                 rating, existing_rating["id"]
             )
         else:
-            # 新增评分
-            await db.execute(
-                """
-                UPDATE shared_notes
-                SET rating = (rating * rating_count + $1) / (rating_count + 1),
-                    rating_count = rating_count + 1
-                WHERE id = $2
-                """,
-                rating, n_uuid
-            )
             # 插入评分记录
             await db.execute(
                 """
@@ -470,5 +459,16 @@ async def rate_note(
                 """,
                 uuid.uuid4(), user_uuid, n_uuid, rating, utcnow()
             )
+
+        # [C-5 fix] Recompute rating from note_ratings table to avoid floating point drift
+        await db.execute(
+            """
+            UPDATE shared_notes
+            SET rating = (SELECT COALESCE(AVG(rating), 0) FROM note_ratings WHERE note_id = $1),
+                rating_count = (SELECT COUNT(*) FROM note_ratings WHERE note_id = $1)
+            WHERE id = $1
+            """,
+            n_uuid
+        )
 
     return {"rating": rating, "message": "评分已记录"}

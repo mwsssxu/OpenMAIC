@@ -59,7 +59,7 @@ async def get_notes_stats(
     }
 
 
-@router.get("/")
+@router.get("")  # 移除尾随斜杠，避免307跳转
 async def get_personal_notes(
     page: int = 1,
     limit: int = 20,
@@ -110,7 +110,7 @@ async def get_personal_notes(
         f"""
         SELECT COUNT(*) FROM shared_notes {where_clause}
         """,
-        *params[:-2]  # 不需要 limit 和 offset
+        *params  # 只传递条件参数，不需要limit和offset
     )
 
     # 按时间分组

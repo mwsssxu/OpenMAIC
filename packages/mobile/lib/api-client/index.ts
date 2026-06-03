@@ -2100,6 +2100,38 @@ class ApiClient {
     return data;
   }
 
+  // ==================== 学习记录 ====================
+
+  // 开始学习课程
+  async startLearning(courseId: string) {
+    const { data } = await this.client.post('/learning/start', { course_id: courseId });
+    return data;
+  }
+
+  // 更新学习时长
+  async updateLearningTime(courseId: string, minutes: number, scenesCompleted?: number) {
+    const { data } = await this.client.post('/learning/update-time', {
+      course_id: courseId,
+      minutes,
+      scenes_completed: scenesCompleted,
+    });
+    return data;
+  }
+
+  // 完成课程学习
+  async completeLearning(courseId: string, params: {
+    total_minutes: number;
+    scenes_completed: number;
+    total_scenes: number;
+    quiz_score?: number;
+  }) {
+    const { data } = await this.client.post('/learning/complete', {
+      course_id: courseId,
+      ...params,
+    });
+    return data;
+  }
+
   // ==================== MAIC-UI 交互内容 ====================
 
   // 检查 MAIC-UI 服务状态

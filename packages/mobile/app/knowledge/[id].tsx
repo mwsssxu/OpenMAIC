@@ -14,6 +14,7 @@ interface KnowledgeCardDetail {
   source_type: string;
   source_id: string;
   scene_id: string;
+  source_name: string | null;  // 来源课程名称
   skill_category: string;
   skill_name: string;
   tags: string[];
@@ -300,9 +301,24 @@ export default function KnowledgeDetailScreen() {
       {card.source_type !== 'manual' && (
         <View style={styles.sourceSection}>
           <Text style={styles.sectionTitle}>来源</Text>
-          <Text style={styles.sourceText}>
-            {card.source_type === 'course' ? '来自课程场景' : '来自笔记'}
-          </Text>
+          {card.source_name ? (
+            <TouchableOpacity
+              style={styles.sourceLink}
+              onPress={() => {
+                if (card.source_id) {
+                  router.push(`/course/${card.source_id}` as any);
+                }
+              }}
+            >
+              <Ionicons name="book-outline" size={16} color={Colors.primary.main} />
+              <Text style={styles.sourceLinkText}>{card.source_name}</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.neutral.textSecondary} />
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.sourceText}>
+              {card.source_type === 'course' ? '来自课程场景' : '来自笔记'}
+            </Text>
+          )}
         </View>
       )}
 
@@ -550,6 +566,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.neutral.border,
   },
   sourceText: { fontSize: 14, color: Colors.neutral.textSecondary, marginTop: Spacing.sm },
+  sourceLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  sourceLinkText: {
+    fontSize: 14,
+    color: Colors.primary.main,
+    marginLeft: Spacing.xs,
+    flex: 1,
+  },
 
   // 弹窗
   modalContainer: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },

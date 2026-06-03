@@ -62,13 +62,23 @@ async def get_current_user_id(
 async def get_optional_user_id(
     credentials: HTTPAuthorizationCredentials | None = Depends(
         HTTPBearer(auto_error=False)
-    )
+    ),
+    db: asyncpg.Connection = Depends(get_db)
 ) -> str | None:
-    """可选认证 - 未登录返回 None"""
+    """可选认证 - 未登录返回 None，已登录但用户被禁用也返回 None"""
     if credentials is None:
         return None
     token = credentials.credentials
     user_id = verify_token(token, expected_type="access")
+    if user_id is None:
+        return None
+    # 验证用户存在且未被禁用（与 get_current_user 保持一致）
+    row = await db.fetchrow(
+        "SELECT is_active FROM users WHERE id = $1",
+        user_id
+    )
+    if row is None or not row["is_active"]:
+        return None
     return user_id
 
 

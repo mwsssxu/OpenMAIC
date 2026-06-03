@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -189,16 +189,14 @@ export default function NotesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 页面获得焦点时刷新
+  // 页面获得焦点时刷新（只使用useFocusEffect，避免与useEffect重复调用）
   useFocusEffect(
     useCallback(() => {
       loadNotes();
     }, [activeFilter])
   );
 
-  useEffect(() => {
-    loadNotes();
-  }, [activeFilter]);
+  // 移除了useEffect，避免双重调用
 
   async function loadNotes() {
     try {

@@ -14,7 +14,8 @@ import httpx
 import json
 import logging
 import time
-import threading
+
+import os
 
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
@@ -40,21 +41,18 @@ class LLMRateLimiter:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._tokens = requests_per_minute
         self._last_refill = time.time()
-        self._lock = threading.RLock()
+        self._lock = asyncio.Lock()
         self._total_requests = 0
         self._rejected_requests = 0
 
-    def _refill_tokens(self):
-        with self._lock:
+    async def _try_consume_token(self) -> bool:
+        """Refill and consume a token in a single lock acquisition to avoid double-lock."""
+        async with self._lock:
             now = time.time()
             elapsed = now - self._last_refill
             new_tokens = elapsed * (self.requests_per_minute / 60.0)
             self._tokens = min(self.requests_per_minute, self._tokens + new_tokens)
             self._last_refill = now
-
-    def _consume_token(self) -> bool:
-        self._refill_tokens()
-        with self._lock:
             if self._tokens >= 1:
                 self._tokens -= 1
                 return True
@@ -70,7 +68,7 @@ class LLMRateLimiter:
             return False
 
         start_wait = time.time()
-        while not self._consume_token():
+        while not await self._try_consume_token():
             if time.time() - start_wait > timeout:
                 self._semaphore.release()
                 self._rejected_requests += 1
@@ -195,14 +193,17 @@ async def _call_llm_internal(
             def sync_call():
                 import requests
                 from urllib3.exceptions import InsecureRequestWarning
-                requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+                # DASHSCOPE_VERIFY_SSL: 默认启用SSL验证；仅在特殊网络环境下设为False禁用
+                verify_ssl = os.environ.get("DASHSCOPE_VERIFY_SSL", "true").lower() not in ("false", "0", "no")
+                if not verify_ssl:
+                    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
                 session = requests.Session()
                 resp = session.post(
                     url,
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json=payload,
                     timeout=(30, 120),
-                    verify=False,
+                    verify=verify_ssl,
                 )
                 resp.raise_for_status()
                 return resp.json()

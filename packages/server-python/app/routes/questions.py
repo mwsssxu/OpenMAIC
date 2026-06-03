@@ -2,7 +2,7 @@
 问答悬赏路由 - 问题发布、回答、采纳
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from app.middleware.auth import get_current_user_id, get_optional_user_id
 from app.db.database import get_db
 from app.core.redis import invalidate_balance_cache
@@ -119,8 +119,8 @@ async def create_question(
 
 @router.get("/")
 async def get_questions(
-    page: int = 1,
-    limit: int = 20,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     status: str = None,
     tags: str = None,
     sort: str = "recent",  # recent, bounty, hot
@@ -231,9 +231,9 @@ async def get_question_detail(
     if not question:
         raise HTTPException(status_code=404, detail="问题不存在")
 
-    # 更新浏览数
-    await db.execute(
-        "UPDATE questions SET view_count = view_count + 1 WHERE id = $1",
+    # 更新浏览数（原子更新，避免 NULL + 1 问题）
+    new_view_count = await db.fetchval(
+        "UPDATE questions SET view_count = COALESCE(view_count, 0) + 1 WHERE id = $1 RETURNING view_count",
         q_uuid
     )
 
@@ -252,7 +252,7 @@ async def get_question_detail(
         "bounty": question["bounty"],
         "bounty_status": question["bounty_status"],
         "tags": question["tags"] or "",
-        "view_count": (question["view_count"] or 0) + 1,  # 返回更新后的值
+        "view_count": new_view_count,  # 使用原子更新后的值
         "answer_count": question["answer_count"] or 0,
         "accepted_answer_id": str(question["accepted_answer_id"]) if question["accepted_answer_id"] else None,
         "created_at": question["created_at"].isoformat(),

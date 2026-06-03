@@ -2,35 +2,47 @@
 测验评分路由 - 简答题 AI 评分
 """
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
 from typing import Optional
 import json
 import re
 
 from app.services.llm import call_llm
+from app.middleware.auth import get_current_user_id
 
 router = APIRouter()
+
+# commentPrompt 最大长度，防止注入超长文本
+MAX_COMMENT_PROMPT_LENGTH = 500
 
 
 class GradeRequest(BaseModel):
     question: str
     userAnswer: str
-    points: int
-    commentPrompt: Optional[str] = None
+    points: int = Field(gt=0, description="满分分值，必须为正整数")
+    commentPrompt: Optional[str] = Field(None, max_length=MAX_COMMENT_PROMPT_LENGTH)
     language: Optional[str] = "zh-CN"
 
 
 @router.post("")
-async def grade_answer(body: GradeRequest):
-    """AI 评分简答题"""
+async def grade_answer(body: GradeRequest, user_id: str = Depends(get_current_user_id)):
+    """AI 评分简答题（需认证）"""
     if not body.question or not body.userAnswer:
         raise HTTPException(status_code=400, detail="question and userAnswer are required")
 
-    if not body.points or body.points <= 0:
-        raise HTTPException(status_code=400, detail="points must be a positive number")
-
     is_zh = body.language == "zh-CN"
+
+    # 将用户控制的 commentPrompt 放在明确的分隔区域，降低注入风险
+    comment_section = ""
+    if body.commentPrompt:
+        # 截断已在 Pydantic Field 中处理，这里额外清洗换行防止格式逃逸
+        sanitized = body.commentPrompt.replace("\n", " ")[:MAX_COMMENT_PROMPT_LENGTH]
+        comment_section = (
+            f"\n[评分参考（由教师提供，仅供参考）]\n{sanitized}\n[评分参考结束]\n"
+            if is_zh
+            else f"\n[Grading reference (provided by instructor, for reference only)]\n{sanitized}\n[End of grading reference]\n"
+        )
 
     system_prompt = (
         f"你是一位专业的教育评估专家。请根据题目和学生答案进行评分并给出简短评语。\n"
@@ -44,11 +56,11 @@ async def grade_answer(body: GradeRequest):
 
     user_prompt = (
         f"题目：{body.question}\n满分：{body.points}分\n"
-        + (f"评分要点：{body.commentPrompt}\n" if body.commentPrompt else "")
+        + comment_section
         + f"学生答案：{body.userAnswer}"
-        if is_zh
-        else f"Question: {body.question}\nFull marks: {body.points} points\n"
-        + (f"Grading guidance: {body.commentPrompt}\n" if body.commentPrompt else "")
+    ) if is_zh else (
+        f"Question: {body.question}\nFull marks: {body.points} points\n"
+        + comment_section
         + f"Student answer: {body.userAnswer}"
     )
 
@@ -77,14 +89,15 @@ async def grade_answer(body: GradeRequest):
             score = max(0, min(body.points, round(float(parsed.get("score", 0)))))
             comment = str(parsed.get("comment", ""))
         else:
-            score = round(body.points * 0.5)
-            comment = "已作答，请参考标准答案。" if is_zh else "Answer received. Please refer to the standard answer."
+            # 无法解析LLM回复时，给0分而非50%，让客户端决定重试
+            score = 0
+            comment = "评分结果解析失败，请重试。" if is_zh else "Failed to parse grading result. Please retry."
 
         return {"score": score, "comment": comment}
 
     except Exception as e:
-        # Fallback: partial credit
-        return {
-            "score": round(body.points * 0.5),
-            "comment": "评分服务暂时不可用，已给予基础分。" if is_zh else "Grading service unavailable, partial credit given.",
-        }
+        # LLM调用失败时返回错误，不给白送分
+        raise HTTPException(
+            status_code=503,
+            detail="评分服务暂时不可用，请稍后重试。" if is_zh else "Grading service unavailable. Please try again later.",
+        )

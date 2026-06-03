@@ -14,7 +14,7 @@ from app.core.config import settings
 logging.basicConfig(level=logging.DEBUG if settings.DEBUG else logging.INFO)
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
-from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge, personal_notes, profile, maic_ui_proxy
+from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge, personal_notes, profile, maic_ui_proxy, learning
 from app.routes.quiz import router as quiz_router
 from app.services.tts_service import close_tts_session as close_tts
 
@@ -147,6 +147,7 @@ app.include_router(enterprise.router, tags=["企业功能"])
 app.include_router(tts.router, prefix="/tts", tags=["TTS"])
 app.include_router(personal_notes.router, prefix="/personal-notes", tags=["个人笔记"])
 app.include_router(profile.router, prefix="/profile", tags=["学习资料"])
+app.include_router(learning.router, prefix="/learning", tags=["学习记录"])
 app.include_router(knowledge.router, tags=["知识库"])
 app.include_router(maic_ui_proxy.router, prefix="/maic-ui", tags=["MAIC-UI交互内容"])
 app.include_router(quiz_router, prefix="/quiz-grade", tags=["quiz"])

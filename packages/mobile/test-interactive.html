@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Interactive Test - Compiler Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .phase-box {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 12px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .phase-box:active {
+            transform: scale(0.98);
+            background: linear-gradient(135deg, #e8ecf1 0%, #d4dae3 100%);
+        }
+
+        .flow-arrow {
+            text-align: center;
+            font-size: 24px;
+            color: white;
+            margin: 8px 0;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(5px); }
+        }
+
+        .quiz-btn {
+            width: 100%;
+            padding: 14px;
+            margin: 8px 0;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: white;
+            font-size: 16px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quiz-btn:active {
+            background: #f3f4f6;
+            border-color: #667eea;
+        }
+
+        .quiz-btn.correct {
+            background: #10b981;
+            border-color: #10b981;
+            color: white;
+        }
+
+        .quiz-btn.wrong {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: white;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+
+        .phase-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .phase-desc {
+            font-size: 14px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .score-display {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .complete-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 16px;
+        }
+
+        .complete-btn:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+    <div class="score-display">
+        得分: <span id="score">0</span>/3
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h1 class="title">编译器结构探索</h1>
+            <p class="subtitle">了解编译器如何将源代码转换为可执行程序</p>
+
+            <div class="phase-box" onclick="showPhase('lexical')">
+                <div class="phase-title">1. 词法分析 (Lexical Analysis)</div>
+                <div class="phase-desc">将源代码分解为标记（tokens）</div>
+            </div>
+
+            <div class="flow-arrow">↓</div>
+
+            <div class="phase-box" onclick="showPhase('syntax')">
+                <div class="phase-title">2. 语法分析 (Syntax Analysis)</div>
+                <div class="phase-desc">构建抽象语法树（AST）</div>
+            </div>
+
+            <div class="flow-arrow">↓</div>
+
+            <div class="phase-box" onclick="showPhase('semantic')">
+                <div class="phase-title">3. 语义分析 (Semantic Analysis)</div>
+                <div class="phase-desc">检查语义正确性，收集类型信息</div>
+            </div>
+        </div>
+
+        <div class="card" id="quiz-card">
+            <h2 class="title" style="font-size: 18px;">知识测验</h2>
+            <p class="subtitle">词法分析器的主要作用是什么？</p>
+
+            <button class="quiz-btn" onclick="checkAnswer(this, true)">
+                A. 将源代码分解为标记
+            </button>
+            <button class="quiz-btn" onclick="checkAnswer(this, false)">
+                B. 生成机器代码
+            </button>
+            <button class="quiz-btn" onclick="checkAnswer(this, false)">
+                C. 优化程序性能
+            </button>
+        </div>
+
+        <div class="card" id="quiz-card-2" style="display: none;">
+            <h2 class="title" style="font-size: 18px;">第二题</h2>
+            <p class="subtitle">AST 是什么的缩写？</p>
+
+            <button class="quiz-btn" onclick="checkAnswer2(this, true)">
+                A. 抽象语法树
+            </button>
+            <button class="quiz-btn" onclick="checkAnswer2(this, false)">
+                B. 高级系统工具
+            </button>
+            <button class="quiz-btn" onclick="checkAnswer2(this, false)">
+                C. 自动状态转换
+            </button>
+        </div>
+
+        <div class="card" id="quiz-card-3" style="display: none;">
+            <h2 class="title" style="font-size: 18px;">第三题</h2>
+            <p class="subtitle">编译的最后阶段是？</p>
+
+            <button class="quiz-btn" onclick="checkAnswer3(this, false)">
+                A. 词法分析
+            </button>
+            <button class="quiz-btn" onclick="checkAnswer3(this, false)">
+                B. 语法分析
+            </button>
+            <button class="quiz-btn" onclick="checkAnswer3(this, true)">
+                C. 代码生成
+            </button>
+        </div>
+
+        <div class="card" id="complete-card" style="display: none;">
+            <h2 class="title" style="font-size: 18px; color: #10b981;">恭喜完成！</h2>
+            <p class="subtitle">你已掌握编译器基础知识</p>
+            <button class="complete-btn" onclick="completeScene()">完成学习</button>
+        </div>
+    </div>
+
+    <script>
+        let score = 0;
+        let answered = [false, false, false];
+
+        function showPhase(phase) {
+            // 可扩展：显示详细解释
+            console.log('Phase:', phase);
+            if (window.nativeBridge) {
+                window.nativeBridge.postMessage({
+                    type: 'phase_click',
+                    phase: phase
+                });
+            }
+        }
+
+        function checkAnswer(btn, isCorrect) {
+            if (answered[0]) return;
+            answered[0] = true;
+
+            if (isCorrect) {
+                btn.classList.add('correct');
+                score++;
+                document.getElementById('score').textContent = score;
+            } else {
+                btn.classList.add('wrong');
+            }
+
+            setTimeout(() => {
+                document.getElementById('quiz-card').style.display = 'none';
+                document.getElementById('quiz-card-2').style.display = 'block';
+            }, 1000);
+        }
+
+        function checkAnswer2(btn, isCorrect) {
+            if (answered[1]) return;
+            answered[1] = true;
+
+            if (isCorrect) {
+                btn.classList.add('correct');
+                score++;
+                document.getElementById('score').textContent = score;
+            } else {
+                btn.classList.add('wrong');
+            }
+
+            setTimeout(() => {
+                document.getElementById('quiz-card-2').style.display = 'none';
+                document.getElementById('quiz-card-3').style.display = 'block';
+            }, 1000);
+        }
+
+        function checkAnswer3(btn, isCorrect) {
+            if (answered[2]) return;
+            answered[2] = true;
+
+            if (isCorrect) {
+                btn.classList.add('correct');
+                score++;
+                document.getElementById('score').textContent = score;
+            } else {
+                btn.classList.add('wrong');
+            }
+
+            setTimeout(() => {
+                document.getElementById('quiz-card-3').style.display = 'none';
+                document.getElementById('complete-card').style.display = 'block';
+            }, 1000);
+        }
+
+        function completeScene() {
+            if (window.nativeBridge) {
+                window.nativeBridge.postMessage({
+                    type: 'complete',
+                    payload: {
+                        score: score,
+                        total: 3,
+                        percentage: Math.round(score / 3 * 100)
+                    }
+                });
+            } else if (window.parent) {
+                window.parent.postMessage({
+                    type: 'complete',
+                    payload: {
+                        score: score,
+                        total: 3,
+                        percentage: Math.round(score / 3 * 100)
+                    }
+                }, '*');
+            }
+
+            alert('学习完成！得分: ' + score + '/3');
+        }
+    </script>
+</body>
+</html>

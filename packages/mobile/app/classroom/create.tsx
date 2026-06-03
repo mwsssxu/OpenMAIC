@@ -674,15 +674,6 @@ export default function CreateClassroomScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 头部标题 */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-            <Ionicons name="chevron-back" size={24} color={iOSColors.accent} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>创建课程</Text>
-          <View style={styles.headerRight} />
-        </View>
-
         {/* 步骤指示器 */}
         <StepIndicator currentStep={currentStep} />
 
@@ -725,28 +716,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 16,
   },
-
-  // 头部
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: iOSColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: iOSColors.fg,
-  },
-  headerRight: { width: 36 },
 
   // 步骤内容
   stepContent: {

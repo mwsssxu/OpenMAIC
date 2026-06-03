@@ -3,6 +3,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.services.scene_service import (
@@ -22,6 +23,13 @@ import time
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class CreateAllScenesRequest(BaseModel):
+    """创建所有场景请求体"""
+    outlines: list = Field(..., min_length=1, max_length=20, description="场景大纲列表（1-20项）")
+    language: str = Field(default='zh-CN', description="语言设置")
+    agents: list | None = Field(default=None, description="智能体列表（可选）")
 
 
 def validate_uuid(id_str: str, field_name: str = "ID") -> uuid.UUID:
@@ -403,7 +411,7 @@ async def create_scene_for_classroom(
 @router.post("/{classroom_id}/scenes/create-all")
 async def create_all_scenes_for_classroom(
     classroom_id: str,
-    body: dict,
+    body: CreateAllScenesRequest,
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
@@ -411,7 +419,7 @@ async def create_all_scenes_for_classroom(
     并行创建所有场景（替代前端逐个调用 /scenes/create）
 
     请求体参数:
-    - outlines: 场景大纲列表 [{title, type, description, key_points}, ...]
+    - outlines: 场景大纲列表 [{title, type, description, key_points}, ...]（最多20项）
     - language: 语言设置
     - agents: 智能体列表（可选，如不提供则从课程配置获取）
     """
@@ -428,13 +436,9 @@ async def create_all_scenes_for_classroom(
     if stage is None:
         raise HTTPException(status_code=404, detail="课程不存在")
 
-    outlines = body.get("outlines", [])
-    if not outlines:
-        raise HTTPException(status_code=400, detail="大纲列表不能为空")
-
-    language = validate_language(body.get("language", stage["language_directive"] or "zh-CN"))
-
-    agents = body.get("agents")
+    outlines = body.outlines
+    language = validate_language(body.language or stage["language_directive"] or "zh-CN")
+    agents = body.agents
     if not agents and stage["generated_agent_configs"]:
         try:
             if isinstance(stage["generated_agent_configs"], str):

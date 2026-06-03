@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs, Redirect } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useFeedback } from '@/lib/hooks/use-feedback';
@@ -9,7 +8,6 @@ import IOSTabBar from '@/lib/components/IOSTabBar';
 export default function TabLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { onPress } = useFeedback();
-  const insets = useSafeAreaInsets();
 
   if (isLoading) {
     return null;
@@ -20,7 +18,7 @@ export default function TabLayout() {
   }
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <Tabs
         screenOptions={{
           headerShown: true,

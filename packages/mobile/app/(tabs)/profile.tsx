@@ -53,8 +53,10 @@ interface ProfileData {
   };
   stats: {
     streak_days: number;
-    active_courses: number;
+    total_courses: number;  // 系统中所有课程
+    learned_courses?: number;  // 用户已学习的课程
     total_hours: number;
+    active_courses?: number;  // 兼容旧数据
   };
   level: {
     level: number;
@@ -85,10 +87,19 @@ function AchievementBadge({ achievement }: { achievement: Achievement }) {
   };
   const colors = colorStyles[achievement.color as keyof typeof colorStyles] || colorStyles.muted;
 
+  // 检查是否是emoji图标（更精确的判断）
+  // Emoji通常不在ASCII范围内，且不包含常见的Ionicons名称
+  const commonIonicons = ['flame', 'fire', 'crown', 'book', 'library', 'star', 'time', 'rocket', 'checkmark-circle'];
+  const isEmoji = !commonIonicons.includes(achievement.icon) && /[^\x00-\x7F]/.test(achievement.icon);
+
   return (
     <View style={styles.achievement}>
       <View style={[styles.achievementIcon, { backgroundColor: colors.bg }, !achievement.earned && styles.achievementLocked]}>
-        <Ionicons name={achievement.icon as any} size={28} color={colors.icon} />
+        {isEmoji ? (
+          <Text style={styles.achievementEmoji}>{achievement.icon}</Text>
+        ) : (
+          <Ionicons name={achievement.icon as any} size={28} color={colors.icon} />
+        )}
       </View>
       <Text style={styles.achievementName}>{achievement.name}</Text>
     </View>
@@ -198,7 +209,7 @@ export default function ProfileScreen() {
   });
   const [profileData, setProfileData] = useState<ProfileData>({
     user: { nickname: '' },
-    stats: { streak_days: 0, active_courses: 0, total_hours: 0 },
+    stats: { streak_days: 0, total_courses: 0, learned_courses: 0, total_hours: 0 },
     level: { level: 1, title: '初学者' },
     weekly_study: { total_hours: 0, daily_data: [] },
     achievements: [],
@@ -307,8 +318,8 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>连续天数</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: iOSColors.secondary }]}>{profileData.stats.active_courses}</Text>
-            <Text style={styles.statLabel}>在学课程</Text>
+            <Text style={[styles.statValue, { color: iOSColors.secondary }]}>{profileData.stats.total_courses || 0}</Text>
+            <Text style={styles.statLabel}>全部课程</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: iOSColors.gold }]}>{profileData.stats.total_hours.toFixed(0)}h</Text>
@@ -586,6 +597,9 @@ const styles = StyleSheet.create({
   },
   achievementLocked: {
     opacity: 0.35,
+  },
+  achievementEmoji: {
+    fontSize: 28,
   },
   achievementName: {
     fontSize: 10,

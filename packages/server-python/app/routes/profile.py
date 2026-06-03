@@ -17,15 +17,15 @@ router = APIRouter()
 # ==================== 成就徽章定义 ====================
 
 ACHIEVEMENT_DEFINITIONS = [
-    {"id": "streak_7", "name": "连续7天", "icon": "flame", "color": "coral", "description": "连续学习7天"},
-    {"id": "streak_30", "name": "连续30天", "icon": "fire", "color": "coral", "description": "连续学习30天"},
-    {"id": "streak_100", "name": "百日传奇", "icon": "crown", "color": "gold", "description": "连续学习100天"},
-    {"id": "courses_5", "name": "完成5课", "icon": "book", "color": "mint", "description": "完成5门课程"},
-    {"id": "courses_10", "name": "完成10课", "icon": "library", "color": "mint", "description": "完成10门课程"},
-    {"id": "notes_50", "name": "笔记达人", "icon": "star", "color": "gold", "description": "创建50条笔记"},
-    {"id": "hours_100", "name": "百小时", "icon": "time", "color": "blue", "description": "累计学习100小时"},
-    {"id": "hours_500", "name": "五百小时", "icon": "rocket", "color": "blue", "description": "累计学习500小时"},
-    {"id": "quiz_80", "name": "测验高手", "icon": "checkmark-circle", "color": "purple", "description": "测验平均分超过80"},
+    {"id": "streak_7", "name": "连续7天", "icon": "🔥", "color": "coral", "description": "连续学习7天"},
+    {"id": "streak_30", "name": "连续30天", "icon": "💪", "color": "coral", "description": "连续学习30天"},
+    {"id": "streak_100", "name": "百日传奇", "icon": "👑", "color": "gold", "description": "连续学习100天"},
+    {"id": "courses_5", "name": "完成5课", "icon": "📚", "color": "mint", "description": "完成5门课程"},
+    {"id": "courses_10", "name": "完成10课", "icon": "🎓", "color": "mint", "description": "完成10门课程"},
+    {"id": "notes_50", "name": "笔记达人", "icon": "✨", "color": "gold", "description": "创建50条笔记"},
+    {"id": "hours_100", "name": "百小时", "icon": "⏰", "color": "blue", "description": "累计学习100小时"},
+    {"id": "hours_500", "name": "五百小时", "icon": "🚀", "color": "blue", "description": "累计学习500小时"},
+    {"id": "quiz_80", "name": "测验高手", "icon": "🏆", "color": "purple", "description": "测验平均分超过80"},
 ]
 
 
@@ -69,11 +69,18 @@ async def get_profile_overview(
         )
         streak = yesterday_checkin["streak_count"] if yesterday_checkin else 0
 
-    # 获取在学课程数
-    active_courses = await db.fetchval(
+    # 获取所有课程数（系统中可学习的课程总量）
+    total_courses = await db.fetchval(
+        """
+        SELECT COUNT(*) FROM stages
+        """
+    ) or 0
+
+    # 获取用户已学习过的课程数
+    learned_courses = await db.fetchval(
         """
         SELECT COUNT(DISTINCT course_id) FROM course_completions
-        WHERE user_id = $1 AND completion_status != 'completed'
+        WHERE user_id = $1
         """,
         user_uuid
     ) or 0
@@ -118,8 +125,8 @@ async def get_profile_overview(
             "today": day == today,
         })
 
-    # 获取成就徽章
-    achievements = await get_user_achievements(user_uuid, db, streak, active_courses, total_hours, total_minutes)
+    # 获取成就徽章（使用用户已学习的课程数）
+    achievements = await get_user_achievements(user_uuid, db, streak, learned_courses, total_hours, total_minutes)
 
     # 获取用户等级（基于总学习时长）
     level = calculate_user_level(total_hours)
@@ -132,7 +139,8 @@ async def get_profile_overview(
         },
         "stats": {
             "streak_days": streak,
-            "active_courses": active_courses,
+            "total_courses": total_courses,  # 系统中所有课程
+            "learned_courses": learned_courses,  # 用户已学习的课程
             "total_hours": round(total_hours, 1),
         },
         "level": {

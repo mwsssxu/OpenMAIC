@@ -40,16 +40,17 @@ export const IOSTabBar: React.FC<TabBarProps> = ({ onCreatePress }) => {
   const labelSize = responsiveValue({ compact: 10, regular: 10, medium: 11, large: 12 }, breakpoint);
   const emojiSize = responsiveValue({ compact: 22, regular: 22, medium: 24, large: 26 }, breakpoint);
 
-  // TabBar 高度 = 基础高度 + 内容padding + 底部安全区域
+  // TabBar 高度 = 基础高度 + 底部安全区域 + 底部padding
   const baseHeight = responsiveValue({ compact: 49, regular: 49, medium: 56, large: 60 }, breakpoint);
-  const tabBarHeight = baseHeight + insets.bottom;
+  const bottomPadding = 4; // 文字底部间距
+  const tabBarHeight = baseHeight + insets.bottom + bottomPadding;
 
   return (
     <View style={[
       styles.tabBar,
       {
         height: tabBarHeight,
-        paddingBottom: insets.bottom + 8,
+        paddingBottom: insets.bottom + bottomPadding,
         paddingTop: isTablet ? 10 : 8,
       }
     ]}>

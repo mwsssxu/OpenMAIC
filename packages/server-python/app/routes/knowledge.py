@@ -213,7 +213,7 @@ async def get_knowledge_cards(
     # 统计总数
     total = await db.fetchval(
         f"SELECT COUNT(*) FROM knowledge_cards {where_clause}",
-        *params[:-2]  # 不包含 limit 和 offset
+        *params  # 只传递条件参数，不包含limit和offset
     )
 
     return {
@@ -255,10 +255,17 @@ async def get_knowledge_card(
 
     card = await db.fetchrow(
         """
-        SELECT id, user_id, title, content, summary, key_points, source_type,
-               source_id, scene_id, skill_category, tags, mastery_level,
-               review_count, last_reviewed_at, created_at, updated_at
-        FROM knowledge_cards WHERE id = $1
+        SELECT kc.id, kc.user_id, kc.title, kc.content, kc.summary, kc.key_points, kc.source_type,
+               kc.source_id, kc.scene_id, kc.skill_category, kc.tags, kc.mastery_level,
+               kc.review_count, kc.last_reviewed_at, kc.created_at, kc.updated_at,
+               CASE
+                   WHEN kc.source_type = 'course' AND kc.source_id IS NOT NULL THEN
+                       (SELECT name FROM stages WHERE id = kc.source_id)
+                   WHEN kc.source_type = 'course' AND kc.scene_id IS NOT NULL THEN
+                       (SELECT st.name FROM stages st JOIN scenes s ON s.stage_id = st.id WHERE s.id = kc.scene_id)
+                   ELSE NULL
+               END as source_name
+        FROM knowledge_cards kc WHERE kc.id = $1
         """,
         card_uuid
     )
@@ -289,6 +296,7 @@ async def get_knowledge_card(
         "source_type": card["source_type"],
         "source_id": str(card["source_id"]) if card["source_id"] else None,
         "scene_id": str(card["scene_id"]) if card["scene_id"] else None,
+        "source_name": card["source_name"],  # 来源课程名称
         "skill_category": card["skill_category"],
         "skill_name": SKILL_CATEGORIES.get(card["skill_category"], {}).get("name", "通用知识"),
         "tags": card["tags"].split(",") if card["tags"] else [],
@@ -691,13 +699,21 @@ async def extract_knowledge_from_scene(
     if not scene:
         raise HTTPException(status_code=404, detail="场景不存在")
 
+    # 解析场景内容（确保是字典类型）
+    scene_content = scene["content"]
+    if isinstance(scene_content, str):
+        try:
+            scene_content = json.loads(scene_content)
+        except json.JSONDecodeError:
+            scene_content = {}
+
     # 调用 AI 提取服务
     from app.services.knowledge.extractor import extract_knowledge_points
 
     try:
         knowledge_points = await extract_knowledge_points(
             scene_title=scene["title"],
-            scene_content=scene["content"],
+            scene_content=scene_content,
             course_name=scene["course_name"],
         )
     except Exception as e:
@@ -706,12 +722,34 @@ async def extract_knowledge_from_scene(
         logger.error(f"Knowledge extraction failed for scene {scene_uuid}: {e}")
         raise HTTPException(status_code=500, detail="AI提取服务暂时不可用，请稍后重试")
 
-    # 如果 auto_create=True，自动创建知识卡片
+    # 如果 auto_create=True，自动创建知识卡片（去重）
     created_cards = []
+    skipped_cards = []  # 已存在，跳过创建
+
     if request.auto_create and knowledge_points:
         now = utcnow()
 
         for kp in knowledge_points:
+            # 检查是否已存在相同的知识卡片（同一用户、同一场景、相似标题）
+            existing = await db.fetchrow(
+                """
+                SELECT id FROM knowledge_cards
+                WHERE user_id = $1 AND scene_id = $2 AND title = $3
+                """,
+                user_uuid, scene_uuid, kp["title"]
+            )
+
+            if existing:
+                # 已存在，跳过创建
+                skipped_cards.append({
+                    "id": str(existing["id"]),
+                    "title": kp["title"],
+                    "skill_category": kp.get("skill_category", "general"),
+                    "reason": "已存在"
+                })
+                continue
+
+            # 创建新卡片
             card_id = uuid.uuid4()
 
             await db.execute(
@@ -739,7 +777,8 @@ async def extract_knowledge_from_scene(
         "scene_title": scene["title"],
         "extracted_points": knowledge_points,
         "created_cards": created_cards,
-        "message": f"提取了 {len(knowledge_points)} 个知识点，创建了 {len(created_cards)} 张卡片",
+        "skipped_cards": skipped_cards,
+        "message": f"提取了 {len(knowledge_points)} 个知识点，新创建 {len(created_cards)} 张，跳过 {len(skipped_cards)} 张已存在卡片",
     }
 
 

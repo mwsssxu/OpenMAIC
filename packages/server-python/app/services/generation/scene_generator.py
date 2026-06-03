@@ -7,6 +7,7 @@
 模型路由: 根据场景类型自动选择合适的模型
 """
 
+import asyncio
 import json
 import re
 import logging

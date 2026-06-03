@@ -5,8 +5,14 @@
 ALTER TABLE shared_notes ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'public';
 
 -- 更新现有数据：将 is_public=true 的记录设为 visibility='public'
-UPDATE shared_notes SET visibility = 'public' WHERE is_public = true AND visibility IS NULL;
-UPDATE shared_notes SET visibility = 'matched' WHERE is_public = false AND visibility IS NULL;
+-- 使用 DO 块安全处理 is_public 列可能不存在的情况
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shared_notes' AND column_name = 'is_public') THEN
+        UPDATE shared_notes SET visibility = 'public' WHERE is_public = true AND visibility IS NULL;
+        UPDATE shared_notes SET visibility = 'matched' WHERE is_public = false AND visibility IS NULL;
+    END IF;
+END $$;
 
 -- 添加价格字段
 ALTER TABLE shared_notes ADD COLUMN IF NOT EXISTS price INTEGER DEFAULT 0;
@@ -36,7 +42,7 @@ CREATE TABLE IF NOT EXISTS note_purchases (
     price INTEGER NOT NULL,
     author_reward INTEGER NOT NULL,
     platform_fee INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT now(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, note_id)
 );
 
@@ -49,7 +55,7 @@ CREATE TABLE IF NOT EXISTS note_ratings (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     note_id UUID NOT NULL REFERENCES shared_notes(id) ON DELETE CASCADE,
     rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-    created_at TIMESTAMP DEFAULT now(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, note_id)
 );
 
