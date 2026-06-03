@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -320,6 +320,15 @@ export default function HomeScreen() {
       } finally {
         setCoursesLoading(false);
       }
+
+      // Fetch shared courses (推荐)
+      try {
+        const result = await apiClient.discoverSharedClassrooms(10);
+        setSharedCourses(result?.classrooms || []);
+      } catch (error) {
+        console.warn('Failed to fetch shared courses:', error);
+        setSharedCourses([]);
+      }
     };
 
     fetchData();
@@ -484,11 +493,64 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             style={styles.recommendedScroll}
           >
-            {recommendedCourses.map(course => (
-              <RecommendedCard key={course.id} course={course} cardWidth={recCardWidth} />
-            ))}
+            {sharedCourses.length > 0 ? (
+              sharedCourses.map(course => (
+                <RecommendedCard 
+                  key={course.stage_id} 
+                  course={course} 
+                  cardWidth={recCardWidth} 
+                  onRate={(shareCode) => { setRatingShareCode(shareCode); setUserRating(0); }}
+                />
+              ))
+            ) : (
+              <Text style={{ color: '#9ca3af', fontSize: 13, padding: 16 }}>暂无公开课程</Text>
+            )}
           </ScrollView>
         </View>
+
+        {/* 评分弹窗 */}
+        <Modal
+          visible={!!ratingShareCode}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRatingShareCode(null)}
+        >
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: 280, alignItems: 'center' }}>
+              <Text style={{ fontSize: 17, fontWeight: '600', marginBottom: 16 }}>给课程打分</Text>
+              <View style={{ flexDirection: 'row', marginBottom: 20 }}>
+                {[1, 2, 3, 4, 5].map(i => (
+                  <TouchableOpacity key={i} onPress={() => setUserRating(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name={i <= userRating ? "star" : "star-outline"} size={36} color={i <= userRating ? "#f59e0b" : "#d1d5db"} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity onPress={() => setRatingShareCode(null)} style={{ paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8, backgroundColor: '#f3f4f6' }}>
+                  <Text style={{ color: '#6b7280' }}>取消</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (userRating > 0 && ratingShareCode) {
+                      try {
+                        await apiClient.rateSharedClassroom(ratingShareCode, userRating);
+                        // 刷新推荐课程
+                        const result = await apiClient.discoverSharedClassrooms(10);
+                        setSharedCourses(result?.classrooms || []);
+                      } catch (e) {
+                        console.warn('Rating failed:', e);
+                      }
+                    }
+                    setRatingShareCode(null);
+                  }}
+                  style={{ paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8, backgroundColor: userRating > 0 ? iOSColors.accent : '#e5e7eb' }}
+                >
+                  <Text style={{ color: userRating > 0 ? '#fff' : '#9ca3af' }}>提交</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Notes 我的笔记 */}
         <View style={styles.section}>
