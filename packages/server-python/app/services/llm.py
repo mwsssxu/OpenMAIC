@@ -394,6 +394,10 @@ async def _stream_llm_internal(
                 return
 
 
+# 流式调用专用信号量（与全局限流器共享并发预算，避免叠加超限）
+_stream_semaphore = asyncio.Semaphore(6)
+
+
 async def stream_llm(
     prompt: str,
     system_prompt: Optional[str] = None,
@@ -404,11 +408,18 @@ async def stream_llm(
     thinking_config: Optional[Dict[str, Any]] = None,
     scene_type: Optional[SceneType] = None,
 ):
-    """流式调用 LLM（不经过全局限流，流式连接使用单个连接不会淹没 API）"""
-    async for chunk in _stream_llm_internal(
-        prompt, system_prompt, model, temperature, max_tokens, max_retries, thinking_config, scene_type
-    ):
-        yield chunk
+    """流式调用 LLM（带并发控制，防止过多流式连接导致 API 限流）"""
+    acquired = False
+    try:
+        await asyncio.wait_for(_stream_semaphore.acquire(), timeout=60.0)
+        acquired = True
+        async for chunk in _stream_llm_internal(
+            prompt, system_prompt, model, temperature, max_tokens, max_retries, thinking_config, scene_type
+        ):
+            yield chunk
+    finally:
+        if acquired:
+            _stream_semaphore.release()
 
 
 async def call_llm_with_vision(

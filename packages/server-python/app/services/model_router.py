@@ -174,7 +174,7 @@ SCENE_CAPABILITY_MAP: Dict[SceneType, ModelCapability] = {
     SceneType.SCENE_GENERATION: ModelCapability.TEXT,
     SceneType.AGENT_CHAT: ModelCapability.TEXT,
     SceneType.QUIZ_GRADING: ModelCapability.TEXT,
-    SceneType.INTERACTIVE_GENERATION: ModelCapability.VISION,  # 可能需要生成图片
+    SceneType.INTERACTIVE_GENERATION: ModelCapability.TEXT,  # 生成 HTML 代码，不需要视觉能力
     SceneType.IMAGE_DESCRIPTION: ModelCapability.VISION,
     SceneType.PDF_ANALYSIS: ModelCapability.VISION,
     SceneType.TTS_SYNTHESIS: ModelCapability.TTS,
@@ -186,7 +186,7 @@ SCENE_MODEL_MAP: Dict[SceneType, str] = {
     SceneType.SCENE_GENERATION: "qwen3.6-plus",
     SceneType.AGENT_CHAT: "qwen3.6-plus",
     SceneType.QUIZ_GRADING: "qwen-turbo",  # 批改可以用更快的小模型
-    SceneType.INTERACTIVE_GENERATION: "qwen-vl-max",
+    SceneType.INTERACTIVE_GENERATION: "qwen3.6-plus",  # HTML 代码生成用文本模型
     SceneType.IMAGE_DESCRIPTION: "qwen-vl-max",
     SceneType.PDF_ANALYSIS: "qwen-vl-max",
     SceneType.TTS_SYNTHESIS: "qwen3-tts-flash",

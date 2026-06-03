@@ -308,6 +308,23 @@ async def create_single_scene(
         )
     )
 
+    # 对于 interactive/pbl 类型，actions 不依赖 content 中的元素 ID，
+    # 可以与 content 并行生成，节省串行等待时间
+    can_parallel_actions = scene_type in ("interactive", "pbl")
+    precise_actions_task = None
+    if can_parallel_actions:
+        # 构造占位 content（interactive/pbl actions 只用 outline 信息）
+        placeholder_content = {"type": scene_type}
+        precise_actions_task = asyncio.create_task(
+            generate_scene_actions(
+                outline_obj,
+                placeholder_content,
+                language=language,
+                model=settings.DEFAULT_MODEL,
+                agents=agents,
+            )
+        )
+
     # 并行启动 fallback actions 生成（使用 outline 信息，不依赖 content）
     fallback_actions_task = asyncio.create_task(
         generate_scene_actions_with_tts(
@@ -321,6 +338,8 @@ async def create_single_scene(
     try:
         logger.info(f"[Scene] #{order_index}: 等待内容生成...")
         content = await content_task
+        content_time = time.time() - scene_start
+        logger.info(f"[Scene] #{order_index}: 内容生成耗时 {content_time:.2f}s")
         # 格式标准化：确保 elements 在 canvas 中
         if "elements" in content and "canvas" not in content:
             content = {"type": "slide", "canvas": {"width": 1000, "height": 562.5, "background": {"color": "#ffffff"}, "elements": content["elements"]}}
@@ -347,10 +366,21 @@ async def create_single_scene(
         logger.warning(f"[Scene] #{order_index}: Fallback actions 失败: {e}")
         fallback_actions = []
 
-    # 如果 content 成功，尝试用真实 content 生成更精确的 actions
+    # 如果 content 成功，尝试获取/生成精确 actions
     # 失败时直接使用 fallback，不再重复调用 generate_scene_actions_with_tts
+    actions_start = time.time()
     actions_data = fallback_actions
-    if content_success and content:
+    if precise_actions_task is not None:
+        # interactive/pbl: actions 已在并行生成，直接等结果
+        try:
+            logger.info(f"[Scene] #{order_index}: 等待并行 actions 结果...")
+            actions = await precise_actions_task
+            actions_data = [a.model_dump() for a in actions]
+            actions_time = time.time() - actions_start
+            logger.info(f"[Scene] #{order_index}: 并行 actions 成功 ({len(actions_data)}个, 耗时 {actions_time:.2f}s)")
+        except Exception as e:
+            logger.warning(f"[Scene] #{order_index}: 并行 actions 失败，使用 fallback ({type(e).__name__})")
+    elif content_success and content:
         try:
             logger.info(f"[Scene] #{order_index}: 尝试生成精确 actions...")
             actions = await generate_scene_actions(
@@ -361,7 +391,8 @@ async def create_single_scene(
                 agents=agents,
             )
             actions_data = [a.model_dump() for a in actions]
-            logger.info(f"[Scene] #{order_index}: 精确 actions 成功 ({len(actions_data)}个)")
+            actions_time = time.time() - actions_start
+            logger.info(f"[Scene] #{order_index}: 精确 actions 成功 ({len(actions_data)}个, 耗时 {actions_time:.2f}s)")
         except (asyncio.TimeoutError, Exception) as e:
             logger.warning(f"[Scene] #{order_index}: 精确 actions 失败，使用 fallback ({type(e).__name__})")
 
@@ -540,7 +571,7 @@ async def create_all_scenes(
     user_uuid: uuid.UUID,
     db: Any,
     language: str = "zh-CN",
-    max_concurrent: int = 2,
+    max_concurrent: int = 4,
     start_order_index: int = 0,
 ) -> List[Dict[str, Any]]:
     """

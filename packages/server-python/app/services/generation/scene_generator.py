@@ -644,9 +644,9 @@ async def generate_scene_actions(
 
     logger.info(f"[SceneGenerator] Generating actions for {outline.title} ({scene_type}) via {prompt_id}")
 
-    # 场景驱动的模型选择（actions使用AGENT_CHAT场景）
+    # 场景驱动的模型选择（actions 生成用 qwen-turbo 加速，结构化任务不需要最强模型）
     router = get_model_router()
-    selected_model = model or router.get_model_for_scene(SceneType.AGENT_CHAT)
+    selected_model = model or "qwen-turbo"
     logger.info(f"[SceneGenerator] Actions生成选择模型: {selected_model}")
 
     # 使用流式调用避免 DashScope 30s 超时
