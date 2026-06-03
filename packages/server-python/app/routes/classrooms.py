@@ -162,6 +162,13 @@ async def get_classroom(
         else:
             pending_outlines = stage["pending_outlines"]
 
+    # 查询用户学习进度（已完成的场景数）
+    completion = await db.fetchrow(
+        "SELECT scenes_completed, total_scenes FROM course_completions WHERE user_id = $1 AND course_id = $2",
+        user_uuid, classroom_uuid
+    )
+    scenes_completed = completion["scenes_completed"] if completion else 0
+
     return {
         "stage": {
             "id": str(stage["id"]),
@@ -176,6 +183,7 @@ async def get_classroom(
             "created_at": stage["created_at"].isoformat(),
             "updated_at": stage["updated_at"].isoformat()
         },
+        "scenes_completed": scenes_completed,
         "scenes": [
             {
                 "id": str(s["id"]),

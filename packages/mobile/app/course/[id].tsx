@@ -61,6 +61,7 @@ interface ClassroomData {
   };
   scenes: Scene[];
   agents?: any[];
+  scenes_completed?: number;
 }
 
 // 辅助函数：从 agents 中提取讲师信息
@@ -88,19 +89,11 @@ function estimateSceneMinutes(scenes: Scene[]): number {
   }, 0);
 }
 
-// 辅助函数：计算场景完成状态（单次遍历，O(n)）
-function getSceneStatuses(scenes: Scene[]): ('completed' | 'current' | 'locked')[] {
-  const hasContent = (s: Scene) => s.content && (
-    (s.content as any)?.canvas?.elements?.length > 0 ||
-    (s.content as any)?.questions ||
-    (s.content as any)?.topic ||
-    typeof s.content === 'string'
-  );
-  const firstIncomplete = scenes.findIndex(s => !hasContent(s));
+// 辅助函数：计算场景完成状态（基于用户学习进度）
+function getSceneStatuses(scenes: Scene[], scenesCompleted: number): ('completed' | 'current' | 'locked')[] {
   return scenes.map((_, i) => {
-    if (firstIncomplete === -1) return 'completed'; // 全部有内容
-    if (i < firstIncomplete) return 'completed';
-    if (i === firstIncomplete) return 'current';
+    if (i < scenesCompleted) return 'completed';
+    if (i === scenesCompleted) return 'current';
     return 'locked';
   });
 }
@@ -332,7 +325,7 @@ export default function CourseDetailScreen() {
         <View style={styles.chapterGroup}>
           <View style={styles.chapterLessons}>
             {(() => {
-              const statuses = getSceneStatuses(scenes);
+              const statuses = getSceneStatuses(scenes, classroom.scenes_completed || 0);
               return scenes.map((scene, index) => (
                 <SceneItem key={scene.id} scene={scene} index={index} total={scenes.length} statuses={statuses} />
               ));
