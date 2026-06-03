@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -354,7 +355,7 @@ export default function CourseDetailScreen() {
           style={styles.btnSecondary}
           onPress={() => {
             haptics.light();
-            // 后续添加下载功能
+            Alert.alert('离线缓存', '该功能正在开发中，敬请期待');
           }}
           activeOpacity={0.85}
         >
