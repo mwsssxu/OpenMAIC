@@ -135,7 +135,7 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 }
 
 // 章节课程项组件（基于Scene）
-function SceneItem({ scene, index, total }: { scene: Scene; index: number; total: number }) {
+function SceneItem({ scene, index, total, allScenes }: { scene: Scene; index: number; total: number; allScenes: Scene[] }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const router = useRouter();
 
@@ -332,7 +332,7 @@ export default function CourseDetailScreen() {
         <View style={styles.chapterGroup}>
           <View style={styles.chapterLessons}>
             {scenes.map((scene, index) => (
-              <SceneItem key={scene.id} scene={scene} index={index} total={scenes.length} />
+              <SceneItem key={scene.id} scene={scene} index={index} total={scenes.length} allScenes={scenes} />
             ))}
           </View>
         </View>
