@@ -68,10 +68,24 @@ export function useLearningTracker(options: LearningTrackerOptions) {
     }
   }, [courseId, isAuthenticated]);
 
-  // 更新已完成场景数
-  const updateScenesCompleted = useCallback((count: number) => {
+  // 更新已完成场景数（立即同步到后端）
+  const updateScenesCompleted = useCallback(async (count: number) => {
+    const prev = scenesCompletedRef.current;
     scenesCompletedRef.current = count;
-  }, []);
+    // 只有场景数增加时才同步后端（防止倒退和重复请求）
+    if (count > prev && isAuthenticated && startedRef.current) {
+      try {
+        await apiClient.updateLearningTime(
+          courseId,
+          learningMinutesRef.current,
+          count
+        );
+      } catch (err) {
+        // 静默失败，不阻塞用户体验
+        console.debug('[LearningTracker] 进度同步失败:', err);
+      }
+    }
+  }, [courseId, isAuthenticated]);
 
   // 完成学习
   const completeLearning = useCallback(async (quizScore?: number) => {
