@@ -72,7 +72,7 @@ async def start_learning(
         await db.execute(
             """
             UPDATE course_completions
-            SET completed_at = $3, completion_status = 'in_progress'
+            SET completed_at = $2, completion_status = 'in_progress'
             WHERE id = $1
             """,
             existing["id"], utcnow()
