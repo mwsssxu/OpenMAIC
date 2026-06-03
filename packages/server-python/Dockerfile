@@ -7,7 +7,7 @@ WORKDIR /app
 
 # 安装依赖（使用清华镜像源解决SSL问题）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN pip install --no-cache-dir --timeout=120 -r requirements.txt
 
 # 复制应用代码
 COPY app ./app

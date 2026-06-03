@@ -417,6 +417,18 @@ class ApiClient {
     return data;
   }
 
+  // 切换课程公开/私有
+  async toggleClassroomVisibility(classroomId: string, isPublic: boolean) {
+    const { data } = await this.client.patch(`/classrooms/${classroomId}/visibility`, { is_public: isPublic });
+    return data;
+  }
+
+  // 收藏/取消收藏课程
+  async toggleClassroomLike(classroomId: string) {
+    const { data } = await this.client.post(`/classrooms/${classroomId}/like`);
+    return data;
+  }
+
   // ==================== Generation ====================
 
   // SSE 流式生成大纲（真正的流式实现）

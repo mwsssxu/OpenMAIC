@@ -2,7 +2,7 @@
 课程路由 - CRUD 操作（用户隔离）
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.middleware.auth import get_current_user_id, get_optional_user_id
@@ -16,6 +16,7 @@ from app.services.scene_service import (
     SUPPORTED_SCENE_TYPES,
     MAX_SCENES_PER_REQUEST,
 )
+from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import logging
@@ -121,19 +122,45 @@ async def get_classroom(
     classroom_uuid = validate_uuid(classroom_id, "课程ID")
     user_uuid = validate_uuid(current_user_id, "用户ID")
 
-    # 验证用户所有权
+    # 查询课程（不限制用户所有权，支持查看他人公开课程）
     stage = await db.fetchrow(
         """
-        SELECT id, name, description, language_directive, style, agent_ids, generated_agent_configs, pending_outlines, created_at, updated_at
-        FROM stages
-        WHERE id = $1 AND user_id = $2
+        SELECT s.id, s.name, s.description, s.language_directive, s.style, s.agent_ids, 
+               s.generated_agent_configs, s.pending_outlines, s.created_at, s.updated_at, s.user_id
+        FROM stages s
+        WHERE s.id = $1
         """,
-        classroom_uuid,
-        user_uuid
+        classroom_uuid
     )
 
     if stage is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
+
+    is_owner = str(stage["user_id"]) == current_user_id
+
+    # 非所有者只能查看公开分享的课程
+    if not is_owner:
+        share = await db.fetchrow(
+            "SELECT id FROM shared_classrooms WHERE stage_id = $1 AND is_public = TRUE",
+            classroom_uuid
+        )
+        if not share:
+            raise HTTPException(status_code=403, detail="该课程未公开")
+
+    # 查询分享状态（is_public）
+    share_info = await db.fetchrow(
+        "SELECT is_public, share_code, like_count FROM shared_classrooms WHERE stage_id = $1",
+        classroom_uuid
+    )
+
+    # 查询当前用户是否已收藏
+    liked = False
+    if share_info:
+        like_row = await db.fetchrow(
+            "SELECT id FROM classroom_likes WHERE shared_classroom_id = $1 AND user_id = $2",
+            share_info["id"], user_uuid
+        )
+        liked = like_row is not None
 
     # 获取场景
     scenes = await db.fetch(
@@ -183,6 +210,11 @@ async def get_classroom(
             "created_at": stage["created_at"].isoformat(),
             "updated_at": stage["updated_at"].isoformat()
         },
+        "is_owner": is_owner,
+        "is_public": share_info["is_public"] if share_info else False,
+        "share_code": share_info["share_code"] if share_info else None,
+        "liked": liked,
+        "like_count": share_info["like_count"] if share_info else 0,
         "scenes_completed": scenes_completed,
         "scenes": [
             {
@@ -198,6 +230,86 @@ async def get_classroom(
             for s in scenes
         ]
     }
+
+
+@router.patch("/{classroom_id}/visibility")
+async def toggle_classroom_visibility(
+    classroom_id: str,
+    body: dict = Body(...),
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """切换课程公开/私有状态"""
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+    is_public = body.get("is_public", True)
+
+    # 验证所有权
+    stage = await db.fetchrow(
+        "SELECT id FROM stages WHERE id = $1 AND user_id = $2",
+        classroom_uuid, user_uuid
+    )
+    if not stage:
+        raise HTTPException(status_code=404, detail="课程不存在")
+
+    # 更新或创建分享记录
+    existing = await db.fetchrow(
+        "SELECT id, share_code FROM shared_classrooms WHERE stage_id = $1 AND user_id = $2",
+        classroom_uuid, user_uuid
+    )
+    if existing:
+        await db.execute(
+            "UPDATE shared_classrooms SET is_public = $1, updated_at = $2 WHERE id = $3",
+            is_public, utcnow(), existing["id"]
+        )
+        share_code = existing["share_code"]
+    else:
+        import random, string
+        share_code = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        await db.execute(
+            """INSERT INTO shared_classrooms 
+               (id, stage_id, user_id, share_code, is_public, title, description, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, '', '', $6, $6)""",
+            uuid.uuid4(), classroom_uuid, user_uuid, share_code, is_public, utcnow()
+        )
+
+    return {"is_public": is_public, "share_code": share_code}
+
+
+@router.post("/{classroom_id}/like")
+async def toggle_classroom_like(
+    classroom_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """收藏/取消收藏课程"""
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
+    # 查找分享记录
+    share = await db.fetchrow(
+        "SELECT id FROM shared_classrooms WHERE stage_id = $1",
+        classroom_uuid
+    )
+    if not share:
+        raise HTTPException(status_code=404, detail="课程未分享")
+
+    existing_like = await db.fetchrow(
+        "SELECT id FROM classroom_likes WHERE shared_classroom_id = $1 AND user_id = $2",
+        share["id"], user_uuid
+    )
+
+    if existing_like:
+        await db.execute("DELETE FROM classroom_likes WHERE id = $1", existing_like["id"])
+        await db.execute("UPDATE shared_classrooms SET like_count = like_count - 1 WHERE id = $1", share["id"])
+        return {"liked": False, "message": "已取消收藏"}
+    else:
+        await db.execute(
+            "INSERT INTO classroom_likes (id, shared_classroom_id, user_id, created_at) VALUES ($1, $2, $3, $4)",
+            uuid.uuid4(), share["id"], user_uuid, utcnow()
+        )
+        await db.execute("UPDATE shared_classrooms SET like_count = like_count + 1 WHERE id = $1", share["id"])
+        return {"liked": True, "message": "收藏成功"}
 
 
 @router.delete("/{classroom_id}")

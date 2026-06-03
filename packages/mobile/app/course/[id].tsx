@@ -63,6 +63,11 @@ interface ClassroomData {
   scenes: Scene[];
   agents?: any[];
   scenes_completed?: number;
+  is_owner?: boolean;
+  is_public?: boolean;
+  share_code?: string;
+  liked?: boolean;
+  like_count?: number;
 }
 
 // 辅助函数：从 agents 中提取讲师信息
@@ -100,18 +105,49 @@ function getSceneStatuses(scenes: Scene[], scenesCompleted: number): ('completed
 }
 
 // 课程Hero组件
-function CourseHero() {
+function CourseHero({ 
+  isOwner, 
+  isPublic, 
+  liked, 
+  likeCount,
+  onTogglePublic, 
+  onToggleLike 
+}: { 
+  isOwner: boolean; 
+  isPublic: boolean; 
+  liked: boolean;
+  likeCount: number;
+  onTogglePublic: () => void; 
+  onToggleLike: () => void;
+}) {
   return (
     <View style={styles.courseHero}>
       <View style={styles.heroPattern} />
+      {/* 公开/私有开关 - 仅所有者可见 */}
+      {isOwner && (
+        <TouchableOpacity
+          style={[styles.heroShareBtn, { right: 48 }]}
+          onPress={onTogglePublic}
+          activeOpacity={0.7}
+        >
+          <Ionicons 
+            name={isPublic ? "globe-outline" : "lock-closed-outline"} 
+            size={16} 
+            color="#fff" 
+          />
+        </TouchableOpacity>
+      )}
+      {/* 收藏按钮 */}
       <TouchableOpacity
         style={styles.heroShareBtn}
-        onPress={() => {
-          // 后续添加分享功能
-        }}
+        onPress={onToggleLike}
         activeOpacity={0.7}
       >
-        <Ionicons name="share-outline" size={16} color="#fff" />
+        <Ionicons 
+          name={liked ? "heart" : "heart-outline"} 
+          size={16} 
+          color={liked ? "#ef4444" : "#fff"} 
+        />
       </TouchableOpacity>
       <Text style={styles.heroEmoji}>📊</Text>
     </View>
@@ -211,6 +247,8 @@ export default function CourseDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
 
   useEffect(() => {
     loadClassroom();
@@ -222,6 +260,8 @@ export default function CourseDetailScreen() {
     try {
       const data = await apiClient.getClassroom(id as string);
       setClassroom(data);
+      setLiked(data.liked || false);
+      setIsPublic(data.is_public || false);
     } catch (err: any) {
       setError(err.message || '加载失败');
     } finally {
@@ -252,11 +292,39 @@ export default function CourseDetailScreen() {
   const stage = classroom.stage;
   const scenes = classroom.scenes || [];
 
+  const handleTogglePublic = async () => {
+    try {
+      const newPublic = !isPublic;
+      await apiClient.toggleClassroomVisibility(stage.id, newPublic);
+      setIsPublic(newPublic);
+      haptics.light();
+    } catch (err) {
+      Alert.alert('操作失败', '切换公开状态失败，请重试');
+    }
+  };
+
+  const handleToggleLike = async () => {
+    try {
+      const result = await apiClient.toggleClassroomLike(stage.id);
+      setLiked(result.liked);
+      haptics.light();
+    } catch (err) {
+      Alert.alert('操作失败', '收藏操作失败，请重试');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* 课程Hero Banner */}
-        <CourseHero />
+        <CourseHero 
+          isOwner={!!classroom.is_owner}
+          isPublic={isPublic}
+          liked={liked}
+          likeCount={classroom.like_count || 0}
+          onTogglePublic={handleTogglePublic}
+          onToggleLike={handleToggleLike}
+        />
 
         {/* 课程信息 */}
         <View style={styles.courseInfo}>
