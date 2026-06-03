@@ -541,6 +541,7 @@ async def create_all_scenes(
     db: Any,
     language: str = "zh-CN",
     max_concurrent: int = 2,
+    start_order_index: int = 0,
 ) -> List[Dict[str, Any]]:
     """
     批量创建所有场景（并行执行，带并发控制）
@@ -552,6 +553,7 @@ async def create_all_scenes(
         db: 数据库连接
         language: 语言设置
         max_concurrent: 最大并发数（默认3，避免API限流）
+        start_order_index: 已有场景数（追加场景时 order_index 从此值之后开始）
 
     Returns:
         场景列表
@@ -574,7 +576,7 @@ async def create_all_scenes(
                     outline=outline,
                     stage_id=stage_id,
                     user_uuid=user_uuid,
-                    order_index=index + 1,
+                    order_index=start_order_index + index + 1,
                     db=db,
                     language=language,
                 )
@@ -587,7 +589,7 @@ async def create_all_scenes(
                     outline=outline,
                     stage_id=stage_id,
                     user_uuid=user_uuid,
-                    order_index=index + 1,
+                    order_index=start_order_index + index + 1,
                     db=db
                 )
                 logger.info(f"[Scene] #{index + 1}/{total} 使用降级场景")
@@ -612,7 +614,7 @@ async def create_all_scenes(
                 outline=outlines[i],
                 stage_id=stage_id,
                 user_uuid=user_uuid,
-                order_index=i + 1,
+                order_index=start_order_index + i + 1,
                 db=db
             )
             scenes.append(fallback)
