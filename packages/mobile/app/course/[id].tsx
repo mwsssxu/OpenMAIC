@@ -88,21 +88,21 @@ function estimateSceneMinutes(scenes: Scene[]): number {
   }, 0);
 }
 
-// 辅助函数：计算场景完成状态
-function getSceneStatus(scene: Scene, index: number, scenes: Scene[]): 'completed' | 'current' | 'locked' {
-  const hasContent = scene.content && (
-    (scene.content as any)?.canvas?.elements?.length > 0 ||
-    (scene.content as any)?.questions ||
-    (scene.content as any)?.topic ||
-    typeof scene.content === 'string'
+// 辅助函数：计算场景完成状态（单次遍历，O(n)）
+function getSceneStatuses(scenes: Scene[]): ('completed' | 'current' | 'locked')[] {
+  const hasContent = (s: Scene) => s.content && (
+    (s.content as any)?.canvas?.elements?.length > 0 ||
+    (s.content as any)?.questions ||
+    (s.content as any)?.topic ||
+    typeof s.content === 'string'
   );
-  if (hasContent) return 'completed';
-  // 第一个未完成的场景为 current
-  const prevCompleted = index === 0 || scenes.slice(0, index).every(s =>
-    s.content && ((s.content as any)?.canvas?.elements?.length > 0 || (s.content as any)?.questions || (s.content as any)?.topic || typeof s.content === 'string')
-  );
-  if (prevCompleted) return 'current';
-  return 'locked';
+  const firstIncomplete = scenes.findIndex(s => !hasContent(s));
+  return scenes.map((_, i) => {
+    if (firstIncomplete === -1) return 'completed'; // 全部有内容
+    if (i < firstIncomplete) return 'completed';
+    if (i === firstIncomplete) return 'current';
+    return 'locked';
+  });
 }
 
 // 课程Hero组件
@@ -135,7 +135,7 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 }
 
 // 章节课程项组件（基于Scene）
-function SceneItem({ scene, index, total, allScenes }: { scene: Scene; index: number; total: number; allScenes: Scene[] }) {
+function SceneItem({ scene, index, total, statuses }: { scene: Scene; index: number; total: number; statuses: ('completed' | 'current' | 'locked')[] }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const router = useRouter();
 
@@ -153,8 +153,8 @@ function SceneItem({ scene, index, total, allScenes }: { scene: Scene; index: nu
     }).start();
   };
 
-  // 根据场景内容判断完成状态
-  const status = getSceneStatus(scene, index, allScenes);
+  // 根据预计算的状态判断完成情况
+  const status = statuses[index];
 
   const statusStyle = status === 'completed'
     ? { backgroundColor: iOSColors.secondary, color: '#fff', text: '✓' }
@@ -331,9 +331,12 @@ export default function CourseDetailScreen() {
         {/* 场景列表 */}
         <View style={styles.chapterGroup}>
           <View style={styles.chapterLessons}>
-            {scenes.map((scene, index) => (
-              <SceneItem key={scene.id} scene={scene} index={index} total={scenes.length} allScenes={scenes} />
-            ))}
+            {(() => {
+              const statuses = getSceneStatuses(scenes);
+              return scenes.map((scene, index) => (
+                <SceneItem key={scene.id} scene={scene} index={index} total={scenes.length} statuses={statuses} />
+              ));
+            })()}
           </View>
         </View>
 

@@ -595,6 +595,17 @@ export default function ClassroomScreen() {
         eventSource = null;
         // SSE 失败时降级为轮询
         console.log('[Background] SSE 连接失败，降级为轮询');
+        const pollInterval = setInterval(async () => {
+          try {
+            const pollData = await apiClient.getClassroom(id);
+            setData(pollData);
+            const created = (pollData?.scenes?.length || 0) - initialCount;
+            setCreatedScenesCount(created);
+            if (created >= outlines.length) clearInterval(pollInterval);
+          } catch {}
+        }, 5000);
+        // 5 分钟后自动停止轮询
+        setTimeout(() => clearInterval(pollInterval), 300000);
       };
     } catch {
       // SSE 不可用，不阻塞主流程

@@ -5,7 +5,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
-from app.middleware.auth import get_current_user_id
+from app.middleware.auth import get_current_user_id, get_optional_user_id
 from app.db.database import get_db
 from app.services.scene_service import (
     create_stage_record,
@@ -416,8 +416,8 @@ async def create_scene_for_classroom(
 @router.get("/{classroom_id}/scenes/progress")
 async def scene_creation_progress(
     classroom_id: str,
-    # SSE 不支持自定义 header，认证可选（进度数据不敏感）
-    current_user_id: Optional[str] = Depends(get_current_user_id),
+    # SSE 不支持自定义 header，使用可选认证（无 token 时不拒绝，只返回 None）
+    current_user_id: Optional[str] = Depends(get_optional_user_id),
 ):
     """
     SSE 端点：实时推送场景创建进度

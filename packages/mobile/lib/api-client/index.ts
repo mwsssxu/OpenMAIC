@@ -215,8 +215,9 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          // 403 可能是 HTTPBearer 无 token 导致的，尝试刷新后重试
+        if (error.response?.status === 401 || (error.response?.status === 403 && error.response?.data?.detail === 'Not authenticated')) {
+          // 401: token 过期；403 "Not authenticated": HTTPBearer 无 token
+          // 其他 403（如权限拒绝）不重试，避免死循环
           const newToken = await this.ensureValidToken();
           if (newToken) {
             error.config.headers.Authorization = `Bearer ${newToken}`;
