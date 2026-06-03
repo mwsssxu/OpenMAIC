@@ -16,7 +16,7 @@ import { AudioPlayer } from './audio-player';
 import { saveAudioFile, getAudioPath, initAudioStorage } from '../storage/audio-storage';
 import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
-import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData, WbDeleteActionData, DiscussionActionData, PlayVideoActionData } from '../types';
+import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData, WbDeleteActionData, DiscussionActionData, PlayVideoActionData, WidgetHighlightActionData, WidgetSetStateActionData, WidgetAnnotationActionData, WidgetRevealActionData } from '../types';
 import { apiClient } from '../api-client';
 import { stripHtmlAndSSML } from '../utils/html-stripper';
 
@@ -68,6 +68,8 @@ export type PlaybackEngineCallbacks = {
   onDiscussionTrigger?: (topic: string, prompt?: string, agentId?: string) => void;
   // 新增：视频播放
   onPlayVideo?: (elementId: string) => void;
+  // Widget actions — send message to InteractiveWebView
+  onWidgetAction?: (type: string, payload: Record<string, unknown>) => void;
 };
 
 export class PlaybackEngine {
@@ -227,6 +229,19 @@ export class PlaybackEngine {
         case 'play_video':
           this.executePlayVideo(action);
           break;
+        // Widget — inject into InteractiveWebView
+        case 'widget_highlight':
+          this.executeWidgetAction('HIGHLIGHT_ELEMENT', { target: (action.data as WidgetHighlightActionData).target });
+          break;
+        case 'widget_setState':
+          this.executeWidgetAction('SET_WIDGET_STATE', { state: (action.data as WidgetSetStateActionData).state });
+          break;
+        case 'widget_annotation':
+          this.executeWidgetAction('ANNOTATE_ELEMENT', { target: (action.data as WidgetAnnotationActionData).target, content: (action.data as WidgetAnnotationActionData).content });
+          break;
+        case 'widget_reveal':
+          this.executeWidgetAction('REVEAL_ELEMENT', { target: (action.data as WidgetRevealActionData).target });
+          break;
 
         default:
           break;
@@ -326,6 +341,19 @@ export class PlaybackEngine {
         // Video
         case 'play_video':
           this.executePlayVideo(action);
+          break;
+        // Widget — inject into InteractiveWebView
+        case 'widget_highlight':
+          this.executeWidgetAction('HIGHLIGHT_ELEMENT', { target: (action.data as WidgetHighlightActionData).target });
+          break;
+        case 'widget_setState':
+          this.executeWidgetAction('SET_WIDGET_STATE', { state: (action.data as WidgetSetStateActionData).state });
+          break;
+        case 'widget_annotation':
+          this.executeWidgetAction('ANNOTATE_ELEMENT', { target: (action.data as WidgetAnnotationActionData).target, content: (action.data as WidgetAnnotationActionData).content });
+          break;
+        case 'widget_reveal':
+          this.executeWidgetAction('REVEAL_ELEMENT', { target: (action.data as WidgetRevealActionData).target });
           break;
 
         default:
@@ -564,10 +592,15 @@ export class PlaybackEngine {
     this.callbacks.onDiscussionTrigger?.(data.topic, data.prompt, data.agentId);
   }
 
-  private executePlayVideo(action: SceneAction): void {
+ private executePlayVideo(action: SceneAction): void {
     const data = action.data as PlayVideoActionData;
     if (!data.elementId) return;
     this.callbacks.onPlayVideo?.(data.elementId);
+  }
+
+  /** Widget actions — inject JS into InteractiveWebView via postMessage protocol */
+  private executeWidgetAction(messageType: string, payload: Record<string, unknown>): void {
+    this.callbacks.onWidgetAction?.(messageType, payload);
   }
 
   /**

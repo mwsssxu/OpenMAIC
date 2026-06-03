@@ -35,8 +35,12 @@ export type ActionType =
   | 'wb_close'
   | 'wb_delete'
   | 'discussion'
-  | 'play_video';
-
+  | 'play_video'
+  | 'widget_highlight'
+  | 'widget_setState'
+  | 'widget_annotation'
+  | 'widget_reveal'
+;
 export interface SpeechActionData {
   text: string;
   audio_id?: string;
@@ -148,6 +152,26 @@ export interface PlayVideoActionData {
   elementId: string;
 }
 
+export interface WidgetHighlightActionData {
+  target: string; // CSS selector or element ID in the WebView
+  content?: string; // Speech text to accompany the highlight
+}
+
+export interface WidgetSetStateActionData {
+  state: Record<string, unknown>; // Simulation variables to set
+  content?: string; // Speech text to accompany the state change
+}
+
+export interface WidgetAnnotationActionData {
+  target: string; // CSS selector for the annotated element
+  content?: string; // Annotation tooltip text
+}
+
+export interface WidgetRevealActionData {
+  target: string; // CSS selector for the hidden element to reveal
+  content?: string; // Speech text to accompany the reveal
+}
+
 export interface ActionDataMap {
   speech: SpeechActionData;
   spotlight: SpotlightActionData;
@@ -165,6 +189,10 @@ export interface ActionDataMap {
   wb_delete: WbDeleteActionData;
   discussion: DiscussionActionData;
   play_video: PlayVideoActionData;
+  widget_highlight: WidgetHighlightActionData;
+  widget_setState: WidgetSetStateActionData;
+  widget_annotation: WidgetAnnotationActionData;
+  widget_reveal: WidgetRevealActionData;
 }
 
 export interface SceneAction<T extends ActionType = ActionType> {

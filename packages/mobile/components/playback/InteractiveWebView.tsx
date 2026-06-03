@@ -66,6 +66,8 @@ export interface InteractiveWebViewRef {
   goBack: () => void;
   /** 前进到下一页 */
   goForward: () => void;
+  /** Send a widget action message into the WebView (via injectJavaScript) */
+  sendWidgetMessage: (type: string, payload: Record<string, unknown>) => void;
 }
 
 // WebView 消息格式
@@ -159,6 +161,19 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
         if (state.canGoForward) {
           webViewRef.current?.goForward();
         }
+      },
+      sendWidgetMessage: (type: string, payload: Record<string, unknown>) => {
+        // Inject JS that dispatches a MessageEvent inside the WebView
+        // This mirrors Web's iframe.contentWindow.postMessage({ type, ...payload }, '*')
+        const jsonPayload = JSON.stringify({ type, ...payload });
+        const js = `
+          (function() {
+            var evt = new MessageEvent('message', { data: ${jsonPayload}, origin: 'native' });
+            window.dispatchEvent(evt);
+          })();
+          true;
+        `;
+        webViewRef.current?.injectJavaScript(js);
       },
     }), [state.canGoBack, state.canGoForward]);
 

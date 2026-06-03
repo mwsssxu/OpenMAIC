@@ -822,6 +822,10 @@ export default function ClassroomScreen() {
         onPlayVideo: (elementId: string) => {
           setAutoPlayVideoElementId(elementId);
         },
+        // Widget actions — inject JS into InteractiveWebView
+        onWidgetAction: (type: string, payload: Record<string, unknown>) => {
+          interactiveWebViewRef.current?.sendWidgetMessage(type, payload);
+        },
       },
       ttsConfig
     );
