@@ -19,7 +19,23 @@ export interface Agent {
 }
 
 // Action 类型 - 与Web端对齐
-export type ActionType = 'speech' | 'spotlight' | 'laser' | 'highlight' | 'gesture' | 'wb_draw_text' | 'wb_draw_shape' | 'wb_open' | 'wb_clear' | 'wb_close';
+export type ActionType =
+  | 'speech'
+  | 'spotlight'
+  | 'laser'
+  | 'wb_draw_text'
+  | 'wb_draw_shape'
+  | 'wb_draw_chart'
+  | 'wb_draw_latex'
+  | 'wb_draw_table'
+  | 'wb_draw_line'
+  | 'wb_draw_code'
+  | 'wb_open'
+  | 'wb_clear'
+  | 'wb_close'
+  | 'wb_delete'
+  | 'discussion'
+  | 'play_video';
 
 export interface SpeechActionData {
   text: string;
@@ -64,17 +80,91 @@ export interface WbDrawShapeActionData {
   viewBox?: [number, number];
 }
 
+export interface WbDrawChartActionData {
+  chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'radar';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: {
+    labels: string[];
+    legends: string[];
+    series: number[][];
+  };
+  themeColors?: string[];
+}
+
+export interface WbDrawLatexActionData {
+  latex: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  color?: string;
+}
+
+export interface WbDrawTableActionData {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: string[][];
+  outline?: { width: number; style: string; color: string };
+  theme?: { color: string; rowHeader?: boolean };
+}
+
+export interface WbDrawLineActionData {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  color?: string;
+  width?: number;
+  style?: 'solid' | 'dashed';
+  points?: ['', 'arrow'] | ['arrow', ''] | ['arrow', 'arrow'] | ['', ''];
+}
+
+export interface WbDrawCodeActionData {
+  language: string;
+  code: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  fileName?: string;
+}
+
+export interface WbDeleteActionData {
+  elementId: string;
+}
+
+export interface DiscussionActionData {
+  topic: string;
+  prompt?: string;
+  agentId?: string;
+}
+
+export interface PlayVideoActionData {
+  elementId: string;
+}
+
 export interface ActionDataMap {
   speech: SpeechActionData;
   spotlight: SpotlightActionData;
   laser: LaserActionData;
-  highlight: SpotlightActionData;
-  gesture: Record<string, never>;
   wb_draw_text: WbDrawTextActionData;
   wb_draw_shape: WbDrawShapeActionData;
+  wb_draw_chart: WbDrawChartActionData;
+  wb_draw_latex: WbDrawLatexActionData;
+  wb_draw_table: WbDrawTableActionData;
+  wb_draw_line: WbDrawLineActionData;
+  wb_draw_code: WbDrawCodeActionData;
   wb_open: Record<string, never>;
   wb_clear: Record<string, never>;
   wb_close: Record<string, never>;
+  wb_delete: WbDeleteActionData;
+  discussion: DiscussionActionData;
+  play_video: PlayVideoActionData;
 }
 
 export interface SceneAction<T extends ActionType = ActionType> {

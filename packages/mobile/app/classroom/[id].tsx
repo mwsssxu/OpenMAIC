@@ -287,7 +287,7 @@ export default function ClassroomScreen() {
     courseId: id || '',
     totalScenes: data?.scenes?.length || 0,
     onComplete: (result) => {
-      console.log('Learning completed:', result);
+      // Learning completed - result logged internally
     },
   });
 
@@ -307,6 +307,10 @@ export default function ClassroomScreen() {
   const [discussionRunning, setDiscussionRunning] = useState(false); // 讨论进行中
   const [waitingForAgent, setWaitingForAgent] = useState(false); // 等待首个Agent响应
   const [hasDiscussionHistory, setHasDiscussionHistory] = useState(false); // 是否有讨论历史可查看
+  const [discussionHint, setDiscussionHint] = useState<{ topic: string; prompt?: string; agentId?: string } | null>(null);
+  // TODO(play_video): autoPlayVideoElementId is set by onPlayVideo callback but not yet consumed.
+  // Wire to VideoElement auto-play logic when video overlay is implemented on mobile.
+  const [autoPlayVideoElementId, setAutoPlayVideoElementId] = useState<string | null>(null);
 
   // 解析后的内容状态
   const [pendingThinkingPrompt, setPendingThinkingPrompt] = useState<string | null>(null); // 待处理的引导思考
@@ -354,8 +358,6 @@ export default function ClassroomScreen() {
     speed: 1.0,
     model: 'qwen3-tts-flash',
   });
-  const [showTtsSettings, setShowTtsSettings] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState<Record<string, Array<{ id: string; name: string }>>>({});
 
   // 知识提取
   const [extractingKnowledge, setExtractingKnowledge] = useState(false);
@@ -798,28 +800,32 @@ export default function ClassroomScreen() {
         },
         // 白板回调（与Web端对齐）
         onWhiteboardAction: (action) => {
-          console.log('[Whiteboard] Action:', action.type);
+          if (whiteboardStore.isEmpty()) {
+            console.log('[Whiteboard] First whiteboard action, resetting layout');
+            mobileActionEngine.resetLayout();
+          }
+          mobileActionEngine.execute(action.type, action.data || action);
+          setShowWhiteboard(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
         onWhiteboardOpen: () => {
           setShowWhiteboard(true);
+        },
+        onWhiteboardDelete: (elementId: string) => {
+          whiteboardStore.deleteElement(elementId);
+        },
+        onDiscussionTrigger: (topic: string, prompt?: string, agentId?: string) => {
+          // Show discussion hint badge — non-blocking
+          setDiscussionHint({ topic, prompt, agentId });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        },
+        onPlayVideo: (elementId: string) => {
+          setAutoPlayVideoElementId(elementId);
         },
       },
       ttsConfig
     );
   }, [data, ttsConfig]);
-
-  // 加载可用语音列表
-  useEffect(() => {
-    async function loadVoices() {
-      try {
-        const voices = await apiClient.getTTSVoices();
-        setAvailableVoices(voices);
-      } catch (err) {
-        console.warn('[TTS] Failed to load voices:', err);
-      }
-    }
-    loadVoices();
-  }, []);
 
   // 当数据加载完成后初始化引擎
   useEffect(() => {
@@ -882,12 +888,11 @@ export default function ClassroomScreen() {
 
   // Interactive/PBL 场景 WebView 回调
   const handleInteractiveComplete = useCallback((data: any) => {
-    console.log('[Interactive] Scene complete:', data);
     // 触觉反馈已在 InteractiveWebView 组件中触发，此处仅记录日志
   }, []);
 
   const handleInteractiveMessage = useCallback((data: any) => {
-    console.log('[Interactive] Message:', data);
+    // Message handled internally
   }, []);
 
   // 测验交互函数 - Duolingo 逐题模式
@@ -1199,7 +1204,6 @@ export default function ClassroomScreen() {
     try {
       // 构建配置 - 使用 discussion 模式，让多个 Agent 参与
       const agentRoleIds = agents.slice(0, 3).map(a => a.role);
-      console.log('[Chat] Agents:', agents.slice(0, 3).map(a => ({ id: a.id, name: a.name, role: a.role })));
       console.log('[Chat] AgentRoleIds:', agentRoleIds);
 
       // 确保角色不重复，并补齐缺失的角色
@@ -1363,7 +1367,6 @@ export default function ClassroomScreen() {
       try {
         const history = await readChatHistory(currentScene.id);
         setChatHistory(history);
-        console.log('[Chat] Loaded history for scene:', currentScene.id, history.length, 'entries');
       } catch (err) {
         console.warn('[Chat] Failed to load history:', err);
         setChatHistory([]);
@@ -1675,6 +1678,19 @@ export default function ClassroomScreen() {
             >
               <ActivityIndicator size="small" color="white" />
               <Text style={styles.discussionRunningBadgeText}>讨论进行中</Text>
+            </TouchableOpacity>
+          )}
+          {discussionHint && !discussionRunning && !showChatModal && (
+            <TouchableOpacity
+              style={styles.discussionHintBadge}
+              onPress={() => {
+                startMultiAgentDiscussion(discussionHint.topic);
+                setDiscussionHint(null);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chatbubbles" size={16} color="#fff" />
+              <Text style={styles.discussionHintText}>参与讨论</Text>
             </TouchableOpacity>
           )}
           <View style={styles.progressBadge}>
@@ -2448,12 +2464,15 @@ export default function ClassroomScreen() {
           <Text style={styles.speedBtnText}>{ttsConfig.speed.toFixed(1)}x</Text>
         </TouchableOpacity>
 
-        {/* TTS 设置 */}
+        {/* 记笔记 */}
         <TouchableOpacity
           style={styles.toolBtn}
-          onPress={() => setShowTtsSettings(true)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push(`/notes/new?courseId=${id}&sceneId=${currentScene?.id}` as any);
+          }}
         >
-          <Ionicons name="settings-outline" size={20} color="#666" />
+          <Ionicons name="create-outline" size={20} color="#666" />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -2663,88 +2682,6 @@ export default function ClassroomScreen() {
           )}
         </BottomSheetModal>
       ) : null}
-
-      {/* TTS 设置模态框 */}
-      <BottomSheetModal
-        visible={showTtsSettings}
-        onClose={() => setShowTtsSettings(false)}
-        contentStyle={styles.modalContent}
-      >
-        <View style={styles.modalHeader}>
-          <Ionicons name="settings" size={24} color="#5b9bd5" />
-          <Text style={styles.modalTitle}>语音设置</Text>
-          <TouchableOpacity onPress={() => setShowTtsSettings(false)}>
-            <Ionicons name="close" size={24} color="#666" />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView style={styles.ttsSettingsContent}>
-          {/* Provider 选择 */}
-          <Text style={styles.ttsSettingLabel}>语音服务商</Text>
-          <View style={styles.ttsOptionsRow}>
-            {['qwen', 'openai', 'minimax'].map((p) => (
-              <TouchableOpacity
-                key={p}
-                style={[styles.ttsOptionBtn, ttsConfig.provider === p && styles.ttsOptionActive]}
-                onPress={() => {
-                  const defaultVoices: Record<string, string> = {
-                    qwen: 'Cherry',
-                    openai: 'alloy',
-                    minimax: 'female-yujie',
-                  };
-                  setTtsConfig({ ...ttsConfig, provider: p as any, voice: defaultVoices[p] });
-                }}
-              >
-                <Text style={[styles.ttsOptionText, ttsConfig.provider === p && styles.ttsOptionTextActive]}>
-                  {p === 'qwen' ? '阿里云' : p === 'openai' ? 'OpenAI' : 'MiniMax'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Voice 选择 */}
-          <Text style={styles.ttsSettingLabel}>语音角色</Text>
-          <ScrollView horizontal style={styles.voiceScroll} showsHorizontalScrollIndicator={false}>
-            {(availableVoices[ttsConfig.provider] || []).map((v) => (
-              <TouchableOpacity
-                key={v.id}
-                style={[styles.voiceBtn, ttsConfig.voice === v.id && styles.voiceBtnActive]}
-                onPress={() => setTtsConfig({ ...ttsConfig, voice: v.id })}
-              >
-                <Text style={[styles.voiceText, ttsConfig.voice === v.id && styles.voiceTextActive]}>
-                  {v.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Speed 选择 */}
-          <Text style={styles.ttsSettingLabel}>语速: {ttsConfig.speed.toFixed(1)}x</Text>
-          <View style={styles.speedSlider}>
-            {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
-              <TouchableOpacity
-                key={s}
-                style={[styles.speedBtn, ttsConfig.speed === s && styles.speedBtnActive]}
-                onPress={() => setTtsConfig({ ...ttsConfig, speed: s })}
-              >
-                <Text style={[styles.speedText, ttsConfig.speed === s && styles.speedTextActive]}>
-                  {s}x
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        <TouchableOpacity
-          style={styles.ttsSaveBtn}
-          onPress={() => {
-            playbackEngineRef.current?.setTTSConfig(ttsConfig);
-            setShowTtsSettings(false);
-          }}
-        >
-          <Text style={styles.ttsSaveBtnText}>应用设置</Text>
-        </TouchableOpacity>
-      </BottomSheetModal>
 
       {/* 知识提取结果弹窗 */}
       <BottomSheetModal
@@ -3798,49 +3735,8 @@ const styles = StyleSheet.create({
   retryButton: { backgroundColor: '#5b9bd5', padding: Spacing.sm + 3, borderRadius: Rounded.sm },
   retryButtonText: { color: 'white', fontSize: 16 },
 
-  // TTS 设置模态框
-  ttsSettingsContent: { flex: 1, paddingVertical: Spacing.sm + 3 },
-  ttsSettingLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: Spacing.sm },
-  ttsOptionsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
-  ttsOptionBtn: {
-    paddingHorizontal: Spacing.sm + 3,
-    paddingVertical: Spacing.sm,
-    borderRadius: Rounded.sm,
-    backgroundColor: '#f5f7fa',
-  },
-  ttsOptionActive: { backgroundColor: '#5b9bd5' },
-  ttsOptionText: { fontSize: 14, color: '#666' },
-  ttsOptionTextActive: { color: 'white', fontWeight: '600' },
-  voiceScroll: { marginBottom: Spacing.lg },
-  voiceBtn: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    borderRadius: Rounded.lg,
-    backgroundColor: '#f5f7fa',
-    marginRight: Spacing.sm,
-  },
-  voiceBtnActive: { backgroundColor: '#e8f4fd', borderWidth: 1, borderColor: '#5b9bd5' },
-  voiceText: { fontSize: 12, color: '#666' },
-  voiceTextActive: { color: '#5b9bd5', fontWeight: '600' },
-  speedSlider: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
-  speedBtn: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: Rounded.sm,
-    backgroundColor: '#f5f7fa',
-  },
-  speedBtnActive: { backgroundColor: '#5b9bd5' },
-  speedText: { fontSize: 12, color: '#666' },
-  speedTextActive: { color: 'white' },
   // 快捷语速按钮（工具栏）
   speedBtnText: { fontSize: 12, fontWeight: '600', color: '#666' },
-  ttsSaveBtn: {
-    backgroundColor: '#5b9bd5',
-    padding: Spacing.sm + 3,
-    borderRadius: Rounded.md,
-    alignItems: 'center',
-  },
-  ttsSaveBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
 
   // 知识提取结果
   extractHint: {
@@ -3894,6 +3790,21 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   discussionRunningBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: Spacing.xs,
+  },
+  discussionHintBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6366f1',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: Rounded.full,
+    marginRight: Spacing.sm,
+  },
+  discussionHintText: {
     color: 'white',
     fontSize: 12,
     fontWeight: '500',

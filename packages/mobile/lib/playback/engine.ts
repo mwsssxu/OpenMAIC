@@ -13,20 +13,12 @@
  */
 
 import { AudioPlayer } from './audio-player';
-import { saveAudioFile, getAudioPath } from '../storage/audio-storage';
+import { saveAudioFile, getAudioPath, initAudioStorage } from '../storage/audio-storage';
 import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
-import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData } from '../types';
+import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData, WbDeleteActionData, DiscussionActionData, PlayVideoActionData } from '../types';
 import { apiClient } from '../api-client';
 import { stripHtmlAndSSML } from '../utils/html-stripper';
-
-// Static import for File class (consistent with audio-storage.ts)
-let FileClass: any = null;
-if (Platform.OS !== 'web') {
-  try {
-    FileClass = require('expo-file-system').File;
-  } catch {}
-}
 
 export type EngineMode = 'idle' | 'playing' | 'paused';
 
@@ -70,6 +62,12 @@ export type PlaybackEngineCallbacks = {
   // Whiteboard actions
   onWhiteboardAction?: (action: SceneAction) => void;
   onWhiteboardOpen?: () => void;
+  // 新增：白板元素删除
+  onWhiteboardDelete?: (elementId: string) => void;
+  // 新增：讨论触发（不侵入状态机，走独立 Modal）
+  onDiscussionTrigger?: (topic: string, prompt?: string, agentId?: string) => void;
+  // 新增：视频播放
+  onPlayVideo?: (elementId: string) => void;
 };
 
 export class PlaybackEngine {
@@ -83,6 +81,8 @@ export class PlaybackEngine {
   private speechPlaying: boolean = false;
   // Fire-and-forget effect auto-clear timer
   private effectTimer: ReturnType<typeof setTimeout> | null = null;
+  // Auto-play scene advancement timers (tracked for cleanup)
+  private autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(scenes: Scene[], callbacks?: PlaybackEngineCallbacks, ttsConfig?: TTSConfig) {
     this.scenes = scenes;
@@ -137,6 +137,7 @@ export class PlaybackEngine {
   /**
    * 播放当前场景（单场景模式）
    * 播放完成后设为 idle，允许用户重新播放（与 Web 端一致）
+   * [C-6 fix] 仅在 mode 仍为 'playing' 时才设为 idle，防止覆盖 pause/stop 状态
    */
   async playCurrentScene(): Promise<void> {
     if (this.mode === 'playing') {
@@ -155,9 +156,12 @@ export class PlaybackEngine {
 
     await this.processSceneActions(scene);
 
-    // Aligned with web: single scene playback returns to idle after completion
-    this.mode = 'idle';
-    this.callbacks.onModeChange?.(this.mode);
+    // [C-6 fix] Only reset to idle if still in 'playing' state
+    // (pause/stop may have been called during processSceneActions await)
+    if (this.mode === 'playing') {
+      this.mode = 'idle';
+      this.callbacks.onModeChange?.(this.mode);
+    }
   }
 
   /**
@@ -179,18 +183,53 @@ export class PlaybackEngine {
 
       this.callbacks.onActionExecute?.(action);
 
-      if (action.type === 'spotlight') {
-        this.executeSpotlight(action);
-      } else if (action.type === 'laser') {
-        this.executeLaser(action);
-      } else if (action.type === 'wb_draw_text' || action.type === 'wb_draw_shape') {
-        this.executeWhiteboard(action);
-      } else if (action.type === 'wb_open') {
-        this.callbacks.onWhiteboardOpen?.();
-      } else if (action.type === 'wb_clear' || action.type === 'wb_close') {
-        this.clearEffects();
-      } else if (action.type === 'speech') {
-        await this.executeSpeech(action as SceneAction<'speech'>);
+      switch (action.type) {
+        // Fire-and-forget
+        case 'spotlight':
+          this.executeSpotlight(action);
+          break;
+        case 'laser':
+          this.executeLaser(action);
+          break;
+
+        // Whiteboard — synchronous
+        case 'wb_open':
+          this.callbacks.onWhiteboardOpen?.();
+          break;
+        case 'wb_draw_text':
+        case 'wb_draw_shape':
+        case 'wb_draw_chart':
+        case 'wb_draw_latex':
+        case 'wb_draw_table':
+        case 'wb_draw_line':
+        case 'wb_draw_code':
+          this.executeWhiteboard(action);
+          break;
+        case 'wb_delete':
+          this.executeWhiteboardDelete(action);
+          break;
+        case 'wb_clear':
+        case 'wb_close':
+          this.clearEffects();
+          break;
+
+        // Speech — blocking
+        case 'speech':
+          await this.executeSpeech(action as SceneAction<'speech'>);
+          break;
+
+        // Discussion — non-blocking, triggers independent Modal
+        case 'discussion':
+          this.executeDiscussion(action);
+          break;
+
+        // Video
+        case 'play_video':
+          this.executePlayVideo(action);
+          break;
+
+        default:
+          break;
       }
     }
   }
@@ -241,19 +280,56 @@ export class PlaybackEngine {
     this.clearEffects();
 
     for (const action of actions) {
-      if (action.type === 'spotlight') {
-        this.executeSpotlight(action);
-      } else if (action.type === 'laser') {
-        this.executeLaser(action);
-      } else if (action.type === 'wb_draw_text' || action.type === 'wb_draw_shape') {
-        this.executeWhiteboard(action);
-      } else if (action.type === 'wb_open') {
-        this.callbacks.onWhiteboardOpen?.();
-      } else if (action.type === 'wb_clear' || action.type === 'wb_close') {
-        this.clearEffects();
-      } else if (action.type === 'speech') {
-        await this.executeSpeechAuto(action as SceneAction<'speech'>);
-        return;
+      // [fix] Check mode inside auto-play loop too
+      if (this.mode !== 'playing') return;
+
+      switch (action.type) {
+        // Fire-and-forget
+        case 'spotlight':
+          this.executeSpotlight(action);
+          break;
+        case 'laser':
+          this.executeLaser(action);
+          break;
+
+        // Whiteboard — synchronous
+        case 'wb_open':
+          this.callbacks.onWhiteboardOpen?.();
+          break;
+        case 'wb_draw_text':
+        case 'wb_draw_shape':
+        case 'wb_draw_chart':
+        case 'wb_draw_latex':
+        case 'wb_draw_table':
+        case 'wb_draw_line':
+        case 'wb_draw_code':
+          this.executeWhiteboard(action);
+          break;
+        case 'wb_delete':
+          this.executeWhiteboardDelete(action);
+          break;
+        case 'wb_clear':
+        case 'wb_close':
+          this.clearEffects();
+          break;
+
+        // Speech — blocking, return after (auto-play advances separately)
+        case 'speech':
+          await this.executeSpeechAuto(action as SceneAction<'speech'>);
+          return;
+
+        // Discussion — non-blocking, triggers independent Modal
+        case 'discussion':
+          this.executeDiscussion(action);
+          break;
+
+        // Video
+        case 'play_video':
+          this.executePlayVideo(action);
+          break;
+
+        default:
+          break;
       }
     }
 
@@ -264,6 +340,7 @@ export class PlaybackEngine {
    * 暂停播放
    */
   async pause(): Promise<void> {
+    this.clearAutoAdvanceTimer();
     this.mode = 'paused';
     this.callbacks.onModeChange?.(this.mode);
 
@@ -278,6 +355,8 @@ export class PlaybackEngine {
   /**
    * 继续播放（与 Web 端对齐）
    * Web: resume audio if paused, else processNext() if audio finished during pause
+   * [C-7 fix] When TTS finished during pause, call processSceneActions directly
+   * instead of playCurrentScene (which would return immediately due to 'playing' guard)
    */
   async resume(): Promise<void> {
     if (this.mode !== 'paused') return;
@@ -294,8 +373,17 @@ export class PlaybackEngine {
       // Audio was paused — resume it
       await this.audioPlayer.resume();
     } else {
-      // Aligned with web: TTS finished while paused, replay current scene
-      await this.playCurrentScene();
+      // [C-7 fix] TTS finished while paused — replay current scene directly
+      // Bypass playCurrentScene's 'playing' guard since we just set mode to 'playing'
+      const scene = this.getCurrentScene();
+      if (scene && !NON_SPEECH_SCENE_TYPES.includes(scene.type)) {
+        await this.processSceneActions(scene);
+        // After processing, only go idle if still playing (same C-6 fix pattern)
+        if (this.mode === 'playing') {
+          this.mode = 'idle';
+          this.callbacks.onModeChange?.(this.mode);
+        }
+      }
     }
   }
 
@@ -303,6 +391,7 @@ export class PlaybackEngine {
    * 停止播放
    */
   async stop(): Promise<void> {
+    this.clearAutoAdvanceTimer();
     this.mode = 'idle';
     this.callbacks.onModeChange?.(this.mode);
 
@@ -313,6 +402,16 @@ export class PlaybackEngine {
     }
 
     this.clearEffects();
+  }
+
+  /**
+   * [C-8 fix] Clear tracked auto-advance timer
+   */
+  private clearAutoAdvanceTimer(): void {
+    if (this.autoAdvanceTimer) {
+      clearTimeout(this.autoAdvanceTimer);
+      this.autoAdvanceTimer = null;
+    }
   }
 
   async nextScene(): Promise<void> {
@@ -365,10 +464,15 @@ export class PlaybackEngine {
     }
   }
 
+  /**
+   * [C-8 fix] Track setTimeout for scene advancement so it can be cancelled on stop/pause/dispose
+   */
   private async speakSceneContentAuto(scene: Scene): Promise<void> {
     await this.speakSceneContent(scene);
 
-    setTimeout(async () => {
+    this.clearAutoAdvanceTimer();
+    this.autoAdvanceTimer = setTimeout(async () => {
+      this.autoAdvanceTimer = null;
       if (this.mode === 'playing') {
         await this.nextScene();
         if (this.mode === 'playing') {
@@ -395,10 +499,15 @@ export class PlaybackEngine {
     await this.speakText(text, audioId);
   }
 
+  /**
+   * [C-8 fix] Track setTimeout for auto-play speech advancement
+   */
   private async executeSpeechAuto(action: SceneAction<'speech'>): Promise<void> {
     await this.executeSpeech(action);
 
-    setTimeout(async () => {
+    this.clearAutoAdvanceTimer();
+    this.autoAdvanceTimer = setTimeout(async () => {
+      this.autoAdvanceTimer = null;
       if (this.mode === 'playing') {
         await this.nextScene();
         if (this.mode === 'playing') {
@@ -444,6 +553,23 @@ export class PlaybackEngine {
     this.scheduleEffectClear();
   }
 
+  private executeWhiteboardDelete(action: SceneAction): void {
+    const data = action.data as WbDeleteActionData;
+    if (!data.elementId) return;
+    this.callbacks.onWhiteboardDelete?.(data.elementId);
+  }
+
+  private executeDiscussion(action: SceneAction): void {
+    const data = action.data as DiscussionActionData;
+    this.callbacks.onDiscussionTrigger?.(data.topic, data.prompt, data.agentId);
+  }
+
+  private executePlayVideo(action: SceneAction): void {
+    const data = action.data as PlayVideoActionData;
+    if (!data.elementId) return;
+    this.callbacks.onPlayVideo?.(data.elementId);
+  }
+
   /**
    * Clear effects and cancel pending timer (aligned with web ActionEngine.clearEffects)
    */
@@ -471,6 +597,7 @@ export class PlaybackEngine {
   /**
    * 播放文本（TTS API 或 expo-speech fallback）
    * Strip HTML/SSML tags and use scene-specific cache keys
+   * [S-10 fix] Normalize speed in cache key to avoid 1.0 vs 1 mismatch
    */
   private async speakText(text: string, audioId: string): Promise<void> {
     const cleanText = stripHtmlAndSSML(text);
@@ -480,7 +607,9 @@ export class PlaybackEngine {
       return;
     }
 
-    const cacheKey = `${audioId}_${this.ttsConfig.provider}_${this.ttsConfig.voice}_${this.ttsConfig.speed}`;
+    // [S-10 fix] Normalize speed to 2 decimal places for cache key consistency
+    const speedKey = this.ttsConfig.speed.toFixed(2);
+    const cacheKey = `${audioId}_${this.ttsConfig.provider}_${this.ttsConfig.voice}_${speedKey}`;
 
     // 1. Check memory cache
     const memoryCached = this.audioCache.get(cacheKey);
@@ -491,12 +620,16 @@ export class PlaybackEngine {
     }
 
     // 2. Check file system cache (native only)
+    // [W-13 fix] Ensure audio storage directory exists before reading
     if (Platform.OS !== 'web') {
+      try { initAudioStorage(); } catch {}
       const filePath = getAudioPath(cacheKey);
       if (filePath) {
         try {
           const { File } = require('expo-file-system');
           const file = new File(filePath);
+          // [W-12 note] base64Sync blocks JS thread; acceptable for small cached files
+          // For larger files, consider async read in future optimization
           const base64 = file.base64Sync();
           // Determine format from file extension
           const format = filePath.endsWith('.wav') ? 'wav' : 'mp3';
@@ -566,6 +699,7 @@ export class PlaybackEngine {
 
   async dispose(): Promise<void> {
     this.clearEffects();
+    this.clearAutoAdvanceTimer();
     await this.audioPlayer.dispose();
     Speech.stop();
     this.mode = 'idle';
