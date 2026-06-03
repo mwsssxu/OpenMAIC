@@ -114,8 +114,6 @@ export function SimplifiedTextElement({
           fontWeight: fontWeight as any,
           lineHeight: fontSize * 1.4,
         }}
-        numberOfLines={undefined}
-        ellipsizeMode="tail"
         maxFontSizeMultiplier={1.2}
       >
         {textContent}

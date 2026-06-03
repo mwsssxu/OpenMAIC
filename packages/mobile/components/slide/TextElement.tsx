@@ -372,20 +372,20 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
   return (
     <Animated.View style={[containerStyle, { transform: [{ translateY: slideAnim }] }]}>
       {isWhiteboard ? (
-       <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled>
-         <View style={textWrapperStyle}>
+        <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled>
+          <View style={textWrapperStyle}>
             <Text style={textStyle} numberOfLines={50} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
-             {textContent}
-           </Text>
-         </View>
-       </ScrollView>
+              {textContent}
+            </Text>
+          </View>
+        </ScrollView>
       ) : (
-       <View style={textWrapperStyle}>
+        <View style={textWrapperStyle}>
           <Text style={textStyle} maxFontSizeMultiplier={1.2}>
-           {textContent}
-         </Text>
-       </View>
+            {textContent}
+          </Text>
+        </View>
       )}
     </Animated.View>
   );
-}
+};
