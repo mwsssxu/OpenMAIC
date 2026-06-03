@@ -226,6 +226,7 @@ class ApiClient {
         return Promise.reject(error);
       }
     );
+  } // end constructor
 
   getBaseUrl(): string {
     return API_BASE_URL;

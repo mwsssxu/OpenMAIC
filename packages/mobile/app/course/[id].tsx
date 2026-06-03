@@ -63,13 +63,47 @@ interface ClassroomData {
   agents?: any[];
 }
 
-// 模拟课程数据（后续接入真实数据）
-const mockCourseData = {
-  instructor: { name: '陈教授', avatar: '陈' },
-  students: 12847,
-  rating: 4.8,
-  tags: ['数据科学', 'Python', '可视化', '统计学'],
-};
+// 辅助函数：从 agents 中提取讲师信息
+function getInstructorInfo(agents?: any[]): { name: string; avatar: string } {
+  if (!agents || agents.length === 0) return { name: 'AI 导师', avatar: 'AI' };
+  const teacher = agents.find((a: any) => a.role === 'teacher');
+  if (teacher) {
+    const firstName = teacher.name?.charAt(0) || 'A';
+    return { name: teacher.name || 'AI 导师', avatar: firstName };
+  }
+  const first = agents[0];
+  return { name: first.name || 'AI 导师', avatar: first.name?.charAt(0) || 'A' };
+}
+
+// 辅助函数：估算场景时长（分钟）
+function estimateSceneMinutes(scenes: Scene[]): number {
+  return scenes.reduce((total, s) => {
+    switch (s.type) {
+      case 'slide': return total + 5;
+      case 'interactive': return total + 10;
+      case 'quiz': return total + 8;
+      case 'pbl': return total + 15;
+      default: return total + 5;
+    }
+  }, 0);
+}
+
+// 辅助函数：计算场景完成状态
+function getSceneStatus(scene: Scene, index: number, scenes: Scene[]): 'completed' | 'current' | 'locked' {
+  const hasContent = scene.content && (
+    (scene.content as any)?.canvas?.elements?.length > 0 ||
+    (scene.content as any)?.questions ||
+    (scene.content as any)?.topic ||
+    typeof scene.content === 'string'
+  );
+  if (hasContent) return 'completed';
+  // 第一个未完成的场景为 current
+  const prevCompleted = index === 0 || scenes.slice(0, index).every(s =>
+    s.content && ((s.content as any)?.canvas?.elements?.length > 0 || (s.content as any)?.questions || (s.content as any)?.topic || typeof s.content === 'string')
+  );
+  if (prevCompleted) return 'current';
+  return 'locked';
+}
 
 // 课程Hero组件
 function CourseHero() {
@@ -119,9 +153,8 @@ function SceneItem({ scene, index, total }: { scene: Scene; index: number; total
     }).start();
   };
 
-  // 模拟完成状态（后续接入真实数据）
-  const status = index < Math.floor(total * 0.6) ? 'completed' :
-                 index === Math.floor(total * 0.6) ? 'current' : 'locked';
+  // 根据场景内容判断完成状态
+  const status = getSceneStatus(scene, index, allScenes);
 
   const statusStyle = status === 'completed'
     ? { backgroundColor: iOSColors.secondary, color: '#fff', text: '✓' }
@@ -241,19 +274,19 @@ export default function CourseDetailScreen() {
           <View style={styles.courseMetaRow}>
             <View style={styles.instructor}>
               <View style={styles.instructorAvatar}>
-                <Text style={styles.instructorAvatarText}>{mockCourseData.instructor.avatar}</Text>
+                <Text style={styles.instructorAvatarText}>{getInstructorInfo(classroom.agents).avatar}</Text>
               </View>
-              <Text style={styles.instructorName}>{mockCourseData.instructor.name}</Text>
+              <Text style={styles.instructorName}>{getInstructorInfo(classroom.agents).name}</Text>
             </View>
             <View style={styles.metaDivider} />
             <View style={styles.metaStat}>
-              <Ionicons name="people-outline" size={12} color={iOSColors.muted} />
-              <Text style={styles.metaStatText}>{mockCourseData.students}</Text>
+              <Ionicons name="layers-outline" size={12} color={iOSColors.muted} />
+              <Text style={styles.metaStatText}>{scenes.length} 场景</Text>
             </View>
             <View style={styles.metaDivider} />
             <View style={styles.metaStat}>
-              <Ionicons name="star-outline" size={12} color={iOSColors.muted} />
-              <Text style={styles.metaStatText}>{mockCourseData.rating}</Text>
+              <Ionicons name="time-outline" size={12} color={iOSColors.muted} />
+              <Text style={styles.metaStatText}>~{estimateSceneMinutes(scenes)}分钟</Text>
             </View>
           </View>
         </View>
@@ -261,8 +294,8 @@ export default function CourseDetailScreen() {
         {/* 统计网格 */}
         <View style={styles.statsGrid}>
           <StatCard value={scenes.length} label="场景" />
-          <StatCard value={`${Math.ceil(scenes.length * 15 / 60)}h`} label="预计时长" />
-          <StatCard value="L2" label="难度" />
+          <StatCard value={`~${Math.ceil(estimateSceneMinutes(scenes) / 60 * 10) / 10}h`} label="预计时长" />
+          <StatCard value={stage.style || '通用'} label="风格" />
         </View>
 
         {/* 标签 */}
@@ -273,13 +306,7 @@ export default function CourseDetailScreen() {
                 <Text style={[styles.tagText, index >= 2 && styles.tagTextSecondary]}>{tag}</Text>
               </View>
             ))
-          ) : (
-            mockCourseData.tags.map((tag, index) => (
-              <View key={tag} style={[styles.tag, index >= 2 && styles.tagSecondary]}>
-                <Text style={[styles.tagText, index >= 2 && styles.tagTextSecondary]}>{tag}</Text>
-              </View>
-            ))
-          )}
+          ) : null}
         </View>
 
         {/* 课程简介 */}
