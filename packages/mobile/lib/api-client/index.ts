@@ -191,29 +191,32 @@ class ApiClient {
   private token: string | null = null;
   private refreshPromise: Promise<string | null> | null = null; // concurrency guard
 
-  getBaseUrl(): string {
-    return API_BASE_URL;
-  }
-
-  /** Generic POST — uses the authenticated axios instance */
-  async post<T = any>(url: string, data?: any): Promise<{ data: T }> {
-    return this.client.post(url, data);
-  }
-
   constructor() {
+    // 页面刷新后从 localStorage 恢复 token（防止刷新时请求不带 Authorization 导致 403）
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('auth_token');
+      if (stored) {
+        this.token = stored;
+      }
+    }
+
     // 自动添加 Authorization header
     this.client.interceptors.request.use((config) => {
-      if (this.token) {
-        config.headers.Authorization = `Bearer ${this.token}`;
+      // 优先用内存中的 token，否则从 localStorage 读取（确保刷新后也能携带）
+      const effectiveToken = this.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null);
+      if (effectiveToken) {
+        config.headers.Authorization = `Bearer ${effectiveToken}`;
       }
       return config;
     });
 
     // Token 过期自动刷新（并发安全）
+    // 注意：HTTPBearer 无 token 时返回 403，也需重试
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401) {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          // 403 可能是 HTTPBearer 无 token 导致的，尝试刷新后重试
           const newToken = await this.ensureValidToken();
           if (newToken) {
             error.config.headers.Authorization = `Bearer ${newToken}`;
@@ -223,6 +226,14 @@ class ApiClient {
         return Promise.reject(error);
       }
     );
+
+  getBaseUrl(): string {
+    return API_BASE_URL;
+  }
+
+  /** Generic POST — uses the authenticated axios instance */
+  async post<T = any>(url: string, data?: any): Promise<{ data: T }> {
+    return this.client.post(url, data);
   }
 
   /** Refresh token with concurrency guard — only one refresh in a time */
