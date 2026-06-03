@@ -429,6 +429,18 @@ class ApiClient {
     return data;
   }
 
+  // 给公开课程打分
+  async rateSharedClassroom(shareCode: string, rating: number) {
+    const { data } = await this.client.post(`/sharing/share/${shareCode}/rate`, { rating });
+    return data;
+  }
+
+  // 发现公开课程
+  async discoverSharedClassrooms(limit: number = 10) {
+    const { data } = await this.client.get('/sharing/discover', { params: { limit } });
+    return data;
+  }
+
   // ==================== Generation ====================
 
   // SSE 流式生成大纲（真正的流式实现）

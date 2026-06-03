@@ -2,7 +2,7 @@
 课程分享路由 - 用户课程分享和发现
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Body
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id, get_current_user
 import asyncpg
@@ -217,7 +217,8 @@ async def discover_shared_classrooms(
     """发现公开分享的课程"""
     query = """
         SELECT sc.share_code, sc.title, sc.description, sc.view_count, sc.like_count,
-               sc.created_at, u.nickname as author_name, s.language_directive
+               sc.avg_rating, sc.rating_count, sc.created_at, sc.stage_id,
+               u.nickname as author_name, s.language_directive, s.style
         FROM shared_classrooms sc
         JOIN users u ON sc.user_id = u.id
         JOIN stages s ON sc.stage_id = s.id
@@ -238,11 +239,15 @@ async def discover_shared_classrooms(
         "classrooms": [
             {
                 "share_code": row["share_code"],
+                "stage_id": str(row["stage_id"]),
                 "title": row["title"],
                 "description": row["description"],
                 "author": row["author_name"],
+                "style": row["style"],
                 "view_count": row["view_count"],
                 "like_count": row["like_count"],
+                "avg_rating": float(row["avg_rating"]) if row["avg_rating"] else 0,
+                "rating_count": row["rating_count"],
                 "created_at": row["created_at"].isoformat(),
             }
             for row in rows
@@ -313,3 +318,53 @@ async def check_share_achievement(db: asyncpg.Connection, user_uuid):
             """,
             uuid.uuid4(), user_uuid, utcnow()
         )
+
+
+@router.post("/share/{share_code}/rate")
+async def rate_shared_classroom(
+    share_code: str,
+    body: dict = Body(...),
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """给公开课程打分（1-5）"""
+    rating = body.get("rating")
+    if not rating or rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="评分必须在 1-5 之间")
+
+    user_uuid = uuid.UUID(current_user_id)
+
+    share = await db.fetchrow(
+        "SELECT id FROM shared_classrooms WHERE share_code = $1 AND is_public = TRUE",
+        share_code
+    )
+    if not share:
+        raise HTTPException(status_code=404, detail="课程不存在或未公开")
+
+    # Upsert 评分
+    existing = await db.fetchrow(
+        "SELECT id, rating FROM classroom_ratings WHERE shared_classroom_id = $1 AND user_id = $2",
+        share["id"], user_uuid
+    )
+    if existing:
+        await db.execute(
+            "UPDATE classroom_ratings SET rating = $1 WHERE id = $2",
+            rating, existing["id"]
+        )
+    else:
+        await db.execute(
+            "INSERT INTO classroom_ratings (id, shared_classroom_id, user_id, rating) VALUES ($1, $2, $3, $4)",
+            uuid.uuid4(), share["id"], user_uuid, rating
+        )
+
+    # 重新计算平均评分
+    stats = await db.fetchrow(
+        "SELECT AVG(rating)::numeric(3,2) as avg, COUNT(*) as cnt FROM classroom_ratings WHERE shared_classroom_id = $1",
+        share["id"]
+    )
+    await db.execute(
+        "UPDATE shared_classrooms SET avg_rating = $1, rating_count = $2 WHERE id = $3",
+        stats["avg"], stats["cnt"], share["id"]
+    )
+
+    return {"rating": rating, "avg_rating": float(stats["avg"]), "rating_count": stats["cnt"]}

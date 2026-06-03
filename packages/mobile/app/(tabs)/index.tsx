@@ -44,13 +44,19 @@ const quickFunctions = [
   { key: 'enterprise', titleKey: 'home.enterpriseServices', icon: 'briefcase', color: '#8b5cf6', bgColor: '#ede9fe', route: '/enterprise' },
 ];
 
-// 推荐课程数据（静态展示）
-const recommendedCourses = [
-  { id: '1', name: '机器学习概论', category: '人工智能', icon: '🧮' },
-  { id: '2', name: '商业数据分析', category: '商业分析', icon: '📈' },
-  { id: '3', name: '写作与表达', category: '人文素养', icon: '📝' },
-  { id: '4', name: '科学思维方法', category: '思维方式', icon: '🔬' },
-];
+// 推荐课程类型
+interface SharedCourse {
+  stage_id: string;
+  share_code: string;
+  title: string;
+  description?: string;
+  author?: string;
+  style?: string;
+  view_count: number;
+  like_count: number;
+  avg_rating: number;
+  rating_count: number;
+}
 
 // 笔记分类数据
 const notesCategories = [
@@ -119,7 +125,7 @@ function CourseItem({ course }: { course: { id: string; name: string; descriptio
 }
 
 // 推荐课程卡片组件
-function RecommendedCard({ course, cardWidth }: { course: typeof recommendedCourses[0]; cardWidth: number }) {
+function RecommendedCard({ course, cardWidth, onRate }: { course: SharedCourse; cardWidth: number; onRate: (shareCode: string) => void }) {
   const router = useRouter();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -137,19 +143,55 @@ function RecommendedCard({ course, cardWidth }: { course: typeof recommendedCour
     }).start();
   };
 
+  // 评分星星展示
+  const renderStars = (rating: number) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <Ionicons
+          key={i}
+          name={i <= Math.round(rating) ? "star" : "star-outline"}
+          size={10}
+          color={i <= Math.round(rating) ? "#f59e0b" : "#d1d5db"}
+        />
+      );
+    }
+    return stars;
+  };
+
+  // 课程风格对应图标
+  const styleIcon: Record<string, string> = {
+    academic: '🎓', formal: '📐', casual: '💬', creative: '🎨',
+  };
+
   return (
     <TouchableOpacity
-      onPress={() => router.push(`/course/${course.id}` as any)}
+      onPress={() => router.push(`/course/${course.stage_id}` as any)}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       activeOpacity={0.9}
     >
       <Animated.View style={[styles.recommendedCard, { width: cardWidth, transform: [{ scale: scaleAnim }] }]}>
         <View style={[styles.recIcon, { backgroundColor: iOSColors.accentLight }]}>
-          <Text style={styles.recIconText}>{course.icon}</Text>
+          <Text style={styles.recIconText}>{styleIcon[course.style || ''] || '📚'}</Text>
         </View>
-        <Text style={styles.recName}>{course.name}</Text>
-        <Text style={styles.recCat}>{course.category}</Text>
+        <Text style={styles.recName} numberOfLines={1}>{course.title}</Text>
+        <Text style={styles.recCat} numberOfLines={1}>{course.author || '匿名'}</Text>
+        {/* 评分行 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+          <View style={{ flexDirection: 'row' }}>{renderStars(course.avg_rating)}</View>
+          {course.rating_count > 0 && (
+            <Text style={{ fontSize: 9, color: '#9ca3af', marginLeft: 2 }}>({course.rating_count})</Text>
+          )}
+        </View>
+        {/* 打分按钮 */}
+        <TouchableOpacity
+          style={{ marginTop: 4, alignSelf: 'flex-start' }}
+          onPress={(e) => { e.stopPropagation(); onRate(course.share_code); }}
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        >
+          <Text style={{ fontSize: 10, color: iOSColors.accent }}>打分</Text>
+        </TouchableOpacity>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -239,6 +281,11 @@ export default function HomeScreen() {
   // Recent courses state
   const [recentCourses, setRecentCourses] = useState<RecentCourse[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(true);
+
+  // 推荐课程（公开分享）
+  const [sharedCourses, setSharedCourses] = useState<SharedCourse[]>([]);
+  const [ratingShareCode, setRatingShareCode] = useState<string | null>(null);
+  const [userRating, setUserRating] = useState(0);
 
   // Fetch dashboard stats and recent courses on mount
   useEffect(() => {
