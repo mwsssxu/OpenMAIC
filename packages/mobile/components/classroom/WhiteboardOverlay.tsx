@@ -6,7 +6,7 @@
  */
 
 import React, { memo, useMemo, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { ScreenCanvas } from '@/components/slide/ScreenCanvas';
@@ -159,7 +159,7 @@ const ScrollableTable = memo(function ScrollableTable({ rows }: { rows: string[]
             <View key={ri} style={styles.tableRow}>
               {cells.map((cell, ci) => (
                 <View key={ci} style={styles.tableCell}>
-                  <Text style={styles.tableCellText}>{cell.trim()}</Text>
+                  <Text style={styles.tableCellText} numberOfLines={2} ellipsizeMode="tail">{cell.trim()}</Text>
                 </View>
               ))}
             </View>
@@ -240,7 +240,7 @@ const StructuredContent = memo(function StructuredContent({ content }: { content
                     <View key={`table-${segIdx}`} style={styles.tableRow}>
                       {seg.rows[0].map((cell, i) => (
                         <View key={i} style={styles.tableCell}>
-                          <Text style={styles.tableCellText}>{cell.trim()}</Text>
+                          <Text style={styles.tableCellText} numberOfLines={2} ellipsizeMode="tail">{cell.trim()}</Text>
                         </View>
                       ))}
                     </View>
@@ -266,7 +266,7 @@ const StructuredContent = memo(function StructuredContent({ content }: { content
                   <View key={key} style={[styles.treeNode, { marginLeft: indentLevel * 20 }]}>
                     <Text style={styles.treePrefix}>{prefix}</Text>
                     <View style={styles.treeNodeBox}>
-                      <Text style={styles.treeNodeText}>{nodeText}</Text>
+                      <Text style={styles.treeNodeText} numberOfLines={1}>{nodeText}</Text>
                     </View>
                   </View>
                 );
@@ -295,7 +295,7 @@ const StructuredContent = memo(function StructuredContent({ content }: { content
                     {parts.map((part, i) => (
                       <View key={i} style={styles.flowPart}>
                         <View style={styles.flowBox}>
-                          <Text style={styles.flowText}>{part.trim()}</Text>
+                          <Text style={styles.flowText} numberOfLines={1}>{part.trim()}</Text>
                         </View>
                         {i < parts.length - 1 && (
                           <Text style={styles.flowArrow}>→</Text>
@@ -575,6 +575,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     marginLeft: 4,
+    maxWidth: Dimensions.get('window').width - 40,
   },
   treeNodeText: {
     fontSize: 14,
@@ -611,6 +612,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    maxWidth: Dimensions.get('window').width - 40,
   },
   flowText: {
     fontSize: 13,
@@ -717,6 +719,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRightWidth: 1,
     borderRightColor: '#ddd',
+    overflow: 'hidden',
   },
   tableCellText: {
     fontSize: 13,

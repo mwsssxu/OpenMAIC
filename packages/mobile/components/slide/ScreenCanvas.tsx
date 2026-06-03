@@ -264,7 +264,7 @@ export function ScreenCanvas({
                 theme={activeTheme}
                 scaleX={canvasScaleX}
                 scaleY={canvasScaleY}
-                isWhiteboard={false}
+                isWhiteboard={true}
               />
             ))}
           </View>
@@ -367,6 +367,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     borderRadius: 8,
-    overflow: 'visible',  // 允许内容溢出可见
+    overflow: 'hidden',
   },
 });

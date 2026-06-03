@@ -165,10 +165,12 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
       sendWidgetMessage: (type: string, payload: Record<string, unknown>) => {
         // Inject JS that dispatches a MessageEvent inside the WebView
         // This mirrors Web's iframe.contentWindow.postMessage({ type, ...payload }, '*')
+        // Security: pass JSON via JSON.parse to prevent template literal injection
         const jsonPayload = JSON.stringify({ type, ...payload });
         const js = `
           (function() {
-            var evt = new MessageEvent('message', { data: ${jsonPayload}, origin: 'native' });
+            var data = JSON.parse(${JSON.stringify(jsonPayload)});
+            var evt = new MessageEvent('message', { data: data, origin: 'native' });
             window.dispatchEvent(evt);
           })();
           true;

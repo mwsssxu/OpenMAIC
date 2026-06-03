@@ -765,10 +765,12 @@ export default function ClassroomScreen() {
           setCurrentSceneIndex(index);
           // 更新已完成的场景数（当前场景之前的都算已完成）
           updateScenesCompleted(index);
-          // 切换场景时清除视觉效果和白板
+          // 切换场景时清除视觉效果、白板和交互状态
           setSpotlightElementId(null);
           setLaserElementId(null);
           setShowWhiteboard(false);
+          setDiscussionHint(null);
+          setAutoPlayVideoElementId(null);
         },
         onModeChange: (mode) => {
           setPlaybackMode(mode);

@@ -168,7 +168,7 @@ export class MobileActionEngine {
     // 每行高度 = fontSize * 1.5 (line-height)，加上 padding
     const lineHeight = fontSize * 1.5;
     const padding = WHITEBOARD_CARD_PADDING * 2; // 上下 padding
-    const estimatedHeight = Math.max(80, lines * lineHeight + padding);
+    const estimatedHeight = Math.max(80, (lines * lineHeight + padding) * 1.5); // Safety margin for title scaling and decorations
 
     console.log(`[ActionEngine] drawText: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}, currentY=${this.currentY}`);
 

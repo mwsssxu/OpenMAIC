@@ -320,6 +320,7 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
       top: position.top * scaleY,
       width: effectiveWidth,
       minHeight: minH,
+      maxHeight: position.height > 0 ? position.height * scaleY : undefined,
       transform: [{ rotate: `${element.rotate || 0}deg` }],
       zIndex: 1,
       opacity: fadeAnim,
@@ -331,6 +332,7 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
     padding: isWhiteboard ? Math.max(8, 12 * effectiveScale) : Math.max(4, 8 * effectiveScale),
     justifyContent: 'flex-start' as const,
     backgroundColor: bgColor,
+    overflow: 'hidden' as const,
     opacity: element.opacity || 1,
     // 白板模式下添加圆角和阴影
     ...(isWhiteboard && {
@@ -370,19 +372,19 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
   return (
     <Animated.View style={[containerStyle, { transform: [{ translateY: slideAnim }] }]}>
       {isWhiteboard ? (
-        <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled>
-          <View style={textWrapperStyle}>
-            <Text style={textStyle}>
-              {textContent}
-            </Text>
-          </View>
-        </ScrollView>
+       <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled>
+         <View style={textWrapperStyle}>
+            <Text style={textStyle} numberOfLines={50} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
+             {textContent}
+           </Text>
+         </View>
+       </ScrollView>
       ) : (
-        <View style={textWrapperStyle}>
-          <Text style={textStyle}>
-            {textContent}
-          </Text>
-        </View>
+       <View style={textWrapperStyle}>
+          <Text style={textStyle} maxFontSizeMultiplier={1.2}>
+           {textContent}
+         </Text>
+       </View>
       )}
     </Animated.View>
   );

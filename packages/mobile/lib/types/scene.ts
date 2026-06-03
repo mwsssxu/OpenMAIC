@@ -30,6 +30,7 @@ export type ActionType =
   | 'wb_draw_table'
   | 'wb_draw_line'
   | 'wb_draw_code'
+  | 'wb_edit_code'
   | 'wb_open'
   | 'wb_clear'
   | 'wb_close'
@@ -138,6 +139,14 @@ export interface WbDrawCodeActionData {
   fileName?: string;
 }
 
+export interface WbEditCodeActionData {
+  elementId: string;
+  operation: 'insert_after' | 'insert_before' | 'delete_lines' | 'replace_lines';
+  lineId?: string;
+  lineIds?: string[];
+  content?: string;
+}
+
 export interface WbDeleteActionData {
   elementId: string;
 }
@@ -183,6 +192,7 @@ export interface ActionDataMap {
   wb_draw_table: WbDrawTableActionData;
   wb_draw_line: WbDrawLineActionData;
   wb_draw_code: WbDrawCodeActionData;
+  wb_edit_code: WbEditCodeActionData;
   wb_open: Record<string, never>;
   wb_clear: Record<string, never>;
   wb_close: Record<string, never>;

@@ -16,7 +16,7 @@ import { AudioPlayer } from './audio-player';
 import { saveAudioFile, getAudioPath, initAudioStorage } from '../storage/audio-storage';
 import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
-import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData, WbDeleteActionData, DiscussionActionData, PlayVideoActionData, WidgetHighlightActionData, WidgetSetStateActionData, WidgetAnnotationActionData, WidgetRevealActionData } from '../types';
+import { Scene, SceneAction, SpeechActionData, SpotlightActionData, LaserActionData, WbDeleteActionData, WbEditCodeActionData, DiscussionActionData, PlayVideoActionData, WidgetHighlightActionData, WidgetSetStateActionData, WidgetAnnotationActionData, WidgetRevealActionData } from '../types';
 import { apiClient } from '../api-client';
 import { stripHtmlAndSSML } from '../utils/html-stripper';
 
@@ -205,6 +205,7 @@ export class PlaybackEngine {
         case 'wb_draw_table':
         case 'wb_draw_line':
         case 'wb_draw_code':
+        case 'wb_edit_code':
           this.executeWhiteboard(action);
           break;
         case 'wb_delete':
@@ -318,6 +319,7 @@ export class PlaybackEngine {
         case 'wb_draw_table':
         case 'wb_draw_line':
         case 'wb_draw_code':
+        case 'wb_edit_code':
           this.executeWhiteboard(action);
           break;
         case 'wb_delete':

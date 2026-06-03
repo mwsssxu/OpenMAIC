@@ -114,6 +114,9 @@ export function SimplifiedTextElement({
           fontWeight: fontWeight as any,
           lineHeight: fontSize * 1.4,
         }}
+        numberOfLines={undefined}
+        ellipsizeMode="tail"
+        maxFontSizeMultiplier={1.2}
       >
         {textContent}
       </Text>
@@ -123,6 +126,6 @@ export function SimplifiedTextElement({
 
 const styles = StyleSheet.create({
   wrapper: {
-    // 动态样式通过props传入
+    overflow: 'hidden',
   },
 });

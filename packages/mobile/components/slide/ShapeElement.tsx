@@ -105,6 +105,7 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       justifyContent: justifyContent as 'flex-start' | 'flex-end' | 'center',
       alignItems: 'center' as const,
       padding: 8 * Math.min(scaleX, scaleY),
+      overflow: 'hidden' as const,
     };
   }, [element, scaleX, scaleY]);
 
@@ -161,7 +162,7 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       </Svg>
       {textContent && (
         <View style={textContainerStyle}>
-          <Text style={textStyle}>{textContent}</Text>
+          <Text style={textStyle} numberOfLines={3}>{textContent}</Text>
         </View>
       )}
     </View>
