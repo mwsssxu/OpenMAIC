@@ -162,14 +162,15 @@ export function ScreenCanvas({
     if (layoutMode === 'simplified') {
       return undefined; // 简化格式自适应高度
     }
-    if (containerSize.height === 0 && !isWhiteboard) return undefined;
 
-    // 白板模式/scrollable模式：使用完整内容高度（无需缩放）
+    // scrollable/白板模式：使用完整内容高度（无需依赖容器高度）
     if (scrollable || isWhiteboard) {
       return minContentHeight;
     }
 
-    // 非滚动模式：使用容器可用高度
+    // 非滚动模式：需要容器高度来决定缩放
+    if (containerSize.height === 0) return minContentHeight; // 降级：未拿到容器高度时用内容高度
+
     const availableHeight = containerSize.height - MARGIN * 2;
     const contentNeededHeight = minContentHeight * canvasScaleY;
     return Math.max(availableHeight, contentNeededHeight);
@@ -182,9 +183,8 @@ export function ScreenCanvas({
   // Handle layout
   const handleLayout = useCallback((event: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width, height } = event.nativeEvent.layout;
-    if (width > 0 && height > 0) {
+    if (width > 0) {
       setContainerSize({ width, height });
-      console.log('[ScreenCanvas] mode:', detectLayoutMode(elements));
     }
   }, [elements]);
 
@@ -236,7 +236,11 @@ export function ScreenCanvas({
   return (
     <View
       ref={containerRef}
-      style={styles.container}
+      style={[
+        styles.container,
+        // 非 whiteboard + scrollable 模式：给容器明确高度，否则 absolute 定位的 canvas 不可见
+        !isWhiteboard && scrollable && canvasHeight ? { minHeight: canvasHeight + 20 } : undefined,
+      ]}
       onLayout={handleLayout}
     >
       {/* 白板模式：使用 ScrollView 支持滚动，绝对定位渲染 */}

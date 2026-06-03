@@ -564,29 +564,51 @@ export default function ClassroomScreen() {
     setCreatedScenesCount(0);
 
     const language = data?.stage?.language_directive || 'zh-CN';
+    const initialCount = data?.scenes?.length || 0;
     console.log(`[Background] 并行创建 ${outlines.length} 个场景`);
 
-    // 启动轮询，每 5 秒检查已创建场景数
-    const pollInterval = setInterval(async () => {
-      try {
-        const pollData = await apiClient.getClassroom(id);
-        setData(pollData);
-        const created = pollData?.scenes?.length || 0;
-        const initialCount = data?.scenes?.length || 0;
-        setCreatedScenesCount(created - initialCount);
-      } catch {}
-    }, 5000);
+    // SSE 实时监听场景创建进度（替代 5 秒轮询）
+    let eventSource: EventSource | null = null;
+    try {
+      const sseUrl = `${apiClient.getBaseUrl()}/classrooms/${id}/scenes/progress`;
+      eventSource = new EventSource(sseUrl);
+      eventSource.onmessage = (e) => {
+        try {
+          const progress = JSON.parse(e.data);
+          if (progress.status === 'connected') return;
+          if (progress.status === 'done' || progress.status === 'timeout') {
+            eventSource?.close();
+            eventSource = null;
+            return;
+          }
+          if (progress.completed !== undefined) {
+            setCreatedScenesCount(progress.completed);
+            // 每 2 个场景或最后一个刷新一次完整数据
+            if (progress.completed % 2 === 0 || progress.completed >= progress.total) {
+              apiClient.getClassroom(id).then(d => d && setData(d)).catch(() => {});
+            }
+          }
+        } catch {}
+      };
+      eventSource.onerror = () => {
+        eventSource?.close();
+        eventSource = null;
+        // SSE 失败时降级为轮询
+        console.log('[Background] SSE 连接失败，降级为轮询');
+      };
+    } catch {
+      // SSE 不可用，不阻塞主流程
+    }
 
     try {
       await apiClient.createAllScenes(id, outlines, language);
-      clearInterval(pollInterval);
+      eventSource?.close();
       const finalData = await apiClient.getClassroom(id);
       setData(finalData);
-      const initialCount = data?.scenes?.length || 0;
       setCreatedScenesCount((finalData?.scenes?.length || 0) - initialCount);
       console.log(`[Background] 所有场景创建完成`);
     } catch (err: any) {
-      clearInterval(pollInterval);
+      eventSource?.close();
       console.error('[Background] 并行创建失败，尝试逐个创建:', err.message);
 
       // 降级：逐个创建未完成的场景

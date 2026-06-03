@@ -191,7 +191,7 @@ function NoteCard({ note, t }: { note: typeof notesCategories[0]; t: (key: strin
       <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
         <Text style={styles.noteIcon}>{note.icon}</Text>
         <Text style={styles.noteLabel}>{t(note.titleKey)}</Text>
-        {note.count && <Text style={styles.noteCount}>{note.count}</Text>}
+        {!!note.count && <Text style={styles.noteCount}>{note.count}</Text>}
       </Animated.View>
     </TouchableOpacity>
   );

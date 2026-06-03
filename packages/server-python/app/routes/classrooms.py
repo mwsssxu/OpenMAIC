@@ -4,6 +4,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
+from typing import Optional
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.services.scene_service import (
@@ -20,6 +21,10 @@ import uuid
 import logging
 import json
 import time
+import asyncio
+
+from fastapi.responses import StreamingResponse
+from app.core.redis import get_redis
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -406,6 +411,74 @@ async def create_scene_for_classroom(
         "order_index": scene["order_index"],
         "elapsed_seconds": round(total_elapsed, 2)
     }
+
+
+@router.get("/{classroom_id}/scenes/progress")
+async def scene_creation_progress(
+    classroom_id: str,
+    # SSE 不支持自定义 header，认证可选（进度数据不敏感）
+    current_user_id: Optional[str] = Depends(get_current_user_id),
+):
+    """
+    SSE 端点：实时推送场景创建进度
+    客户端通过 EventSource 连接，接收 {completed, total, title, status} 事件
+    """
+    from app.routes.classrooms import validate_uuid
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    # 用户认证可选（SSE 不支持自定义 header）
+    if current_user_id:
+        validate_uuid(current_user_id, "用户ID")
+
+    channel = f"scene_progress:{classroom_uuid}"
+
+    async def event_generator():
+        r = get_redis()
+        if not r:
+            yield f"data: {json.dumps({'error': 'Redis unavailable'})}\n\n"
+            return
+        pubsub = r.pubsub()
+        try:
+            await pubsub.subscribe(channel)
+            # 发送初始连接确认
+            yield f"data: {json.dumps({'status': 'connected'})}\n\n"
+            # 监听 10 分钟超时
+            timeout = 600
+            last_time = time.time()
+            while time.time() - last_time < timeout:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=1.0
+                )
+                if message and message["type"] == "message":
+                    last_time = time.time()
+                    data = message["data"]
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8")
+                    yield f"data: {data}\n\n"
+                    # 如果所有场景都完成了，发送 done 事件并关闭
+                    try:
+                        parsed = json.loads(data)
+                        if parsed.get("completed", 0) >= parsed.get("total", 0):
+                            yield f"data: {json.dumps({'status': 'done'})}\n\n"
+                            break
+                    except Exception:
+                        pass
+            else:
+                yield f"data: {json.dumps({'status': 'timeout'})}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/{classroom_id}/scenes/create-all")

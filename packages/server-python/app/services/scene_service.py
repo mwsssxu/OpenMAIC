@@ -11,11 +11,32 @@ import re
 from typing import Dict, List, Optional, Any
 from app.core.config import settings
 from app.core.time_utils import utcnow
+from app.core.redis import get_redis
 from app.services.tts_service import generate_tts, encode_audio_base64
 from app.services.generation.scene_generator import generate_scene_content, fix_element_format, generate_scene_actions
 from app.services.generation.outline_generator import SceneOutline
 
 logger = logging.getLogger(__name__)
+
+
+async def _publish_scene_progress(
+    stage_id: uuid.UUID, completed: int, total: int, title: str, status: str
+) -> None:
+    """通过 Redis PUBLISH 推送场景创建进度，供 SSE 端点实时消费"""
+    try:
+        r = get_redis()
+        if r:
+            channel = f"scene_progress:{stage_id}"
+            payload = json.dumps({
+                "completed": completed,
+                "total": total,
+                "title": title,
+                "status": status,
+            })
+            await r.publish(channel, payload)
+    except Exception as e:
+        # 进度推送失败不应影响场景创建主流程
+        logger.debug(f"[Scene] 进度推送失败: {e}")
 
 
 # 场景类型对应的 key_points 模板配置
@@ -612,6 +633,8 @@ async def create_all_scenes(
                     language=language,
                 )
                 logger.info(f"[Scene] #{index + 1}/{total} 创建成功")
+                # 推送场景创建进度到 Redis
+                await _publish_scene_progress(stage_id, index + 1, total, scene.get("title", ""), "completed")
                 return scene
             except Exception as e:
                 logger.warning(f"[Scene] #{index + 1}/{total} 创建失败: {e}")
@@ -624,6 +647,8 @@ async def create_all_scenes(
                     db=db
                 )
                 logger.info(f"[Scene] #{index + 1}/{total} 使用降级场景")
+                # 推送降级场景进度
+                await _publish_scene_progress(stage_id, index + 1, total, fallback_scene.get("title", ""), "fallback")
                 return fallback_scene
 
     # 并行创建所有场景
@@ -649,6 +674,8 @@ async def create_all_scenes(
                 db=db
             )
             scenes.append(fallback)
+            # 推送 gather 异常降级场景进度
+            await _publish_scene_progress(stage_id, i + 1, total, fallback.get("title", ""), "fallback")
         else:
             scenes.append(result)
 

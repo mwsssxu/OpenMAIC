@@ -124,7 +124,15 @@ async def update_learning_time(
     )
 
     if not record:
-        # 如果没有记录，自动创建一个
+        # 如果没有记录，先验证 course_id 是否存在（防止外键违规）
+        course_exists = await db.fetchval(
+            "SELECT 1 FROM stages WHERE id = $1",
+            course_uuid
+        )
+        if not course_exists:
+            raise HTTPException(status_code=404, detail="课程不存在")
+
+        # 自动创建学习记录
         await db.execute(
             """
             INSERT INTO course_completions
