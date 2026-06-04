@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Animated, Switch, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -10,6 +10,8 @@ import { useI18n, Locale } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -131,23 +133,30 @@ function WeeklyBar({ data }: { data: WeeklyData }) {
 
 interface SettingsItem {
   id: string;
-  title: string;
+  titleKey: string;
   icon: string;
   color: string;
   badge?: string | null;
+  hasSwitch?: boolean;
 }
 
 const settingsData: SettingsItem[] = [
-  { id: 'profile', title: '编辑个人资料', icon: 'person', color: 'coral', badge: null },
-  { id: 'notifications', title: '通知设置', icon: 'notifications', color: 'mint', badge: '2' },
-  { id: 'preferences', title: '学习偏好', icon: 'settings', color: 'gold', badge: null },
-  { id: 'darkmode', title: '深色模式', icon: 'moon', color: 'blue', badge: null },
-  { id: 'help', title: '帮助与反馈', icon: 'help-circle', color: 'purple', badge: null },
-  { id: 'logout', title: '退出登录', icon: 'log-out', color: 'coral', badge: null },
+  { id: 'profile', titleKey: 'editProfile', icon: 'person', color: 'coral', badge: null },
+  { id: 'notifications', titleKey: 'notificationSettings', icon: 'notifications', color: 'mint', badge: '2' },
+  { id: 'preferences', titleKey: 'learningPreferences', icon: 'settings', color: 'gold', badge: null },
+  { id: 'darkmode', titleKey: 'darkMode', icon: 'moon', color: 'blue', badge: null, hasSwitch: true },
+  { id: 'help', titleKey: 'helpAndFeedback', icon: 'help-circle', color: 'purple', badge: null },
+  { id: 'logout', titleKey: 'logout', icon: 'log-out', color: 'coral', badge: null },
 ];
 
 // 设置项组件
-function SettingsItem({ item, onPress }: { item: SettingsItem; onPress: () => void }) {
+function SettingsItem({ item, onPress, switchValue, onSwitchChange }: { 
+  item: SettingsItem; 
+  onPress: () => void; 
+  switchValue?: boolean;
+  onSwitchChange?: (value: boolean) => void;
+}) {
+  const { t } = useI18n();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const colorStyles = {
     coral: { bg: iOSColors.accentLight, icon: iOSColors.accent },
@@ -178,18 +187,28 @@ function SettingsItem({ item, onPress }: { item: SettingsItem; onPress: () => vo
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       activeOpacity={0.9}
+      disabled={item.hasSwitch}
     >
       <Animated.View style={[styles.settingsItem, { transform: [{ scale: scaleAnim }] }]}>
         <View style={[styles.settingsIcon, { backgroundColor: colors.bg }]}>
           <Ionicons name={item.icon as any} size={16} color={colors.icon} />
         </View>
-        <Text style={styles.settingsText}>{item.title}</Text>
+        <Text style={styles.settingsText}>{t(`profile.${item.titleKey}`)}</Text>
         {item.badge && (
           <View style={styles.settingsBadge}>
             <Text style={styles.settingsBadgeText}>{item.badge}</Text>
           </View>
         )}
-        <Ionicons name="chevron-forward" size={16} color={iOSColors.muted} style={{ opacity: 0.5 }} />
+        {item.hasSwitch ? (
+          <Switch
+            value={switchValue}
+            onValueChange={onSwitchChange}
+            trackColor={{ false: iOSColors.border, true: iOSColors.blue }}
+            thumbColor="#fff"
+          />
+        ) : (
+          <Ionicons name="chevron-forward" size={16} color={iOSColors.muted} style={{ opacity: 0.5 }} />
+        )}
       </Animated.View>
     </TouchableOpacity>
   );
@@ -217,10 +236,40 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
+  const [showProfileEditModal, setShowProfileEditModal] = useState(false);
+  const [showNotifModal, setShowNotifModal] = useState(false);
+  const [showPrefModal, setShowPrefModal] = useState(false);
+  const [editNickname, setEditNickname] = useState('');
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [dailyGoal, setDailyGoal] = useState('30');
 
   useEffect(() => {
     loadProfileData();
+    loadDarkModePreference();
   }, []);
+
+  async function loadDarkModePreference() {
+    try {
+      const saved = await AsyncStorage.getItem('darkModeEnabled');
+      if (saved !== null) {
+        setDarkModeEnabled(saved === 'true');
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  async function toggleDarkMode(value: boolean) {
+    haptics.light();
+    setDarkModeEnabled(value);
+    try {
+      await AsyncStorage.setItem('darkModeEnabled', String(value));
+    } catch {
+      // Ignore storage errors
+    }
+    onSuccess(t(value ? 'profile.darkModeEnabled' : 'profile.darkModeDisabled'));
+  }
 
   async function loadProfileData() {
     try {
@@ -248,8 +297,28 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     haptics.medium();
-    logout();
-    router.replace('/auth/login');
+    Alert.alert(
+      t('profile.logout'),
+      '',
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { 
+          text: t('common.confirm'), 
+          style: 'destructive',
+          onPress: () => {
+            logout();
+            router.replace('/auth/login');
+          }
+        },
+      ]
+    );
+  };
+
+  const handleHelp = () => {
+    const helpUrl = 'https://openmaic.com/help';
+    Linking.openURL(helpUrl).catch(() => {
+      onSuccess(t('profile.comingSoon'));
+    });
   };
 
   const handleLanguageChange = (newLocale: Locale) => {
@@ -354,18 +423,25 @@ export default function ProfileScreen() {
         </ScrollView>
 
         {/* 设置列表 */}
-        <Text style={styles.sectionTitle}>设置</Text>
+        <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
         <View style={styles.settingsList}>
           {settingsData.map(item => (
             <SettingsItem
               key={item.id}
               item={item}
+              switchValue={item.id === 'darkmode' ? darkModeEnabled : undefined}
+              onSwitchChange={item.id === 'darkmode' ? toggleDarkMode : undefined}
               onPress={() => {
                 haptics.light();
                 if (item.id === 'profile') {
-                  // 编辑个人资料
+                  setEditNickname(profileData.user.nickname || '');
+                  setShowProfileEditModal(true);
                 } else if (item.id === 'notifications') {
-                  // 通知设置
+                  setShowNotifModal(true);
+                } else if (item.id === 'preferences') {
+                  setShowPrefModal(true);
+                } else if (item.id === 'help') {
+                  handleHelp();
                 } else if (item.id === 'logout') {
                   handleLogout();
                 }
@@ -409,6 +485,96 @@ export default function ProfileScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* 编辑个人资料 Modal */}
+      <Modal visible={showProfileEditModal} transparent animationType="fade" onRequestClose={() => setShowProfileEditModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowProfileEditModal(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('profile.editProfile')}</Text>
+            <Text style={styles.modalLabel}>{t('auth.nickname')}</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editNickname}
+              onChangeText={setEditNickname}
+              placeholder={t('auth.nickname')}
+              maxLength={50}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity style={[styles.modalCancelButton, { flex: 1 }]} onPress={() => setShowProfileEditModal(false)} activeOpacity={0.7}>
+                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalCancelButton, { flex: 1, backgroundColor: iOSColors.accent }]} onPress={async () => {
+                try {
+                  await apiClient.updateUser({ nickname: editNickname });
+                  profileData.user.nickname = editNickname;
+                  onSuccess(t('profile.profileUpdated'));
+                } catch { onSuccess(t('common.error')); }
+                setShowProfileEditModal(false);
+              }} activeOpacity={0.7}>
+                <Text style={[styles.modalCancelText, { color: '#fff' }]}>{t('common.confirm')}</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* 通知设置 Modal */}
+      <Modal visible={showNotifModal} transparent animationType="fade" onRequestClose={() => setShowNotifModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowNotifModal(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('profile.notificationSettings')}</Text>
+            {[
+              { key: 'course', icon: 'book', label: t('profile.notifCourse') || '课程更新' },
+              { key: 'achievement', icon: 'trophy', label: t('profile.notifAchievement') || '成就解锁' },
+              { key: 'buddy', icon: 'chatbubbles', label: t('profile.notifBuddy') || '搭子消息' },
+              { key: 'system', icon: 'information-circle', label: t('profile.notifSystem') || '系统通知' },
+            ].map(item => (
+              <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: iOSColors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name={item.icon as any} size={20} color={iOSColors.accent} />
+                  <Text style={{ fontSize: 15, color: iOSColors.text }}>{item.label}</Text>
+                </View>
+                <Switch value={notifEnabled} onValueChange={setNotifEnabled} trackColor={{ false: iOSColors.border, true: iOSColors.blue }} thumbColor="#fff" />
+              </View>
+            ))}
+            <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowNotifModal(false)} activeOpacity={0.7}>
+              <Text style={styles.modalCancelText}>{t('common.confirm')}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* 学习偏好 Modal */}
+      <Modal visible={showPrefModal} transparent animationType="fade" onRequestClose={() => setShowPrefModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowPrefModal(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('profile.learningPreferences')}</Text>
+            <Text style={styles.modalLabel}>{t('profile.dailyGoal') || '每日学习目标(分钟)'}</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={dailyGoal}
+              onChangeText={setDailyGoal}
+              keyboardType="number-pad"
+              placeholder="30"
+            />
+            <Text style={[styles.modalLabel, { marginTop: 12 }]}>{t('profile.reminderTime') || '学习提醒时间'}</Text>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {['08:00', '12:00', '20:00', '22:00'].map(time => (
+                <TouchableOpacity key={time} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: iOSColors.border, marginRight: 4, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: iOSColors.text }}>{time}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={[styles.modalCancelButton, { marginTop: 16 }]} onPress={async () => {
+              try { await AsyncStorage.setItem('dailyGoal', dailyGoal); onSuccess(t('profile.prefSaved') || '已保存'); } catch {}
+              setShowPrefModal(false);
+            }} activeOpacity={0.7}>
+              <Text style={styles.modalCancelText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -704,6 +870,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: iOSColors.muted,
+  },
+  modalLabel: {
+    fontSize: 13,
+    color: iOSColors.muted,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: iOSColors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: iOSColors.text,
+    backgroundColor: iOSColors.bgSolid,
   },
 
   // Loading & Error
