@@ -3,8 +3,10 @@ OpenMAIC Python Backend - FastAPI 入口
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 import logging
 
 # 先导入 settings，再配置日志级别
@@ -58,6 +60,66 @@ app = FastAPI(
     version="0.23.0",
     lifespan=lifespan,
 )
+
+
+# ── 全局 422 校验错误 → 中文友好提示 ──
+
+FIELD_NAMES = {
+    "email": "邮箱", "password": "密码", "nickname": "昵称",
+    "name": "名称", "title": "标题", "content": "内容",
+    "description": "描述", "phone": "手机号", "code": "验证码",
+    "avatar_url": "头像", "language_directive": "语言",
+    "topic": "主题", "question": "问题", "answer": "答案",
+    "type": "类型", "stage_id": "课程ID", "course_id": "课程ID",
+}
+
+ERROR_MESSAGES = {
+    "missing": "请输入{field}",
+    "string_too_short": "{field}太短",
+    "string_too_long": "{field}太长",
+    "value_error": "{field}格式不正确",
+    "type_error": "{field}格式不正确",
+    "json_invalid": "请求数据格式错误",
+    "bool_parsing": "{field}应为是/否",
+    "int_parsing": "{field}应为数字",
+    "greater_than": "{field}数值太小",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """将 Pydantic 校验错误转为中文友好提示"""
+    errors = exc.errors()
+    messages = []
+    for err in errors:
+        err_type = err.get("type", "")
+        loc = err.get("loc", [])
+        # 提取字段名（取 loc 中最后一个非 'body' 的部分）
+        field = ""
+        for part in reversed(loc):
+            if part != "body" and isinstance(part, str):
+                field = part
+                break
+        field_cn = FIELD_NAMES.get(field, field or "输入")
+
+        # 匹配错误类型
+        msg = ERROR_MESSAGES.get(err_type)
+        if msg:
+            messages.append(msg.format(field=field_cn))
+        elif "email" in err_type or "email" in str(err.get("msg", "")).lower():
+            messages.append(f"{field_cn}格式不正确")
+        elif err_type == "missing":
+            messages.append(f"请输入{field_cn}")
+        else:
+            # 回退：用原始消息但替换字段名
+            raw_msg = err.get("msg", "输入有误")
+            messages.append(f"{field_cn}{raw_msg}")
+
+    detail = messages[0] if len(messages) == 1 else "；".join(messages)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": detail},
+    )
 
 # CORS 配置（支持 Web 和移动端）
 # 开发模式允许所有localhost端口，生产模式使用白名单
