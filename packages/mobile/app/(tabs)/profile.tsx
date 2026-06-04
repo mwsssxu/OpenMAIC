@@ -53,7 +53,7 @@ interface ProfileData {
   };
   stats: {
     streak_days: number;
-    total_courses: number;  // 系统中所有课程
+    total_courses: number;  // 用户自己的课程数
     learned_courses?: number;  // 用户已学习的课程
     total_hours: number;
     active_courses?: number;  // 兼容旧数据

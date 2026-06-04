@@ -69,11 +69,12 @@ async def get_profile_overview(
         )
         streak = yesterday_checkin["streak_count"] if yesterday_checkin else 0
 
-    # 获取所有课程数（系统中可学习的课程总量）
+    # 获取用户的课程数
     total_courses = await db.fetchval(
         """
-        SELECT COUNT(*) FROM stages
-        """
+        SELECT COUNT(*) FROM stages WHERE user_id = $1
+        """,
+        user_uuid
     ) or 0
 
     # 获取用户已学习过的课程数
