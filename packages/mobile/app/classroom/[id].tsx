@@ -42,6 +42,7 @@ import { mobileActionEngine } from '@/lib/whiteboard/action-engine';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
+import { NoteCreationModal } from '@/lib/components/NoteCreationModal';
 import {
   readDraft,
   writeDraft,
@@ -295,6 +296,7 @@ export default function ClassroomScreen() {
   const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [showPointer, setShowPointer] = useState(false);
   const [showThumbnailNav, setShowThumbnailNav] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
 
   // 智能体互动
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -2508,7 +2510,7 @@ export default function ClassroomScreen() {
           style={styles.toolBtn}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push(`/notes/new?courseId=${id}&sceneId=${currentScene?.id}` as any);
+            setShowNoteModal(true);
           }}
         >
           <Ionicons name="create-outline" size={20} color="#666" />
@@ -2769,6 +2771,20 @@ export default function ClassroomScreen() {
         icon="swap-horizontal"
         text="左右滑动切场景 · 双指缩放画面"
         position="top"
+      />
+
+      {/* 笔记创建模态框 */}
+      <NoteCreationModal
+        visible={showNoteModal}
+        onClose={() => setShowNoteModal(false)}
+        sceneData={{
+          id: currentScene?.id || '',
+          title: currentScene?.title || '',
+          description: (currentScene?.content as any)?.description || '',
+          key_points: (currentScene?.content as any)?.key_points || [],
+          type: currentScene?.type || 'slide',
+        }}
+        courseId={id || ''}
       />
       </View>
     </GestureDetector>
