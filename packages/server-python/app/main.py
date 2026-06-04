@@ -62,9 +62,9 @@ app = FastAPI(
 )
 
 
-# ── 全局 422 校验错误 → 中文友好提示 ──
+# ── 全局 422 校验错误 → 多语言友好提示 ──
 
-FIELD_NAMES = {
+FIELD_NAMES_ZH = {
     "email": "邮箱", "password": "密码", "nickname": "昵称",
     "name": "名称", "title": "标题", "content": "内容",
     "description": "描述", "phone": "手机号", "code": "验证码",
@@ -73,7 +73,16 @@ FIELD_NAMES = {
     "type": "类型", "stage_id": "课程ID", "course_id": "课程ID",
 }
 
-ERROR_MESSAGES = {
+FIELD_NAMES_EN = {
+    "email": "email", "password": "password", "nickname": "nickname",
+    "name": "name", "title": "title", "content": "content",
+    "description": "description", "phone": "phone", "code": "code",
+    "avatar_url": "avatar", "language_directive": "language",
+    "topic": "topic", "question": "question", "answer": "answer",
+    "type": "type", "stage_id": "course ID", "course_id": "course ID",
+}
+
+ERROR_MESSAGES_ZH = {
     "missing": "请输入{field}",
     "string_too_short": "{field}太短",
     "string_too_long": "{field}太长",
@@ -85,10 +94,37 @@ ERROR_MESSAGES = {
     "greater_than": "{field}数值太小",
 }
 
+ERROR_MESSAGES_EN = {
+    "missing": "Please enter {field}",
+    "string_too_short": "{field} is too short",
+    "string_too_long": "{field} is too long",
+    "value_error": "Invalid {field}",
+    "type_error": "Invalid {field}",
+    "json_invalid": "Invalid request data format",
+    "bool_parsing": "{field} must be true or false",
+    "int_parsing": "{field} must be a number",
+    "greater_than": "{field} is too small",
+}
+
+
+def _get_locale(request: Request) -> str:
+    """从请求头获取语言偏好，默认 zh-CN"""
+    accept = request.headers.get("accept-language", "")
+    if "en" in accept.lower():
+        return "en-US"
+    return "zh-CN"
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
-    """将 Pydantic 校验错误转为中文友好提示"""
+    """将 Pydantic 校验错误转为多语言友好提示"""
+    locale = _get_locale(request)
+    is_en = locale == "en-US"
+
+    field_names = FIELD_NAMES_EN if is_en else FIELD_NAMES_ZH
+    error_messages = ERROR_MESSAGES_EN if is_en else ERROR_MESSAGES_ZH
+    separator = "; " if is_en else "；"
+
     errors = exc.errors()
     messages = []
     for err in errors:
@@ -100,22 +136,23 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             if part != "body" and isinstance(part, str):
                 field = part
                 break
-        field_cn = FIELD_NAMES.get(field, field or "输入")
+        field_cn = field_names.get(field, field or ("input" if is_en else "输入"))
 
         # 匹配错误类型
-        msg = ERROR_MESSAGES.get(err_type)
+        msg = error_messages.get(err_type)
         if msg:
             messages.append(msg.format(field=field_cn))
         elif "email" in err_type or "email" in str(err.get("msg", "")).lower():
-            messages.append(f"{field_cn}格式不正确")
+            msg = error_messages.get("value_error", "Invalid {field}" if is_en else "{field}格式不正确")
+            messages.append(msg.format(field=field_cn))
         elif err_type == "missing":
-            messages.append(f"请输入{field_cn}")
+            messages.append(error_messages["missing"].format(field=field_cn))
         else:
-            # 回退：用原始消息但替换字段名
-            raw_msg = err.get("msg", "输入有误")
+            # 回退：用原始消息
+            raw_msg = err.get("msg", "Invalid input" if is_en else "输入有误")
             messages.append(f"{field_cn}{raw_msg}")
 
-    detail = messages[0] if len(messages) == 1 else "；".join(messages)
+    detail = messages[0] if len(messages) == 1 else separator.join(messages)
     return JSONResponse(
         status_code=422,
         content={"detail": detail},

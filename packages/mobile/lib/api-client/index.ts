@@ -200,12 +200,18 @@ class ApiClient {
       }
     }
 
-    // 自动添加 Authorization header
+    // 自动添加 Authorization + Accept-Language header
     this.client.interceptors.request.use((config) => {
       // 优先用内存中的 token，否则从 localStorage 读取（确保刷新后也能携带）
       const effectiveToken = this.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null);
       if (effectiveToken) {
         config.headers.Authorization = `Bearer ${effectiveToken}`;
+      }
+      // 自动添加 Accept-Language（与用户当前语言设置同步）
+      try {
+        config.headers['Accept-Language'] = i18n.getLocale() || 'zh-CN';
+      } catch {
+        config.headers['Accept-Language'] = 'zh-CN';
       }
       return config;
     });
