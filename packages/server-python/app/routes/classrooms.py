@@ -823,7 +823,8 @@ async def export_classroom_pdf(
     # ── 生成 PDF ──
     pdf_bytes = await generate_course_pdf(classroom_data, notes)
 
-    # 文件名安全化
+    # 文件名安全化 + URL编码
+    from urllib.parse import quote
     safe_name = stage["name"].replace(" ", "_")[:40] if stage["name"] else "course"
     filename = f"{safe_name}.pdf"
 
@@ -831,6 +832,6 @@ async def export_classroom_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}"
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
         }
     )

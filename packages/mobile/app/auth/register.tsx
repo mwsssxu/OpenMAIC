@@ -387,7 +387,7 @@ const S = StyleSheet.create({
   eyebrowLine: { width: 20, height: 1, backgroundColor: 'rgba(255,255,255,0.4)' },
   eyebrow: { fontSize: 10, letterSpacing: 1.8, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
   heroMain: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.64, lineHeight: 37, marginBottom: 4 },
-  heroSubWrap: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 20, position: 'relative' },
+  heroSubWrap: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 20, position: 'relative' as any },
   heroSubDash: { width: 8, height: 1, backgroundColor: 'rgba(255,255,255,0.5)', position: 'absolute', left: 0, top: 8 },
   heroSub: { fontSize: 26, fontWeight: '300', color: 'rgba(255,255,255,0.8)', letterSpacing: 2.08, lineHeight: 31 },
   heroCaption: { marginTop: 12, fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 18, letterSpacing: 0.11, maxWidth: 220 },
