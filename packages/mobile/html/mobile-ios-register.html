@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>注册 - iOS</title>
+  <style>
+    :root {
+      --bg:        oklch(97.5% 0.004 30);
+      --surface:   oklch(100% 0 0 / 0.65);
+      --fg:        oklch(12% 0.012 30);
+      --muted:     oklch(45% 0.012 30);
+      --border:    oklch(93% 0.004 30);
+      --accent:    oklch(58% 0.16 30);
+      --accent-soft: oklch(82% 0.06 30);
+      --accent-light: oklch(94% 0.02 30);
+      --teal:      oklch(62% 0.10 175);
+      --teal-soft: oklch(88% 0.03 175);
+
+      --font-display: 'Söhne', 'Avenir Next', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-serif:   'Iowan Old Style', 'Charter', 'Songti SC', 'STSong', Georgia, serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    /* === iPhone Frame === */
+    .phone-frame {
+      width: 390px; height: 844px; background: #1a1a1a; border-radius: 54px; padding: 12px;
+      position: relative; box-shadow: 0 24px 48px rgba(0,0,0,0.3), 0 0 0 2px #333;
+      margin: 24px auto; font-family: var(--font-body);
+    }
+    .phone-screen {
+      width: 100%; height: 100%; background: var(--bg); border-radius: 44px;
+      overflow-y: auto; overflow-x: hidden; position: relative;
+      -webkit-overflow-scrolling: touch;
+    }
+    .dynamic-island {
+      position: sticky; top: 0; left: 50%; transform: translateX(-50%);
+      width: 126px; height: 36px; background: #1a1a1a; border-radius: 20px; z-index: 100;
+      margin: 0 auto;
+    }
+    .status-bar {
+      height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+      padding: 0 28px 8px; font-size: 14px; font-weight: 600; color: oklch(100% 0 0);
+      position: relative; z-index: 5;
+    }
+    .status-time { font-variant-numeric: tabular-nums; }
+    .status-icons { display: flex; gap: 6px; align-items: center; }
+
+    /* === HERO === */
+    .hero-area {
+      position: relative; width: 100%; min-height: 320px;
+      overflow: hidden; z-index: 1;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 140% 80% at 30% 20%, oklch(62% 0.18 30 / 0.9), transparent 70%),
+        radial-gradient(ellipse 100% 60% at 80% 40%, oklch(58% 0.14 35 / 0.6), transparent 60%),
+        radial-gradient(ellipse 80% 50% at 60% 80%, oklch(72% 0.10 40 / 0.3), transparent 50%),
+        linear-gradient(160deg, oklch(64% 0.19 30), oklch(56% 0.15 30) 50%, oklch(48% 0.12 35));
+    }
+    .hero-texture {
+      position: absolute; inset: 0; opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 128px 128px;
+    }
+
+    .deco-line-left {
+      position: absolute; top: 60px; left: 28px; width: 1px; height: 60px;
+      background: oklch(100% 0 0 / 0.3);
+    }
+    .deco-line-left::after {
+      content: ''; position: absolute; top: 0; left: -2px; width: 5px; height: 5px;
+      background: oklch(100% 0 0 / 0.5); border-radius: 50%;
+    }
+
+    .deco-circle {
+      position: absolute; border-radius: 50%;
+      border: 1px solid oklch(100% 0 0 / 0.15);
+    }
+    .deco-circle-1 { width: 100px; height: 100px; top: 20px; right: -20px; }
+    .deco-circle-2 { width: 60px; height: 60px; top: 70px; right: 15px; border-color: oklch(100% 0 0 / 0.08); }
+
+    .hero-brand-name {
+      position: absolute; top: 55px; right: 20px; z-index: 2;
+      font-family: var(--font-display);
+      font-size: 56px; font-weight: 900;
+      color: oklch(20% 0.03 30 / 0.12);
+      letter-spacing: 0.04em; line-height: 1;
+      user-select: none; -webkit-user-select: none;
+    }
+
+    .hero-content {
+      position: relative; z-index: 3; padding: 0 28px; padding-top: 100px;
+    }
+    .hero-eyebrow {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: oklch(100% 0 0 / 0.5); margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .hero-eyebrow::before {
+      content: ''; width: 20px; height: 1px;
+      background: oklch(100% 0 0 / 0.4);
+    }
+    .hero-line-main {
+      font-family: var(--font-display);
+      font-size: 32px; font-weight: 800;
+      color: oklch(100% 0 0);
+      letter-spacing: -0.02em; line-height: 1.15;
+      margin-bottom: 4px;
+      text-shadow: 0 2px 24px oklch(58% 0.16 30 / 0.15);
+    }
+    .hero-line-sub {
+      font-family: var(--font-serif);
+      font-size: 26px; font-weight: 300;
+      color: oklch(100% 0 0 / 0.8);
+      letter-spacing: 0.08em; line-height: 1.2;
+      padding-left: 20px; position: relative;
+    }
+    .hero-line-sub::before {
+      content: ''; position: absolute; left: 0; top: 8px;
+      width: 8px; height: 1px; background: oklch(100% 0 0 / 0.5);
+    }
+    .hero-caption {
+      margin-top: 12px; font-size: 11px;
+      color: oklch(100% 0 0 / 0.5);
+      line-height: 1.6; letter-spacing: 0.01em;
+      max-width: 220px;
+    }
+
+    /* 底部波浪 */
+    .hero-wave {
+      position: relative; width: 110%; margin-left: -5%; margin-top: -1px; z-index: 2; display: block;
+    }
+
+    /* === Back Button === */
+    .back-btn {
+      position: absolute; top: 58px; left: 16px; width: 32px; height: 32px;
+      border-radius: 50%; background: oklch(100% 0 0 / 0.15);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      border: 0.5px solid oklch(100% 0 0 / 0.2);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 20; color: white; transition: transform 0.15s;
+    }
+    .back-btn:active { transform: scale(0.92); }
+
+    /* === FORM CARD === */
+    .form-card {
+      position: relative;
+      margin: -20px 16px 16px;
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(32px) saturate(160%);
+      backdrop-filter: blur(32px) saturate(160%);
+      border: 0.5px solid oklch(100% 0 0 / 0.4);
+      border-radius: 20px;
+      padding: 22px 20px 20px;
+      z-index: 15;
+      box-shadow: 0 8px 32px oklch(12% 0.012 30 / 0.06);
+    }
+    .form-card::before {
+      content: ''; position: absolute; top: -0.5px; left: 50%; transform: translateX(-50%);
+      width: 40px; height: 3px; border-radius: 2px;
+      background: var(--accent);
+    }
+
+    .form-header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .form-greeting {
+      font-family: var(--font-display); font-size: 18px; font-weight: 700;
+      letter-spacing: -0.02em; color: var(--fg);
+    }
+    .form-lang { font-size: 11px; color: var(--muted); cursor: pointer; }
+
+    .input-row { margin-bottom: 12px; }
+    .input-label {
+      display: block; font-size: 11px; font-weight: 600; color: var(--muted);
+      margin-bottom: 4px; letter-spacing: 0.01em;
+    }
+    .input-field {
+      width: 100%; height: 44px; padding: 0 14px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      background: oklch(100% 0 0 / 0.8);
+      font-size: 14px; font-family: var(--font-body); color: var(--fg);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+    }
+    .input-field:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px oklch(58% 0.16 30 / 0.08);
+    }
+    .input-field::placeholder { color: oklch(76% 0.005 30); }
+
+    .input-with-icon { position: relative; }
+    .input-with-icon .input-field { padding-right: 44px; }
+    .input-icon-btn {
+      position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent; color: var(--muted); cursor: pointer;
+      border-radius: 50%; transition: background 0.15s;
+    }
+    .input-icon-btn:active { background: var(--accent-light); }
+
+    /* 验证码行 */
+    .input-with-btn { display: flex; gap: 10px; }
+    .input-with-btn .input-field { flex: 1; }
+    .sms-btn {
+      flex-shrink: 0; height: 44px; padding: 0 14px;
+      border: 1.5px solid var(--accent); border-radius: 10px;
+      background: transparent; color: var(--accent);
+      font-size: 12px; font-weight: 600; font-family: var(--font-body);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .sms-btn:active { background: var(--accent); color: white; }
+    .sms-btn.disabled {
+      border-color: var(--border); color: var(--muted); pointer-events: none;
+    }
+
+    /* 密码强度 */
+    .pwd-strength {
+      display: flex; gap: 4px; margin-top: 6px;
+    }
+    .pwd-strength-bar {
+      flex: 1; height: 3px; border-radius: 2px; background: var(--border);
+      transition: background 0.3s;
+    }
+    .pwd-strength-bar.active.weak { background: #DC2626; }
+    .pwd-strength-bar.active.medium { background: #EAB308; }
+    .pwd-strength-bar.active.strong { background: #17A34A; }
+    .pwd-strength-label {
+      font-size: 10px; margin-top: 3px; color: var(--muted); text-align: right;
+    }
+
+    /* 协议 */
+    .agreement {
+      display: flex; align-items: flex-start; gap: 8px;
+      margin: 14px 0 16px; font-size: 11px; color: var(--muted); line-height: 1.6;
+    }
+    .agreement input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--accent);
+      margin-top: 2px; flex-shrink: 0;
+    }
+    .agreement a { color: var(--accent); text-decoration: none; font-weight: 500; }
+
+    .register-btn {
+      width: 100%; height: 48px; border: none; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), oklch(50% 0.13 40));
+      color: #fff; font-size: 15px; font-weight: 600; font-family: var(--font-display);
+      letter-spacing: -0.01em; cursor: pointer;
+      box-shadow: 0 4px 16px oklch(58% 0.16 30 / 0.22);
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    .register-btn:active { transform: scale(0.98); }
+    .register-btn:disabled {
+      opacity: 0.5; pointer-events: none;
+    }
+
+    /* 分割线 */
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 16px 0 12px;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+    .divider span { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+    /* Social login */
+    .social-row { display: flex; gap: 10px; justify-content: center; }
+    .social-btn {
+      width: 52px; height: 42px; border-radius: 10px;
+      border: 1px solid var(--border); background: oklch(100% 0 0);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform 0.15s, border-color 0.15s;
+    }
+    .social-btn:active { transform: scale(0.94); border-color: var(--accent); }
+    .social-btn svg { width: 20px; height: 20px; }
+
+    /* 登录引导 */
+    .login-area {
+      text-align: center; margin-top: 14px;
+      font-size: 13px; color: var(--muted);
+      padding-bottom: 40px;
+    }
+    .login-area a {
+      color: var(--accent); text-decoration: none; font-weight: 600;
+    }
+
+    .home-indicator {
+      position: sticky; bottom: 8px; left: 50%; transform: translateX(-50%);
+      width: 134px; height: 5px; background: oklch(20% 0.012 30 / 0.18);
+      border-radius: 3px; z-index: 20; margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="dynamic-island"></div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor">
+            <rect x="0" y="8" width="3" height="4" rx="0.5"></rect><rect x="5" y="5" width="3" height="7" rx="0.5"></rect>
+            <rect x="10" y="2" width="3" height="10" rx="0.5"></rect><rect x="15" y="0" width="3" height="12" rx="0.5"></rect>
+          </svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
+            <path d="M8 3.6C10 3.6 11.8 4.4 13 5.8l1.4-1.4C12.8 2.6 10.5 1.6 8 1.6S3.2 2.6 1.6 4.4L3 5.8C4.2 4.4 6 3.6 8 3.6zm0 4c1.2 0 2.3.5 3.1 1.3l1.4-1.4C11.1 6.1 9.6 5.6 8 5.6S4.9 6.1 3.5 7.5L4.9 8.9C5.7 8.1 6.8 7.6 8 7.6zm0 4a2 2 0 100-4 2 2 0 000 4z"></path>
+          </svg>
+          <svg width="27" height="13" viewBox="0 0 27 13">
+            <rect x="0" y="1" width="22" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1"></rect>
+            <rect x="23" y="4" width="3" height="5" rx="1" fill="currentColor" opacity="0.4"></rect>
+            <rect x="1.5" y="2.5" width="18" height="8" rx="1.5" fill="currentColor"></rect>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Back Button -->
+      <div class="back-btn" onclick="window.location.href='mobile-ios-login-v4.html'">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="12,4 6,10 12,16"></polyline>
+        </svg>
+      </div>
+
+      <!-- === HERO === -->
+      <div class="hero-area">
+        <div class="hero-bg"></div>
+        <div class="hero-texture"></div>
+
+        <div class="deco-circle deco-circle-1"></div>
+        <div class="deco-circle deco-circle-2"></div>
+        <div class="hero-brand-name">侧伴</div>
+        <div class="deco-line-left"></div>
+
+        <div class="hero-content">
+          <div class="hero-eyebrow">Join Us</div>
+          <div class="hero-line-main">为己而学</div>
+          <div class="hero-line-sub">为人而行</div>
+          <div class="hero-caption">开启你的学习旅程<br>与千万学伴共同成长</div>
+        </div>
+
+        <svg class="hero-wave" viewBox="0 0 416 36" preserveAspectRatio="none">
+          <path d="M0 18 C80 0 160 36 240 18 C320 0 380 24 416 18 L416 36 L0 36Z" fill="var(--bg)"></path>
+        </svg>
+      </div>
+
+      <!-- === FORM CARD === -->
+      <div class="form-card">
+        <div class="form-header">
+          <div class="form-greeting">创建账号</div>
+          <div class="form-lang">EN</div>
+        </div>
+
+        <!-- 手机号 -->
+        <div class="input-row">
+          <label class="input-label">手机号</label>
+          <div class="input-with-icon">
+            <input class="input-field" type="tel" placeholder="请输入手机号" id="phone" maxlength="11" style="padding-left:58px">
+            <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--muted);font-weight:500">+86</span>
+          </div>
+        </div>
+
+        <!-- 验证码 -->
+        <div class="input-row">
+          <label class="input-label">验证码</label>
+          <div class="input-with-btn">
+            <input class="input-field" type="text" placeholder="请输入验证码" id="smsCode" maxlength="6">
+            <button class="sms-btn" id="smsBtn" onclick="sendSms()">获取验证码</button>
+          </div>
+        </div>
+
+        <!-- 昵称 -->
+        <div class="input-row">
+          <label class="input-label">昵称</label>
+          <input class="input-field" type="text" placeholder="给自己取一个名字" id="nickname" maxlength="20">
+        </div>
+
+        <!-- 密码 -->
+        <div class="input-row">
+          <label class="input-label">密码</label>
+          <div class="input-with-icon">
+            <input class="input-field" type="password" placeholder="至少8位，包含字母和数字" id="pwd" oninput="checkStrength()">
+            <button class="input-icon-btn" onclick="togglePwd('pwd')" aria-label="显示密码">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <div class="pwd-strength">
+            <div class="pwd-strength-bar" id="str1"></div>
+            <div class="pwd-strength-bar" id="str2"></div>
+            <div class="pwd-strength-bar" id="str3"></div>
+          </div>
+          <div class="pwd-strength-label" id="strLabel"></div>
+        </div>
+
+        <!-- 确认密码 -->
+        <div class="input-row">
+          <label class="input-label">确认密码</label>
+          <div class="input-with-icon">
+            <input class="input-field" type="password" placeholder="再次输入密码" id="pwdConfirm">
+            <button class="input-icon-btn" onclick="togglePwd('pwdConfirm')" aria-label="显示密码">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 协议 -->
+        <div class="agreement">
+          <input type="checkbox" id="agreeCheck" onchange="updateBtn()">
+          <label for="agreeCheck">我已阅读并同意 <a href="#">《用户服务协议》</a>和<a href="#">《隐私政策》</a></label>
+        </div>
+
+        <button class="register-btn" id="regBtn" disabled onclick="register()">注 册</button>
+
+        <div class="divider"><span>其他注册方式</span></div>
+
+        <div class="social-row">
+          <!-- 微信 -->
+          <div class="social-btn">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" fill="#07C160" opacity="0.12"></path>
+              <path d="M12 4c-1.5 0-2.8.4-3.9 1.1L7 4l1.2 2.2C6.5 7.5 5.5 9.6 5.5 12c0 4.1 3.4 7.5 7.5 7.5s7.5-3.4 7.5-7.5S16.1 4 12 4z" fill="#07C160"></path>
+              <circle cx="9.5" cy="11" r="1" fill="white"></circle><circle cx="14.5" cy="11" r="1" fill="white"></circle>
+            </svg>
+          </div>
+          <!-- Apple -->
+          <div class="social-btn">
+            <svg viewBox="0 0 24 24" fill="#111">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"></path>
+            </svg>
+          </div>
+          <!-- 邮箱 -->
+          <div class="social-btn">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="2" y="5" width="20" height="14" rx="3" fill="var(--accent)" opacity="0.12"></rect>
+              <path d="M2 8l10 5 10-5" stroke="var(--accent)" stroke-width="1.5" fill="none"></path>
+            </svg>
+          </div>
+        </div>
+
+        <div class="login-area">
+          已有账号？<a href="mobile-ios-login-v4.html">立即登录</a>
+        </div>
+      </div>
+
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+
+  <script>
+    function togglePwd(id) {
+      const p = document.getElementById(id);
+      const btn = p.nextElementSibling;
+      if (p.type === 'password') {
+        p.type = 'text';
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+      } else {
+        p.type = 'password';
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      }
+    }
+
+    function checkStrength() {
+      const pwd = document.getElementById('pwd').value;
+      const bars = [document.getElementById('str1'), document.getElementById('str2'), document.getElementById('str3')];
+      const label = document.getElementById('strLabel');
+
+      bars.forEach(b => { b.className = 'pwd-strength-bar'; });
+      label.textContent = '';
+
+      if (!pwd) return;
+
+      let score = 0;
+      if (pwd.length >= 8) score++;
+      if (/[a-zA-Z]/.test(pwd) && /\d/.test(pwd)) score++;
+      if (/[^a-zA-Z0-9]/.test(pwd)) score++;
+
+      const levels = ['weak', 'medium', 'strong'];
+      const labels = ['弱', '中等', '强'];
+
+      for (let i = 0; i < score; i++) {
+        bars[i].classList.add('active', levels[score - 1]);
+      }
+      if (score > 0) label.textContent = '密码强度：' + labels[score - 1];
+    }
+
+    function updateBtn() {
+      const checked = document.getElementById('agreeCheck').checked;
+      document.getElementById('regBtn').disabled = !checked;
+    }
+
+    let smsTimer = null;
+    function sendSms() {
+      const btn = document.getElementById('smsBtn');
+      let sec = 60;
+      btn.classList.add('disabled');
+      btn.textContent = sec + 's';
+      smsTimer = setInterval(() => {
+        sec--;
+        btn.textContent = sec + 's';
+        if (sec <= 0) {
+          clearInterval(smsTimer);
+          btn.classList.remove('disabled');
+          btn.textContent = '获取验证码';
+        }
+      }, 1000);
+    }
+
+    function register() {
+      const phone = document.getElementById('phone').value;
+      const code = document.getElementById('smsCode').value;
+      const nick = document.getElementById('nickname').value;
+      const pwd = document.getElementById('pwd').value;
+      const pwd2 = document.getElementById('pwdConfirm').value;
+
+      if (!phone || phone.length < 11) { alert('请输入正确的手机号'); return; }
+      if (!code) { alert('请输入验证码'); return; }
+      if (!nick) { alert('请输入昵称'); return; }
+      if (pwd.length < 8) { alert('密码至少8位'); return; }
+      if (pwd !== pwd2) { alert('两次密码不一致'); return; }
+
+      window.location.href = 'mobile-ios.html';
+    }
+  </script>
+</body></html>

@@ -5,7 +5,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装依赖（使用清华镜像源解决SSL问题）
+# 安装依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout=120 -r requirements.txt
 

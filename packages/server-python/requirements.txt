@@ -42,3 +42,6 @@ ruff==0.8.0
 
 
 email-validator==2.1.0
+
+# PDF 生成
+reportlab==4.4.4

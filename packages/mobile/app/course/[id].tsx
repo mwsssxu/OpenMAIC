@@ -8,7 +8,10 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
+  Platform,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
@@ -249,6 +252,7 @@ export default function CourseDetailScreen() {
   const [descExpanded, setDescExpanded] = useState(false);
   const [liked, setLiked] = useState(false);
   const [isPublic, setIsPublic] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadClassroom();
@@ -421,13 +425,50 @@ export default function CourseDetailScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.btnSecondary}
-          onPress={() => {
+          onPress={async () => {
+            if (exporting) return;
             haptics.light();
-            Alert.alert('离线缓存', '该功能正在开发中，敬请期待');
+            setExporting(true);
+            try {
+              const blob = await apiClient.exportClassroomPdf(id as string);
+              const courseName = classroom?.stage?.name || 'course';
+              const safeName = courseName.replace(/[^a-zA-Z0-9\u4e00-\u9fff_\-]/g, '_').slice(0, 40);
+              const fileUri = `${FileSystem.cacheDirectory}${safeName}.pdf`;
+              // Blob → base64 → 写文件
+              const reader = new FileReader();
+              const base64 = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => {
+                  const dataUrl = reader.result as string;
+                  resolve(dataUrl.split(',')[1]);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+              await FileSystem.writeAsStringAsync(fileUri, base64, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              // 分享/保存
+              if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(fileUri, {
+                  mimeType: 'application/pdf',
+                  dialogTitle: `导出 ${courseName}`,
+                });
+              } else {
+                Alert.alert('导出成功', `PDF已保存到 ${fileUri}`);
+              }
+            } catch (err: any) {
+              Alert.alert('导出失败', err.message || 'PDF生成出错，请稍后重试');
+            } finally {
+              setExporting(false);
+            }
           }}
           activeOpacity={0.85}
         >
-          <Ionicons name="download-outline" size={20} color={iOSColors.accent} />
+          {exporting ? (
+            <ActivityIndicator size="small" color={iOSColors.accent} />
+          ) : (
+            <Ionicons name="download-outline" size={20} color={iOSColors.accent} />
+          )}
         </TouchableOpacity>
       </View>
     </View>

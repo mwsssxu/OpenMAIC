@@ -286,13 +286,29 @@ async def toggle_classroom_like(
     classroom_uuid = validate_uuid(classroom_id, "课程ID")
     user_uuid = validate_uuid(current_user_id, "用户ID")
 
-    # 查找分享记录
+    # 确认课程存在
+    stage = await db.fetchrow("SELECT id, name, description FROM stages WHERE id = $1", classroom_uuid)
+    if not stage:
+        raise HTTPException(status_code=404, detail="课程不存在")
+
+    # 查找或创建分享记录（收藏需要 shared_classrooms 记录）
     share = await db.fetchrow(
         "SELECT id FROM shared_classrooms WHERE stage_id = $1",
         classroom_uuid
     )
     if not share:
-        raise HTTPException(status_code=404, detail="课程未分享")
+        # 自动创建私有分享记录，使收藏功能可用
+        import random, string
+        share_code = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        share_id = uuid.uuid4()
+        await db.execute(
+            """INSERT INTO shared_classrooms
+               (id, stage_id, user_id, share_code, is_public, title, description, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, FALSE, $5, $6, $7, $7)""",
+            share_id, classroom_uuid, user_uuid, share_code,
+            stage["name"] or "", stage["description"] or "", utcnow()
+        )
+        share = {"id": share_id}
 
     existing_like = await db.fetchrow(
         "SELECT id FROM classroom_likes WHERE shared_classroom_id = $1 AND user_id = $2",
@@ -693,3 +709,128 @@ async def get_limits():
         "supported_languages": SUPPORTED_LANGUAGES,
         "supported_scene_types": SUPPORTED_SCENE_TYPES,
     }
+
+
+@router.get("/{classroom_id}/export-pdf")
+async def export_classroom_pdf(
+    classroom_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """导出课程为 PDF（含课程内容 + 个人笔记）"""
+    from fastapi.responses import Response
+    from app.services.pdf_export import generate_course_pdf
+
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
+    # ── 复用 get_classroom 的数据查询逻辑 ──
+    stage = await db.fetchrow(
+        """
+        SELECT s.id, s.name, s.description, s.language_directive, s.style, s.agent_ids,
+               s.generated_agent_configs, s.pending_outlines, s.created_at, s.updated_at, s.user_id
+        FROM stages s
+        WHERE s.id = $1
+        """,
+        classroom_uuid
+    )
+    if stage is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+
+    # 权限检查
+    is_owner = str(stage["user_id"]) == current_user_id
+    if not is_owner:
+        share = await db.fetchrow(
+            "SELECT id FROM shared_classrooms WHERE stage_id = $1 AND is_public = TRUE",
+            classroom_uuid
+        )
+        if not share:
+            raise HTTPException(status_code=403, detail="该课程未公开")
+
+    # 获取场景
+    scenes = await db.fetch(
+        """
+        SELECT id, type, title, order_index, content, actions, whiteboards
+        FROM scenes WHERE stage_id = $1 ORDER BY order_index
+        """,
+        classroom_uuid
+    )
+
+    # 学习进度
+    completion = await db.fetchrow(
+        "SELECT scenes_completed, total_scenes FROM course_completions WHERE user_id = $1 AND course_id = $2",
+        user_uuid, classroom_uuid
+    )
+    scenes_completed = completion["scenes_completed"] if completion else 0
+
+    # 解析 agent configs
+    generated_agent_configs = None
+    if stage["generated_agent_configs"]:
+        if isinstance(stage["generated_agent_configs"], str):
+            generated_agent_configs = json.loads(stage["generated_agent_configs"])
+        else:
+            generated_agent_configs = stage["generated_agent_configs"]
+
+    # 组装 classroom 数据
+    agents = []
+    if generated_agent_configs:
+        agents = generated_agent_configs
+
+    classroom_data = {
+        "stage": {
+            "id": str(stage["id"]),
+            "name": stage["name"],
+            "description": stage["description"],
+            "tags": [],
+        },
+        "scenes_completed": scenes_completed,
+        "scenes": [
+            {
+                "id": str(s["id"]),
+                "type": s["type"],
+                "title": s["title"],
+                "order_index": s["order_index"],
+                "content": json.loads(s["content"]) if s["content"] and isinstance(s["content"], str) else s["content"],
+            }
+            for s in scenes
+        ],
+        "agents": agents,
+    }
+
+    # ── 查询关联笔记 ──
+    note_rows = await db.fetch(
+        """
+        SELECT id, title, content, category, starred, color, tags, created_at
+        FROM shared_notes
+        WHERE course_id = $1 AND user_id = $2 AND is_personal = TRUE
+        ORDER BY created_at DESC
+        """,
+        classroom_uuid, user_uuid
+    )
+    notes = []
+    for r in note_rows:
+        notes.append({
+            "id": str(r["id"]),
+            "title": r["title"],
+            "content": r["content"],
+            "category": r["category"] or "学习笔记",
+            "starred": r["starred"] or False,
+            "color": r["color"] or "coral",
+            "tags": r["tags"].split(",") if r["tags"] else [],
+            "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M"),
+        })
+
+    # ── 生成 PDF ──
+    pdf_bytes = await generate_course_pdf(classroom_data, notes)
+
+    # 文件名安全化
+    safe_name = stage["name"].replace(" ", "_")[:40] if stage["name"] else "course"
+    filename = f"{safe_name}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}"
+        }
+    )

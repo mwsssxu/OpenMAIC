@@ -347,6 +347,13 @@ class ApiClient {
     return data;
   }
 
+  async exportClassroomPdf(id: string): Promise<Blob> {
+    const { data } = await this.client.get(`/classrooms/${id}/export-pdf`, {
+      responseType: 'blob',
+    });
+    return data as Blob;
+  }
+
   async createClassroom(name: string, description?: string) {
     const { data } = await this.client.post('/classrooms', { name, description });
     return data;
