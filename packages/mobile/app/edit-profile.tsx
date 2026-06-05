@@ -25,12 +25,6 @@ const C = {
   danger: '#dc2626',
 };
 
-const GENDERS = [
-  { value: 'male', label: t('profile.genderMale') },
-  { value: 'female', label: t('profile.genderFemale') },
-  { value: 'other', label: t('profile.genderOther') },
-];
-
 const INTERESTS = [
   '数据分析', '前端开发', '后端开发', '产品设计', '人工智能',
   '云计算', '区块链', '网络安全', '移动开发', '游戏开发',
@@ -393,7 +387,11 @@ export default function EditProfileScreen() {
               <Text style={S.formLabel}>{t('profile.gender')}</Text>
             </View>
             <View style={S.genderRow}>
-              {GENDERS.map(g => (
+              {[
+                { value: 'male', label: t('profile.genderMale') },
+                { value: 'female', label: t('profile.genderFemale') },
+                { value: 'other', label: t('profile.genderOther') },
+              ].map(g => (
                 <TouchableOpacity
                   key={g.value}
                   style={[S.genderOption, gender === g.value && S.genderSelected]}
