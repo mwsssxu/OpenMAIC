@@ -26,9 +26,9 @@ const C = {
 };
 
 const GENDERS = [
-  { value: 'male', label: '男' },
-  { value: 'female', label: '女' },
-  { value: 'other', label: '其他' },
+  { value: 'male', label: t('profile.genderMale') },
+  { value: 'female', label: t('profile.genderFemale') },
+  { value: 'other', label: t('profile.genderOther') },
 ];
 
 const INTERESTS = [
@@ -134,12 +134,12 @@ export default function EditProfileScreen() {
     const timer = setTimeout(async () => {
       if (!hasChangesRef.current || savingRef.current) return;
       if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
-        showError('生日格式不正确，请输入 YYYY-MM-DD');
+        showError(t('profile.birthdayInvalid'));
         return;
       }
       if (birthday) {
         const d = new Date(birthday);
-        if (isNaN(d.getTime())) { showError('生日日期无效'); return; }
+        if (isNaN(d.getTime())) { showError(t('profile.birthdayInvalidDate')); return; }
       }
       savingRef.current = true;
       setSaving(true);
@@ -180,38 +180,38 @@ export default function EditProfileScreen() {
   // Logout: 2-step confirm
   function handleLogout() {
     haptics.medium();
-    confirmAction('退出登录', '确定要退出当前账号吗？', () => {
-      confirmAction('再次确认', '退出登录后需要重新登录才能使用', async () => {
+    confirmAction(t('profile.logout'), t('profile.logoutConfirm'), () => {
+      confirmAction(t('common.confirm'), t('profile.logoutTwice'), async () => {
         try {
           await logout();
           router.dismissAll();
           router.replace('/auth/login');
         } catch (e) { showError(e); }
-      }, '确认退出');
-    }, '退出');
+      }, t('profile.logoutConfirmExit'));
+    }, t('profile.logoutStep1'));
   }
 
   function handleChangePassword() {
     if (!oldPwd || !newPwd || !confirmPwd) {
-      showError('请填写所有密码字段');
+      showError(t('profile.allFieldsRequired'));
       return;
     }
     if (newPwd.length < 6) {
-      showError('新密码至少6位');
+      showError(t('profile.passwordMinLength'));
       return;
     }
     if (newPwd !== confirmPwd) {
-      showError('两次输入的新密码不一致');
+      showError(t('profile.passwordMismatch'));
       return;
     }
-    confirmAction('修改密码', '确定要修改登录密码吗？', async () => {
+    confirmAction(t('profile.changePassword'), t('profile.changePasswordConfirm'), async () => {
       try {
         await apiClient.changePassword(oldPwd, newPwd);
         setShowChangePwd(false);
         setOldPwd('');
         setNewPwd('');
         setConfirmPwd('');
-        showError('密码修改成功');
+        showError(t('profile.passwordChanged'));
       } catch (e) { showError(e); }
     });
   }
@@ -219,16 +219,16 @@ export default function EditProfileScreen() {
   // Delete account: 2-step confirm
   function handleDeleteAccount() {
     haptics.medium();
-    confirmAction('注销账户', '注销后所有数据将被永久删除，无法恢复。', () => {
-      confirmAction('最终确认', '这是最后一次确认，注销后无法撤销。', async () => {
+    confirmAction(t('profile.deleteAccount'), t('profile.deleteAccountConfirm'), () => {
+      confirmAction(t('common.confirm'), t('profile.deleteFinal'), async () => {
         try {
           await apiClient.deleteAccount();
           await logout();
           router.dismissAll();
           router.replace('/auth/login');
         } catch (e) { showError(e); }
-      }, '永久注销', '返回', true);
-    }, '继续', '取消', true);
+      }, t('profile.deletePermanently'), t('common.back'), true);
+    }, t('profile.deleteContinue'), t('common.cancel'), true);
   }
 
   function toggleInterest(tag: string) {
@@ -253,13 +253,13 @@ export default function EditProfileScreen() {
             style={S.navBack}
           >
             <Ionicons name="chevron-back" size={24} color={C.accent} />
-            <Text style={S.navBackText}>返回</Text>
+            <Text style={S.navBackText}>{t('common.back')}</Text>
           </TouchableOpacity>
-          <Text style={S.navTitle}>编辑资料</Text>
+          <Text style={S.navTitle}>{t('profile.edit')}</Text>
           <View style={{ width: 18 }} />
         </View>
         <View style={S.loadingWrap}>
-          <Text style={{ color: C.muted }}>加载中...</Text>
+          <Text style={{ color: C.muted }}>{t('common.loading')}</Text>
         </View>
       </View>
     );
@@ -274,11 +274,11 @@ export default function EditProfileScreen() {
           style={S.navBack}
         >
           <Ionicons name="chevron-back" size={24} color={C.accent} />
-          <Text style={S.navBackText}>返回</Text>
+          <Text style={S.navBackText}>{t('common.back')}</Text>
         </TouchableOpacity>
-        <Text style={S.navTitle}>编辑资料</Text>
-        {saving && <Text style={S.navStatus}>保存中...</Text>}
-        {!saving && hasChanges && <Text style={[S.navStatus, { color: C.accent }]}>有修改</Text>}
+        <Text style={S.navTitle}>{t('profile.edit')}</Text>
+        {saving && <Text style={S.navStatus}>{t('profile.saving')}</Text>}
+        {!saving && hasChanges && <Text style={[S.navStatus, { color: C.accent }]}>{t('profile.hasChanges')}</Text>}
         {!saving && !hasChanges && original.nickname && <Ionicons name="checkmark-circle" size={18} color="#34c759" />}
       </View>
 
@@ -291,20 +291,20 @@ export default function EditProfileScreen() {
           <View style={S.avatarSection}>
             <View style={S.avatarRow}>
               <View style={S.avatarCircle}>
-                <Text style={S.avatarText}>{(nickname || '我').charAt(0)}</Text>
+                <Text style={S.avatarText}>{(nickname || t('profile.me')).charAt(0)}</Text>
               </View>
               <View style={S.avatarRight}>
-                <TouchableOpacity style={S.avatarHintWrap} onPress={() => showError('头像更换功能即将上线')}>
-                  <Text style={S.avatarHint}>点击更换头像</Text>
+                <TouchableOpacity style={S.avatarHintWrap} onPress={() => showError(t('profile.changeAvatarSoon'))}>
+                  <Text style={S.avatarHint}>{t('profile.changeAvatar')}</Text>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity style={S.changePwdBtn} onPress={() => setShowChangePwd(true)} activeOpacity={0.7}>
                     <Ionicons name="key-outline" size={14} color={C.accent} />
-                    <Text style={S.changePwdLabel}>密码</Text>
+                    <Text style={S.changePwdLabel}>{t('profile.passwordShort')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={S.deleteIconBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
                     <Ionicons name="trash-outline" size={14} color={C.danger} />
-                    <Text style={S.deleteIconLabel}>注销</Text>
+                    <Text style={S.deleteIconLabel}>{t('profile.deleteShort')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -312,15 +312,15 @@ export default function EditProfileScreen() {
           </View>
 
           {/* Basic Info */}
-          <Text style={S.sectionTitle}>基本信息</Text>
+          <Text style={S.sectionTitle}>{t('profile.nickname')}</Text>
           <View style={S.formCard}>
             <View style={S.formRow}>
-              <Text style={S.formLabel}>昵称</Text>
+              <Text style={S.formLabel}>{t('profile.nickname')}</Text>
               <TextInput
                 style={S.formInput}
                 value={nickname}
                 onChangeText={setNickname}
-                placeholder="输入昵称"
+                placeholder={t("profile.nicknamePlaceholder")}
                 maxLength={20}
                 placeholderTextColor={C.muted}
               />
@@ -329,14 +329,14 @@ export default function EditProfileScreen() {
             {/* Bio */}
             <View style={S.bioRow}>
               <View style={S.bioHeader}>
-                <Text style={S.formLabel}>简介</Text>
+                <Text style={S.formLabel}>{t('profile.bio')}</Text>
                 <Text style={S.bioCount}>{bio.length}/100</Text>
               </View>
               <TextInput
                 style={S.bioInput}
                 value={bio}
                 onChangeText={setBio}
-                placeholder="介绍一下自己..."
+                placeholder={t("profile.bioPlaceholder")}
                 maxLength={100}
                 multiline
                 numberOfLines={3}
@@ -348,7 +348,7 @@ export default function EditProfileScreen() {
             {/* Birthday */}
             {Platform.OS === 'web' ? (
               <View style={S.formRow}>
-                <Text style={S.formLabel}>生日</Text>
+                <Text style={S.formLabel}>{t('profile.birthday')}</Text>
                 <TextInput
                   style={S.formInput}
                   value={birthday}
@@ -364,9 +364,9 @@ export default function EditProfileScreen() {
                 onPress={() => { haptics.light(); setShowDatePicker(true); }}
                 activeOpacity={0.6}
               >
-                <Text style={S.formLabel}>生日</Text>
+                <Text style={S.formLabel}>{t('profile.birthday')}</Text>
                 <Text style={[S.formInput, { textAlign: 'right' }, birthday ? { color: C.fg } : { color: C.muted }]}>
-                  {birthday || '选择日期'}
+                  {birthday || t('profile.birthdayPlaceholder')}
                 </Text>
                 <Ionicons name="chevron-forward" size={18} color={C.muted} style={{ marginLeft: 4 }} />
               </TouchableOpacity>
@@ -390,7 +390,7 @@ export default function EditProfileScreen() {
 
             {/* Gender */}
             <View style={[S.formRow, { borderBottomWidth: 0 }]}>
-              <Text style={S.formLabel}>性别</Text>
+              <Text style={S.formLabel}>{t('profile.gender')}</Text>
             </View>
             <View style={S.genderRow}>
               {GENDERS.map(g => (
@@ -409,7 +409,7 @@ export default function EditProfileScreen() {
           </View>
 
           {/* Learning Interests */}
-          <Text style={S.sectionTitle}>学习兴趣</Text>
+          <Text style={S.sectionTitle}>{t('profile.interests')}</Text>
           <View style={S.formCard}>
             <View style={S.interestsGrid}>
               {INTERESTS.map(tag => (
@@ -428,7 +428,7 @@ export default function EditProfileScreen() {
           </View>
 
           {/* Social Links */}
-          <Text style={S.sectionTitle}>社交账号</Text>
+          <Text style={S.sectionTitle}>{t('profile.socialLinks')}</Text>
           <View style={S.formCard}>
             <View style={S.socialRow}>
               <View style={[S.socialIcon, { backgroundColor: '#e8f5e8' }]}>
@@ -438,7 +438,7 @@ export default function EditProfileScreen() {
                 style={S.socialInput}
                 value={wechat}
                 onChangeText={setWechat}
-                placeholder="微信号"
+                placeholder={t("profile.wechat")}
                 placeholderTextColor={C.muted}
               />
             </View>
@@ -450,7 +450,7 @@ export default function EditProfileScreen() {
                 style={S.socialInput}
                 value={weibo}
                 onChangeText={setWeibo}
-                placeholder="微博账号"
+                placeholder={t("profile.weibo")}
                 placeholderTextColor={C.muted}
               />
             </View>
@@ -462,7 +462,7 @@ export default function EditProfileScreen() {
                 style={S.socialInput}
                 value={github}
                 onChangeText={setGithub}
-                placeholder="GitHub 用户名"
+                placeholder={t("profile.github")}
                 placeholderTextColor={C.muted}
               />
             </View>
@@ -474,19 +474,19 @@ export default function EditProfileScreen() {
                 style={S.socialInput}
                 value={linkedin}
                 onChangeText={setLinkedin}
-                placeholder="LinkedIn 链接"
+                placeholder={t("profile.linkedin")}
                 placeholderTextColor={C.muted}
               />
             </View>
           </View>
 
           {/* Privacy Settings */}
-          <Text style={S.sectionTitle}>隐私设置</Text>
+          <Text style={S.sectionTitle}>{t('profile.privacySettings')}</Text>
           <View style={S.formCard}>
             <View style={S.privacyRow}>
               <View style={S.privacyInfo}>
-                <Text style={S.privacyLabel}>公开学习进度</Text>
-                <Text style={S.privacyDesc}>其他用户可以看到你的学习进度</Text>
+                <Text style={S.privacyLabel}>{t('profile.showProgress')}</Text>
+                <Text style={S.privacyDesc}>{t('profile.showProgressDesc')}</Text>
               </View>
               <Switch
                 value={showProgress}
@@ -497,8 +497,8 @@ export default function EditProfileScreen() {
             </View>
             <View style={S.privacyRow}>
               <View style={S.privacyInfo}>
-                <Text style={S.privacyLabel}>展示社交账号</Text>
-                <Text style={S.privacyDesc}>在个人主页显示绑定的社交账号</Text>
+                <Text style={S.privacyLabel}>{t('profile.showSocial')}</Text>
+                <Text style={S.privacyDesc}>{t('profile.showSocialDesc')}</Text>
               </View>
               <Switch
                 value={showSocial}
@@ -509,8 +509,8 @@ export default function EditProfileScreen() {
             </View>
             <View style={[S.privacyRow, { borderBottomWidth: 0 }]}>
               <View style={S.privacyInfo}>
-                <Text style={S.privacyLabel}>接收陌生人消息</Text>
-                <Text style={S.privacyDesc}>允许未关注的人发送私信</Text>
+                <Text style={S.privacyLabel}>{t('profile.allowMessage')}</Text>
+                <Text style={S.privacyDesc}>{t('profile.allowMessageDesc')}</Text>
               </View>
               <Switch
                 value={allowMessage}
@@ -552,7 +552,7 @@ export default function EditProfileScreen() {
             activeOpacity={0.7}
           >
             <Ionicons name="log-out-outline" size={18} color={C.accent} />
-            <Text style={S.logoutText}>退出登录</Text>
+            <Text style={S.logoutText}>{t('profile.logout')}</Text>
           </TouchableOpacity>
 
           <View style={{ height: 40 }} />
@@ -563,12 +563,12 @@ export default function EditProfileScreen() {
       <Modal visible={showChangePwd} transparent animationType="fade" onRequestClose={() => setShowChangePwd(false)}>
         <View style={S.modalOverlay}>
           <View style={S.modalCard}>
-            <Text style={S.modalTitle}>修改密码</Text>
+            <Text style={S.modalTitle}>{t('profile.changePassword')}</Text>
             <TextInput
               style={S.modalInput}
               value={oldPwd}
               onChangeText={setOldPwd}
-              placeholder="当前密码"
+              placeholder={t("profile.oldPassword")}
               placeholderTextColor={C.muted}
               secureTextEntry
             />
@@ -576,7 +576,7 @@ export default function EditProfileScreen() {
               style={S.modalInput}
               value={newPwd}
               onChangeText={setNewPwd}
-              placeholder="新密码（至少6位）"
+              placeholder={t("profile.newPassword")}
               placeholderTextColor={C.muted}
               secureTextEntry
             />
@@ -584,16 +584,16 @@ export default function EditProfileScreen() {
               style={S.modalInput}
               value={confirmPwd}
               onChangeText={setConfirmPwd}
-              placeholder="确认新密码"
+              placeholder={t("profile.confirmPassword")}
               placeholderTextColor={C.muted}
               secureTextEntry
             />
             <View style={S.modalBtnRow}>
               <TouchableOpacity style={S.modalCancelBtn} onPress={() => { setShowChangePwd(false); setOldPwd(''); setNewPwd(''); setConfirmPwd(''); }} activeOpacity={0.6}>
-                <Text style={S.modalCancelText}>取消</Text>
+                <Text style={S.modalCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={S.modalConfirmBtn} onPress={handleChangePassword} activeOpacity={0.6}>
-                <Text style={S.modalConfirmText}>确认修改</Text>
+                <Text style={S.modalConfirmText}>{t('profile.confirmChange')}</Text>
               </TouchableOpacity>
             </View>
           </View>
