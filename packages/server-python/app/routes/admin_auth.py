@@ -187,6 +187,17 @@ async def check_permission(
     return admin
 
 
+# ============ Permission Dependencies ============
+async def _require_admin_manage(admin: dict = Depends(get_current_admin), db: asyncpg.Connection = Depends(get_db)) -> dict:
+    return await check_permission("admin.manage", admin, db)
+
+async def _require_admin_view(admin: dict = Depends(get_current_admin), db: asyncpg.Connection = Depends(get_db)) -> dict:
+    return await check_permission("admin.view", admin, db)
+
+async def _require_admin_logs(admin: dict = Depends(get_current_admin), db: asyncpg.Connection = Depends(get_db)) -> dict:
+    return await check_permission("admin.logs", admin, db)
+
+
 async def get_admin_permissions(
     admin_id: str,
     db: asyncpg.Connection
@@ -349,7 +360,7 @@ async def get_me(
 @router.get("/check-permission/{permission_code}")
 async def check_permission_endpoint(
     permission_code: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(get_current_admin),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Check if current admin has permission."""
@@ -364,7 +375,7 @@ async def check_permission_endpoint(
 
 @router.get("/admins")
 async def list_admins(
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_view),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List all admins (requires admin.manage permission)."""
@@ -400,7 +411,7 @@ async def list_admins(
 @router.post("/admins")
 async def create_admin(
     body: AdminCreate,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Create new admin."""
@@ -462,7 +473,7 @@ async def create_admin(
 async def update_admin_roles(
     target_admin_id: str,
     body: RoleAssignment,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update admin roles."""
@@ -504,7 +515,7 @@ async def update_admin_roles(
 @router.post("/admins/{target_admin_id}/disable")
 async def disable_admin(
     target_admin_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Disable admin account."""
@@ -537,7 +548,7 @@ async def disable_admin(
 @router.post("/admins/{target_admin_id}/enable")
 async def enable_admin(
     target_admin_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Enable admin account."""
@@ -562,7 +573,7 @@ async def enable_admin(
 @router.delete("/admins/{target_admin_id}")
 async def delete_admin(
     target_admin_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Delete admin account."""
@@ -597,7 +608,7 @@ async def delete_admin(
 @router.get("/login-logs")
 async def get_login_logs(
     days: int = Query(7, le=30),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(_require_admin_logs),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get login logs."""

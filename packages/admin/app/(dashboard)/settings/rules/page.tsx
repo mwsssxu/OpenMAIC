@@ -20,6 +20,7 @@ interface RulesConfig {
 export default function RulesSettingsPage() {
   const [config, setConfig] = useState<RulesConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -40,34 +41,13 @@ export default function RulesSettingsPage() {
         const data = await response.json();
         setConfig(data);
       } else {
-        setConfig(getMockConfig());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setConfig(getMockConfig());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockConfig(): RulesConfig {
-    return {
-      rewards: [
-        { action: 'course_complete', points: 20, description: '完成一门课程', enabled: true },
-        { action: 'question_post', points: 5, description: '发布问题', enabled: true },
-        { action: 'answer_post', points: 10, description: '发布回答', enabled: true },
-        { action: 'answer_accepted', points: 20, description: '回答被采纳', enabled: true },
-        { action: 'note_post', points: 15, description: '发布学习笔记', enabled: true },
-        { action: 'note_liked', points: 2, description: '笔记被点赞', enabled: true },
-      ],
-      daily_task_bonus: 50,
-      streak_multiplier: 1.5,
-      review_points: [
-        { type: 'quick_recall', points: 3 },
-        { type: 'key_points', points: 5 },
-        { type: 'deep_review', points: 10 },
-        { type: 'comprehensive', points: 15 },
-      ],
-    };
   }
 
   async function handleSave() {
@@ -85,7 +65,7 @@ export default function RulesSettingsPage() {
         body: JSON.stringify(config),
       });
     } catch {
-      // 模拟保存
+      setError('保存失败，请稍后重试');
     } finally {
       setIsSaving(false);
     }
@@ -113,6 +93,7 @@ export default function RulesSettingsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">规则配置</h1>
         <button

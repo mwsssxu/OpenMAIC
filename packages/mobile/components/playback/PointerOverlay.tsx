@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   Text,
 } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useI18n } from '@/lib/i18n';
 
 interface PointerOverlayProps {
@@ -40,8 +41,8 @@ export function PointerOverlay({
     if (pointerMode === 'laser' && active) {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(laserOpacity, { toValue: 0.7, duration: 300, useNativeDriver: true }),
-          Animated.timing(laserOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(laserOpacity, { toValue: 0.7, duration: 300, useNativeDriver: USE_NATIVE_DRIVER }),
+          Animated.timing(laserOpacity, { toValue: 1, duration: 300, useNativeDriver: USE_NATIVE_DRIVER }),
         ])
       ).start();
     } else {
@@ -56,8 +57,8 @@ export function PointerOverlay({
     if (pointerMode === 'spotlight' && active) {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(spotlightRadius, { toValue: 70, duration: 500, useNativeDriver: true }),
-          Animated.timing(spotlightRadius, { toValue: 60, duration: 500, useNativeDriver: true }),
+          Animated.timing(spotlightRadius, { toValue: 70, duration: 500, useNativeDriver: USE_NATIVE_DRIVER }),
+          Animated.timing(spotlightRadius, { toValue: 60, duration: 500, useNativeDriver: USE_NATIVE_DRIVER }),
         ])
       ).start();
     } else {

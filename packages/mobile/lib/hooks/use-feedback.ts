@@ -45,17 +45,17 @@ export function useFeedback() {
   }, []);
 
   // 成功反馈
-  const onSuccess = useCallback(() => {
+  const onSuccess = useCallback((_message?: string) => {
     onNotify('success');
   }, [onNotify]);
 
   // 错误反馈
-  const onError = useCallback(() => {
+  const onError = useCallback((_message?: string) => {
     onNotify('error');
   }, [onNotify]);
 
   // 警告反馈
-  const onWarning = useCallback(() => {
+  const onWarning = useCallback((_message?: string) => {
     onNotify('warning');
   }, [onNotify]);
 

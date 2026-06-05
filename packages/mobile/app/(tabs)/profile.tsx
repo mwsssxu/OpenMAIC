@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Animated, Switch, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -170,14 +171,14 @@ function SettingsItem({ item, onPress, switchValue, onSwitchChange }: {
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.98,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
@@ -236,11 +237,9 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
-  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
-  const [showProfileEditModal, setShowProfileEditModal] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [showPrefModal, setShowPrefModal] = useState(false);
-  const [editNickname, setEditNickname] = useState('');
+  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [dailyGoal, setDailyGoal] = useState('30');
 
@@ -305,8 +304,10 @@ export default function ProfileScreen() {
         { 
           text: t('common.confirm'), 
           style: 'destructive',
-          onPress: () => {
-            logout();
+          onPress: async () => {
+            await logout();
+            // dismissAll 清空整个导航栈，防止回退到受保护页面
+            router.dismissAll();
             router.replace('/auth/login');
           }
         },
@@ -434,8 +435,7 @@ export default function ProfileScreen() {
               onPress={() => {
                 haptics.light();
                 if (item.id === 'profile') {
-                  setEditNickname(profileData.user.nickname || '');
-                  setShowProfileEditModal(true);
+                  router.push('/edit-profile');
                 } else if (item.id === 'notifications') {
                   setShowNotifModal(true);
                 } else if (item.id === 'preferences') {
@@ -490,39 +490,6 @@ export default function ProfileScreen() {
         </Pressable>
       </Modal>
 
-      {/* 编辑个人资料 Modal */}
-      <Modal visible={showProfileEditModal} transparent animationType="fade" onRequestClose={() => setShowProfileEditModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowProfileEditModal(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('profile.editProfile')}</Text>
-            <Text style={styles.modalLabel}>{t('auth.nickname')}</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editNickname}
-              onChangeText={setEditNickname}
-              placeholder={t('auth.nickname')}
-              maxLength={50}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity style={[styles.modalCancelButton, { flex: 1 }]} onPress={() => setShowProfileEditModal(false)} activeOpacity={0.7}>
-                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalCancelButton, { flex: 1, backgroundColor: iOSColors.accent }]} onPress={async () => {
-                try {
-                  await apiClient.updateUser({ nickname: editNickname });
-                  profileData.user.nickname = editNickname;
-                  onSuccess(t('profile.profileUpdated'));
-                } catch { onSuccess(t('common.error')); }
-                setShowProfileEditModal(false);
-              }} activeOpacity={0.7}>
-                <Text style={[styles.modalCancelText, { color: '#fff' }]}>{t('common.confirm')}</Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
-
       {/* 通知设置 Modal */}
       <Modal visible={showNotifModal} transparent animationType="fade" onRequestClose={() => setShowNotifModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowNotifModal(false)}>
@@ -537,7 +504,7 @@ export default function ProfileScreen() {
               <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: iOSColors.border }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <Ionicons name={item.icon as any} size={20} color={iOSColors.accent} />
-                  <Text style={{ fontSize: 15, color: iOSColors.text }}>{item.label}</Text>
+                  <Text style={{ fontSize: 15, color: iOSColors.fg }}>{item.label}</Text>
                 </View>
                 <Switch value={notifEnabled} onValueChange={setNotifEnabled} trackColor={{ false: iOSColors.border, true: iOSColors.blue }} thumbColor="#fff" />
               </View>
@@ -566,7 +533,7 @@ export default function ProfileScreen() {
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               {['08:00', '12:00', '20:00', '22:00'].map(time => (
                 <TouchableOpacity key={time} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: iOSColors.border, marginRight: 4, marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: iOSColors.text }}>{time}</Text>
+                  <Text style={{ fontSize: 14, color: iOSColors.fg }}>{time}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -884,7 +851,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 16,
-    color: iOSColors.text,
+    color: iOSColors.fg,
     backgroundColor: iOSColors.bgSolid,
   },
 

@@ -15,6 +15,7 @@ interface ClassroomStats {
 export default function ClassroomStatsPage() {
   const [stats, setStats] = useState<ClassroomStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats();
@@ -34,37 +35,13 @@ export default function ClassroomStatsPage() {
         const data = await response.json();
         setStats(data);
       } else {
-        setStats(getMockStats());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setStats(getMockStats());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockStats(): ClassroomStats {
-    return {
-      total_courses: 5800,
-      generated_today: 120,
-      avg_completion_rate: 65,
-      popular_tags: [
-        { tag: '机器学习', count: 1200 },
-        { tag: 'Python', count: 980 },
-        { tag: '数据分析', count: 650 },
-        { tag: '深度学习', count: 520 },
-        { tag: 'Web开发', count: 430 },
-      ],
-      generation_trend: [
-        { date: '2026-04-11', courses: 100, completions: 65 },
-        { date: '2026-04-12', courses: 115, completions: 72 },
-        { date: '2026-04-13', courses: 95, completions: 58 },
-        { date: '2026-04-14', courses: 130, completions: 85 },
-        { date: '2026-04-15', courses: 125, completions: 78 },
-        { date: '2026-04-16', courses: 135, completions: 90 },
-        { date: '2026-04-17', courses: 120, completions: 75 },
-      ],
-    };
   }
 
   if (isLoading) {
@@ -73,6 +50,7 @@ export default function ClassroomStatsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <h1 className="text-2xl font-bold text-gray-900">课程统计</h1>
 
       {/* 概览卡片 */}

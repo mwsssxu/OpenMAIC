@@ -15,6 +15,7 @@ interface LLMConfig {
 export default function LLMSettingsPage() {
   const [configs, setConfigs] = useState<LLMConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -35,21 +36,13 @@ export default function LLMSettingsPage() {
         const data = await response.json();
         setConfigs(data.configs || []);
       } else {
-        setConfigs(getMockConfigs());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setConfigs(getMockConfigs());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockConfigs(): LLMConfig[] {
-    return [
-      { provider: 'openai', model: 'gpt-4o', api_key: '', temperature: 0.7, max_tokens: 2000, top_p: 0.9 },
-      { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', api_key: '', temperature: 0.8, max_tokens: 4000, top_p: 0.95 },
-      { provider: 'deepseek', model: 'deepseek-chat', api_key: '', temperature: 0.7, max_tokens: 3000, top_p: 0.9 },
-    ];
   }
 
   async function handleSave() {
@@ -67,7 +60,7 @@ export default function LLMSettingsPage() {
         body: JSON.stringify({ configs }),
       });
     } catch {
-      // 模拟保存成功
+      setError('保存失败，请稍后重试');
     } finally {
       setIsSaving(false);
     }
@@ -83,6 +76,7 @@ export default function LLMSettingsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">LLM 配置</h1>
         <div className="flex items-center gap-3">

@@ -16,7 +16,7 @@ from app.core.config import settings
 logging.basicConfig(level=logging.DEBUG if settings.DEBUG else logging.INFO)
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
-from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge, personal_notes, profile, maic_ui_proxy, learning
+from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin_full, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge, personal_notes, profile, maic_ui_proxy, learning
 from app.routes.quiz import router as quiz_router
 from app.services.tts_service import close_tts_session as close_tts
 
@@ -231,7 +231,7 @@ app.include_router(gamification.router, prefix="/gamification", tags=["游戏化
 app.include_router(recommendations.router, prefix="/recommendations", tags=["课程推荐"])
 app.include_router(review.router, prefix="/review", tags=["间隔复习"])
 app.include_router(passport.router, prefix="/passport", tags=["学习护照"])
-app.include_router(admin.router, tags=["管理后台"])
+app.include_router(admin_full.router, tags=["管理后台"])
 app.include_router(admin_auth.router, tags=["管理员认证"])
 app.include_router(video_course.router, tags=["视频转课程"])
 app.include_router(question_course.router, tags=["问题驱动课程"])

@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -175,14 +176,14 @@ function SceneItem({ scene, index, total, statuses }: { scene: Scene; index: num
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.98,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 

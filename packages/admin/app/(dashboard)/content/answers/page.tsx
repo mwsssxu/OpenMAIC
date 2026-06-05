@@ -16,6 +16,7 @@ interface Answer {
 export default function AnswersReviewPage() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('pending');
 
@@ -41,20 +42,13 @@ export default function AnswersReviewPage() {
         const data = await response.json();
         setAnswers(data.answers || []);
       } else {
-        setAnswers(getMockAnswers());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setAnswers(getMockAnswers());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockAnswers(): Answer[] {
-    return [
-      { id: '1', content: '梯度下降通过计算损失函数的梯度来确定参数更新方向...', author: { nickname: '导师A', email: 'mentor@example.com' }, question_id: 'q1', question_title: '如何理解梯度下降？', status: 'pending', created_at: '2026-04-17 11:00' },
-      { id: '2', content: 'async/await让异步代码看起来像同步代码，提高可读性...', author: { nickname: '导师B', email: 'mentor2@example.com' }, question_id: 'q2', question_title: 'Python异步编程疑问', status: 'approved', created_at: '2026-04-16 15:30' },
-    ];
   }
 
   async function handleApprove(id: string) {
@@ -64,7 +58,7 @@ export default function AnswersReviewPage() {
       await fetch(`${apiUrl}/admin/content/answers/${id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       fetchAnswers();
     } catch {
-      setAnswers(answers.map(a => a.id === id ? { ...a, status: 'approved' } : a));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -75,7 +69,7 @@ export default function AnswersReviewPage() {
       await fetch(`${apiUrl}/admin/content/answers/${id}/reject`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       fetchAnswers();
     } catch {
-      setAnswers(answers.map(a => a.id === id ? { ...a, status: 'rejected' } : a));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -93,6 +87,7 @@ export default function AnswersReviewPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">回答审核</h1>
         <div className="flex items-center gap-4">

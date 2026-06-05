@@ -25,12 +25,18 @@ class UserResponse(BaseModel):
     email: str
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
+    bio: Optional[str] = None
+    birthday: Optional[str] = None
+    gender: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
     """用户更新请求"""
     nickname: Optional[str] = Field(None, max_length=50, description="昵称")
     avatar_url: Optional[str] = Field(None, max_length=500, description="头像URL")
+    bio: Optional[str] = Field(None, max_length=100, description="简介")
+    birthday: Optional[str] = Field(None, description="生日 YYYY-MM-DD")
+    gender: Optional[str] = Field(None, max_length=10, description="性别")
 
 
 class PasswordChange(BaseModel):

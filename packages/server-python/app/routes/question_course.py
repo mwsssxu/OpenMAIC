@@ -14,12 +14,15 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from app.core.time_utils import utcnow
+from app.routes.subscriptions import check_and_deduct_tokens_for_action
 import asyncpg
 import uuid
+import logging
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id
 
 router = APIRouter(prefix="/question-course", tags=["question-course"])
+logger = logging.getLogger(__name__)
 
 
 class QuestionCourseRequest(BaseModel):
@@ -200,6 +203,17 @@ async def generate_course_from_question(
     """Generate a course from user question."""
     if len(request.question) < 5:
         raise HTTPException(status_code=400, detail="Question too short")
+
+    # Token 消耗检查：课程生成 = course_generation_base (5 Token)
+    # 场景数在生成大纲后才能确定，这里先扣基础费用
+    try:
+        token_result = await check_and_deduct_tokens_for_action(
+            user_id, "course_generation_base", db
+        )
+        logger.info(f"[CourseGen] Token check: deducted={token_result['deducted']}, free_quota={token_result['free_quota_used']}")
+    except HTTPException as e:
+        logger.warning(f"[CourseGen] Token check failed: {e.detail}")
+        raise
 
     # Generate outline
     outline = await analyze_question_and_generate_outline(

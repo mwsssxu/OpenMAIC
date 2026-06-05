@@ -202,10 +202,10 @@ class ApiClient {
 
     // 自动添加 Authorization + Accept-Language header
     this.client.interceptors.request.use((config) => {
-      // 优先用内存中的 token，否则从 localStorage 读取（确保刷新后也能携带）
-      const effectiveToken = this.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null);
-      if (effectiveToken) {
-        config.headers.Authorization = `Bearer ${effectiveToken}`;
+      // 只用内存中的 token，不再从 localStorage 兜底读取
+      // logout 时 setToken(null) 会同步清除 localStorage，避免旧 token 泄露
+      if (this.token) {
+        config.headers.Authorization = `Bearer ${this.token}`;
       }
       // 自动添加 Accept-Language（与用户当前语言设置同步）
       try {
@@ -224,6 +224,10 @@ class ApiClient {
         if (error.response?.status === 401 || (error.response?.status === 403 && error.response?.data?.detail === 'Not authenticated')) {
           // 401: token 过期；403 "Not authenticated": HTTPBearer 无 token
           // 其他 403（如权限拒绝）不重试，避免死循环
+          // 如果内存中已无 token（已 logout），不再尝试刷新，避免旧 refresh_token 恢复会话
+          if (!this.token) {
+            return Promise.reject(error);
+          }
           const newToken = await this.ensureValidToken();
           if (newToken) {
             error.config.headers.Authorization = `Bearer ${newToken}`;
@@ -284,6 +288,11 @@ class ApiClient {
       this.client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
       delete this.client.defaults.headers.common['Authorization'];
+      // 同步清除 localStorage 中的旧 token，防止 request interceptor 兜底读取
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
+      }
     }
   }
 
@@ -309,9 +318,9 @@ class ApiClient {
     return data;
   }
 
-  async updateUser(nickname?: string, avatar_url?: string) {
-    const { data } = await this.client.put('/auth/me', { nickname, avatar_url });
-    return data;
+  async updateUser(data: { nickname?: string; avatar_url?: string; bio?: string; birthday?: string; gender?: string }) {
+    const { data: resp } = await this.client.put('/auth/me', data);
+    return resp;
   }
 
   async changePassword(oldPassword: string, newPassword: string) {
@@ -1117,6 +1126,11 @@ class ApiClient {
     return data;
   }
 
+  async getAccountOverview() {
+    const { data } = await this.client.get('/tokens/overview');
+    return data;
+  }
+
   async getTokenTransactions(limit?: number, offset?: number) {
     const { data } = await this.client.get('/tokens/transactions', {
       params: { limit, offset },
@@ -1228,8 +1242,9 @@ class ApiClient {
     return data;
   }
 
-  async createPaymentOrder(packageId: string, paymentMethod: string) {
+  async createPaymentOrder(packageId: string, paymentMethod: string, type: 'token' | 'subscription' = 'token') {
     const { data } = await this.client.post('/payment/create-order', {
+      type,
       package: packageId,
       payment_method: paymentMethod,
     });

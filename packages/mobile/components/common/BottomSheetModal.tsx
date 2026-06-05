@@ -9,6 +9,7 @@ import {
   ViewStyle,
   StyleProp,
 } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 
@@ -59,7 +60,7 @@ export function BottomSheetModal({
     Animated.timing(hintOpacity, {
       toValue: swipeDownHint.visible ? 1 : 0,
       duration: 220,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   }, [swipeDownHint.visible, hintOpacity]);
 
@@ -78,7 +79,7 @@ export function BottomSheetModal({
           Animated.timing(translateY, {
             toValue: 600,
             duration: 200,
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
           }).start(() => {
             translateY.setValue(0);
             onClose();
@@ -86,7 +87,7 @@ export function BottomSheetModal({
         } else {
           Animated.spring(translateY, {
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
             bounciness: 6,
           }).start();
         }
@@ -94,7 +95,7 @@ export function BottomSheetModal({
       onPanResponderTerminate: () => {
         Animated.spring(translateY, {
           toValue: 0,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }).start();
       },
     }),

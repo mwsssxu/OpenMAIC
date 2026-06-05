@@ -17,6 +17,7 @@ from app.services.scene_service import (
     MAX_SCENES_PER_REQUEST,
 )
 from app.core.time_utils import utcnow
+from app.routes.subscriptions import check_and_deduct_tokens_for_action
 import asyncpg
 import uuid
 import logging
@@ -634,6 +635,7 @@ async def create_all_scenes_for_classroom(
     """
     start_time = time.time()
 
+    # 先验证参数和资源存在性（Token 扣减必须在验证之后）
     classroom_uuid = validate_uuid(classroom_id, "课程ID")
     user_uuid = validate_uuid(current_user_id, "用户ID")
 
@@ -645,7 +647,18 @@ async def create_all_scenes_for_classroom(
     if stage is None:
         raise HTTPException(status_code=404, detail="课程不存在")
 
+    # Token 消耗检查：课程场景生成 = course_generation_base + 场景数
     outlines = body.outlines
+    try:
+        token_result = await check_and_deduct_tokens_for_action(
+            current_user_id, "course_generation_base", db,
+            extra_count=len(outlines)
+        )
+        logger.info(f"[SceneCreateAll] Token check: deducted={token_result['deducted']}, free_quota={token_result['free_quota_used']}, scenes={len(outlines)}")
+    except HTTPException as e:
+        logger.warning(f"[SceneCreateAll] Token check failed: {e.detail}")
+        raise
+
     language = validate_language(body.language or stage["language_directive"] or "zh-CN")
     agents = body.agents
     if not agents and stage["generated_agent_configs"]:

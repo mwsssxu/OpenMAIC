@@ -11,13 +11,16 @@ SSE 事件格式（与Web端一致）:
 注意：使用 `data: {JSON}\n\n` 格式，不带 `event:` 字段
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from app.middleware.auth import get_current_user_id
 from app.services.orchestration.director_graph import stream_agent_response, run_multi_agent_discussion, get_agent_system_prompt
 from app.services.llm import stream_llm
 from app.core.config import settings
 from app.services.generation.prompts import process_snippets
+from app.db.database import get_db
+from app.routes.subscriptions import check_and_deduct_tokens_for_action
+import asyncpg
 import json
 import uuid
 import logging
@@ -381,7 +384,8 @@ def parse_agent_actions(response_text: str) -> tuple:
 @router.post("")
 async def chat(
     body: dict,
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
 ):
     """
     SSE 流式聊天（参考Web端实现）
@@ -397,8 +401,24 @@ async def chat(
     - agent_end: {"messageId", "agentId"}
     - done: {"totalAgents", "totalActions", "directorState"}
     """
-    messages = body.get("messages", [])
+    # Token 消耗检查：根据会话类型确定 action_key
     config = body.get("config", {})
+    session_type = config.get("sessionType", "chat")
+    agents = config.get("agentIds", ["teacher", "student"])
+
+    if session_type == "discussion" and len(agents) > 1:
+        action_key = "discussion_2agent"
+    else:
+        action_key = "ai_interaction"
+
+    try:
+        token_result = await check_and_deduct_tokens_for_action(current_user_id, action_key, db)
+        logger.info(f"[Chat] Token check: action={action_key}, deducted={token_result['deducted']}, free_quota={token_result['free_quota_used']}")
+    except HTTPException as e:
+        logger.warning(f"[Chat] Token check failed: {e.detail}")
+        raise
+
+    messages = body.get("messages", [])
     store_state = body.get("storeState", {})
 
     # 获取 Agent 配置
@@ -709,11 +729,22 @@ async def chat(
 @router.post("/discussion")
 async def start_discussion(
     body: dict,
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
 ):
     """多 Agent 讨论（基于场景上下文）"""
-    topic = body.get("topic", "")
+    # Token 消耗检查：根据 Agent 数量确定 action_key
     agents = body.get("agents", ["teacher", "student", "assistant"])
+    action_key = "discussion_2agent" if len(agents) <= 2 else "discussion_3agent"
+
+    try:
+        token_result = await check_and_deduct_tokens_for_action(current_user_id, action_key, db)
+        logger.info(f"[Discussion] Token check: action={action_key}, deducted={token_result['deducted']}, free_quota={token_result['free_quota_used']}")
+    except HTTPException as e:
+        logger.warning(f"[Discussion] Token check failed: {e.detail}")
+        raise
+
+    topic = body.get("topic", "")
     max_turns = body.get("maxTurns", 3)
     context = body.get("context", {})  # 场景上下文
 
@@ -753,7 +784,8 @@ async def start_discussion(
 @router.post("/agent-stream")
 async def stream_single_agent(
     body: dict,
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
 ):
     """
     单 Agent 流式响应（分批处理讨论）
@@ -770,6 +802,16 @@ async def stream_single_agent(
 
     返回：SSE 流式事件
     """
+    # Token 消耗检查：agent-stream 属于 discussion 场景
+    previous_responses = body.get("previousResponses", [])
+    action_key = "discussion_2agent" if len(previous_responses) <= 1 else "discussion_3agent"
+
+    try:
+        token_result = await check_and_deduct_tokens_for_action(current_user_id, action_key, db)
+        logger.info(f"[AgentStream] Token check: action={action_key}, deducted={token_result['deducted']}, free_quota={token_result['free_quota_used']}")
+    except HTTPException as e:
+        logger.warning(f"[AgentStream] Token check failed: {e.detail}")
+        raise
     logger.info(f"[AgentStream] ========== 新请求开始 ==========")
     logger.info(f"[AgentStream] Request body: {json.dumps(body, ensure_ascii=False)[:500]}")
 

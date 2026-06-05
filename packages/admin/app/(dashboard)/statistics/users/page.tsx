@@ -17,6 +17,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 export default function UserStatsPage() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats();
@@ -36,35 +37,13 @@ export default function UserStatsPage() {
         const data = await response.json();
         setStats(data);
       } else {
-        setStats(getMockStats());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setStats(getMockStats());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockStats(): UserStats {
-    return {
-      total: 1250,
-      new_today: 45,
-      active_today: 320,
-      tier_distribution: [
-        { tier: '免费用户', count: 800 },
-        { tier: '高级会员', count: 350 },
-        { tier: '企业会员', count: 100 },
-      ],
-      growth: [
-        { date: '2026-04-11', new_users: 38, active_users: 280 },
-        { date: '2026-04-12', new_users: 42, active_users: 310 },
-        { date: '2026-04-13', new_users: 35, active_users: 290 },
-        { date: '2026-04-14', new_users: 50, active_users: 340 },
-        { date: '2026-04-15', new_users: 48, active_users: 330 },
-        { date: '2026-04-16', new_users: 52, active_users: 350 },
-        { date: '2026-04-17', new_users: 45, active_users: 320 },
-      ],
-    };
   }
 
   if (isLoading) {
@@ -73,6 +52,7 @@ export default function UserStatsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <h1 className="text-2xl font-bold text-gray-900">用户统计</h1>
 
       {/* 概览卡片 */}

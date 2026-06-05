@@ -15,6 +15,7 @@ import {
   ViewStyle,
   StyleProp,
 } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -60,12 +61,12 @@ export function HintToast({
         Animated.timing(opacity, {
           toValue: 1,
           duration: 220,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(translate, {
           toValue: 0,
           duration: 220,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start();
     } else {
@@ -73,12 +74,12 @@ export function HintToast({
         Animated.timing(opacity, {
           toValue: 0,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(translate, {
           toValue: 20,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(({ finished }) => {
         if (finished && isMountedRef.current) setMounted(false);

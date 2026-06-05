@@ -16,6 +16,7 @@ interface Question {
 export default function QuestionsReviewPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('pending');
 
@@ -41,21 +42,13 @@ export default function QuestionsReviewPage() {
         const data = await response.json();
         setQuestions(data.questions || []);
       } else {
-        setQuestions(getMockQuestions());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setQuestions(getMockQuestions());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockQuestions(): Question[] {
-    return [
-      { id: '1', title: '如何理解梯度下降？', content: '梯度下降的核心思想是什么...', author: { nickname: '学习者1', email: 'user1@example.com' }, classroom_id: 'ml-101', status: 'pending', created_at: '2026-04-17 10:30' },
-      { id: '2', title: 'Python异步编程疑问', content: 'async/await的使用场景...', author: { nickname: '学习者2', email: 'user2@example.com' }, classroom_id: 'py-201', status: 'approved', created_at: '2026-04-16 14:20' },
-      { id: '3', title: '神经网络参数调优', content: '学习率和批次大小的关系...', author: { nickname: '学习者3', email: 'user3@example.com' }, classroom_id: 'dl-301', status: 'rejected', created_at: '2026-04-15 09:15' },
-    ];
   }
 
   async function handleApprove(id: string) {
@@ -68,7 +61,7 @@ export default function QuestionsReviewPage() {
       });
       fetchQuestions();
     } catch {
-      setQuestions(questions.map(q => q.id === id ? { ...q, status: 'approved' } : q));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -82,7 +75,7 @@ export default function QuestionsReviewPage() {
       });
       fetchQuestions();
     } catch {
-      setQuestions(questions.map(q => q.id === id ? { ...q, status: 'rejected' } : q));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -100,6 +93,7 @@ export default function QuestionsReviewPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">问题审核</h1>
         <div className="flex items-center gap-4">

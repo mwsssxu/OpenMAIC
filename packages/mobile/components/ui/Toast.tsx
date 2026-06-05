@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated as RNAnimated } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/lib/constants/theme';
 import { Animations } from '@/lib/configs/animation';
@@ -28,24 +29,24 @@ export function Toast({ visible, type, message, description, duration = 3000, on
       if (type === 'warning' || type === 'info') onWarning();
 
       RNAnimated.parallel([
-        RNAnimated.timing(fadeAnim, { toValue: 1, duration: Animations.toast.slideUp.duration, useNativeDriver: true }),
-        RNAnimated.timing(slideAnim, { toValue: 0, duration: Animations.toast.slideUp.duration, useNativeDriver: true }),
+        RNAnimated.timing(fadeAnim, { toValue: 1, duration: Animations.toast.slideUp.duration, useNativeDriver: USE_NATIVE_DRIVER }),
+        RNAnimated.timing(slideAnim, { toValue: 0, duration: Animations.toast.slideUp.duration, useNativeDriver: USE_NATIVE_DRIVER }),
       ]).start();
 
       const timer = setTimeout(() => handleClose(), duration);
       return () => clearTimeout(timer);
     } else {
       RNAnimated.parallel([
-        RNAnimated.timing(fadeAnim, { toValue: 0, duration: Animations.toast.fadeOut.duration, useNativeDriver: true }),
-        RNAnimated.timing(slideAnim, { toValue: 20, duration: Animations.toast.fadeOut.duration, useNativeDriver: true }),
+        RNAnimated.timing(fadeAnim, { toValue: 0, duration: Animations.toast.fadeOut.duration, useNativeDriver: USE_NATIVE_DRIVER }),
+        RNAnimated.timing(slideAnim, { toValue: 20, duration: Animations.toast.fadeOut.duration, useNativeDriver: USE_NATIVE_DRIVER }),
       ]).start();
     }
   }, [visible, type, duration]);
 
   const handleClose = useCallback(() => {
     RNAnimated.parallel([
-      RNAnimated.timing(fadeAnim, { toValue: 0, duration: Animations.toast.fadeOut.duration, useNativeDriver: true }),
-      RNAnimated.timing(slideAnim, { toValue: 20, duration: Animations.toast.fadeOut.duration, useNativeDriver: true }),
+      RNAnimated.timing(fadeAnim, { toValue: 0, duration: Animations.toast.fadeOut.duration, useNativeDriver: USE_NATIVE_DRIVER }),
+      RNAnimated.timing(slideAnim, { toValue: 20, duration: Animations.toast.fadeOut.duration, useNativeDriver: USE_NATIVE_DRIVER }),
     ]).start(() => onClose?.());
   }, [onClose]);
 

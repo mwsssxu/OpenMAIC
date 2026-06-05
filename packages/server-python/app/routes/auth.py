@@ -281,7 +281,7 @@ async def get_current_user_info(
 ):
     """获取当前用户信息"""
     row = await db.fetchrow(
-        "SELECT id, email, nickname, avatar_url, created_at FROM users WHERE id = $1",
+        "SELECT id, email, nickname, avatar_url, bio, birthday, gender, created_at FROM users WHERE id = $1",
         uuid.UUID(current_user_id)
     )
     return {
@@ -289,6 +289,9 @@ async def get_current_user_info(
         "email": row["email"],
         "nickname": row["nickname"],
         "avatar_url": row["avatar_url"],
+        "bio": row["bio"],
+        "birthday": row["birthday"].isoformat() if row["birthday"] else None,
+        "gender": row["gender"],
         "created_at": row["created_at"].isoformat()
     }
 
@@ -315,6 +318,21 @@ async def update_user_info(
         values.append(body.avatar_url)
         idx += 1
 
+    if body.bio is not None:
+        updates.append(f"bio = ${idx}")
+        values.append(body.bio)
+        idx += 1
+
+    if body.birthday is not None:
+        updates.append(f"birthday = ${idx}")
+        values.append(body.birthday)
+        idx += 1
+
+    if body.gender is not None:
+        updates.append(f"gender = ${idx}")
+        values.append(body.gender)
+        idx += 1
+
     if not updates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -330,14 +348,17 @@ async def update_user_info(
 
     # 返回更新后的用户信息
     row = await db.fetchrow(
-        "SELECT id, email, nickname, avatar_url FROM users WHERE id = $1",
+        "SELECT id, email, nickname, avatar_url, bio, birthday, gender FROM users WHERE id = $1",
         uuid.UUID(current_user_id)
     )
     return {
         "id": str(row["id"]),
         "email": row["email"],
         "nickname": row["nickname"],
-        "avatar_url": row["avatar_url"]
+        "avatar_url": row["avatar_url"],
+        "bio": row["bio"],
+        "birthday": row["birthday"].isoformat() if row["birthday"] else None,
+        "gender": row["gender"]
     }
 
 
@@ -419,7 +440,7 @@ async def export_user_data(
 
     # 用户基本信息
     user = await db.fetchrow(
-        "SELECT id, email, nickname, avatar_url, created_at, updated_at FROM users WHERE id = $1",
+        "SELECT id, email, nickname, avatar_url, bio, birthday, gender, created_at, updated_at FROM users WHERE id = $1",
         user_uuid
     )
 
@@ -460,6 +481,9 @@ async def export_user_data(
             "email": user["email"],
             "nickname": user["nickname"],
             "avatar_url": user["avatar_url"],
+            "bio": user["bio"],
+            "birthday": user["birthday"].isoformat() if user["birthday"] else None,
+            "gender": user["gender"],
             "created_at": user["created_at"].isoformat(),
             "updated_at": user["updated_at"].isoformat()
         },

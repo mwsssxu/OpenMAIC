@@ -16,6 +16,7 @@ interface LogEntry {
 export default function LogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
@@ -41,23 +42,13 @@ export default function LogsPage() {
         const data = await response.json();
         setLogs(data.logs || []);
       } else {
-        setLogs(getMockLogs());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setLogs(getMockLogs());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockLogs(): LogEntry[] {
-    return [
-      { id: '1', admin_id: 'admin1', admin_name: '管理员A', action: 'user_ban', target: 'user@example.com', details: '禁用用户账号', created_at: '2026-04-17 10:30:00' },
-      { id: '2', admin_id: 'admin1', admin_name: '管理员A', action: 'content_approve', target: 'question#123', details: '审核通过问题', created_at: '2026-04-17 10:25:00' },
-      { id: '3', admin_id: 'admin2', admin_name: '管理员B', action: 'settings_update', target: 'llm_config', details: '更新LLM配置', created_at: '2026-04-17 09:15:00' },
-      { id: '4', admin_id: 'admin2', admin_name: '管理员B', action: 'pricing_update', target: 'token_pack', details: '修改Token包价格', created_at: '2026-04-16 14:00:00' },
-      { id: '5', admin_id: 'admin1', admin_name: '管理员A', action: 'content_reject', target: 'note#456', details: '审核拒绝笔记', created_at: '2026-04-16 11:30:00' },
-    ];
   }
 
   const actionLabels: Record<string, string> = {
@@ -84,6 +75,7 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">操作日志</h1>
         <div className="flex items-center gap-4">

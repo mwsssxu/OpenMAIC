@@ -17,6 +17,7 @@ interface EconomyStats {
 export default function EconomyStatsPage() {
   const [stats, setStats] = useState<EconomyStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats();
@@ -36,37 +37,13 @@ export default function EconomyStatsPage() {
         const data = await response.json();
         setStats(data);
       } else {
-        setStats(getMockStats());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setStats(getMockStats());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockStats(): EconomyStats {
-    return {
-      revenue_today: 15000,
-      revenue_month: 350000,
-      tokens_purchased: 5000,
-      points_earned: 25000,
-      points_spent: 18000,
-      revenue_trend: [
-        { date: '2026-04-11', revenue: 12000, tokens: 4000 },
-        { date: '2026-04-12', revenue: 14500, tokens: 4800 },
-        { date: '2026-04-13', revenue: 13000, tokens: 4300 },
-        { date: '2026-04-14', revenue: 16000, tokens: 5200 },
-        { date: '2026-04-15', revenue: 15500, tokens: 5000 },
-        { date: '2026-04-16', revenue: 17000, tokens: 5500 },
-        { date: '2026-04-17', revenue: 15000, tokens: 5000 },
-      ],
-      top_transactions: [
-        { user: '学习者1', type: 'Token购买', amount: 500, time: '2026-04-17 10:30' },
-        { user: '学习者2', type: '积分兑换', amount: 200, time: '2026-04-17 11:15' },
-        { user: '学习者3', type: '会员升级', amount: 99, time: '2026-04-17 09:00' },
-      ],
-    };
   }
 
   if (isLoading) {
@@ -75,6 +52,7 @@ export default function EconomyStatsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <h1 className="text-2xl font-bold text-gray-900">经济统计</h1>
 
       {/* 概览卡片 */}

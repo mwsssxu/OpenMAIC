@@ -23,9 +23,15 @@ logger = logging.getLogger(__name__)
 # ==================== Token套餐配置 ====================
 
 TOKEN_PACKAGES = {
-    "basic": {"price": 1000, "tokens": 100, "bonus": 0, "name": "基础包"},
-    "standard": {"price": 5000, "tokens": 500, "bonus": 100, "name": "标准包"},
-    "premium": {"price": 10000, "tokens": 1000, "bonus": 500, "name": "高级包"},
+    "starter": {"price": 600, "tokens": 50, "bonus": 0, "name": "体验包"},      # ¥6 = 50 Token
+    "learning": {"price": 1800, "tokens": 180, "bonus": 20, "name": "学习包"},   # ¥18 = 200 Token
+    "unlimited": {"price": 4800, "tokens": 500, "bonus": 100, "name": "畅学包"}, # ¥48 = 600 Token
+}
+
+# 订阅套餐配置（与 subscriptions.py PLAN_PRICES 保持一致）
+SUBSCRIPTION_PACKAGES = {
+    "pro_monthly": {"price": 1900, "days": 30, "name": "Pro 月卡"},       # ¥19/月
+    "pro_yearly": {"price": 19000, "days": 365, "name": "Pro 年卡"},      # ¥190/年
 }
 
 # 新用户首购折扣
@@ -36,10 +42,11 @@ NEW_USER_DISCOUNT = 0.5  # 50% 折扣
 
 @router.get("/packages")
 async def get_payment_packages():
-    """获取 Token 购买套餐"""
-    return [
+    """获取所有购买套餐（Token包 + 订阅套餐）"""
+    token_packages = [
         {
             "id": id_,
+            "type": "token",
             "name": data["name"],
             "price": data["price"] / 100,  # 转换为元
             "tokens": data["tokens"],
@@ -50,6 +57,32 @@ async def get_payment_packages():
         for id_, data in TOKEN_PACKAGES.items()
     ]
 
+    subscription_packages = [
+        {
+            "id": id_,
+            "type": "subscription",
+            "name": data["name"],
+            "price": data["price"] / 100,
+            "days": data["days"],
+            "period": "monthly" if data["days"] <= 31 else "yearly",
+            "price_label": f"¥{data['price'] / 100:.0f}",
+            "price_per_day": round(data["price"] / 100 / data["days"], 2),
+            "popular": id_ == "pro_yearly",
+            "features": [
+                "无限AI问答",
+                "5次/天讨论模式",
+                "5次/天课程生成",
+                "每月50 Token赠送",
+            ],
+        }
+        for id_, data in SUBSCRIPTION_PACKAGES.items()
+    ]
+
+    return {
+        "token_packages": token_packages,
+        "subscription_packages": subscription_packages,
+    }
+
 
 @router.post("/create-order")
 async def create_payment_order(
@@ -57,48 +90,63 @@ async def create_payment_order(
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """创建支付订单"""
+    """创建支付订单（Token包 或 订阅套餐）"""
     user_uuid = uuid.UUID(current_user_id)
-    package_id = body.get("package", "basic")
+    package_id = body.get("package", "starter")
+    order_type = body.get("type", "token")  # token 或 subscription
     payment_method = body.get("payment_method", "wechat")  # wechat, alipay
 
-    if package_id not in TOKEN_PACKAGES:
-        raise HTTPException(status_code=400, detail="无效的套餐")
+    # 确定套餐
+    if order_type == "subscription":
+        if package_id not in SUBSCRIPTION_PACKAGES:
+            raise HTTPException(status_code=400, detail="无效的订阅套餐")
+        package = SUBSCRIPTION_PACKAGES[package_id]
+        token_amount = 50  # Pro 月赠50 Token
+        subscription_days = package["days"]
+        subscription_plan = "pro"
+    elif order_type == "token":
+        if package_id not in TOKEN_PACKAGES:
+            raise HTTPException(status_code=400, detail="无效的Token套餐")
+        package = TOKEN_PACKAGES[package_id]
+        token_amount = package["tokens"] + package["bonus"]
+        subscription_days = None
+        subscription_plan = None
+    else:
+        raise HTTPException(status_code=400, detail="无效的订单类型")
 
-    package = TOKEN_PACKAGES[package_id]
-
-    # 检查是否新用户首购
-    existing_orders = await db.fetchval(
-        "SELECT COUNT(*) FROM orders WHERE user_id = $1 AND status = 'paid'",
-        user_uuid
-    )
-    is_new_user = existing_orders == 0
-
-    # 计算价格
+    # 检查是否新用户首购折扣（仅适用于Token包）
     original_price = package["price"]
-    if is_new_user:
-        actual_price = int(original_price * NEW_USER_DISCOUNT)
-        discount_note = "新用户首购50%折扣"
+    if order_type == "token":
+        existing_orders = await db.fetchval(
+            "SELECT COUNT(*) FROM orders WHERE user_id = $1 AND status = 'paid'",
+            user_uuid
+        )
+        is_new_user = existing_orders == 0
+        if is_new_user:
+            actual_price = int(original_price * NEW_USER_DISCOUNT)
+            discount_note = "新用户首购50%折扣"
+        else:
+            actual_price = original_price
+            discount_note = None
     else:
         actual_price = original_price
         discount_note = None
-
-    token_amount = package["tokens"] + package["bonus"]
 
     # 创建订单
     order_id = uuid.uuid4()
     await db.execute(
         """
-        INSERT INTO orders (id, user_id, amount, token_amount, payment_method, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, 'created', $6)
+        INSERT INTO orders (id, user_id, amount, token_amount, payment_method, status, created_at,
+                            order_type, subscription_days, subscription_plan)
+        VALUES ($1, $2, $3, $4, $5, 'created', $6, $7, $8, $9)
         """,
-        order_id, user_uuid, actual_price, token_amount, payment_method, utcnow()
+        order_id, user_uuid, actual_price, token_amount, payment_method, utcnow(),
+        order_type, subscription_days, subscription_plan
     )
 
     # 根据支付方式获取支付参数
     if payment_method == "wechat":
         # TODO: 实际调用微信支付 API
-        # 这里返回模拟数据
         payment_params = {
             "appid": "模拟appid",
             "partnerid": "模拟商户号",
@@ -117,6 +165,7 @@ async def create_payment_order(
 
     return {
         "order_id": str(order_id),
+        "order_type": order_type,
         "package": package_id,
         "original_price": original_price / 100,
         "actual_price": actual_price / 100,
@@ -367,11 +416,15 @@ async def process_payment_success(
     transaction_id: str,
     provider: str
 ) -> bool:
-    """处理支付成功，入账 Token"""
+    """处理支付成功，入账 Token + 激活订阅"""
     async with db.transaction():
         # 获取订单并锁定
         order = await db.fetchrow(
-            "SELECT id, user_id, token_amount, status FROM orders WHERE id = $1 FOR UPDATE",
+            """
+            SELECT id, user_id, token_amount, status, order_type,
+                   subscription_days, subscription_plan
+            FROM orders WHERE id = $1 FOR UPDATE
+            """,
             order_id
         )
 
@@ -392,10 +445,47 @@ async def process_payment_success(
 
         # 入账 Token
         from app.routes.tokens import reward_tokens_internal
-        await reward_tokens_internal(
-            db, order["user_id"], order["token_amount"],
-            f"{provider}支付购买"
-        )
+        if order["token_amount"] and order["token_amount"] > 0:
+            await reward_tokens_internal(
+                db, order["user_id"], order["token_amount"],
+                f"{provider}支付购买"
+            )
+
+        # 处理订阅订单
+        if order["order_type"] == "subscription" and order["subscription_plan"]:
+            now = utcnow()
+            # 查看是否有现有订阅
+            existing_sub = await db.fetchrow(
+                "SELECT id, plan_type, expires_at FROM subscriptions WHERE user_id = $1",
+                order["user_id"]
+            )
+
+            sub_days = order["subscription_days"] or 30
+            sub_plan = order["subscription_plan"] or "pro"
+
+            if existing_sub:
+                # 已有订阅：从当前到期日或现在开始续期
+                current_expires = existing_sub["expires_at"]
+                start_from = max(current_expires, now) if current_expires else now
+                new_expires = start_from + timedelta(days=sub_days)
+                await db.execute(
+                    """
+                    UPDATE subscriptions SET plan_type = $1, status = 'active',
+                                             expires_at = $2, auto_renew = TRUE, updated_at = $3
+                    WHERE user_id = $4
+                    """,
+                    sub_plan, new_expires, now, order["user_id"]
+                )
+            else:
+                # 新建订阅
+                new_expires = now + timedelta(days=sub_days)
+                await db.execute(
+                    """
+                    INSERT INTO subscriptions (id, user_id, plan_type, status, started_at, expires_at, auto_renew)
+                    VALUES ($1, $2, $3, 'active', $4, $5, TRUE)
+                    """,
+                    uuid.uuid4(), order["user_id"], sub_plan, now, new_expires
+                )
 
         # 清除余额缓存
         await invalidate_balance_cache(str(order["user_id"]))

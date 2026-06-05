@@ -5,11 +5,14 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
+from app.routes.subscriptions import check_and_deduct_tokens_for_action
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
 from app.core.time_utils import utcnow
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -265,6 +268,79 @@ async def mark_message_read(
     )
 
     return {"message": "消息已标记为已读"}
+
+
+@router.post("/deep-chat")
+async def buddy_deep_chat(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    学习搭子深度对话
+
+    Token 消耗规则：
+    - 免费用户：每日 10 次 buddy_chat 免费额度
+    - 超出免费额度：消耗 2 Token/次
+    - Pro 用户：无限免费额度
+    """
+    # Token 消耗检查
+    try:
+        token_result = await check_and_deduct_tokens_for_action(current_user_id, "buddy_deep_chat", db)
+        logger.info(f"[BuddyDeepChat] Token check: deducted={token_result['deducted']}, free_quota={token_result['free_quota_used']}")
+    except HTTPException as e:
+        logger.warning(f"[BuddyDeepChat] Token check failed: {e.detail}")
+        raise
+
+    user_uuid = uuid.UUID(current_user_id)
+    message = body.get("message", "")
+    buddy_type = body.get("buddy_type", "encourager")
+
+    if buddy_type not in BUDDY_TYPES:
+        buddy_type = "encourager"
+
+    # 获取搭子配置
+    config = await db.fetchrow(
+        "SELECT buddy_type, buddy_name, tone_style FROM buddy_configs WHERE user_id = $1",
+        user_uuid
+    )
+    if config:
+        buddy_type = config["buddy_type"] or buddy_type
+        buddy_name = config["buddy_name"] or BUDDY_TYPES[buddy_type]["name"]
+        tone_style = config["tone_style"] or BUDDY_TYPES[buddy_type]["tone"]
+    else:
+        buddy_name = BUDDY_TYPES[buddy_type]["name"]
+        tone_style = BUDDY_TYPES[buddy_type]["tone"]
+
+    # 生成回复（基于搭子类型的预设模板 + 用户消息）
+    buddy_data = BUDDY_TYPES[buddy_type]
+    tone_map = {
+        "warm": "温暖鼓励",
+        "strict": "严格督促",
+        "humorous": "幽默调侃",
+        "serious": "认真严谨",
+    }
+    tone_desc = tone_map.get(tone_style, "温暖鼓励")
+
+    # 简单的模板式回复（后续可接入 LLM 生成更智能的回复）
+    response_content = f"[{buddy_name} - {tone_desc}] 收到你的消息：{message[:100]}"
+
+    # 存储对话记录
+    await db.execute(
+        """
+        INSERT INTO buddy_messages (id, user_id, trigger_event, message_type, content, created_at)
+        VALUES ($1, $2, 'deep_chat', 'text', $3, $4)
+        """,
+        uuid.uuid4(), user_uuid, response_content, utcnow()
+    )
+
+    return {
+        "buddy_name": buddy_name,
+        "buddy_type": buddy_type,
+        "tone_style": tone_style,
+        "content": response_content,
+        "token_result": token_result,
+    }
 
 
 # ==================== 内部函数 ====================

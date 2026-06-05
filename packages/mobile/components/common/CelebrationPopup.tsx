@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, Modal, Animated, TouchableOpacity, Dimensions, Easing } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useEffect, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 
@@ -60,12 +61,12 @@ export function CelebrationPopup({ visible, config, rewardPoints, onClose }: Cel
           toValue: 1,
           friction: 8,
           tension: 100,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(opacityAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start();
 
@@ -76,7 +77,7 @@ export function CelebrationPopup({ visible, config, rewardPoints, onClose }: Cel
             toValue: 1,
             duration: 1500,
             easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
           })
         )).start();
       }
@@ -123,12 +124,12 @@ export function CelebrationPopup({ visible, config, rewardPoints, onClose }: Cel
       Animated.timing(scaleAnim, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.timing(opacityAnim, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
     ]).start(() => {
       onClose();

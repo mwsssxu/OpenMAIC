@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Modal } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,14 +74,14 @@ function QuickFunctionBtn({ item, onPress, t, iconSize }: { item: typeof quickFu
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.92,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
@@ -132,14 +133,14 @@ function RecommendedCard({ course, cardWidth, onRate }: { course: SharedCourse; 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.95,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
@@ -205,14 +206,14 @@ function NoteCard({ note, t }: { note: typeof notesCategories[0]; t: (key: strin
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.95,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 

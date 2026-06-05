@@ -27,6 +27,7 @@ export default function AdminManagementPage() {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRolesModal, setShowRolesModal] = useState<string | null>(null);
@@ -80,30 +81,10 @@ export default function AdminManagementPage() {
         setRoles(data.roles || []);
       }
     } catch {
-      // Use mock data
-      setAdmins(getMockAdmins());
-      setRoles(getMockRoles());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockAdmins(): AdminUser[] {
-    return [
-      { id: '1', email: 'admin@openmaic.com', nickname: '超级管理员', is_super_admin: true, is_active: true, roles: ['super_admin'], last_login_at: '2026-04-17 10:00', created_at: '2026-01-01' },
-      { id: '2', email: 'content@openmaic.com', nickname: '内容审核员', is_super_admin: false, is_active: true, roles: ['content_manager'], last_login_at: '2026-04-16 14:00', created_at: '2026-02-15' },
-      { id: '3', email: 'user@openmaic.com', nickname: '用户管理员', is_super_admin: false, is_active: true, roles: ['user_manager'], last_login_at: '2026-04-15 09:00', created_at: '2026-03-01' },
-    ];
-  }
-
-  function getMockRoles(): Role[] {
-    return [
-      { id: '1', name: 'super_admin', description: '超级管理员 - 所有权限', permissions: ['*'] },
-      { id: '2', name: 'content_manager', description: '内容管理员', permissions: ['content.list', 'content.approve', 'content.reject'] },
-      { id: '3', name: 'user_manager', description: '用户管理员', permissions: ['users.list', 'users.ban', 'users.gift'] },
-      { id: '4', name: 'finance_manager', description: '财务管理员', permissions: ['finance.view'] },
-      { id: '5', name: 'viewer', description: '观察者', permissions: ['*.view'] },
-    ];
   }
 
   async function handleCreateAdmin() {
@@ -134,18 +115,7 @@ export default function AdminManagementPage() {
         fetchData();
       }
     } catch {
-      // Mock success
-      setShowCreateModal(false);
-      setAdmins([...admins, {
-        id: String(admins.length + 1),
-        email: newEmail,
-        nickname: newNickname,
-        is_super_admin: false,
-        is_active: true,
-        roles: selectedRoles,
-        last_login_at: null,
-        created_at: new Date().toISOString().split('T')[0],
-      }]);
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -161,7 +131,7 @@ export default function AdminManagementPage() {
 
       fetchData();
     } catch {
-      setAdmins(admins.map(a => a.id === adminId ? { ...a, is_active: false } : a));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -177,7 +147,7 @@ export default function AdminManagementPage() {
 
       fetchData();
     } catch {
-      setAdmins(admins.map(a => a.id === adminId ? { ...a, is_active: true } : a));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -198,8 +168,7 @@ export default function AdminManagementPage() {
       setShowRolesModal(null);
       fetchData();
     } catch {
-      setShowRolesModal(null);
-      setAdmins(admins.map(a => a.id === adminId ? { ...a, roles: selectedRoles } : a));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -209,6 +178,7 @@ export default function AdminManagementPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">管理员管理</h1>
         <div className="flex items-center gap-4">

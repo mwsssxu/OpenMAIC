@@ -12,6 +12,7 @@ interface DashboardStats {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats();
@@ -33,20 +34,10 @@ export default function DashboardPage() {
         const data = await response.json();
         setStats(data);
       } else {
-        // 使用模拟数据
-        setStats({
-          users: { total: 1250, new_today: 45, active_today: 320 },
-          courses: { total: 5800, generated_today: 120 },
-          economy: { revenue_today: 15000, tokens_purchased: 5000, points_earned: 25000 },
-        });
+        setError('加载失败，请稍后重试');
       }
     } catch (error) {
-      // 使用模拟数据
-      setStats({
-        users: { total: 1250, new_today: 45, active_today: 320 },
-        courses: { total: 5800, generated_today: 120 },
-        economy: { revenue_today: 15000, tokens_purchased: 5000, points_earned: 25000 },
-      });
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
@@ -62,6 +53,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <h1 className="text-2xl font-bold text-gray-900">仪表盘</h1>
 
       {/* 统计卡片 */}

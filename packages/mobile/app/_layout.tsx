@@ -1,10 +1,18 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider } from '@/lib/auth/auth-context';
-import { TouchableOpacity, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
+import { TouchableOpacity, Platform, LogBox } from 'react-native';
+import { useRouter, usePathname, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+
+// 全局抑制 useNativeDriver 警告（Expo Go 缺少 RCTAnimation 原生模块）
+// 第三方库（reanimated、react-navigation 等）内部硬编码 useNativeDriver: true，
+// 项目代码已用 USE_NATIVE_DRIVER 动态检测，但无法控制第三方库
+// LogBox.ignoreLogs 比 console.warn 覆盖更可靠，能拦截所有来源的警告
+LogBox.ignoreLogs([
+  /useNativeDriver.*native animated module is missing/,
+]);
 
 // 全局错误处理 - 拦截MetaMask等浏览器扩展错误
 // 在模块加载时就执行（比组件渲染更早）
@@ -89,23 +97,46 @@ function CustomBackButton() {
   );
 }
 
+// 全局认证守卫 — 未认证时只渲染登录页，不渲染 Stack
+const PUBLIC_ROUTES = ['/auth/login', '/auth/register'];
+
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const pathname = usePathname();
+
+  // 加载中不渲染
+  if (isLoading) return null;
+
+  // 已认证 → 正常渲染
+  if (isAuthenticated) return <>{children}</>;
+
+  // 未认证 → 判断是否在公开页面
+  const isPublicRoute = PUBLIC_ROUTES.some(r => pathname.startsWith(r));
+  if (isPublicRoute) return <>{children}</>;
+
+  // 未认证且不在公开页面 → 强制重定向到登录页
+  return <Redirect href="/auth/login" />;
+}
+
 export default function RootLayout() {
   // 全局错误处理器已在模块加载时设置，无需在组件中再次调用
 
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="auto" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="classroom/[id]" options={{ headerShown: true, title: '课程详情', headerLeft: () => <CustomBackButton /> }} />
-          <Stack.Screen name="classroom/create" options={{ headerShown: true, title: '创建课程', headerLeft: () => <CustomBackButton /> }} />
-          <Stack.Screen name="course/[id]" options={{ headerShown: true, title: '课程详情', headerLeft: () => <CustomBackButton /> }} />
-          <Stack.Screen name="auth/login" />
-          <Stack.Screen name="auth/register" />
-          <Stack.Screen name="wallet" />
-          <Stack.Screen name="enterprise" />
-        </Stack>
+        <AuthGuard>
+          <StatusBar style="auto" />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="classroom/[id]" options={{ headerShown: true, title: '课程详情', headerLeft: () => <CustomBackButton /> }} />
+            <Stack.Screen name="classroom/create" options={{ headerShown: true, title: '创建课程', headerLeft: () => <CustomBackButton /> }} />
+            <Stack.Screen name="course/[id]" options={{ headerShown: true, title: '课程详情', headerLeft: () => <CustomBackButton /> }} />
+            <Stack.Screen name="auth/login" />
+            <Stack.Screen name="auth/register" />
+            <Stack.Screen name="wallet" />
+            <Stack.Screen name="enterprise" />
+          </Stack>
+        </AuthGuard>
       </AuthProvider>
     </SafeAreaProvider>
   );

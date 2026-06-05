@@ -107,6 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    // 立即清除内存中的 token，阻断后续 API 请求携带旧凭证
+    apiClient.setToken(null);
+    setUser(null);
+
     try {
       // 调用后端退出登录接口（可选，主要是清除本地状态）
       await apiClient.logout();
@@ -118,9 +122,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await storage.deleteItem(TOKEN_KEY);
     await storage.deleteItem(REFRESH_TOKEN_KEY);
     await storage.deleteItem(USER_KEY);
-
-    setUser(null);
-    apiClient.setToken(null);
   }
 
   async function refreshUser() {

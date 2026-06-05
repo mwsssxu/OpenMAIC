@@ -3,6 +3,33 @@
 import { Easing } from 'react-native-reanimated';
 
 /**
+ * 检测 RCTAnimation 原生模块是否可用
+ * Expo Go 环境可能缺少此模块，导致 useNativeDriver 警告
+ * 
+ * 注意：延迟检测到首次使用时，避免模块加载阶段 NativeModules 未初始化
+ */
+let _nativeDriverAvailable: boolean | null = null;
+
+export function isNativeDriverAvailable(): boolean {
+  if (_nativeDriverAvailable !== null) return _nativeDriverAvailable;
+  try {
+    // 检测原生动画模块是否存在
+    // Platform.OS 检查确保 web 端直接返回 false
+    const { Platform, NativeModules } = require('react-native');
+    _nativeDriverAvailable = Platform.OS !== 'web' && !!NativeModules.NativeAnimatedModule;
+  } catch {
+    _nativeDriverAvailable = false;
+  }
+  return _nativeDriverAvailable;
+}
+
+/**
+ * 安全的 useNativeDriver 值
+ * 有原生动画模块返回 true，否则降级为 false（JS 驱动动画）
+ */
+export const USE_NATIVE_DRIVER: boolean = isNativeDriverAvailable();
+
+/**
  * 动画配置
  * 统一的动画参数，确保全应用动画一致性
  */

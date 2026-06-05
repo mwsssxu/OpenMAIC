@@ -17,6 +17,7 @@ interface Note {
 export default function NotesReviewPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('pending');
 
@@ -42,21 +43,13 @@ export default function NotesReviewPage() {
         const data = await response.json();
         setNotes(data.notes || []);
       } else {
-        setNotes(getMockNotes());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setNotes(getMockNotes());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockNotes(): Note[] {
-    return [
-      { id: '1', title: '机器学习笔记01', content: '今天学习了梯度下降的核心概念...', author: { nickname: '学习者1', email: 'user1@example.com' }, classroom_id: 'ml-101', status: 'pending', likes: 5, created_at: '2026-04-17 12:00' },
-      { id: '2', title: 'Python进阶技巧', content: '总结了10个实用的Python技巧...', author: { nickname: '学习者2', email: 'user2@example.com' }, classroom_id: 'py-201', status: 'approved', likes: 25, created_at: '2026-04-16 16:00' },
-      { id: '3', title: '深度学习入门', content: '神经网络的基础知识整理...', author: { nickname: '学习者3', email: 'user3@example.com' }, classroom_id: 'dl-301', status: 'rejected', likes: 0, created_at: '2026-04-15 10:00' },
-    ];
   }
 
   async function handleApprove(id: string) {
@@ -66,7 +59,7 @@ export default function NotesReviewPage() {
       await fetch(`${apiUrl}/admin/content/notes/${id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       fetchNotes();
     } catch {
-      setNotes(notes.map(n => n.id === id ? { ...n, status: 'approved' } : n));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -77,7 +70,7 @@ export default function NotesReviewPage() {
       await fetch(`${apiUrl}/admin/content/notes/${id}/reject`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       fetchNotes();
     } catch {
-      setNotes(notes.map(n => n.id === id ? { ...n, status: 'rejected' } : n));
+      setError('操作失败，请稍后重试');
     }
   }
 
@@ -95,6 +88,7 @@ export default function NotesReviewPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">笔记审核</h1>
         <div className="flex items-center gap-4">

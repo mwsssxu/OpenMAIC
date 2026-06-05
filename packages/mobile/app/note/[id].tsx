@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
@@ -85,13 +86,13 @@ function RelatedNoteCard({ note, onPress }: { note: RelatedNote; onPress: () => 
     haptics.light();
     Animated.spring(scaleAnim, {
       toValue: 0.95,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
     onPress();
     setTimeout(() => {
       Animated.spring(scaleAnim, {
         toValue: 1,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }).start();
     }, 100);
   };

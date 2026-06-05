@@ -18,6 +18,7 @@ interface User {
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
@@ -43,18 +44,10 @@ export default function UsersPage() {
         const data = await response.json();
         setUsers(data.users || []);
       } else {
-        // 模拟数据
-        setUsers([
-          { id: '1', email: 'user1@example.com', nickname: '学习者1', avatar_url: '', token_balance: 200, point_balance: 500, subscription_tier: 'premium', created_at: '2026-01-15', is_active: true },
-          { id: '2', email: 'user2@example.com', nickname: '学习者2', avatar_url: '', token_balance: 50, point_balance: 100, subscription_tier: 'free', created_at: '2026-02-20', is_active: true },
-          { id: '3', email: 'user3@example.com', nickname: '学习者3', avatar_url: '', token_balance: 500, point_balance: 1000, subscription_tier: 'enterprise', created_at: '2026-03-10', is_active: false },
-        ]);
+        setError('加载失败，请稍后重试');
       }
     } catch (error) {
-      setUsers([
-        { id: '1', email: 'user1@example.com', nickname: '学习者1', avatar_url: '', token_balance: 200, point_balance: 500, subscription_tier: 'premium', created_at: '2026-01-15', is_active: true },
-        { id: '2', email: 'user2@example.com', nickname: '学习者2', avatar_url: '', token_balance: 50, point_balance: 100, subscription_tier: 'free', created_at: '2026-02-20', is_active: true },
-      ]);
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
@@ -62,6 +55,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">用户管理</h1>
         <div className="flex items-center gap-4">

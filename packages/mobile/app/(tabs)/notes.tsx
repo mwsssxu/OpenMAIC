@@ -9,6 +9,7 @@ import {
   Animated,
   RefreshControl,
 } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
@@ -84,14 +85,14 @@ function NoteItem({ note, onPress, onStarToggle }: { note: NoteItem; onPress: ()
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.98,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   };
 
@@ -143,13 +144,13 @@ function FilterTab({ tab, active, onPress }: { tab: typeof filterTabs[0]; active
     haptics.light();
     Animated.spring(scaleAnim, {
       toValue: 0.96,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
     onPress();
     setTimeout(() => {
       Animated.spring(scaleAnim, {
         toValue: 1,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }).start();
     }, 100);
   };

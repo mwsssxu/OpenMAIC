@@ -13,11 +13,32 @@ from app.routes.admin_auth import get_current_admin, check_permission, get_admin
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+# ============ Permission Dependencies ============
+
+def _perm(code: str):
+    """Create a FastAPI dependency that checks a specific permission code."""
+    async def _check(admin: dict = Depends(get_current_admin), db: asyncpg.Connection = Depends(get_db)):
+        return await check_permission(code, admin, db)
+    return _check
+
+require_dashboard = _perm("dashboard.view")
+require_users_list = _perm("users.list")
+require_users_detail = _perm("users.detail")
+require_users_ban = _perm("users.ban")
+require_users_gift = _perm("users.gift")
+require_courses_view = _perm("courses.view")
+require_content_review = _perm("content.review")
+require_statistics_view = _perm("statistics.view")
+require_finance_view = _perm("finance.view")
+require_settings_manage = _perm("settings.manage")
+require_logs_view = _perm("logs.view")
+
+
 # ============ Dashboard Stats ============
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_dashboard),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get dashboard overview statistics. Requires any admin permission."""
@@ -35,15 +56,15 @@ async def get_dashboard_stats(
     generated_today = await db.fetchval("SELECT COUNT(*) FROM stages WHERE DATE(created_at) = $1", today) or 0
 
     revenue_today = await db.fetchval(
-        "SELECT COALESCE(SUM(amount), 0) FROM token_transactions WHERE type = 'purchase' AND DATE(created_at) = $1",
+        "SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status = 'paid' AND DATE(created_at) = $1",
         today
     ) or 0
     tokens_purchased = await db.fetchval(
-        "SELECT COALESCE(SUM(tokens), 0) FROM token_transactions WHERE type = 'purchase' AND DATE(created_at) = $1",
+        "SELECT COALESCE(SUM(amount), 0) FROM token_transactions WHERE type = 'purchase' AND DATE(created_at) = $1",
         today
     ) or 0
     points_earned = await db.fetchval(
-        "SELECT COALESCE(SUM(points), 0) FROM point_transactions WHERE type = 'earn' AND DATE(created_at) = $1",
+        "SELECT COALESCE(SUM(amount), 0) FROM point_transactions WHERE source = 'earn' AND DATE(created_at) = $1",
         today
     ) or 0
 
@@ -63,7 +84,7 @@ async def list_users(
     status: Optional[str] = Query(None),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_users_list),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List users with search and filter. Requires users.list permission."""
@@ -111,7 +132,7 @@ async def list_users(
 @router.get("/users/{user_id}")
 async def get_user_detail(
     user_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_users_detail),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get detailed user info. Requires users.view permission."""
@@ -149,7 +170,7 @@ async def get_user_detail(
 async def ban_user(
     user_id: str,
     reason: str = "管理员禁用",
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_users_ban),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Ban a user account. Requires users.ban permission."""
@@ -169,7 +190,7 @@ async def ban_user(
 @router.post("/users/{user_id}/unban")
 async def unban_user(
     user_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_users_ban),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Unban a user account. Requires users.ban permission."""
@@ -191,7 +212,7 @@ async def gift_tokens_to_user(
     user_id: str,
     amount: int,
     reason: str = "管理员赠送",
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_users_gift),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Gift tokens to user. Requires users.gift permission."""
@@ -203,12 +224,16 @@ async def gift_tokens_to_user(
         amount, user_id
     )
 
+    new_balance = await db.fetchval(
+        "SELECT token_balance FROM users WHERE id = $1", user_id
+    )
+
     await db.execute(
         """
-        INSERT INTO token_transactions (user_id, tokens, transaction_type, description, created_at)
-        VALUES ($1, $2, 'gift', $3, $4)
+        INSERT INTO token_transactions (user_id, type, amount, balance_after, description, created_at)
+        VALUES ($1, 'gift', $2, $3, $4, $5)
         """,
-        user_id, amount, reason, utcnow()
+        user_id, amount, new_balance, reason, utcnow()
     )
 
     await db.execute(
@@ -227,7 +252,7 @@ async def gift_points_to_user(
     user_id: str,
     amount: int,
     reason: str = "管理员赠送",
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_users_gift),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Gift points to user. Requires users.gift permission."""
@@ -239,12 +264,16 @@ async def gift_points_to_user(
         amount, user_id
     )
 
+    new_point_balance = await db.fetchval(
+        "SELECT point_balance FROM users WHERE id = $1", user_id
+    )
+
     await db.execute(
         """
-        INSERT INTO point_transactions (user_id, points, transaction_type, description, created_at)
-        VALUES ($1, $2, 'gift', $3, $4)
+        INSERT INTO point_transactions (user_id, source, amount, balance_after, created_at)
+        VALUES ($1, 'gift', $2, $3, $4)
         """,
-        user_id, amount, reason, utcnow()
+        user_id, amount, new_point_balance, utcnow()
     )
 
     await db.execute(
@@ -258,13 +287,90 @@ async def gift_points_to_user(
     return {"success": True, "points_added": amount}
 
 
+# ============ Course Management ============
+
+@router.get("/courses")
+async def list_courses(
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, le=100),
+    offset: int = Query(0, ge=0),
+    admin: dict = Depends(require_courses_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """List courses (stages) for admin. Requires courses.view permission."""
+    conditions = []
+    params = []
+
+    if search:
+        conditions.append("name ILIKE $" + str(len(params) + 1))
+        params.append(f"%{search}%")
+
+    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+    params.extend([limit, offset])
+
+    courses = await db.fetch(
+        f"""
+        SELECT s.id, s.name as title, s.description, s.user_id as creator_id,
+               s.created_at, s.updated_at
+        FROM stages s
+        WHERE {where_clause}
+        ORDER BY s.created_at DESC
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params
+    )
+
+    course_list = []
+    for c in courses:
+        course_dict = dict(c)
+        course_dict["chapters_count"] = 0
+        if course_dict.get("created_at"):
+            course_dict["created_at"] = course_dict["created_at"].isoformat()
+        if course_dict.get("updated_at"):
+            course_dict["updated_at"] = course_dict["updated_at"].isoformat()
+        course_list.append(course_dict)
+
+    return {"data": course_list, "total": len(course_list)}
+
+
+@router.get("/courses/{course_id}")
+async def get_course(
+    course_id: str,
+    admin: dict = Depends(require_courses_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """Get single course (stage) by ID. Requires courses.view permission."""
+    course = await db.fetchrow(
+        """
+        SELECT s.id, s.name as title, s.description, s.user_id as creator_id,
+               s.created_at, s.updated_at
+        FROM stages s
+        WHERE s.id = $1
+        """,
+        course_id
+    )
+
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    course_dict = dict(course)
+    course_dict["chapters_count"] = 0
+    course_dict["total_duration"] = 0
+    if course_dict.get("created_at"):
+        course_dict["created_at"] = course_dict["created_at"].isoformat()
+    if course_dict.get("updated_at"):
+        course_dict["updated_at"] = course_dict["updated_at"].isoformat()
+
+    return {"data": course_dict}
+
+
 # ============ Content Review ============
 
 @router.get("/content/questions")
 async def list_questions_review(
     status: str = Query("pending"),
     limit: int = Query(50, le=100),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List questions for content review. Requires content.list permission."""
@@ -287,7 +393,7 @@ async def list_questions_review(
 @router.post("/content/questions/{question_id}/approve")
 async def approve_question(
     question_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Approve a question. Requires content.approve permission."""
@@ -308,7 +414,7 @@ async def approve_question(
 async def reject_question(
     question_id: str,
     reason: str = "不符合内容规范",
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Reject a question. Requires content.reject permission."""
@@ -329,7 +435,7 @@ async def reject_question(
 async def list_answers_review(
     status: str = Query("pending"),
     limit: int = Query(50, le=100),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List answers for review. Requires content.list permission."""
@@ -353,7 +459,7 @@ async def list_answers_review(
 @router.post("/content/answers/{answer_id}/approve")
 async def approve_answer(
     answer_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Approve an answer. Requires content.approve permission."""
@@ -374,7 +480,7 @@ async def approve_answer(
 async def reject_answer(
     answer_id: str,
     reason: str = "不符合内容规范",
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Reject an answer. Requires content.reject permission."""
@@ -395,17 +501,17 @@ async def reject_answer(
 async def list_notes_review(
     status: str = Query("pending"),
     limit: int = Query(50, le=100),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """List notes for review. Requires content.list permission."""
     notes = await db.fetch(
         """
-        SELECT n.id, n.title, n.content, n.classroom_id, n.likes, n.review_status,
+        SELECT n.id, n.title, n.content, n.course_id, n.rating_count as likes, n.status as review_status,
                u.nickname, n.created_at
-        FROM notes n
+        FROM shared_notes n
         JOIN users u ON n.user_id = u.id
-        WHERE n.review_status = $1
+        WHERE n.status = $1
         ORDER BY n.created_at DESC
         LIMIT $2
         """,
@@ -418,11 +524,11 @@ async def list_notes_review(
 @router.post("/content/notes/{note_id}/approve")
 async def approve_note(
     note_id: str,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Approve a note. Requires content.approve permission."""
-    await db.execute("UPDATE notes SET review_status = 'approved' WHERE id = $1", note_id)
+    await db.execute("UPDATE shared_notes SET status = 'approved' WHERE id = $1", note_id)
 
     await db.execute(
         """
@@ -439,11 +545,11 @@ async def approve_note(
 async def reject_note(
     note_id: str,
     reason: str = "不符合内容规范",
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_content_review),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Reject a note. Requires content.reject permission."""
-    await db.execute("UPDATE notes SET review_status = 'rejected' WHERE id = $1", note_id)
+    await db.execute("UPDATE shared_notes SET status = 'rejected' WHERE id = $1", note_id)
 
     await db.execute(
         """
@@ -461,7 +567,7 @@ async def reject_note(
 @router.get("/statistics/users")
 async def get_user_stats(
     days: int = Query(7, le=30),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_statistics_view),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get user statistics. Requires finance.view permission."""
@@ -493,22 +599,22 @@ async def get_user_stats(
 @router.get("/statistics/economy")
 async def get_economy_stats(
     days: int = Query(7, le=30),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_finance_view),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get economy statistics. Requires finance.view permission."""
     start_date = utcnow().date() - timedelta(days=days)
 
-    revenue_today = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = CURRENT_DATE AND status = 'completed'") or 0
-    revenue_month = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) AND status = 'completed'") or 0
+    revenue_today = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM orders WHERE DATE(created_at) = CURRENT_DATE AND status = 'paid'") or 0
+    revenue_month = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM orders WHERE DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) AND status = 'paid'") or 0
 
-    tokens_today = await db.fetchval("SELECT COALESCE(SUM(tokens), 0) FROM token_transactions WHERE DATE(created_at) = CURRENT_DATE AND transaction_type = 'purchase'") or 0
-    points_earned = await db.fetchval("SELECT COALESCE(SUM(points), 0) FROM point_transactions WHERE DATE(created_at) = CURRENT_DATE AND transaction_type = 'earn'") or 0
+    tokens_today = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM token_transactions WHERE DATE(created_at) = CURRENT_DATE AND type = 'purchase'") or 0
+    points_earned = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM point_transactions WHERE DATE(created_at) = CURRENT_DATE AND source = 'earn'") or 0
 
     revenue_trend = await db.fetch(
         """
         SELECT DATE(created_at) as date, COALESCE(SUM(amount), 0) as revenue
-        FROM payments WHERE DATE(created_at) >= $1 AND status = 'completed'
+        FROM orders WHERE DATE(created_at) >= $1 AND status = 'paid'
         GROUP BY DATE(created_at) ORDER BY date
         """,
         start_date
@@ -523,11 +629,57 @@ async def get_economy_stats(
     }
 
 
+@router.get("/statistics/courses")
+async def get_course_statistics(
+    days: int = Query(7, le=30),
+    admin: dict = Depends(require_statistics_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """Get course statistics. Requires statistics.view permission."""
+    today = datetime.now().date()
+    start_date = today - timedelta(days=days)
+
+    total_courses = await db.fetchval("SELECT COUNT(*) FROM stages")
+    generated_today = await db.fetchval(
+        "SELECT COUNT(*) FROM stages WHERE DATE(created_at) = $1", today
+    ) or 0
+
+    trend = await db.fetch(
+        """
+        SELECT DATE(created_at) as date, COUNT(*) as courses
+        FROM stages WHERE DATE(created_at) >= $1
+        GROUP BY DATE(created_at) ORDER BY date
+        """,
+        start_date
+    )
+
+    completions = await db.fetch(
+        """
+        SELECT DATE(created_at) as date, COUNT(*) as completions
+        FROM course_completions WHERE DATE(created_at) >= $1
+        GROUP BY DATE(created_at) ORDER BY date
+        """,
+        start_date
+    )
+
+    trend_data = []
+    for t in trend:
+        date_str = t["date"].isoformat()
+        comp = next((c["completions"] for c in completions if c["date"] == t["date"]), 0)
+        trend_data.append({"date": date_str, "courses": t["courses"], "completions": comp})
+
+    return {
+        "total_courses": total_courses or 0,
+        "generated_today": generated_today,
+        "generation_trend": trend_data
+    }
+
+
 # ============ Settings ============
 
 @router.get("/settings/llm")
 async def get_llm_settings(
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get LLM settings. Requires settings.view permission."""
@@ -538,7 +690,7 @@ async def get_llm_settings(
 @router.put("/settings/llm")
 async def update_llm_settings(
     configs: List[dict],
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update LLM settings. Requires settings.edit permission."""
@@ -564,7 +716,7 @@ async def update_llm_settings(
 
 @router.get("/settings/pricing")
 async def get_pricing_settings(
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get pricing settings. Requires settings.view permission."""
@@ -575,7 +727,7 @@ async def get_pricing_settings(
 @router.put("/settings/pricing")
 async def update_pricing_settings(
     pricing: List[dict],
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update pricing settings. Requires settings.edit permission."""
@@ -601,7 +753,7 @@ async def update_pricing_settings(
 
 @router.get("/settings/rules")
 async def get_rules_settings(
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get reward rules. Requires settings.view permission."""
@@ -620,7 +772,7 @@ async def get_rules_settings(
 @router.put("/settings/rules")
 async def update_rules_settings(
     config: dict,
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update reward rules. Requires settings.edit permission."""
@@ -650,7 +802,7 @@ async def update_rules_settings(
 async def get_admin_logs(
     action: Optional[str] = Query(None),
     limit: int = Query(100, le=200),
-    admin: dict = Depends(check_permission),
+    admin: dict = Depends(require_logs_view),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get admin operation logs. Requires logs.view permission."""

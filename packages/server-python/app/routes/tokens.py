@@ -19,9 +19,9 @@ router = APIRouter()
 # ==================== Token套餐 ====================
 
 TOKEN_PACKAGES = {
-    "basic": {"price": 1000, "tokens": 100, "bonus": 0},  # ￥10 = 100 Token
-    "standard": {"price": 5000, "tokens": 500, "bonus": 100},  # ￥50 = 600 Token
-    "premium": {"price": 10000, "tokens": 1000, "bonus": 500},  # ￥100 = 1500 Token
+    "starter": {"price": 600, "tokens": 50, "bonus": 0},      # ¥6 = 50 Token
+    "learning": {"price": 1800, "tokens": 180, "bonus": 20},   # ¥18 = 200 Token
+    "unlimited": {"price": 4800, "tokens": 500, "bonus": 100}, # ¥48 = 600 Token
 }
 
 
@@ -69,6 +69,85 @@ async def get_token_balance(
         "balance": account["balance"],
         "updated_at": account["updated_at"].isoformat() if account["updated_at"] else None,
         "source": "db"
+    }
+
+
+@router.get("/overview")
+async def get_account_overview(
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    用户账户总览 - 余额实时监控
+    合并返回 Token 余额 + 订阅状态 + 今日用量，前端轮询此接口即可
+    """
+    from app.routes.subscriptions import PLAN_FEATURES, TOKEN_COST_MAP
+    from app.middleware.feature_gate import get_user_subscription, get_feature_usage
+    user_uuid = uuid.UUID(current_user_id)
+
+    # Token 余额
+    cached_balance = await get_cached_token_balance(current_user_id)
+    if cached_balance is not None:
+        token_balance = cached_balance
+    else:
+        account = await db.fetchrow(
+            "SELECT balance FROM token_accounts WHERE user_id = $1", user_uuid
+        )
+        if account is None:
+            # 新用户创建默认账户（与 /balance 端点行为一致）
+            await db.execute(
+                "INSERT INTO token_accounts (id, user_id, balance) VALUES ($1, $2, 0)",
+                uuid.uuid4(), user_uuid
+            )
+            token_balance = 0
+        else:
+            token_balance = account["balance"]
+            await cache_token_balance(current_user_id, token_balance)
+
+    # 订阅状态
+    subscription = await get_user_subscription(current_user_id, db)
+    plan_type = subscription["plan_type"]
+    plan_features = PLAN_FEATURES.get(plan_type, PLAN_FEATURES["free"])
+
+    # 今日各功能用量
+    usage_today = {}
+    for feature_key in ["ai_interaction", "discussion", "course_generation", "buddy_chat"]:
+        usage = await get_feature_usage(current_user_id, feature_key, db)
+        limit = plan_features.get(feature_key, {}).get("limit", 0)
+        usage_today[feature_key] = {
+            "used": usage,
+            "limit": limit,
+            "remaining": -1 if limit == -1 else max(0, limit - usage),
+        }
+
+    # 最近5条Token消耗记录
+    recent_tx = await db.fetch(
+        """
+        SELECT amount, description, created_at
+        FROM token_transactions
+        WHERE user_id = $1 AND amount < 0
+        ORDER BY created_at DESC LIMIT 5
+        """,
+        user_uuid
+    )
+
+    return {
+        "token_balance": token_balance,
+        "subscription": {
+            "plan_type": plan_type,
+            "status": subscription.get("status", "active"),
+            "expires_at": subscription.get("expires_at"),
+            "is_pro": plan_type == "pro",
+        },
+        "usage_today": usage_today,
+        "recent_spends": [
+            {
+                "amount": abs(tx["amount"]),
+                "description": tx["description"],
+                "time": tx["created_at"].isoformat() if tx["created_at"] else None,
+            }
+            for tx in recent_tx
+        ],
     }
 
 
@@ -444,3 +523,140 @@ async def reward_tokens_internal(db: asyncpg.Connection, user_uuid: uuid.UUID, a
     )
 
     return new_balance
+
+
+# ==================== Token 消耗引擎 ====================
+
+async def spend_tokens_internal(
+    db: asyncpg.Connection,
+    user_uuid: uuid.UUID,
+    amount: int,
+    description: str,
+    reference_id: str = None
+) -> int:
+    """
+    内部函数：消费Token（事务内，调用者需在事务内）
+    返回消费后的余额，余额不足时抛出 HTTPException
+    """
+    import math
+    amount = math.ceil(amount)  # 向上取整（处理0.5等小数）
+
+    if amount <= 0:
+        return 0
+
+    token_account = await db.fetchrow(
+        "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
+        user_uuid
+    )
+    if token_account is None or token_account["balance"] < amount:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Token余额不足")
+
+    new_balance = token_account["balance"] - amount
+    await db.execute(
+        "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+        new_balance, utcnow(), user_uuid
+    )
+
+    # 记录流水
+    ref_uuid = uuid.UUID(reference_id) if reference_id else None
+    await db.execute(
+        """
+        INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, reference_id, created_at)
+        VALUES ($1, $2, 'spend', $3, $4, $5, $6, $7)
+        """,
+        uuid.uuid4(), user_uuid, -amount, new_balance, description, ref_uuid, utcnow()
+    )
+
+    return new_balance
+
+
+async def deduct_tokens_for_action(
+    db: asyncpg.Connection,
+    user_id: str,
+    action: str,
+    description: str = "",
+    reference_id: str = None,
+    extra_cost: int = 0
+) -> dict:
+    """
+    按操作类型扣减 Token
+
+    逻辑：
+    1. 查用户订阅状态
+    2. 如果 Pro 用户且该操作在免费额度内 → 不扣 Token
+    3. 如果 Free 用户且在每日免费额度内 → 不扣 Token，但增加使用计数
+    4. 超出免费额度 → 扣减 Token
+
+    Args:
+        db: 数据库连接
+        user_id: 用户ID（字符串）
+        action: 操作类型（对应 TOKEN_COST_MAP 的 key）
+        description: 描述
+        reference_id: 关联ID
+        extra_cost: 额外Token消耗（如课程场景数）
+
+    Returns:
+        {"deducted": bool, "amount": int, "balance_after": int, "free_quota_used": bool}
+    """
+    from app.routes.subscriptions import TOKEN_COST_MAP, PLAN_FEATURES
+    from app.middleware.feature_gate import get_user_subscription, get_feature_usage, increment_feature_usage
+    import math
+
+    user_uuid = uuid.UUID(user_id)
+
+    # 获取订阅状态
+    subscription = await get_user_subscription(user_id, db)
+    plan_type = subscription["plan_type"]
+    features = PLAN_FEATURES.get(plan_type, PLAN_FEATURES["free"])
+
+    # 获取操作对应的 Token 成本
+    base_cost = TOKEN_COST_MAP.get(action, 0)
+    total_cost = base_cost + extra_cost
+
+    # 判断该操作是否在免费额度内
+    # 不同操作对应不同的 feature key
+    feature_map = {
+        "ai_interaction": "ai_interaction",
+        "discussion_2agent": "discussion",
+        "discussion_3agent": "discussion",
+        "course_generation_base": "course_generation",
+        "buddy_deep_chat": "buddy_chat",
+    }
+    feature_key = feature_map.get(action)
+
+    if feature_key:
+        feature_config = features.get(feature_key, {})
+        limit = feature_config.get("limit", 0)
+
+        if limit == -1:
+            # Pro 无限额度 → 不扣 Token
+            await increment_feature_usage(user_id, feature_key, db)
+            return {"deducted": False, "amount": 0, "balance_after": -1, "free_quota_used": True}
+
+        # 检查今日使用次数
+        usage = await get_feature_usage(user_id, feature_key, db)
+        if usage < limit:
+            # 还在免费额度内 → 不扣 Token
+            await increment_feature_usage(user_id, feature_key, db)
+            return {"deducted": False, "amount": 0, "balance_after": -1, "free_quota_used": True}
+
+    # 超出免费额度 → 扣减 Token
+    if total_cost <= 0:
+        return {"deducted": False, "amount": 0, "balance_after": -1, "free_quota_used": False}
+
+    async with db.transaction():
+        new_balance = await spend_tokens_internal(
+            db, user_uuid, total_cost,
+            description or f"Token消费：{action}",
+            reference_id
+        )
+
+    # 清除余额缓存
+    await invalidate_balance_cache(user_id)
+
+    # 增加使用计数
+    if feature_key:
+        await increment_feature_usage(user_id, feature_key, db)
+
+    return {"deducted": True, "amount": math.ceil(total_cost), "balance_after": new_balance, "free_quota_used": False}

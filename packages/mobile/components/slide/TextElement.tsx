@@ -9,6 +9,7 @@
 
 import { useMemo, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Animated, Easing } from 'react-native';
+import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import type { PPTTextElement, SlideTheme } from './types';
 import { isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
 import { Colors } from '@/lib/constants/theme';
@@ -170,13 +171,13 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 400,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
         easing: Easing.out(Easing.ease),
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 400,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
         easing: Easing.out(Easing.ease),
       }),
     ]).start();

@@ -14,6 +14,7 @@ interface PricingConfig {
 export default function PricingSettingsPage() {
   const [configs, setConfigs] = useState<PricingConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -34,23 +35,13 @@ export default function PricingSettingsPage() {
         const data = await response.json();
         setConfigs(data.pricing || []);
       } else {
-        setConfigs(getMockConfigs());
+        setError('加载失败，请稍后重试');
       }
     } catch {
-      setConfigs(getMockConfigs());
+      setError('加载失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
-  }
-
-  function getMockConfigs(): PricingConfig[] {
-    return [
-      { type: 'token_pack', name: '基础包', price: 9.9, tokens: 100, description: '适合新手体验' },
-      { type: 'token_pack', name: '标准包', price: 49.9, tokens: 500, description: '日常学习首选' },
-      { type: 'token_pack', name: '专业包', price: 99.9, tokens: 1000, description: '深度学习用户' },
-      { type: 'subscription', name: '高级会员', price: 29.9, tokens: 200, description: '月度订阅，每月赠送200 Token' },
-      { type: 'subscription', name: '企业会员', price: 99.9, tokens: 500, description: '月度订阅，每月赠送500 Token' },
-    ];
   }
 
   async function handleSave() {
@@ -68,7 +59,7 @@ export default function PricingSettingsPage() {
         body: JSON.stringify({ pricing: configs }),
       });
     } catch {
-      // 模拟保存
+      setError('保存失败，请稍后重试');
     } finally {
       setIsSaving(false);
     }
@@ -84,6 +75,7 @@ export default function PricingSettingsPage() {
 
   return (
     <div className="space-y-6">
+        {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">{error}</div>}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">价格配置</h1>
         <button
