@@ -41,7 +41,7 @@ async def get_profile_overview(
 
     # 获取用户信息
     user = await db.fetchrow(
-        "SELECT id, nickname, avatar_url, email, bio, birthday, gender FROM users WHERE id = $1",
+        "SELECT id, nickname, avatar_url, email, bio, birthday, gender, interests, wechat, weibo, github, linkedin, show_progress, show_social, allow_message FROM users WHERE id = $1",
         user_uuid
     )
 
@@ -140,6 +140,14 @@ async def get_profile_overview(
             "bio": user["bio"],
             "birthday": user["birthday"].isoformat() if user["birthday"] else None,
             "gender": user["gender"],
+            "interests": user["interests"] or "",
+            "wechat": user["wechat"] or "",
+            "weibo": user["weibo"] or "",
+            "github": user["github"] or "",
+            "linkedin": user["linkedin"] or "",
+            "show_progress": user["show_progress"] if user["show_progress"] is not None else True,
+            "show_social": user["show_social"] if user["show_social"] is not None else True,
+            "allow_message": user["allow_message"] if user["allow_message"] is not None else True,
         },
         "stats": {
             "streak_days": streak,

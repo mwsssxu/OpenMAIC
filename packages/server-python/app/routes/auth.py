@@ -308,9 +308,11 @@ async def get_current_user_info(
 ):
     """获取当前用户信息"""
     row = await db.fetchrow(
-        "SELECT id, email, nickname, avatar_url, bio, birthday, gender, created_at FROM users WHERE id = $1",
+        "SELECT id, email, nickname, avatar_url, bio, birthday, gender, interests, wechat, weibo, github, linkedin, show_progress, show_social, allow_message, created_at FROM users WHERE id = $1",
         uuid.UUID(current_user_id)
     )
+    if row is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
     return {
         "id": str(row["id"]),
         "email": row["email"],
@@ -319,6 +321,14 @@ async def get_current_user_info(
         "bio": row["bio"],
         "birthday": row["birthday"].isoformat() if row["birthday"] else None,
         "gender": row["gender"],
+        "interests": row["interests"] or "",
+        "wechat": row["wechat"] or "",
+        "weibo": row["weibo"] or "",
+        "github": row["github"] or "",
+        "linkedin": row["linkedin"] or "",
+        "show_progress": row["show_progress"] if row["show_progress"] is not None else True,
+        "show_social": row["show_social"] if row["show_social"] is not None else True,
+        "allow_message": row["allow_message"] if row["allow_message"] is not None else True,
         "created_at": row["created_at"].isoformat()
     }
 
