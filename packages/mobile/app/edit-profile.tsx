@@ -105,6 +105,11 @@ export default function EditProfileScreen() {
     if (!hasChanges) return;
     const timer = setTimeout(async () => {
       if (!hasChangesRef.current || savingRef.current) return;
+      // 前端校验生日格式
+      if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+        showError({ message: '生日格式不正确，请输入 YYYY-MM-DD' });
+        return;
+      }
       savingRef.current = true;
       setSaving(true);
       try {
@@ -131,6 +136,10 @@ export default function EditProfileScreen() {
   // 保留手动保存入口（如需返回前触发）
   async function handleSave() {
     if (!hasChanges || savingRef.current) return;
+    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+      showError({ message: '生日格式不正确，请输入 YYYY-MM-DD' });
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     try {

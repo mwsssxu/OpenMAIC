@@ -296,23 +296,29 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     haptics.medium();
-    Alert.alert(
-      t('profile.logout'),
-      '',
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { 
-          text: t('common.confirm'), 
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            // dismissAll 清空整个导航栈，防止回退到受保护页面
-            router.dismissAll();
-            router.replace('/auth/login');
-          }
-        },
-      ]
-    );
+    const doLogout = async () => {
+      await logout();
+      router.dismissAll();
+      router.replace('/auth/login');
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(t('profile.logout') + '?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert(
+        t('profile.logout'),
+        '',
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { 
+            text: t('common.confirm'), 
+            style: 'destructive',
+            onPress: doLogout
+          },
+        ]
+      );
+    }
   };
 
   const handleHelp = () => {
