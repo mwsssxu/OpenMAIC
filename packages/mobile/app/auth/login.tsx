@@ -41,6 +41,7 @@ export default function LoginScreen() {
   const goBack = useGoBack();
   const { login, isLoading, isAuthenticated } = useAuth();
   const { onPress, onError } = useFeedback();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,7 +57,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     setError(null);
-    if (!email || !password) { setError('请输入手机号/邮箱和密码'); return; }
+    if (!email || !password) { setError(t('auth.errorEmptyFields')); return; }
     setBusy(true);
     try {
       await login(email, password);
@@ -65,7 +66,7 @@ export default function LoginScreen() {
     } catch (err) {
       setBusy(false);
       onError();
-      setError(err instanceof Error ? err.message : '请检查账号和密码');
+      setError(err instanceof Error ? err.message : t('auth.errorCheckCredentials'));
     }
   };
 
@@ -102,12 +103,12 @@ export default function LoginScreen() {
                 <View style={S.eyebrowLine} />
                 <Text style={S.eyebrow}>LEARN &amp; GROW</Text>
               </View>
-              <Text style={S.heroMain}>为己而学</Text>
+              <Text style={S.heroMain}>{t('auth.heroMain')}</Text>
               <View style={S.heroSubWrap}>
                 <View style={S.heroSubDash} />
-                <Text style={S.heroSub}>为人而行</Text>
+                <Text style={S.heroSub}>{t('auth.heroSub')}</Text>
               </View>
-              <Text style={S.heroCaption}>{'为自我成长而学习\n为他人福祉而行动'}</Text>
+              <Text style={S.heroCaption}>{t('auth.heroCaption')}</Text>
             </View>
 
             {/* Bottom wave → bg */}
@@ -121,16 +122,16 @@ export default function LoginScreen() {
             <View style={S.cardAccentBar} />
 
             <View style={S.cardHeader}>
-              <Text style={S.greeting}>欢迎回来</Text>
+              <Text style={S.greeting}>{t('auth.welcomeBack')}</Text>
             </View>
 
             {/* Email */}
             <View style={S.field}>
-              <Text style={S.label}>手机号 / 邮箱</Text>
+              <Text style={S.label}>{t('auth.phoneOrEmail')}</Text>
               <View style={[S.inputBox, focused === 'email' && S.inputFocus]}>
                 <TextInput
                   style={S.input}
-                  placeholder="请输入手机号或邮箱"
+                  placeholder={t('auth.phoneOrEmailPlaceholder')}
                   placeholderTextColor="#BFB8B2"
                   value={email}
                   onChangeText={setEmail}
@@ -146,13 +147,13 @@ export default function LoginScreen() {
 
             {/* Password */}
             <View style={S.field}>
-              <Text style={S.label}>密码</Text>
+              <Text style={S.label}>{t('auth.password')}</Text>
               <View style={S.pwdRow}>
                 <View style={[S.inputBox, S.pwdInputBox, focused === 'password' && S.inputFocus]}>
                   <TextInput
                     ref={pwdRef}
                     style={S.input}
-                    placeholder="请输入密码"
+                    placeholder={t('auth.passwordPlaceholder')}
                     placeholderTextColor="#BFB8B2"
                     value={password}
                     onChangeText={setPassword}
@@ -176,9 +177,9 @@ export default function LoginScreen() {
                 <View style={S.checkbox}>
                   <View style={S.checkmark} />
                 </View>
-                <Text style={S.rememberText}>记住我</Text>
+                <Text style={S.rememberText}>{t('auth.rememberMe')}</Text>
               </TouchableOpacity>
-              <Text style={S.forgotLink}>忘记密码？</Text>
+              <Text style={S.forgotLink}>{t('auth.forgotPassword')}</Text>
             </View>
 
             {/* Error */}
@@ -191,14 +192,14 @@ export default function LoginScreen() {
             {/* Login button */}
             <TouchableOpacity style={S.loginBtn} onPress={handleLogin} disabled={isLoading || busy} activeOpacity={0.85}>
               <LinearGradient colors={[C.accent, C.accentDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.loginGrad}>
-                {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={S.loginText}>登 录</Text>}
+                {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={S.loginText}>{t('auth.login')}</Text>}
               </LinearGradient>
             </TouchableOpacity>
 
             {/* Divider */}
             <View style={S.divider}>
               <View style={S.divLine} />
-              <Text style={S.divText}>其他登录方式</Text>
+              <Text style={S.divText}>{t('auth.otherLoginMethods')}</Text>
               <View style={S.divLine} />
             </View>
 
@@ -223,15 +224,15 @@ export default function LoginScreen() {
 
             {/* Signup */}
             <View style={S.signupRow}>
-              <Text style={S.signupPre}>还没有账号？</Text>
-              <Text style={S.signupLink} onPress={() => router.push('/auth/register')}>立即注册</Text>
+              <Text style={S.signupPre}>{t('auth.noAccount')}</Text>
+              <Text style={S.signupLink} onPress={() => router.push('/auth/register')}>{t('auth.signUpNow')}</Text>
             </View>
           </View>
 
           {/* Terms */}
           <View style={S.termsWrap}>
             <Text style={S.termsText}>
-              登录即表示同意 <Text style={S.termsLink}>《用户服务协议》</Text>和 <Text style={S.termsLink}>《隐私政策》</Text>
+              {t('auth.loginAgreePrefix')} <Text style={S.termsLink}>{t('auth.userAgreement')}</Text>{t('auth.and')} <Text style={S.termsLink}>{t('auth.privacyPolicy')}</Text>
             </Text>
             <View style={S.homeBar} />
           </View>

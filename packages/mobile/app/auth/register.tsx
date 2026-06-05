@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import { useI18n } from '@/lib/i18n';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PolicyAgreement } from '@/components/common/PolicyAgreement';
 

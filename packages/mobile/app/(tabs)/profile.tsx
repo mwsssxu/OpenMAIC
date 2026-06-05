@@ -364,8 +364,8 @@ export default function ProfileScreen() {
               <Text style={styles.avatarEmoji}>👤</Text>
             </View>
           </View>
-          <Text style={styles.profileName}>{profileData.user.nickname || user?.nickname || user?.email?.split('@')[0] || '学习者'}</Text>
-          <Text style={styles.profileBio}>全栈学习ing · 数据分析方向</Text>
+          <Text style={styles.profileName}>{profileData.user.nickname || user?.nickname || user?.email?.split('@')[0] || t('profile.learner')}</Text>
+          <Text style={styles.profileBio}>{t('profile.bioDefault')}</Text>
           <View style={styles.profileLevel}>
             <Text style={styles.profileLevelText}>⭐ Lv.{profileData.level.level} · {profileData.level.title}</Text>
           </View>
@@ -375,24 +375,24 @@ export default function ProfileScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: iOSColors.accent }]}>{profileData.stats.streak_days}</Text>
-            <Text style={styles.statLabel}>连续天数</Text>
+            <Text style={styles.statLabel}>{t('profile.streakDays')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: iOSColors.secondary }]}>{profileData.stats.total_courses || 0}</Text>
-            <Text style={styles.statLabel}>全部课程</Text>
+            <Text style={styles.statLabel}>{t('profile.allCourses')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: iOSColors.gold }]}>{profileData.stats.total_hours.toFixed(0)}h</Text>
-            <Text style={styles.statLabel}>学习时长</Text>
+            <Text style={styles.statLabel}>{t('profile.studyHours')}</Text>
           </View>
         </View>
 
         {/* 本周学习 */}
-        <Text style={styles.sectionTitle}>本周学习</Text>
+        <Text style={styles.sectionTitle}>{t('profile.weeklyStudy')}</Text>
         <View style={styles.weeklyCard}>
           <View style={styles.weeklyHeader}>
-            <Text style={styles.weeklyTitle}>学习时长</Text>
-            <Text style={styles.weeklyTotal}>本周累计 {weeklyTotal.toFixed(1)}h</Text>
+            <Text style={styles.weeklyTitle}>{t('profile.studyDuration')}</Text>
+            <Text style={styles.weeklyTotal}>{t('profile.weeklyTotal')} {weeklyTotal.toFixed(1)}h</Text>
           </View>
           <View style={styles.weeklyChart}>
             {profileData.weekly_study.daily_data.map((data, idx) => (
@@ -402,7 +402,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* 成就徽章 */}
-        <Text style={styles.sectionTitle}>成就徽章</Text>
+        <Text style={styles.sectionTitle}>{t('profile.achievements')}</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -486,10 +486,10 @@ export default function ProfileScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('profile.notificationSettings')}</Text>
             {[
-              { key: 'course', icon: 'book', label: t('profile.notifCourse') || '课程更新' },
-              { key: 'achievement', icon: 'trophy', label: t('profile.notifAchievement') || '成就解锁' },
-              { key: 'buddy', icon: 'chatbubbles', label: t('profile.notifBuddy') || '搭子消息' },
-              { key: 'system', icon: 'information-circle', label: t('profile.notifSystem') || '系统通知' },
+              { key: 'course', icon: 'book', label: t('profile.notifCourse') },
+              { key: 'achievement', icon: 'trophy', label: t('profile.notifAchievement') },
+              { key: 'buddy', icon: 'chatbubbles', label: t('profile.notifBuddy') },
+              { key: 'system', icon: 'information-circle', label: t('profile.notifSystem') },
             ].map(item => (
               <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: iOSColors.border }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -511,7 +511,7 @@ export default function ProfileScreen() {
         <Pressable style={styles.modalOverlay} onPress={() => setShowPrefModal(false)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('profile.learningPreferences')}</Text>
-            <Text style={styles.modalLabel}>{t('profile.dailyGoal') || '每日学习目标(分钟)'}</Text>
+            <Text style={styles.modalLabel}>{t('profile.dailyGoal')}</Text>
             <TextInput
               style={styles.modalInput}
               value={dailyGoal}
@@ -519,7 +519,7 @@ export default function ProfileScreen() {
               keyboardType="number-pad"
               placeholder="30"
             />
-            <Text style={[styles.modalLabel, { marginTop: 12 }]}>{t('profile.reminderTime') || '学习提醒时间'}</Text>
+            <Text style={[styles.modalLabel, { marginTop: 12 }]}>{t('profile.reminderTime')}</Text>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               {['08:00', '12:00', '20:00', '22:00'].map(time => (
                 <TouchableOpacity key={time} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: iOSColors.border, marginRight: 4, marginBottom: 4 }}>
@@ -528,7 +528,7 @@ export default function ProfileScreen() {
               ))}
             </View>
             <TouchableOpacity style={[styles.modalCancelButton, { marginTop: 16 }]} onPress={async () => {
-              try { await AsyncStorage.setItem('dailyGoal', dailyGoal); onSuccess(t('profile.prefSaved') || '已保存'); } catch {}
+              try { await AsyncStorage.setItem('dailyGoal', dailyGoal); onSuccess(t('profile.prefSaved')); } catch {}
               setShowPrefModal(false);
             }} activeOpacity={0.7}>
               <Text style={styles.modalCancelText}>{t('common.confirm')}</Text>
