@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { GlobalDialog } from '@/lib/utils/global-dialog';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
@@ -137,6 +138,7 @@ export default function RootLayout() {
             <Stack.Screen name="wallet" />
             <Stack.Screen name="enterprise" />
           </Stack>
+          <GlobalDialog />
         </AuthGuard>
       </AuthProvider>
     </SafeAreaProvider>

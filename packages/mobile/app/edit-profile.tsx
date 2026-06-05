@@ -198,8 +198,8 @@ export default function EditProfileScreen() {
           router.dismissAll();
           router.replace('/auth/login');
         } catch (e) { showError(e); }
-      }, '永久注销');
-    }, '继续');
+      }, '永久注销', '返回', true);
+    }, '继续', '取消', true);
   }
 
   function toggleInterest(tag: string) {
@@ -258,20 +258,26 @@ export default function EditProfileScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={S.scrollView} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {/* Avatar Section with logout + delete account */}
+          {/* Avatar Section */}
           <View style={S.avatarSection}>
             <View style={S.avatarRow}>
               <View style={S.avatarCircle}>
                 <Text style={S.avatarText}>{(nickname || '我').charAt(0)}</Text>
               </View>
-              <View style={S.avatarActions}>
-                <TouchableOpacity onPress={handleLogout} style={S.avatarActionBtn}>
-                  <Ionicons name="log-out-outline" size={18} color={C.muted} />
-                  <Text style={S.avatarActionText}>退出登录</Text>
+              <View style={S.avatarRight}>
+                <TouchableOpacity style={S.avatarHintWrap} onPress={() => showError('头像更换功能即将上线')}>
+                  <Text style={S.avatarHint}>点击更换头像</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleDeleteAccount} style={S.deleteIconBtn}>
-                  <Ionicons name="trash-outline" size={16} color={C.danger} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={S.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
+                    <Ionicons name="log-out-outline" size={16} color={C.muted} />
+                    <Text style={S.logoutBtnLabel}>退出</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={S.deleteIconBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
+                    <Ionicons name="trash-outline" size={14} color={C.danger} />
+                    <Text style={S.deleteIconLabel}>注销</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
@@ -486,6 +492,16 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
+          {/* Logout */}
+          <TouchableOpacity
+            style={S.logoutSection}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={18} color={C.accent} />
+            <Text style={S.logoutText}>退出登录</Text>
+          </TouchableOpacity>
+
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -535,9 +551,9 @@ const S = StyleSheet.create({
 
   // Avatar
   avatarSection: {
-    alignItems: 'center',
     paddingTop: 20,
     paddingBottom: 16,
+    paddingHorizontal: 20,
   },
   avatarRow: {
     flexDirection: 'row',
@@ -545,47 +561,56 @@ const S = StyleSheet.create({
     gap: 16,
   },
   avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: '#fff',
   },
-  avatarActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  avatarRight: {
+    flex: 1,
+    gap: 6,
   },
-  avatarActionBtn: {
+  avatarHintWrap: {},
+  avatarHint: {
+    fontSize: 12,
+    color: C.muted,
+  },
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: C.surfaceSolid,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#f5f5f5',
     borderWidth: 0.5,
     borderColor: C.border,
   },
-  avatarActionText: {
-    fontSize: 13,
+  logoutBtnLabel: {
+    fontSize: 11,
     color: C.muted,
   },
   deleteIconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
     backgroundColor: '#fef2f2',
     borderWidth: 0.5,
     borderColor: '#fecaca',
+  },
+  deleteIconLabel: {
+    fontSize: 11,
+    color: C.danger,
   },
 
   // Section Title
@@ -755,5 +780,25 @@ const S = StyleSheet.create({
   privacyDesc: {
     fontSize: 12,
     color: C.muted,
+  },
+
+  // Logout
+  logoutSection: {
+    marginTop: 28,
+    marginHorizontal: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: C.surfaceSolid,
+    borderWidth: 0.5,
+    borderColor: C.border,
+  },
+  logoutText: {
+    fontSize: 16,
+    color: C.accent,
+    fontWeight: '500',
   },
 });
