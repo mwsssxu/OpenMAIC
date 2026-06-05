@@ -269,10 +269,6 @@ export default function EditProfileScreen() {
                   <Text style={S.avatarHint}>点击更换头像</Text>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity style={S.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
-                    <Ionicons name="log-out-outline" size={16} color={C.muted} />
-                    <Text style={S.logoutBtnLabel}>退出</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity style={S.deleteIconBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
                     <Ionicons name="trash-outline" size={14} color={C.danger} />
                     <Text style={S.deleteIconLabel}>注销</Text>
@@ -580,21 +576,6 @@ const S = StyleSheet.create({
   avatarHintWrap: {},
   avatarHint: {
     fontSize: 12,
-    color: C.muted,
-  },
-  logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#f5f5f5',
-    borderWidth: 0.5,
-    borderColor: C.border,
-  },
-  logoutBtnLabel: {
-    fontSize: 11,
     color: C.muted,
   },
   deleteIconBtn: {
