@@ -8,6 +8,7 @@ import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -53,6 +54,7 @@ export default function EditProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [wechat, setWechat] = useState('');
   const [weibo, setWeibo] = useState('');
   const [github, setGithub] = useState('');
@@ -101,18 +103,7 @@ export default function EditProfileScreen() {
       if (nickname !== original.nickname) data.nickname = nickname || null;
       if (bio !== original.bio) data.bio = bio || null;
       if (birthday !== original.birthday) {
-        // 校验生日格式 YYYY-MM-DD
-        if (birthday && birthday.trim()) {
-          const bdRegex = /^\d{4}-\d{2}-\d{2}$/;
-          if (!bdRegex.test(birthday)) {
-            Alert.alert('格式错误', '生日请按 YYYY-MM-DD 格式输入，如 1990-01-01');
-            setSaving(false);
-            return;
-          }
-          data.birthday = birthday;
-        } else {
-          data.birthday = null;
-        }
+        data.birthday = birthday || null;
       }
       if (gender !== original.gender) data.gender = gender || null;
 
@@ -125,6 +116,17 @@ export default function EditProfileScreen() {
       Alert.alert('保存失败', msg);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function onDateChange(event: DateTimePickerEvent, selectedDate?: Date) {
+    setShowDatePicker(Platform.OS === 'ios'); // iOS 需要手动关闭
+    if (event.type === 'set' && selectedDate) {
+      haptics.light();
+      const iso = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      setBirthday(iso);
+    } else if (event.type === 'dismissed') {
+      setShowDatePicker(false);
     }
   }
 
@@ -220,17 +222,27 @@ export default function EditProfileScreen() {
             </View>
 
             {/* Birthday */}
-            <View style={S.formRow}>
+            <TouchableOpacity
+              style={S.formRow}
+              onPress={() => { haptics.light(); setShowDatePicker(true); }}
+              activeOpacity={0.6}
+            >
               <Text style={S.formLabel}>生日</Text>
-              <TextInput
-                style={S.formInput}
-                value={birthday}
-                onChangeText={setBirthday}
-                placeholder="YYYY-MM-DD"
-                maxLength={10}
-                placeholderTextColor={C.muted}
+              <Text style={[S.formInput, { textAlign: 'right' }, birthday ? { color: C.fg } : { color: C.muted }]}>
+                {birthday || '选择日期'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={C.muted} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={birthday ? new Date(birthday + 'T00:00:00') : new Date(2000, 0, 1)}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={new Date()}
+                onChange={onDateChange}
+                locale="zh-CN"
               />
-            </View>
+            )}
 
             {/* Gender */}
             <View style={[S.formRow, { borderBottomWidth: 0 }]}>
