@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Platform, KeyboardAvoidingView, Modal, Dimensions } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -58,6 +58,10 @@ export default function EditProfileScreen() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showChangePwd, setShowChangePwd] = useState(false);
+  const [oldPwd, setOldPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
   const [wechat, setWechat] = useState('');
   const [weibo, setWeibo] = useState('');
   const [github, setGithub] = useState('');
@@ -187,6 +191,31 @@ export default function EditProfileScreen() {
     }, '退出');
   }
 
+  function handleChangePassword() {
+    if (!oldPwd || !newPwd || !confirmPwd) {
+      showError('请填写所有密码字段');
+      return;
+    }
+    if (newPwd.length < 6) {
+      showError('新密码至少6位');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      showError('两次输入的新密码不一致');
+      return;
+    }
+    confirmAction('修改密码', '确定要修改登录密码吗？', async () => {
+      try {
+        await apiClient.changePassword(oldPwd, newPwd);
+        setShowChangePwd(false);
+        setOldPwd('');
+        setNewPwd('');
+        setConfirmPwd('');
+        showError('密码修改成功');
+      } catch (e) { showError(e); }
+    });
+  }
+
   // Delete account: 2-step confirm
   function handleDeleteAccount() {
     haptics.medium();
@@ -269,6 +298,10 @@ export default function EditProfileScreen() {
                   <Text style={S.avatarHint}>点击更换头像</Text>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={S.changePwdBtn} onPress={() => setShowChangePwd(true)} activeOpacity={0.7}>
+                    <Ionicons name="key-outline" size={14} color={C.accent} />
+                    <Text style={S.changePwdLabel}>密码</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={S.deleteIconBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
                     <Ionicons name="trash-outline" size={14} color={C.danger} />
                     <Text style={S.deleteIconLabel}>注销</Text>
@@ -501,6 +534,47 @@ export default function EditProfileScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Change Password Modal */}
+      <Modal visible={showChangePwd} transparent animationType="fade" onRequestClose={() => setShowChangePwd(false)}>
+        <View style={S.modalOverlay}>
+          <View style={S.modalCard}>
+            <Text style={S.modalTitle}>修改密码</Text>
+            <TextInput
+              style={S.modalInput}
+              value={oldPwd}
+              onChangeText={setOldPwd}
+              placeholder="当前密码"
+              placeholderTextColor={C.muted}
+              secureTextEntry
+            />
+            <TextInput
+              style={S.modalInput}
+              value={newPwd}
+              onChangeText={setNewPwd}
+              placeholder="新密码（至少6位）"
+              placeholderTextColor={C.muted}
+              secureTextEntry
+            />
+            <TextInput
+              style={S.modalInput}
+              value={confirmPwd}
+              onChangeText={setConfirmPwd}
+              placeholder="确认新密码"
+              placeholderTextColor={C.muted}
+              secureTextEntry
+            />
+            <View style={S.modalBtnRow}>
+              <TouchableOpacity style={S.modalCancelBtn} onPress={() => { setShowChangePwd(false); setOldPwd(''); setNewPwd(''); setConfirmPwd(''); }} activeOpacity={0.6}>
+                <Text style={S.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={S.modalConfirmBtn} onPress={handleChangePassword} activeOpacity={0.6}>
+                <Text style={S.modalConfirmText}>确认修改</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -781,5 +855,82 @@ const S = StyleSheet.create({
     fontSize: 16,
     color: C.accent,
     fontWeight: '500',
+  },
+
+  // Change Password Button
+  changePwdBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#f0f7ff',
+    borderWidth: 0.5,
+    borderColor: '#bfdbfe',
+  },
+  changePwdLabel: {
+    fontSize: 11,
+    color: C.accent,
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  modalCard: {
+    width: Math.min(Dimensions.get('window').width - 48, 340),
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#1a1a1a',
+    marginBottom: 10,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  modalCancelText: {
+    fontSize: 15,
+    color: '#666',
+    fontWeight: '500',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: C.accent,
+  },
+  modalConfirmText: {
+    fontSize: 15,
+    color: '#fff',
+    fontWeight: '600',
   },
 });
