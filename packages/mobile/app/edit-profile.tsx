@@ -8,7 +8,7 @@ import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { showError } from '@/lib/utils/error-toast';
 
 const C = {
@@ -121,7 +121,7 @@ export default function EditProfileScreen() {
     }
   }
 
-  function onDateChange(event: DateTimePickerEvent, selectedDate?: Date) {
+  function onDateChange(event: { type: 'set' | 'dismissed' | 'neutral'; nativeEvent?: { timestamp?: number } }, selectedDate?: Date) {
     setShowDatePicker(Platform.OS === 'ios'); // iOS 需要手动关闭
     if (event.type === 'set' && selectedDate) {
       haptics.light();
