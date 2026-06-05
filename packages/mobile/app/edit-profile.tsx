@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert, Platform, KeyboardAvoidingView } from 'react-native';
-import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert, Platform, KeyboardAvoidingView, Modal, Picker } from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { apiClient } from '@/lib/api-client';
@@ -8,7 +8,6 @@ import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { showError } from '@/lib/utils/error-toast';
 
 const C = {
@@ -56,6 +55,37 @@ export default function EditProfileScreen() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  // Birthday picker state
+  const [pickerYear, setPickerYear] = useState(2000);
+  const [pickerMonth, setPickerMonth] = useState(1);
+  const [pickerDay, setPickerDay] = useState(1);
+
+  const currentYear = new Date().getFullYear();
+  const years = useMemo(() => Array.from({ length: currentYear - 1940 + 1 }, (_, i) => 1940 + i), []);
+  const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+  const daysInMonth = useMemo(() => new Date(pickerYear, pickerMonth, 0).getDate(), [pickerYear, pickerMonth]);
+  const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
+
+  function openDatePicker() {
+    haptics.light();
+    // Parse existing birthday
+    if (birthday) {
+      const parts = birthday.split('-');
+      setPickerYear(parseInt(parts[0]) || 2000);
+      setPickerMonth(parseInt(parts[1]) || 1);
+      setPickerDay(parseInt(parts[2]) || 1);
+    }
+    setShowDatePicker(true);
+  }
+
+  function confirmDate() {
+    haptics.light();
+    const m = String(pickerMonth).padStart(2, '0');
+    const d = String(pickerDay).padStart(2, '0');
+    setBirthday(`${pickerYear}-${m}-${d}`);
+    setShowDatePicker(false);
+  }
+
   const [wechat, setWechat] = useState('');
   const [weibo, setWeibo] = useState('');
   const [github, setGithub] = useState('');
@@ -118,17 +148,6 @@ export default function EditProfileScreen() {
       Alert.alert('保存失败', msg);
     } finally {
       setSaving(false);
-    }
-  }
-
-  function onDateChange(event: { type: 'set' | 'dismissed' | 'neutral'; nativeEvent?: { timestamp?: number } }, selectedDate?: Date) {
-    setShowDatePicker(Platform.OS === 'ios'); // iOS 需要手动关闭
-    if (event.type === 'set' && selectedDate) {
-      haptics.light();
-      const iso = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      setBirthday(iso);
-    } else if (event.type === 'dismissed') {
-      setShowDatePicker(false);
     }
   }
 
@@ -226,7 +245,7 @@ export default function EditProfileScreen() {
             {/* Birthday */}
             <TouchableOpacity
               style={S.formRow}
-              onPress={() => { haptics.light(); setShowDatePicker(true); }}
+              onPress={openDatePicker}
               activeOpacity={0.6}
             >
               <Text style={S.formLabel}>生日</Text>
@@ -235,16 +254,32 @@ export default function EditProfileScreen() {
               </Text>
               <Ionicons name="chevron-forward" size={18} color={C.muted} style={{ marginLeft: 4 }} />
             </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={birthday ? new Date(birthday + 'T00:00:00') : new Date(2000, 0, 1)}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                maximumDate={new Date()}
-                onChange={onDateChange}
-                locale="zh-CN"
-              />
-            )}
+            <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
+              <View style={S.pickerOverlay}>
+                <View style={S.pickerCard}>
+                  <View style={S.pickerHeader}>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Text style={S.pickerCancel}>取消</Text>
+                    </TouchableOpacity>
+                    <Text style={S.pickerTitle}>选择生日</Text>
+                    <TouchableOpacity onPress={confirmDate}>
+                      <Text style={S.pickerConfirm}>确定</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={S.pickerRow}>
+                    <Picker style={S.pickerItem} selectedValue={pickerYear} onValueChange={setPickerYear}>
+                      {years.map(y => <Picker.Item key={y} label={`${y}年`} value={y} />)}
+                    </Picker>
+                    <Picker style={S.pickerItem} selectedValue={pickerMonth} onValueChange={setPickerMonth}>
+                      {months.map(m => <Picker.Item key={m} label={`${m}月`} value={m} />)}
+                    </Picker>
+                    <Picker style={S.pickerItem} selectedValue={pickerDay} onValueChange={setPickerDay}>
+                      {days.map(d => <Picker.Item key={d} label={`${d}日`} value={d} />)}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+            </Modal>
 
             {/* Gender */}
             <View style={[S.formRow, { borderBottomWidth: 0 }]}>
@@ -650,5 +685,49 @@ const S = StyleSheet.create({
   deleteText: {
     fontSize: 15,
     color: C.danger,
+  },
+
+  // Date Picker Modal
+  pickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  pickerCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 34,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.border,
+  },
+  pickerCancel: {
+    fontSize: 16,
+    color: C.muted,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: C.fg,
+  },
+  pickerConfirm: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: C.accent,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pickerItem: {
+    flex: 1,
+    height: 200,
   },
 });

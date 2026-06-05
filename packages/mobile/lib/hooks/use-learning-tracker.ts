@@ -11,6 +11,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '../api-client';
 import { useAuth } from '../auth/auth-context';
+import { showError } from '@/lib/utils/error-toast';
 
 interface LearningTrackerOptions {
   courseId: string;
@@ -60,10 +61,12 @@ export function useLearningTracker(options: LearningTrackerOptions) {
             scenesCompletedRef.current
           );
         } catch (err) {
+          showError(err);
           console.error('Update learning time error:', err);
         }
       }, 60000); // 60秒
     } catch (err) {
+      showError(err);
       console.error('Start learning error:', err);
     }
   }, [courseId, isAuthenticated]);
@@ -81,6 +84,7 @@ export function useLearningTracker(options: LearningTrackerOptions) {
           count
         );
       } catch (err) {
+        showError(err);
         // 静默失败，不阻塞用户体验
         console.debug('[LearningTracker] 进度同步失败:', err);
       }
@@ -115,6 +119,7 @@ export function useLearningTracker(options: LearningTrackerOptions) {
       try {
         await apiClient.dailyCheckin();
       } catch (err) {
+        showError(err);
         console.error('Daily checkin error:', err);
       }
 
@@ -123,6 +128,7 @@ export function useLearningTracker(options: LearningTrackerOptions) {
         onComplete(result);
       }
     } catch (err) {
+      showError(err);
       console.error('Complete learning error:', err);
     }
   }, [courseId, isAuthenticated, totalScenes, onComplete]);
@@ -138,6 +144,7 @@ export function useLearningTracker(options: LearningTrackerOptions) {
         scenesCompletedRef.current
       );
     } catch (err) {
+      showError(err);
       console.error('Save progress error:', err);
     }
   }, [courseId, isAuthenticated]);

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { apiClient } from '@/lib/api-client';
+import { showError } from '@/lib/utils/error-toast';
 
 // Web端使用localStorage，Mobile端使用SecureStore
 const storage = {
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         apiClient.setToken(token);
       }
     } catch (error) {
+      showError(error);
       console.error('Load auth error:', error);
     } finally {
       setIsLoading(false);
@@ -115,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 调用后端退出登录接口（可选，主要是清除本地状态）
       await apiClient.logout();
     } catch (error) {
+      showError(error);
       console.error('Logout API error:', error);
     }
 

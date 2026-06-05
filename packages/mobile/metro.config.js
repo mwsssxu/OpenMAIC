@@ -6,15 +6,7 @@ const monorepoRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// pnpm workspace: 让 metro 能找到 hoisted 到 root node_modules 的依赖
+// pnpm workspace: 让 metro 监听 monorepo root 的变化
 config.watchFolders = [monorepoRoot];
-
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(monorepoRoot, 'node_modules'),
-];
-
-// pnpm 符号链接: 确保解析到真实路径
-config.resolver.disableHierarchicalLookup = true;
 
 module.exports = config;
