@@ -56,7 +56,7 @@ export function GlobalDialog() {
               </Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
