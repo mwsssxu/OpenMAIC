@@ -191,8 +191,13 @@ export default function EditProfileScreen() {
   function handleDeleteAccount() {
     haptics.medium();
     confirmAction('注销账户', '注销后所有数据将被永久删除，无法恢复。', () => {
-      confirmAction('最终确认', '这是最后一次确认，注销后无法撤销。', () => {
-        showError('注销账户功能尚未实现');
+      confirmAction('最终确认', '这是最后一次确认，注销后无法撤销。', async () => {
+        try {
+          await apiClient.deleteAccount();
+          await logout();
+          router.dismissAll();
+          router.replace('/auth/login');
+        } catch (e) { showError(e); }
       }, '永久注销');
     }, '继续');
   }
