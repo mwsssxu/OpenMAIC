@@ -7,7 +7,7 @@ import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -40,6 +40,7 @@ export default function EditProfileScreen() {
   const { onSuccess } = useFeedback();
   const haptics = useHaptics();
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
 
   const [nickname, setNickname] = useState('');
   const [bio, setBio] = useState('');
@@ -123,7 +124,7 @@ export default function EditProfileScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={S.container} edges={['top']}>
+      <View style={[S.container, { paddingTop: insets.top }]}>
         <View style={S.navBar}>
           <TouchableOpacity onPress={() => router.back()} style={S.navBack}>
             <Ionicons name="chevron-back" size={24} color={C.accent} />
@@ -135,12 +136,12 @@ export default function EditProfileScreen() {
         <View style={S.loadingWrap}>
           <Text style={{ color: C.muted }}>加载中...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={S.container} edges={['top']}>
+    <View style={[S.container, { paddingTop: insets.top }]}>
       {/* Nav Bar */}
       <View style={S.navBar}>
         <TouchableOpacity onPress={() => router.back()} style={S.navBack}>
@@ -367,7 +368,7 @@ export default function EditProfileScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 

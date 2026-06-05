@@ -219,30 +219,31 @@ async def gift_tokens_to_user(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    await db.execute(
-        "UPDATE users SET token_balance = token_balance + $1 WHERE id = $2",
-        amount, user_id
-    )
+    async with db.transaction():
+        await db.execute(
+            "UPDATE users SET token_balance = token_balance + $1 WHERE id = $2",
+            amount, user_id
+        )
 
-    new_balance = await db.fetchval(
-        "SELECT token_balance FROM users WHERE id = $1", user_id
-    )
+        new_balance = await db.fetchval(
+            "SELECT token_balance FROM users WHERE id = $1", user_id
+        )
 
-    await db.execute(
-        """
-        INSERT INTO token_transactions (user_id, type, amount, balance_after, description, created_at)
-        VALUES ($1, 'gift', $2, $3, $4, $5)
-        """,
-        user_id, amount, new_balance, reason, utcnow()
-    )
+        await db.execute(
+            """
+            INSERT INTO token_transactions (user_id, type, amount, balance_after, description, created_at)
+            VALUES ($1, 'gift', $2, $3, $4, $5)
+            """,
+            user_id, amount, new_balance, reason, utcnow()
+        )
 
-    await db.execute(
-        """
-        INSERT INTO admin_logs (admin_id, action, target, details, created_at)
-        VALUES ($1, 'gift_tokens', $2, $3, $4)
-        """,
-        admin["id"], user_id, f"赠送{amount}Token: {reason}", utcnow()
-    )
+        await db.execute(
+            """
+            INSERT INTO admin_logs (admin_id, action, target, details, created_at)
+            VALUES ($1, 'gift_tokens', $2, $3, $4)
+            """,
+            admin["id"], user_id, f"赠送{amount}Token: {reason}", utcnow()
+        )
 
     return {"success": True, "tokens_added": amount}
 
@@ -259,30 +260,31 @@ async def gift_points_to_user(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    await db.execute(
-        "UPDATE users SET point_balance = point_balance + $1 WHERE id = $2",
-        amount, user_id
-    )
+    async with db.transaction():
+        await db.execute(
+            "UPDATE users SET point_balance = point_balance + $1 WHERE id = $2",
+            amount, user_id
+        )
 
-    new_point_balance = await db.fetchval(
-        "SELECT point_balance FROM users WHERE id = $1", user_id
-    )
+        new_point_balance = await db.fetchval(
+            "SELECT point_balance FROM users WHERE id = $1", user_id
+        )
 
-    await db.execute(
-        """
-        INSERT INTO point_transactions (user_id, source, amount, balance_after, created_at)
-        VALUES ($1, 'gift', $2, $3, $4)
-        """,
-        user_id, amount, new_point_balance, utcnow()
-    )
+        await db.execute(
+            """
+            INSERT INTO point_transactions (user_id, source, amount, balance_after, created_at)
+            VALUES ($1, 'gift', $2, $3, $4)
+            """,
+            user_id, amount, new_point_balance, utcnow()
+        )
 
-    await db.execute(
-        """
-        INSERT INTO admin_logs (admin_id, action, target, details, created_at)
-        VALUES ($1, 'gift_points', $2, $3, $4)
-        """,
-        admin["id"], user_id, f"赠送{amount}积分: {reason}", utcnow()
-    )
+        await db.execute(
+            """
+            INSERT INTO admin_logs (admin_id, action, target, details, created_at)
+            VALUES ($1, 'gift_points', $2, $3, $4)
+            """,
+            admin["id"], user_id, f"赠送{amount}积分: {reason}", utcnow()
+        )
 
     return {"success": True, "points_added": amount}
 

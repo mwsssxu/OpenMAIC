@@ -598,9 +598,12 @@ async def deduct_tokens_for_action(
 
     Returns:
         {"deducted": bool, "amount": int, "balance_after": int, "free_quota_used": bool}
+
+    Raises:
+        HTTPException: 当超出免费额度且 Token 余额不足时，返回 400
     """
     from app.routes.subscriptions import TOKEN_COST_MAP, PLAN_FEATURES
-    from app.middleware.feature_gate import get_user_subscription, get_feature_usage, increment_feature_usage
+    from app.middleware.feature_gate import get_user_subscription, try_increment_feature_usage, increment_feature_usage
     import math
 
     user_uuid = uuid.UUID(user_id)
@@ -627,18 +630,23 @@ async def deduct_tokens_for_action(
 
     if feature_key:
         feature_config = features.get(feature_key, {})
-        limit = feature_config.get("limit", 0)
 
-        if limit == -1:
-            # Pro 无限额度 → 不扣 Token
-            await increment_feature_usage(user_id, feature_key, db)
-            return {"deducted": False, "amount": 0, "balance_after": -1, "free_quota_used": True}
+        # 只对 dict 型（限额型）功能做免费额度检查
+        if isinstance(feature_config, dict):
+            limit = feature_config.get("limit", 0)
 
-        # 检查今日使用次数
-        usage = await get_feature_usage(user_id, feature_key, db)
-        if usage < limit:
-            # 还在免费额度内 → 不扣 Token
-            await increment_feature_usage(user_id, feature_key, db)
+            # 原子化：检查+递增一步完成，防 TOCTOU 竞态
+            inc_result = await try_increment_feature_usage(user_id, feature_key, limit, db)
+
+            if inc_result["success"]:
+                # 还在免费额度内 → 不扣 Token
+                return {"deducted": False, "amount": 0, "balance_after": -1, "free_quota_used": True}
+            # 已达上限，继续走 Token 扣减逻辑
+
+        elif isinstance(feature_config, bool):
+            if not feature_config:
+                raise HTTPException(status_code=403, detail=f"功能 '{feature_key}' 需要Pro会员，升级即享")
+            # 布尔型功能直接允许
             return {"deducted": False, "amount": 0, "balance_after": -1, "free_quota_used": True}
 
     # 超出免费额度 → 扣减 Token
@@ -655,7 +663,7 @@ async def deduct_tokens_for_action(
     # 清除余额缓存
     await invalidate_balance_cache(user_id)
 
-    # 增加使用计数
+    # 增加使用计数（Token 扣减路径也需要记录使用次数）
     if feature_key:
         await increment_feature_usage(user_id, feature_key, db)
 

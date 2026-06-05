@@ -456,7 +456,7 @@ async def process_payment_success(
             now = utcnow()
             # 查看是否有现有订阅
             existing_sub = await db.fetchrow(
-                "SELECT id, plan_type, expires_at FROM subscriptions WHERE user_id = $1",
+                "SELECT id, plan_type, expires_at FROM subscriptions WHERE user_id = $1 FOR UPDATE",
                 order["user_id"]
             )
 
