@@ -22,4 +22,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 # 启动命令 - 增加 timeout-keep-alive 支持 SSE 长连接
+# 开发环境通过 docker-compose.yml command 覆盖为 --reload 模式
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--timeout-keep-alive", "300"]

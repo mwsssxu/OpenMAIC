@@ -10,7 +10,7 @@ from app.middleware.auth import get_current_user, get_current_user_id
 import asyncpg
 import uuid
 import json
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from app.core.time_utils import utcnow
 
 router = APIRouter()
@@ -325,7 +325,7 @@ async def update_user_info(
 
     if body.birthday is not None:
         updates.append(f"birthday = ${idx}")
-        values.append(body.birthday)
+        values.append(date.fromisoformat(body.birthday))
         idx += 1
 
     if body.gender is not None:

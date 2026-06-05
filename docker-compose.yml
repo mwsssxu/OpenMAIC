@@ -45,7 +45,8 @@ services:
       - MAIC_UI_ENABLED=true
       - MAIC_UI_SERVICE_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxODEwODg0OTkyLCJ0eXBlIjoiYWNjZXNzIn0.SK9LKP1SSPJ9FthLSAi6_gBkfiOzo0zRyR5rjPJRk5k
     volumes:
-      - ./packages/server-python/app:/app/app:ro  # 开发时热重载
+      - ./packages/server-python/app:/app/app  # 开发时热重载（去掉 :ro，watchfiles 需要可写才能检测变化）
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--timeout-keep-alive", "300"]
     extra_hosts:
       - "postgres:host-gateway"
       - "redis:host-gateway"
