@@ -112,7 +112,7 @@ export default function EnterpriseScreen() {
       loadStats(data.enterprise_id);
     } catch (e: any) {
       onError();
-      Alert.alert('错误', e.message || '创建失败');
+      showError(e.message || '创建失败');
     }
   }
 
@@ -122,13 +122,13 @@ export default function EnterpriseScreen() {
     try {
       const data = await apiClient.inviteEnterpriseMembers(enterprise.enterprise_id, emails);
       onSuccess();
-      Alert.alert('成功', `已邀请 ${data.total_invited} 人`);
+      showError(`已邀请 ${data.total_invited} 人`);
       setShowInvite(false);
       setInviteEmails('');
       loadMembers(enterprise.enterprise_id);
     } catch (e: any) {
       onError();
-      Alert.alert('错误', e.message || '邀请失败');
+      showError(e.message || '邀请失败');
     }
   }
 

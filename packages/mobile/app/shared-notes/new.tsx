@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useGoBack } from '@/lib/utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
@@ -56,6 +57,7 @@ const showAlert = (title: string, message?: string, buttons?: any[]) => {
 
 export default function NewSharedNoteScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const haptics = useHaptics();
   const { isTablet } = useResponsiveDimensions();
 
@@ -134,7 +136,7 @@ export default function NewSharedNoteScreen() {
         <View style={styles.pageHeader}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => goBack()}
             activeOpacity={0.7}
           >
             <Ionicons name="close" size={20} color={iOSColors.fg} />

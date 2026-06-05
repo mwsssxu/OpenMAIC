@@ -14,6 +14,8 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useGoBack } from '@/lib/utils/navigation';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
@@ -59,7 +61,6 @@ import {
   arraysEqual,
 } from '@/lib/quiz/grading';
 import { QUIZ_LEVEL_CONFIG } from '@/lib/quiz/levelConfig';
-import { showError } from '@/lib/utils/error-toast';
 import type { QuizLevel } from '@/lib/quiz/types';
 import {
   readChatHistory,
@@ -262,6 +263,7 @@ function calculateQuizScore(
 export default function ClassroomScreen() {
   const { id, pendingOutlines, totalScenes, remainingCount } = useLocalSearchParams<{ id: string; pendingOutlines?: string; totalScenes?: string; remainingCount?: string }>();
   const router = useRouter();
+  const goBack = useGoBack();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<ClassroomData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1087,7 +1089,7 @@ export default function ClassroomScreen() {
 
     const userAnswer = typeof qState.answer === 'string' ? qState.answer : '';
     if (!userAnswer.trim()) {
-      Alert.alert('提示', '请输入答案后再提交');
+      showError('请输入答案后再提交');
       return;
     }
 
@@ -1458,12 +1460,12 @@ export default function ClassroomScreen() {
         setShowChatModal(true);
         setDiscussionMode(true);
       } else {
-        Alert.alert('提示', '当前场景暂无讨论历史记录');
+        showError('当前场景暂无讨论历史记录');
       }
     } catch (err) {
       showError(err);
       console.warn('[Discussion] Failed to load history:', err);
-      Alert.alert('提示', '加载讨论历史失败');
+      showError('加载讨论历史失败');
     }
   }
 
@@ -1623,10 +1625,10 @@ export default function ClassroomScreen() {
         setShowExtractResult(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        Alert.alert('提示', '未提取到新的知识点');
+        showError('未提取到新的知识点');
       }
     } catch (err: any) {
-      Alert.alert('提取失败', err.response?.data?.detail || 'AI服务暂时不可用');
+      showError(err.response?.data?.detail || 'AI服务暂时不可用');
     } finally {
       setExtractingKnowledge(false);
     }
@@ -1696,21 +1698,10 @@ export default function ClassroomScreen() {
             <TouchableOpacity
               style={styles.manualCreateBtn}
               onPress={() => {
-                Alert.alert(
-                  '创建剩余场景',
-                  `将创建 ${pendingScenesTotal} 个场景，预计需要 ${pendingScenesTotal * 3} 分钟`,
-                  [
-                    { text: '取消', style: 'cancel' },
-                    {
-                      text: '开始创建',
-                      onPress: () => {
+                confirmAction('创建剩余场景', `将创建 ${pendingScenesTotal} 个场景，预计需要 ${pendingScenesTotal * 3} 分钟`, () => {
                         setShowManualCreateHint(false);
-                        // 跳转回创建页面重新生成（最简单方案）
-                        Alert.alert('提示', '请返回创建页面重新生成课程，或手动添加场景');
-                      }
-                    }
-                  ]
-                );
+                        showError('请返回创建页面重新生成课程，或手动添加场景');
+                      }, '开始创建');
               }}
             >
               <Text style={styles.manualCreateBtnText}>查看详情</Text>
@@ -1780,7 +1771,7 @@ export default function ClassroomScreen() {
                     } as Record<string, Record<string, string | string[]>>
                   : undefined
               }
-                onClose={() => router.back()}
+                onClose={() => goBack()}
               />
             ) : /* Slide类型：使用 ScreenCanvas 渲染 */
             currentScene?.type === 'slide' && (currentScene.content as any)?.canvas?.elements?.length > 0 ? (

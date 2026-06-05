@@ -99,7 +99,9 @@ export default function EditProfileScreen() {
   // 自动保存：字段变化后 1.5s 自动提交
   const savingRef = useRef(false);
   const hasChangesRef = useRef(false);
+  const originalRef = useRef(original);
   useEffect(() => { hasChangesRef.current = hasChanges; }, [hasChanges]);
+  useEffect(() => { originalRef.current = original; }, [original]);
 
   useEffect(() => {
     if (!hasChanges) return;
@@ -107,17 +109,26 @@ export default function EditProfileScreen() {
       if (!hasChangesRef.current || savingRef.current) return;
       // 前端校验生日格式
       if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
-        showError({ message: '生日格式不正确，请输入 YYYY-MM-DD' });
+        showError('生日格式不正确，请输入 YYYY-MM-DD');
         return;
+      }
+      // 校验日期有效性
+      if (birthday) {
+        const d = new Date(birthday);
+        if (isNaN(d.getTime())) {
+          showError('生日日期无效');
+          return;
+        }
       }
       savingRef.current = true;
       setSaving(true);
       try {
+        const orig = originalRef.current;
         const data: Record<string, string | null> = {};
-        if (nickname !== original.nickname) data.nickname = nickname || null;
-        if (bio !== original.bio) data.bio = bio || null;
-        if (birthday !== original.birthday) data.birthday = birthday || null;
-        if (gender !== original.gender) data.gender = gender || null;
+        if (nickname !== orig.nickname) data.nickname = nickname || null;
+        if (bio !== orig.bio) data.bio = bio || null;
+        if (birthday !== orig.birthday) data.birthday = birthday || null;
+        if (gender !== orig.gender) data.gender = gender || null;
 
         await apiClient.updateUser(data);
         setOriginal({ nickname, bio, birthday, gender });
@@ -137,17 +148,18 @@ export default function EditProfileScreen() {
   async function handleSave() {
     if (!hasChanges || savingRef.current) return;
     if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
-      showError({ message: '生日格式不正确，请输入 YYYY-MM-DD' });
+      showError('生日格式不正确，请输入 YYYY-MM-DD');
       return;
     }
     savingRef.current = true;
     setSaving(true);
     try {
+      const orig = originalRef.current;
       const data: Record<string, string | null> = {};
-      if (nickname !== original.nickname) data.nickname = nickname || null;
-      if (bio !== original.bio) data.bio = bio || null;
-      if (birthday !== original.birthday) data.birthday = birthday || null;
-      if (gender !== original.gender) data.gender = gender || null;
+      if (nickname !== orig.nickname) data.nickname = nickname || null;
+      if (bio !== orig.bio) data.bio = bio || null;
+      if (birthday !== orig.birthday) data.birthday = birthday || null;
+      if (gender !== orig.gender) data.gender = gender || null;
 
       await apiClient.updateUser(data);
       setOriginal({ nickname, bio, birthday, gender });
@@ -228,7 +240,7 @@ export default function EditProfileScreen() {
             <View style={S.avatarCircle}>
               <Text style={S.avatarText}>{(nickname || '我').charAt(0)}</Text>
             </View>
-            <TouchableOpacity style={S.avatarHintWrap}>
+            <TouchableOpacity style={S.avatarHintWrap} onPress={() => showError('头像更换功能即将上线')}>
               <Text style={S.avatarHint}>点击更换头像</Text>
             </TouchableOpacity>
           </View>

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
-  Alert,
   Platform,
 } from 'react-native';
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
@@ -16,6 +15,7 @@ import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
+import { showError } from '@/lib/utils/error-toast';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 
@@ -304,7 +304,7 @@ export default function CourseDetailScreen() {
       setIsPublic(newPublic);
       haptics.light();
     } catch (err) {
-      Alert.alert('操作失败', '切换公开状态失败，请重试');
+      showError('切换公开状态失败，请重试');
     }
   };
 
@@ -314,7 +314,7 @@ export default function CourseDetailScreen() {
       setLiked(result.liked);
       haptics.light();
     } catch (err) {
-      Alert.alert('操作失败', '收藏操作失败，请重试');
+      showError('收藏操作失败，请重试');
     }
   };
 
@@ -455,10 +455,10 @@ export default function CourseDetailScreen() {
                   dialogTitle: `导出 ${courseName}`,
                 });
               } else {
-                Alert.alert('导出成功', `PDF已保存到 ${fileUri}`);
+                showError(`PDF已保存到 ${fileUri}`);
               }
             } catch (err: any) {
-              Alert.alert('导出失败', err.message || 'PDF生成出错，请稍后重试');
+              showError(err.message || 'PDF生成出错，请稍后重试');
             } finally {
               setExporting(false);
             }

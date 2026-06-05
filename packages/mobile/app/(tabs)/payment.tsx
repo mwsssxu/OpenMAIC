@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -143,25 +143,9 @@ export default function PaymentScreen() {
   const purchasePackage = (pkg: Package) => {
     if (isSubPlan(pkg)) {
       const label = pkg.period === 'monthly' ? '月' : '年';
-      Alert.alert(
-        `订阅 ${pkg.name}`,
-        `${pkg.price_label}/${label}\n${pkg.features.join('\n')}`,
-        [
-          { text: '取消', style: 'cancel' },
-          { text: '微信支付', onPress: () => createOrder(pkg.id, 'wechat', 'subscription') },
-          { text: '支付宝', onPress: () => createOrder(pkg.id, 'alipay', 'subscription') },
-        ]
-      );
+      confirmAction(`订阅 ${pkg.name}`, `${pkg.price_label}/${label}\n${pkg.features.join('\n')}`, () => createOrder(pkg.id, 'wechat', 'subscription'), '微信支付');
     } else {
-      Alert.alert(
-        `购买 ${pkg.name}`,
-        `${pkg.total_tokens} Token = ¥${pkg.price}`,
-        [
-          { text: '取消', style: 'cancel' },
-          { text: '微信支付', onPress: () => createOrder(pkg.id, 'wechat', 'token') },
-          { text: '支付宝', onPress: () => createOrder(pkg.id, 'alipay', 'token') },
-        ]
-      );
+      confirmAction(`购买 ${pkg.name}`, `${pkg.total_tokens} Token = ¥${pkg.price}`, () => createOrder(pkg.id, 'wechat', 'token'), '微信支付');
     }
   };
 
@@ -169,29 +153,20 @@ export default function PaymentScreen() {
     try {
       const result = await apiClient.createPaymentOrder(packageId, method, type);
 
-      Alert.alert(
-        '模拟支付',
-        '测试环境将自动完成支付',
-        [
-          {
-            text: '支付',
-            onPress: async () => {
+      confirmAction('模拟支付', '测试环境将自动完成支付', async () => {
               try {
                 await apiClient.mockPayment(result.order_id);
                 onSuccess();
-                Alert.alert('成功', type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
+                showError(type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
                 loadData();
               } catch (error) {
                 onError();
-                Alert.alert('失败', '支付失败');
+                showError('支付失败');
               }
-            },
-          },
-        ]
-      );
+            });
     } catch (error: any) {
       onError();
-      Alert.alert('失败', error.response?.data?.detail || '创建订单失败');
+      showError(error.response?.data?.detail || '创建订单失败');
     }
   };
 

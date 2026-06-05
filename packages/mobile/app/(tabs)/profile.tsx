@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Animated, Switch, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Animated, Switch, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -306,18 +307,7 @@ export default function ProfileScreen() {
         doLogout();
       }
     } else {
-      Alert.alert(
-        t('profile.logout'),
-        '',
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { 
-            text: t('common.confirm'), 
-            style: 'destructive',
-            onPress: doLogout
-          },
-        ]
-      );
+      confirmAction(t('profile.logout'), '', doLogout, t('common.confirm'));
     }
   };
 

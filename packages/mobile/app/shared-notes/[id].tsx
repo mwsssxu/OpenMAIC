@@ -5,16 +5,18 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
+  
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useGoBack } from '@/lib/utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { apiClient } from '@/lib/api-client';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
 import { useHaptics } from '@/lib/hooks/use-haptics';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 
 const iOSColors = {
   bgSolid: '#f5f3f2',
@@ -53,6 +55,7 @@ interface NoteDetail {
 
 export default function SharedNoteDetailScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const params = useLocalSearchParams();
   const haptics = useHaptics();
   const { isTablet } = useResponsiveDimensions();
@@ -79,7 +82,7 @@ export default function SharedNoteDetailScreen() {
       }
     } catch (err) {
       console.error('Load note detail error:', err);
-      Alert.alert('错误', '加载笔记失败');
+      showError('加载笔记失败');
     } finally {
       setIsLoading(false);
     }
@@ -89,30 +92,19 @@ export default function SharedNoteDetailScreen() {
     if (!note) return;
 
     haptics.medium();
-    Alert.alert(
-      '确认购买',
-      `将花费 ${note.price} 积分购买此笔记\n作者将获得 ${Math.floor(note.price * 0.7)} 积分`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认购买',
-          style: 'default',
-          onPress: async () => {
+    confirmAction('确认购买', `将花费 ${note.price} 积分购买此笔记\n作者将获得 ${Math.floor(note.price * 0.7)} 积分`, async () => {
             try {
               setIsPurchasing(true);
               const result = await apiClient.purchaseSharedNote(noteId);
-              Alert.alert('购买成功', result.message || '可以查看完整内容');
+              showError(result.message || '可以查看完整内容');
               await loadNoteDetail();
             } catch (err: any) {
               console.error('Purchase error:', err);
-              Alert.alert('购买失败', err?.response?.data?.detail || '请稍后重试');
+              showError(err?.response?.data?.detail || '请稍后重试');
             } finally {
               setIsPurchasing(false);
             }
-          },
-        },
-      ]
-    );
+          });
   }
 
   async function handleRating(rating: number) {
@@ -122,11 +114,11 @@ export default function SharedNoteDetailScreen() {
       await apiClient.rateSharedNote(noteId, rating);
       setUserRating(rating);
       haptics.light();
-      Alert.alert('评分成功', '感谢您的评分');
+      showError('感谢您的评分');
       await loadNoteDetail();
     } catch (err: any) {
       console.error('Rating error:', err);
-      Alert.alert('评分失败', err?.response?.data?.detail || '请稍后重试');
+      showError(err?.response?.data?.detail || '请稍后重试');
     }
   }
 
@@ -147,7 +139,7 @@ export default function SharedNoteDetailScreen() {
         <View style={styles.errorContainer}>
           <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
           <Text style={styles.errorText}>笔记不存在</Text>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => goBack()}>
             <Text style={styles.backBtnText}>返回</Text>
           </TouchableOpacity>
         </View>
@@ -166,7 +158,7 @@ export default function SharedNoteDetailScreen() {
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
-            onPress={() => router.back()}
+            onPress={() => goBack()}
             activeOpacity={0.7}
           >
             <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />

@@ -13,6 +13,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useGoBack } from '@/lib/utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -36,6 +37,7 @@ const HERO_H = Math.round(Dimensions.get('window').height * 0.42);
 
 export default function LoginScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const { login, isLoading, isAuthenticated } = useAuth();
   const { onPress, onError } = useFeedback();
   const insets = useSafeAreaInsets();
@@ -89,7 +91,7 @@ export default function LoginScreen() {
             </View>
 
             {/* Back */}
-            <TouchableOpacity style={S.backBtn} onPress={() => router.back()} activeOpacity={0.85}>
+            <TouchableOpacity style={S.backBtn} onPress={() => goBack()} activeOpacity={0.85}>
               <View style={S.backArrow} />
             </TouchableOpacity>
 

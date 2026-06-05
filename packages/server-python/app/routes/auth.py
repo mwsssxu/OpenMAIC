@@ -2,7 +2,7 @@
 认证路由 - 注册/登录/OAuth/用户管理
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from app.models.user import UserRegister, UserLogin, TokenResponse, OAuthLoginRequest, UserUpdate, PasswordChange, UserStats
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
 from app.db.database import get_db
@@ -94,9 +94,26 @@ async def register(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     body: UserLogin,
+    request: Request,
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """用户登录"""
+    """用户登录（含暴力破解保护：同一邮箱5次失败后锁定15分钟）"""
+    # 暴力破解保护：检查近期失败次数
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    window = now - timedelta(minutes=15)
+
+    fail_count = await db.fetchval(
+        "SELECT COUNT(*) FROM login_attempts WHERE email = $1 AND attempted_at > $2 AND success = FALSE",
+        body.email, window
+    )
+
+    if fail_count and fail_count >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="登录失败次数过多，请15分钟后重试"
+        )
+
     # 查询用户
     row = await db.fetchrow(
         "SELECT id, email, password_hash, nickname, avatar_url, is_active FROM users WHERE email = $1",
@@ -104,12 +121,22 @@ async def login(
     )
 
     if row is None:
+        # 记录失败尝试
+        await db.execute(
+            "INSERT INTO login_attempts (id, email, success, attempted_at) VALUES (gen_random_uuid(), $1, FALSE, NOW())",
+            body.email
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="邮箱不存在"
         )
 
     if not verify_password(body.password, row["password_hash"]):
+        # 记录失败尝试
+        await db.execute(
+            "INSERT INTO login_attempts (id, email, success, attempted_at) VALUES (gen_random_uuid(), $1, FALSE, NOW())",
+            body.email
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="密码错误"

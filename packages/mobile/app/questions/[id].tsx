@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   TextInput,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
+import { goBack } from '@/lib/utils/navigation';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -114,7 +114,7 @@ export default function QuestionDetailScreen() {
 
   const handleSubmitAnswer = async () => {
     if (!answerContent.trim()) {
-      Alert.alert('提示', '请输入回答内容');
+      showError('请输入回答内容');
       return;
     }
 
@@ -123,11 +123,11 @@ export default function QuestionDetailScreen() {
       await apiClient.createAnswer(questionId, answerContent.trim());
       setAnswerContent('');
       haptics.medium();
-      Alert.alert('成功', '回答已提交');
+      showError('回答已提交', '成功');
       loadAnswers();
       loadQuestionDetail(); // 更新回答数
     } catch (err: any) {
-      Alert.alert('错误', err.message || '提交失败');
+      showError(err.message || '提交失败');
     } finally {
       setSubmittingAnswer(false);
     }
@@ -139,31 +139,25 @@ export default function QuestionDetailScreen() {
       await apiClient.voteAnswer(answerId, vote);
       loadAnswers();
     } catch (err: any) {
-      Alert.alert('提示', err.message || '投票失败');
+      showError(err.message || '投票失败');
     }
   };
 
   const handleAcceptAnswer = async (answerId: string) => {
-    Alert.alert(
+    confirmAction(
       '采纳答案',
       '确定采纳此答案？采纳后将关闭问题并发放悬赏积分。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确定',
-          onPress: async () => {
-            try {
-              const result = await apiClient.acceptAnswer(answerId);
-              haptics.medium();
-              Alert.alert('成功', `答案已采纳！获得 ${result.author_reward} 积分`);
-              loadAnswers();
-              loadQuestionDetail();
-            } catch (err: any) {
-              Alert.alert('错误', err.message || '采纳失败');
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          const result = await apiClient.acceptAnswer(answerId);
+          haptics.medium();
+          showError(`答案已采纳！获得 ${result.author_reward} 积分`, '成功');
+          loadAnswers();
+          loadQuestionDetail();
+        } catch (err: any) {
+          showError(err.message || '采纳失败');
+        }
+      },
     );
   };
 
@@ -232,7 +226,7 @@ export default function QuestionDetailScreen() {
       <View style={styles.pageHeader}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />

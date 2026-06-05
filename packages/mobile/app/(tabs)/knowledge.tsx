@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Modal, TextInput, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -131,7 +131,7 @@ export default function KnowledgeScreen() {
 
   async function createCard() {
     if (!title.trim() || !content.trim()) {
-      Alert.alert('错误', '标题和内容不能为空');
+      showError('标题和内容不能为空');
       return;
     }
 
@@ -148,9 +148,9 @@ export default function KnowledgeScreen() {
       setContent('');
       setCategory('general');
       loadData();
-      Alert.alert('成功', '知识卡片已创建');
+      showError('知识卡片已创建');
     } catch (error: any) {
-      Alert.alert('失败', error.response?.data?.detail || '创建失败');
+      showError(error.response?.data?.detail || '创建失败');
     } finally {
       setSaving(false);
     }

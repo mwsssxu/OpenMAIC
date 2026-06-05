@@ -8,7 +8,6 @@ import {
   Animated,
   Modal,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
@@ -18,6 +17,7 @@ import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useI18n } from '@/lib/i18n';
 import { apiClient } from '@/lib/api-client';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -133,6 +133,7 @@ function HighlightBlock({ text }: { text: string }) {
 export default function NoteDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const goBack = useGoBack();
   const haptics = useHaptics();
   const { t } = useI18n();
   const [noteData, setNoteData] = useState<NoteData | null>(null);
@@ -217,7 +218,7 @@ export default function NoteDetailScreen() {
 
     const priceNum = parseInt(sharePrice) || 0;
     if (shareVisibility === 'paid' && priceNum < 1) {
-      Alert.alert('提示', '付费笔记请设置价格');
+      showError('付费笔记请设置价格');
       return;
     }
 
@@ -229,17 +230,11 @@ export default function NoteDetailScreen() {
       });
 
       haptics.medium();
-      Alert.alert('分享成功', '笔记已发布到共享市场', [
-        { text: '留在当前页', style: 'cancel' },
-        {
-          text: '前往查看',
-          onPress: () => router.push('/shared-notes' as any),
-        },
-      ]);
+      confirmAction('分享成功', '笔记已发布到共享市场', () => router.push('/shared-notes' as any), '前往查看', '留在当前页');
       setShareModalVisible(false);
     } catch (err: any) {
       console.error('Share to market error:', err);
-      Alert.alert('分享失败', err?.response?.data?.detail || '请稍后重试');
+      showError(err?.response?.data?.detail || '请稍后重试');
     } finally {
       setIsSharing(false);
     }
@@ -250,7 +245,7 @@ export default function NoteDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.navBar}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => goBack()} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
           </TouchableOpacity>
         </View>
@@ -267,7 +262,7 @@ export default function NoteDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.navBar}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => goBack()} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
           </TouchableOpacity>
         </View>
@@ -290,7 +285,7 @@ export default function NoteDetailScreen() {
       <View style={styles.navBar}>
         <TouchableOpacity
           style={styles.navBtn}
-          onPress={() => router.back()}
+          onPress={() => goBack()}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />

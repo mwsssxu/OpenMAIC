@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Share, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, RefreshControl } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,7 +44,7 @@ export default function InviteScreen() {
       });
     } catch (error) {
       onError();
-      Alert.alert('分享失败');
+      showError('分享失败');
     }
   };
 
@@ -60,10 +60,10 @@ export default function InviteScreen() {
             if (!code) return;
             try {
               await apiClient.applyInviteCode(code);
-              Alert.alert('成功', '已获得邀请奖励！');
+              showError('已获得邀请奖励！');
               loadData();
             } catch (error: any) {
-              Alert.alert('失败', error.response?.data?.detail || '邀请码无效');
+              showError(error.response?.data?.detail || '邀请码无效');
             }
           },
         },

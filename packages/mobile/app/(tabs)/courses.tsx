@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useRouter } from 'expo-router';
+import { useGoBack } from '@/lib/utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
@@ -63,6 +64,7 @@ const statusConfig = {
 export default function CoursesScreen() {
   const { t } = useI18n();
   const router = useRouter();
+  const goBack = useGoBack();
   const { onPress } = useFeedback();
   const haptics = useHaptics();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
@@ -306,7 +308,7 @@ export default function CoursesScreen() {
       <View style={styles.pageHeader}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={() => goBack()}
           activeOpacity={0.7}
           accessibilityLabel={t('accessibility.backButton')}
           accessibilityHint={t('accessibility.backButtonHint')}

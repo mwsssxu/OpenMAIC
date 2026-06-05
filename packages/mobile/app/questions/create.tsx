@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -18,22 +17,7 @@ import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useAuth } from '@/lib/auth/auth-context';
-
-// Web 兼容的 Alert
-const showAlert = (title: string, message?: string, buttons?: any[]) => {
-  if (Platform.OS === 'web') {
-    if (buttons && buttons.length > 0) {
-      const result = (globalThis as any).window?.confirm(`${title}\n${message || ''}`);
-      if (result && buttons[1]?.onPress) {
-        buttons[1].onPress();
-      }
-    } else {
-      (globalThis as any).window?.alert(`${title}${message ? '\n' + message : ''}`);
-    }
-  } else {
-    Alert.alert(title, message, buttons);
-  }
-};
+import { goBack } from '@/lib/utils/navigation';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -76,10 +60,7 @@ export default function CreateQuestionScreen() {
   // 检查登录状态，未登录跳转到登录页
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      showAlert('需要登录', '请先登录后再发布问题', [
-        { text: '取消', style: 'cancel', onPress: () => router.back() },
-        { text: '去登录', onPress: () => router.replace('/auth/login' as any) },
-      ]);
+      confirmAction('需要登录', '请先登录后再发布问题', () => router.replace('/auth/login' as any));
     }
   }, [authLoading, isAuthenticated]);
 
@@ -108,29 +89,29 @@ export default function CreateQuestionScreen() {
 
     // 验证
     if (!title.trim()) {
-      showAlert('提示', '请输入问题标题');
+      showError('请输入问题标题');
       return;
     }
     if (!content.trim()) {
-      showAlert('提示', '请输入问题描述');
+      showError('请输入问题描述');
       return;
     }
     if (title.length < 10) {
-      showAlert('提示', '标题至少10个字符');
+      showError('标题至少10个字符');
       return;
     }
     if (content.length < 20) {
-      showAlert('提示', '问题描述至少20个字符');
+      showError('问题描述至少20个字符');
       return;
     }
 
     const bountyNum = parseInt(bounty) || 0;
     if (bountyNum > 0 && bountyNum < 10) {
-      showAlert('提示', '最小悬赏积分为10');
+      showError('最小悬赏积分为10');
       return;
     }
     if (bountyNum > userBalance) {
-      showAlert('提示', '积分余额不足');
+      showError('积分余额不足');
       return;
     }
 
@@ -155,12 +136,9 @@ export default function CreateQuestionScreen() {
       const errorMsg = getErrorMessage(err);
       // 如果是认证错误，提示用户登录
       if (err.response?.status === 401 || errorMsg.includes('登录') || errorMsg.includes('认证')) {
-        showAlert('需要登录', '请先登录后再发布问题', [
-          { text: '取消', style: 'cancel' },
-          { text: '去登录', onPress: () => router.push('/login' as any) },
-        ]);
+        confirmAction('需要登录', '请先登录后再发布问题', () => router.push('/login' as any));
       } else {
-        showAlert('发布失败', errorMsg);
+        showError(errorMsg);
       }
     } finally {
       setSubmitting(false);

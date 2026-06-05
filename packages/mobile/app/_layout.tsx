@@ -73,12 +73,13 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
 function CustomBackButton() {
   const router = useRouter();
+  const goBack = useGoBack();
 
   const handleBack = () => {
     // 尝试返回，如果失败则跳转到首页
     try {
       if (router.canGoBack()) {
-        router.back();
+        goBack();
       } else {
         router.replace('/(tabs)');
       }

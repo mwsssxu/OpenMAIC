@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,6 +42,7 @@ const MASTER_COLORS: Record<number, string> = {
 
 export default function KnowledgeDetailScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [card, setCard] = useState<KnowledgeCardDetail | null>(null);
@@ -75,8 +76,8 @@ export default function KnowledgeDetailScreen() {
       setEditContent(data.content);
     } catch (error) {
       console.error('Load card error:', error);
-      Alert.alert('错误', '加载知识卡片失败');
-      router.back();
+      showError('加载知识卡片失败');
+      goBack();
     } finally {
       setIsLoading(false);
     }
@@ -85,16 +86,16 @@ export default function KnowledgeDetailScreen() {
   async function handleReview(masteryChange: number) {
     try {
       const result = await apiClient.reviewKnowledgeCard(id as string, masteryChange);
-      Alert.alert('复习完成', `掌握度从 ${result.old_mastery} 提升到 ${result.new_mastery}`);
+      showError(`掌握度从 ${result.old_mastery} 提升到 ${result.new_mastery}`);
       loadCard();
     } catch (error) {
-      Alert.alert('失败', '复习记录更新失败');
+      showError('复习记录更新失败');
     }
   }
 
   async function handleEdit() {
     if (!editTitle.trim() || !editContent.trim()) {
-      Alert.alert('错误', '标题和内容不能为空');
+      showError('标题和内容不能为空');
       return;
     }
 
@@ -106,35 +107,24 @@ export default function KnowledgeDetailScreen() {
       });
       setShowEditModal(false);
       loadCard();
-      Alert.alert('成功', '知识卡片已更新');
+      showError('知识卡片已更新');
     } catch (error) {
-      Alert.alert('失败', '更新失败');
+      showError('更新失败');
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete() {
-    Alert.alert(
-      '确认删除',
-      '删除后无法恢复，是否继续？',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await apiClient.deleteKnowledgeCard(id as string);
-              Alert.alert('已删除');
-              router.back();
-            } catch (error) {
-              Alert.alert('失败', '删除失败');
-            }
-          },
-        },
-      ]
-    );
+    confirmAction('确认删除', '删除后无法恢复，是否继续？', async () => {
+      try {
+        await apiClient.deleteKnowledgeCard(id as string);
+        showError('已删除');
+        goBack();
+      } catch (error) {
+        showError('删除失败');
+      }
+    }, '删除');
   }
 
   async function searchCards() {
@@ -150,7 +140,7 @@ export default function KnowledgeDetailScreen() {
 
   async function createRelation() {
     if (!selectedCard) {
-      Alert.alert('错误', '请选择要关联的卡片');
+      showError('请选择要关联的卡片');
       return;
     }
 
@@ -161,9 +151,9 @@ export default function KnowledgeDetailScreen() {
       setSearchResults([]);
       setSelectedCard(null);
       loadCard();
-      Alert.alert('成功', '关联已创建');
+      showError('关联已创建');
     } catch (error: any) {
-      Alert.alert('失败', error.response?.data?.detail || '创建关联失败');
+      showError(error.response?.data?.detail || '创建关联失败');
     }
   }
 
@@ -187,7 +177,7 @@ export default function KnowledgeDetailScreen() {
     <ScrollView style={styles.container}>
       {/* 头部 */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack()}>
           <Ionicons name="chevron-back" size={24} color={Colors.primary.main} />
         </TouchableOpacity>
         <View style={styles.headerActions}>

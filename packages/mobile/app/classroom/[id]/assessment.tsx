@@ -37,6 +37,7 @@ interface Result {
 export default function AssessmentScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const goBack = useGoBack();
   const courseId = params.id as string;
 
   const [token, setToken] = useState<string | null>(null);
@@ -83,7 +84,7 @@ export default function AssessmentScreen() {
       setCurrentQuestion(0);
       setLoading(false);
     } catch (e: any) {
-      Alert.alert('错误', e.message || '创建测评失败');
+      showError(e.message || '创建测评失败');
       setLoading(false);
     }
   }
@@ -106,7 +107,7 @@ export default function AssessmentScreen() {
       setResult(data);
       setLoading(false);
     } catch (e: any) {
-      Alert.alert('错误', e.message || '提交失败');
+      showError(e.message || '提交失败');
       setLoading(false);
     }
   }
@@ -146,7 +147,7 @@ export default function AssessmentScreen() {
             <Text style={styles.buttonText}>再测一次</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.buttonOutline} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.buttonOutline} onPress={() => goBack()}>
             <Ionicons name="chevron-back" size={20} color="#3b82f6" />
             <Text style={[styles.buttonText, { marginLeft: 8 }]}>返回课程</Text>
           </TouchableOpacity>
@@ -241,7 +242,7 @@ export default function AssessmentScreen() {
         ))}
       </ScrollView>
 
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+      <TouchableOpacity style={styles.backButton} onPress={() => goBack()}>
         <Ionicons name="chevron-back" size={20} color="#c45a1a" />
       </TouchableOpacity>
     </SafeAreaView>
