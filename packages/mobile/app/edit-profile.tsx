@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert, Platform, KeyboardAvoidingView } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { apiClient } from '@/lib/api-client';
@@ -97,22 +97,47 @@ export default function EditProfileScreen() {
   }, [nickname, bio, birthday, gender, original]);
 
   // 自动保存：字段变化后 1.5s 自动提交
+  const savingRef = useRef(false);
+  const hasChangesRef = useRef(false);
+  useEffect(() => { hasChangesRef.current = hasChanges; }, [hasChanges]);
+
   useEffect(() => {
-    if (!hasChanges || saving) return;
-    const timer = setTimeout(() => { handleSave(); }, 1500);
+    if (!hasChanges) return;
+    const timer = setTimeout(async () => {
+      if (!hasChangesRef.current || savingRef.current) return;
+      savingRef.current = true;
+      setSaving(true);
+      try {
+        const data: Record<string, string | null> = {};
+        if (nickname !== original.nickname) data.nickname = nickname || null;
+        if (bio !== original.bio) data.bio = bio || null;
+        if (birthday !== original.birthday) data.birthday = birthday || null;
+        if (gender !== original.gender) data.gender = gender || null;
+
+        await apiClient.updateUser(data);
+        setOriginal({ nickname, bio, birthday, gender });
+        setHasChanges(false);
+        haptics.light();
+      } catch (e: any) {
+        showError(e);
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    }, 1500);
     return () => clearTimeout(timer);
   }, [nickname, bio, birthday, gender]);
 
+  // 保留手动保存入口（如需返回前触发）
   async function handleSave() {
-    if (!hasChanges || saving) return;
+    if (!hasChanges || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const data: Record<string, string | null> = {};
       if (nickname !== original.nickname) data.nickname = nickname || null;
       if (bio !== original.bio) data.bio = bio || null;
-      if (birthday !== original.birthday) {
-        data.birthday = birthday || null;
-      }
+      if (birthday !== original.birthday) data.birthday = birthday || null;
       if (gender !== original.gender) data.gender = gender || null;
 
       await apiClient.updateUser(data);
@@ -122,6 +147,7 @@ export default function EditProfileScreen() {
     } catch (e: any) {
       showError(e);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
