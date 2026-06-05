@@ -1,4 +1,4 @@
-1|import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { showError } from '@/lib/utils/error-toast';
 import {
   View,

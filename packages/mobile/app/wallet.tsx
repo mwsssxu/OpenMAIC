@@ -1,4 +1,4 @@
-1|import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { showError } from '@/lib/utils/error-toast';
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'expo-router';

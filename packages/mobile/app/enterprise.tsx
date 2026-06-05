@@ -1,4 +1,4 @@
-1|import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { showError } from '@/lib/utils/error-toast';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
