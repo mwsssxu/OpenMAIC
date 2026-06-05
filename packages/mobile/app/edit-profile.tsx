@@ -96,9 +96,15 @@ export default function EditProfileScreen() {
     setHasChanges(changed);
   }, [nickname, bio, birthday, gender, original]);
 
+  // 自动保存：字段变化后 1.5s 自动提交
+  useEffect(() => {
+    if (!hasChanges || saving) return;
+    const timer = setTimeout(() => { handleSave(); }, 1500);
+    return () => clearTimeout(timer);
+  }, [nickname, bio, birthday, gender]);
+
   async function handleSave() {
     if (!hasChanges || saving) return;
-    haptics.light();
     setSaving(true);
     try {
       const data: Record<string, string | null> = {};
@@ -112,10 +118,9 @@ export default function EditProfileScreen() {
       await apiClient.updateUser(data);
       setOriginal({ nickname, bio, birthday, gender });
       setHasChanges(false);
-      onSuccess(t('profile.profileUpdated') || '已保存');
+      haptics.light();
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || '请检查网络后重试';
-      Alert.alert('保存失败', msg);
+      showError(e);
     } finally {
       setSaving(false);
     }
@@ -138,7 +143,7 @@ export default function EditProfileScreen() {
             <Text style={S.navBackText}>返回</Text>
           </TouchableOpacity>
           <Text style={S.navTitle}>编辑资料</Text>
-          <Text style={[S.navSave, { color: C.muted }]}>保存</Text>
+          <View style={{ width: 18 }} />
         </View>
         <View style={S.loadingWrap}>
           <Text style={{ color: C.muted }}>加载中...</Text>
@@ -156,11 +161,8 @@ export default function EditProfileScreen() {
           <Text style={S.navBackText}>返回</Text>
         </TouchableOpacity>
         <Text style={S.navTitle}>编辑资料</Text>
-        <TouchableOpacity onPress={handleSave} disabled={!hasChanges || saving}>
-          <Text style={[S.navSave, hasChanges && S.navSaveActive]}>
-            {saving ? '保存中...' : '保存'}
-          </Text>
-        </TouchableOpacity>
+        {saving && <Text style={S.navStatus}>保存中...</Text>}
+        {!saving && !hasChanges && <Ionicons name="checkmark-circle" size={18} color="#34c759" />}
       </View>
 
       <KeyboardAvoidingView
@@ -436,14 +438,9 @@ const S = StyleSheet.create({
     color: C.fg,
     letterSpacing: -0.015,
   },
-  navSave: {
-    fontSize: 17,
-    fontWeight: '500',
+  navStatus: {
+    fontSize: 14,
     color: C.muted,
-  },
-  navSaveActive: {
-    color: C.accent,
-    fontWeight: '600',
   },
   loadingWrap: {
     flex: 1,
