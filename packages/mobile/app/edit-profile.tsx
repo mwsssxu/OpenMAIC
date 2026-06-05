@@ -213,18 +213,32 @@ export default function EditProfileScreen() {
             </View>
 
             {/* Birthday */}
-            <TouchableOpacity
-              style={S.formRow}
-              onPress={() => { haptics.light(); setShowDatePicker(true); }}
-              activeOpacity={0.6}
-            >
-              <Text style={S.formLabel}>生日</Text>
-              <Text style={[S.formInput, { textAlign: 'right' }, birthday ? { color: C.fg } : { color: C.muted }]}>
-                {birthday || '选择日期'}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={C.muted} style={{ marginLeft: 4 }} />
-            </TouchableOpacity>
-            {showDatePicker && (
+            {Platform.OS === 'web' ? (
+              <View style={S.formRow}>
+                <Text style={S.formLabel}>生日</Text>
+                <TextInput
+                  style={S.formInput}
+                  value={birthday}
+                  onChangeText={setBirthday}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={C.muted}
+                  keyboardType="numeric"
+                />
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={S.formRow}
+                onPress={() => { haptics.light(); setShowDatePicker(true); }}
+                activeOpacity={0.6}
+              >
+                <Text style={S.formLabel}>生日</Text>
+                <Text style={[S.formInput, { textAlign: 'right' }, birthday ? { color: C.fg } : { color: C.muted }]}>
+                  {birthday || '选择日期'}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={C.muted} style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+            )}
+            {Platform.OS !== 'web' && showDatePicker && (
               <DateTimePicker
                 value={birthday ? new Date(birthday + 'T00:00:00') : new Date(2000, 0, 1)}
                 mode="date"
