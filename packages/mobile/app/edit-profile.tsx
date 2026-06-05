@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Platform, KeyboardAvoidingView } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -9,7 +9,7 @@ import { useI18n } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -173,7 +173,16 @@ export default function EditProfileScreen() {
     return (
       <View style={[S.container, { paddingTop: insets.top }]}>
         <View style={S.navBar}>
-          <TouchableOpacity onPress={() => router.back()} style={S.navBack}>
+          <TouchableOpacity
+            onPress={() => {
+              if (Platform.OS === 'web') {
+                window.history.back();
+              } else {
+                router.back();
+              }
+            }}
+            style={S.navBack}
+          >
             <Ionicons name="chevron-back" size={24} color={C.accent} />
             <Text style={S.navBackText}>返回</Text>
           </TouchableOpacity>
@@ -191,7 +200,16 @@ export default function EditProfileScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       {/* Nav Bar */}
       <View style={S.navBar}>
-        <TouchableOpacity onPress={() => router.back()} style={S.navBack}>
+        <TouchableOpacity
+          onPress={() => {
+            if (Platform.OS === 'web') {
+              window.history.back();
+            } else {
+              router.back();
+            }
+          }}
+          style={S.navBack}
+        >
           <Ionicons name="chevron-back" size={24} color={C.accent} />
           <Text style={S.navBackText}>返回</Text>
         </TouchableOpacity>
@@ -429,10 +447,13 @@ export default function EditProfileScreen() {
           <TouchableOpacity
             style={S.deleteSection}
             onPress={() => {
-              Alert.alert('注销账户', '确定要注销账户吗？此操作不可恢复。', [
-                { text: '取消', style: 'cancel' },
-                { text: '确定注销', style: 'destructive', onPress: () => {} },
-              ]);
+              confirmAction(
+                '注销账户',
+                '确定要注销账户吗？此操作不可恢复。',
+                () => { showError('注销账户功能尚未实现'); },
+                '确定注销',
+                '取消',
+              );
             }}
             activeOpacity={0.7}
           >

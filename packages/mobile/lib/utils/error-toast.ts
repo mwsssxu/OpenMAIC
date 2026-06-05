@@ -4,10 +4,12 @@
  * 用法：import { showError } from '@/lib/utils/error-toast'; showError('操作失败');
  *
  * 为什么不用 useToast：useToast 需要在每个页面组件里 hook + 渲染 <Toast/>，
- * 在 catch 块中无法直接使用。Alert.alert 是命令式 API，随处可用。
+ * 在 catch 块中无法直接使用。
+ *
+ * Web 端 Alert.alert 不可靠，改用 window.alert。
  */
 
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 /**
  * 从未知错误对象中提取用户可读的消息
@@ -15,7 +17,7 @@ import { Alert } from 'react-native';
 export function getErrorMessage(err: unknown, fallback = '操作失败，请重试'): string {
   if (!err) return fallback;
 
-  // Axios 错误
+  // 传入 { message: '...' } 的简单对象
   if (typeof err === 'object' && err !== null) {
     const e = err as Record<string, unknown>;
 
@@ -39,20 +41,47 @@ export function getErrorMessage(err: unknown, fallback = '操作失败，请重�
       }
     }
 
-    // Error 对象
+    // Error 对象或 { message: '...' } 简单对象
     if (e.message && typeof e.message === 'string') return e.message as string;
-
-    // 字符串
-    if (typeof err === 'string') return err;
   }
+
+  // 字符串
+  if (typeof err === 'string') return err;
 
   return fallback;
 }
 
 /**
  * 全局错误提示 — 在任何 catch 块中直接调用
+ * Web 端用 window.alert，原生端用 Alert.alert
  */
 export function showError(err: unknown, title = '提示'): void {
   const message = getErrorMessage(err);
-  Alert.alert(title, message);
+  if (Platform.OS === 'web') {
+    window.alert(title + '\n' + message);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
+/**
+ * 确认对话框 — Web 端用 window.confirm，原生端用 Alert.alert
+ */
+export function confirmAction(
+  title: string,
+  message: string,
+  onConfirm: () => void,
+  confirmText = '确定',
+  cancelText = '取消',
+): void {
+  if (Platform.OS === 'web') {
+    if (window.confirm(title + '\n' + message)) {
+      onConfirm();
+    }
+  } else {
+    Alert.alert(title, message, [
+      { text: cancelText, style: 'cancel' },
+      { text: confirmText, style: 'destructive', onPress: onConfirm },
+    ]);
+  }
 }
