@@ -97,18 +97,32 @@ export default function EditProfileScreen() {
     haptics.light();
     setSaving(true);
     try {
-      const data: Record<string, string> = {};
-      if (nickname !== original.nickname) data.nickname = nickname;
-      if (bio !== original.bio) data.bio = bio;
-      if (birthday !== original.birthday) data.birthday = birthday;
-      if (gender !== original.gender) data.gender = gender;
+      const data: Record<string, string | null> = {};
+      if (nickname !== original.nickname) data.nickname = nickname || null;
+      if (bio !== original.bio) data.bio = bio || null;
+      if (birthday !== original.birthday) {
+        // 校验生日格式 YYYY-MM-DD
+        if (birthday && birthday.trim()) {
+          const bdRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!bdRegex.test(birthday)) {
+            Alert.alert('格式错误', '生日请按 YYYY-MM-DD 格式输入，如 1990-01-01');
+            setSaving(false);
+            return;
+          }
+          data.birthday = birthday;
+        } else {
+          data.birthday = null;
+        }
+      }
+      if (gender !== original.gender) data.gender = gender || null;
 
       await apiClient.updateUser(data);
       setOriginal({ nickname, bio, birthday, gender });
       setHasChanges(false);
       onSuccess(t('profile.profileUpdated') || '已保存');
-    } catch (e) {
-      Alert.alert('保存失败', '请检查网络后重试');
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || '请检查网络后重试';
+      Alert.alert('保存失败', msg);
     } finally {
       setSaving(false);
     }

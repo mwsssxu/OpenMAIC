@@ -318,7 +318,7 @@ class ApiClient {
     return data;
   }
 
-  async updateUser(data: { nickname?: string; avatar_url?: string; bio?: string; birthday?: string; gender?: string }) {
+  async updateUser(data: { nickname?: string | null; avatar_url?: string; bio?: string | null; birthday?: string | null; gender?: string | null }) {
     const { data: resp } = await this.client.put('/auth/me', data);
     return resp;
   }

@@ -2,7 +2,7 @@
 Pydantic 模型 - 用户
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 
 
@@ -37,6 +37,18 @@ class UserUpdate(BaseModel):
     bio: Optional[str] = Field(None, max_length=100, description="简介")
     birthday: Optional[str] = Field(None, description="生日 YYYY-MM-DD")
     gender: Optional[str] = Field(None, max_length=10, description="性别")
+
+    @field_validator('birthday')
+    @classmethod
+    def validate_birthday(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == '':
+            return None
+        from datetime import date as _date
+        try:
+            _date.fromisoformat(v)
+        except (ValueError, TypeError):
+            raise ValueError('生日格式错误，请输入 YYYY-MM-DD')
+        return v
 
 
 class PasswordChange(BaseModel):
