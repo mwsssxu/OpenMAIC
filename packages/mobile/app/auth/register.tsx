@@ -45,6 +45,7 @@ export default function RegisterScreen() {
   const goBack = useGoBack();
   const { register, isLoading, isAuthenticated } = useAuth();
   const { onPress, onError } = useFeedback();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState('');
@@ -74,30 +75,30 @@ export default function RegisterScreen() {
     if (/[a-zA-Z]/.test(password) && /\d/.test(password)) score++;
     if (/[^a-zA-Z0-9]/.test(password)) score++;
     const levels = ['weak', 'medium', 'strong'];
-    const labels = ['弱', '中等', '强'];
+    const labels = [t('auth.pwdWeak'), t('auth.pwdMedium'), t('auth.pwdStrong')];
     return { score, label: labels[score - 1] || '', level: levels[score - 1] || '' };
   })();
 
   const handleRegister = async () => {
     setError(null);
     if (!email || !password) {
-      setError('请输入邮箱和密码');
+      setError(t('auth.errorEmptyEmailPassword'));
       return;
     }
     if (password.length < 8) {
-      setError('密码至少需要 8 位字符');
+      setError(t('auth.errorPasswordMinLength'));
       return;
     }
     if (/[a-zA-Z]/.test(password) === false || /\d/.test(password) === false) {
-      setError('密码需包含字母和数字');
+      setError(t('auth.errorPasswordComplexity'));
       return;
     }
     if (password !== passwordConfirm) {
-      setError('两次密码输入不一致');
+      setError(t('auth.errorPasswordMismatch'));
       return;
     }
     if (!policyAgreed) {
-      setError('请先同意用户协议和隐私政策');
+      setError(t('auth.errorAgreePolicy'));
       return;
     }
     setBusy(true);
@@ -108,7 +109,7 @@ export default function RegisterScreen() {
     } catch (err) {
       setBusy(false);
       onError();
-      setError(err instanceof Error ? err.message : '注册失败，请稍后重试');
+      setError(err instanceof Error ? err.message : t('auth.registerFailedRetry'));
     }
   };
 
@@ -154,12 +155,12 @@ export default function RegisterScreen() {
                 <View style={S.eyebrowLine} />
                 <Text style={S.eyebrow}>JOIN US</Text>
               </View>
-              <Text style={S.heroMain}>为己而学</Text>
+              <Text style={S.heroMain}>{t('auth.heroMain')}</Text>
               <View style={S.heroSubWrap}>
                 <View style={S.heroSubDash} />
-                <Text style={S.heroSub}>为人而行</Text>
+                <Text style={S.heroSub}>{t('auth.heroSub')}</Text>
               </View>
-              <Text style={S.heroCaption}>{'开启你的学习旅程\n与千万学伴共同成长'}</Text>
+              <Text style={S.heroCaption}>{t('auth.registerHeroCaption')}</Text>
             </View>
 
             {/* Bottom wave */}
@@ -173,16 +174,16 @@ export default function RegisterScreen() {
             <View style={S.cardAccentBar} />
 
             <View style={S.cardHeader}>
-              <Text style={S.greeting}>创建账号</Text>
+              <Text style={S.greeting}>{t('auth.createAccount')}</Text>
             </View>
 
             {/* Email */}
             <View style={S.field}>
-              <Text style={S.label}>邮箱</Text>
+              <Text style={S.label}>{t('auth.email')}</Text>
               <View style={[S.inputBox, focused === 'email' && S.inputFocus]}>
                 <TextInput
                   style={S.input}
-                  placeholder="请输入邮箱地址"
+                  placeholder={t('auth.emailPlaceholder')}
                   placeholderTextColor="#BFB8B2"
                   value={email}
                   onChangeText={setEmail}
@@ -201,12 +202,12 @@ export default function RegisterScreen() {
 
             {/* Nickname */}
             <View style={S.field}>
-              <Text style={S.label}>昵称</Text>
+              <Text style={S.label}>{t('auth.nickname')}</Text>
               <View style={[S.inputBox, focused === 'nickname' && S.inputFocus]}>
                 <TextInput
                   ref={nicknameRef}
                   style={S.input}
-                  placeholder="给自己取一个名字"
+                  placeholder={t('auth.nicknamePlaceholder')}
                   placeholderTextColor="#BFB8B2"
                   value={nickname}
                   onChangeText={setNickname}
@@ -222,13 +223,13 @@ export default function RegisterScreen() {
 
             {/* Password */}
             <View style={S.field}>
-              <Text style={S.label}>密码</Text>
+              <Text style={S.label}>{t('auth.password')}</Text>
               <View style={S.pwdRow}>
                 <View style={[S.inputBox, S.pwdInputBox, focused === 'password' && S.inputFocus]}>
                   <TextInput
                     ref={pwdRef}
                     style={S.input}
-                    placeholder="至少8位，包含字母和数字"
+                    placeholder={t('auth.passwordRequirement')}
                     placeholderTextColor="#BFB8B2"
                     value={password}
                     onChangeText={setPassword}
@@ -255,20 +256,20 @@ export default function RegisterScreen() {
                     <View style={[S.strengthBar, pwdStrength.score >= 2 && { backgroundColor: strengthColor }]} />
                     <View style={[S.strengthBar, pwdStrength.score >= 3 && { backgroundColor: strengthColor }]} />
                   </View>
-                  <Text style={S.strengthLabel}>{pwdStrength.label ? `密码强度：${pwdStrength.label}` : ''}</Text>
+                  <Text style={S.strengthLabel}>{pwdStrength.label ? t('auth.passwordStrength', { strength: pwdStrength.label }) : ''}</Text>
                 </View>
               )}
             </View>
 
             {/* Password confirm */}
             <View style={S.field}>
-              <Text style={S.label}>确认密码</Text>
+              <Text style={S.label}>{t('auth.confirmPassword')}</Text>
               <View style={S.pwdRow}>
                 <View style={[S.inputBox, S.pwdInputBox, focused === 'passwordConfirm' && S.inputFocus]}>
                   <TextInput
                     ref={pwdConfirmRef}
                     style={S.input}
-                    placeholder="再次输入密码"
+                    placeholder={t('auth.confirmPasswordPlaceholder')}
                     placeholderTextColor="#BFB8B2"
                     value={passwordConfirm}
                     onChangeText={setPasswordConfirm}
@@ -310,14 +311,14 @@ export default function RegisterScreen() {
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                 style={S.regGrad}
               >
-                {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={S.regText}>注 册</Text>}
+                {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={S.regText}>{t('auth.register')}</Text>}
               </LinearGradient>
             </TouchableOpacity>
 
             {/* Divider */}
             <View style={S.divider}>
               <View style={S.divLine} />
-              <Text style={S.divText}>其他注册方式</Text>
+              <Text style={S.divText}>{t('auth.otherRegisterMethods')}</Text>
               <View style={S.divLine} />
             </View>
 
@@ -342,9 +343,9 @@ export default function RegisterScreen() {
 
             {/* Login link */}
             <View style={S.loginRow}>
-              <Text style={S.loginPre}>已有账号？</Text>
+              <Text style={S.loginPre}>{t('auth.hasAccount')}</Text>
               <TouchableOpacity onPress={() => router.push('/auth/login')} activeOpacity={0.7}>
-                <Text style={S.loginLink}>立即登录</Text>
+                <Text style={S.loginLink}>{t('auth.loginNow')}</Text>
               </TouchableOpacity>
             </View>
           </View>
