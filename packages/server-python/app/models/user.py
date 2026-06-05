@@ -37,6 +37,14 @@ class UserUpdate(BaseModel):
     bio: Optional[str] = Field(None, max_length=100, description="简介")
     birthday: Optional[str] = Field(None, description="生日 YYYY-MM-DD")
     gender: Optional[str] = Field(None, max_length=10, description="性别")
+    interests: Optional[str] = Field(None, max_length=500, description="学习兴趣，逗号分隔")
+    wechat: Optional[str] = Field(None, max_length=100, description="微信号")
+    weibo: Optional[str] = Field(None, max_length=100, description="微博账号")
+    github: Optional[str] = Field(None, max_length=100, description="GitHub用户名")
+    linkedin: Optional[str] = Field(None, max_length=200, description="LinkedIn链接")
+    show_progress: Optional[bool] = Field(None, description="公开学习进度")
+    show_social: Optional[bool] = Field(None, description="展示社交账号")
+    allow_message: Optional[bool] = Field(None, description="接收陌生人消息")
 
     @field_validator('birthday')
     @classmethod

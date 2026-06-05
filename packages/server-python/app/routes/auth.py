@@ -360,6 +360,46 @@ async def update_user_info(
         values.append(body.gender)
         idx += 1
 
+    if body.interests is not None:
+        updates.append(f"interests = ${idx}")
+        values.append(body.interests)
+        idx += 1
+
+    if body.wechat is not None:
+        updates.append(f"wechat = ${idx}")
+        values.append(body.wechat)
+        idx += 1
+
+    if body.weibo is not None:
+        updates.append(f"weibo = ${idx}")
+        values.append(body.weibo)
+        idx += 1
+
+    if body.github is not None:
+        updates.append(f"github = ${idx}")
+        values.append(body.github)
+        idx += 1
+
+    if body.linkedin is not None:
+        updates.append(f"linkedin = ${idx}")
+        values.append(body.linkedin)
+        idx += 1
+
+    if body.show_progress is not None:
+        updates.append(f"show_progress = ${idx}")
+        values.append(body.show_progress)
+        idx += 1
+
+    if body.show_social is not None:
+        updates.append(f"show_social = ${idx}")
+        values.append(body.show_social)
+        idx += 1
+
+    if body.allow_message is not None:
+        updates.append(f"allow_message = ${idx}")
+        values.append(body.allow_message)
+        idx += 1
+
     if not updates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -375,7 +415,7 @@ async def update_user_info(
 
     # 返回更新后的用户信息
     row = await db.fetchrow(
-        "SELECT id, email, nickname, avatar_url, bio, birthday, gender FROM users WHERE id = $1",
+        "SELECT id, email, nickname, avatar_url, bio, birthday, gender, interests, wechat, weibo, github, linkedin, show_progress, show_social, allow_message FROM users WHERE id = $1",
         uuid.UUID(current_user_id)
     )
     return {
@@ -385,7 +425,15 @@ async def update_user_info(
         "avatar_url": row["avatar_url"],
         "bio": row["bio"],
         "birthday": row["birthday"].isoformat() if row["birthday"] else None,
-        "gender": row["gender"]
+        "gender": row["gender"],
+        "interests": row["interests"],
+        "wechat": row["wechat"],
+        "weibo": row["weibo"],
+        "github": row["github"],
+        "linkedin": row["linkedin"],
+        "show_progress": row["show_progress"],
+        "show_social": row["show_social"],
+        "allow_message": row["allow_message"],
     }
 
 

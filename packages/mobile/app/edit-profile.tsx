@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { showError, confirmAction } from '@/lib/utils/error-toast';
+import { useGoBack } from '@/lib/utils/navigation';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -38,7 +39,8 @@ const INTERESTS = [
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const goBack = useGoBack();
+  const { user, logout } = useAuth();
   const { onSuccess } = useFeedback();
   const haptics = useHaptics();
   const { t } = useI18n();
@@ -61,12 +63,14 @@ export default function EditProfileScreen() {
   const [github, setGithub] = useState('');
   const [linkedin, setLinkedin] = useState('');
 
-  // Original values for change detection
-  const [original, setOriginal] = useState({ nickname: '', bio: '', birthday: '', gender: '' });
+  // Original values for change detection (all fields)
+  const [original, setOriginal] = useState({
+    nickname: '', bio: '', birthday: '', gender: '',
+    interests: [] as string[], wechat: '', weibo: '', github: '', linkedin: '',
+    showProgress: true, showSocial: false, allowMessage: true,
+  });
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
+  useEffect(() => { loadProfile(); }, []);
 
   async function loadProfile() {
     try {
@@ -77,26 +81,44 @@ export default function EditProfileScreen() {
       const b = u.bio || '';
       const bd = u.birthday || '';
       const g = u.gender || '';
+      const intList = u.interests ? u.interests.split(',').filter(Boolean) : [];
       setNickname(n);
       setBio(b);
       setBirthday(bd);
       setGender(g);
-      setOriginal({ nickname: n, bio: b, birthday: bd, gender: g });
+      setInterests(intList);
+      setWechat(u.wechat || '');
+      setWeibo(u.weibo || '');
+      setGithub(u.github || '');
+      setLinkedin(u.linkedin || '');
+      setShowProgress(u.show_progress ?? true);
+      setShowSocial(u.show_social ?? false);
+      setAllowMessage(u.allow_message ?? true);
+      setOriginal({
+        nickname: n, bio: b, birthday: bd, gender: g,
+        interests: intList, wechat: u.wechat || '', weibo: u.weibo || '', github: u.github || '', linkedin: u.linkedin || '',
+        showProgress: u.show_progress ?? true, showSocial: u.show_social ?? false, allowMessage: u.allow_message ?? true,
+      });
     } catch (e) {
       showError(e);
-      console.error('Load profile error:', e);
     } finally {
       setIsLoading(false);
     }
   }
 
+  // Change detection: all fields
   useEffect(() => {
     const changed = nickname !== original.nickname || bio !== original.bio ||
-      birthday !== original.birthday || gender !== original.gender;
+      birthday !== original.birthday || gender !== original.gender ||
+      JSON.stringify(interests) !== JSON.stringify(original.interests) ||
+      wechat !== original.wechat || weibo !== original.weibo ||
+      github !== original.github || linkedin !== original.linkedin ||
+      showProgress !== original.showProgress || showSocial !== original.showSocial ||
+      allowMessage !== original.allowMessage;
     setHasChanges(changed);
-  }, [nickname, bio, birthday, gender, original]);
+  }, [nickname, bio, birthday, gender, interests, wechat, weibo, github, linkedin, showProgress, showSocial, allowMessage, original]);
 
-  // 自动保存：字段变化后 1.5s 自动提交
+  // Auto-save with refs to avoid stale closure
   const savingRef = useRef(false);
   const hasChangesRef = useRef(false);
   const originalRef = useRef(original);
@@ -107,31 +129,38 @@ export default function EditProfileScreen() {
     if (!hasChanges) return;
     const timer = setTimeout(async () => {
       if (!hasChangesRef.current || savingRef.current) return;
-      // 前端校验生日格式
       if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
         showError('生日格式不正确，请输入 YYYY-MM-DD');
         return;
       }
-      // 校验日期有效性
       if (birthday) {
         const d = new Date(birthday);
-        if (isNaN(d.getTime())) {
-          showError('生日日期无效');
-          return;
-        }
+        if (isNaN(d.getTime())) { showError('生日日期无效'); return; }
       }
       savingRef.current = true;
       setSaving(true);
       try {
         const orig = originalRef.current;
-        const data: Record<string, string | null> = {};
+        const data: Record<string, string | boolean | null> = {};
         if (nickname !== orig.nickname) data.nickname = nickname || null;
         if (bio !== orig.bio) data.bio = bio || null;
         if (birthday !== orig.birthday) data.birthday = birthday || null;
         if (gender !== orig.gender) data.gender = gender || null;
+        if (JSON.stringify(interests) !== JSON.stringify(orig.interests)) data.interests = interests.join(',');
+        if (wechat !== orig.wechat) data.wechat = wechat || '';
+        if (weibo !== orig.weibo) data.weibo = weibo || '';
+        if (github !== orig.github) data.github = github || '';
+        if (linkedin !== orig.linkedin) data.linkedin = linkedin || '';
+        if (showProgress !== orig.showProgress) data.show_progress = showProgress;
+        if (showSocial !== orig.showSocial) data.show_social = showSocial;
+        if (allowMessage !== orig.allowMessage) data.allow_message = allowMessage;
 
         await apiClient.updateUser(data);
-        setOriginal({ nickname, bio, birthday, gender });
+        setOriginal({
+          nickname, bio, birthday, gender,
+          interests: [...interests], wechat, weibo, github, linkedin,
+          showProgress, showSocial, allowMessage,
+        });
         setHasChanges(false);
         haptics.light();
       } catch (e: any) {
@@ -142,35 +171,30 @@ export default function EditProfileScreen() {
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [nickname, bio, birthday, gender]);
+  }, [nickname, bio, birthday, gender, interests, wechat, weibo, github, linkedin, showProgress, showSocial, allowMessage]);
 
-  // 保留手动保存入口（如需返回前触发）
-  async function handleSave() {
-    if (!hasChanges || savingRef.current) return;
-    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
-      showError('生日格式不正确，请输入 YYYY-MM-DD');
-      return;
-    }
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      const orig = originalRef.current;
-      const data: Record<string, string | null> = {};
-      if (nickname !== orig.nickname) data.nickname = nickname || null;
-      if (bio !== orig.bio) data.bio = bio || null;
-      if (birthday !== orig.birthday) data.birthday = birthday || null;
-      if (gender !== orig.gender) data.gender = gender || null;
+  // Logout: 2-step confirm
+  function handleLogout() {
+    haptics.medium();
+    confirmAction('退出登录', '确定要退出当前账号吗？', () => {
+      confirmAction('再次确认', '退出登录后需要重新登录才能使用', async () => {
+        try {
+          await logout();
+          router.dismissAll();
+          router.replace('/auth/login');
+        } catch (e) { showError(e); }
+      }, '确认退出');
+    }, '退出');
+  }
 
-      await apiClient.updateUser(data);
-      setOriginal({ nickname, bio, birthday, gender });
-      setHasChanges(false);
-      haptics.light();
-    } catch (e: any) {
-      showError(e);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+  // Delete account: 2-step confirm
+  function handleDeleteAccount() {
+    haptics.medium();
+    confirmAction('注销账户', '注销后所有数据将被永久删除，无法恢复。', () => {
+      confirmAction('最终确认', '这是最后一次确认，注销后无法撤销。', () => {
+        showError('注销账户功能尚未实现');
+      }, '永久注销');
+    }, '继续');
   }
 
   function toggleInterest(tag: string) {
@@ -178,7 +202,6 @@ export default function EditProfileScreen() {
     setInterests(prev =>
       prev.includes(tag) ? prev.filter(i => i !== tag) : [...prev, tag]
     );
-    setHasChanges(true);
   }
 
   if (isLoading) {
@@ -213,13 +236,7 @@ export default function EditProfileScreen() {
       {/* Nav Bar */}
       <View style={S.navBar}>
         <TouchableOpacity
-          onPress={() => {
-            if (Platform.OS === 'web') {
-              window.history.back();
-            } else {
-              router.back();
-            }
-          }}
+          onPress={() => goBack()}
           style={S.navBack}
         >
           <Ionicons name="chevron-back" size={24} color={C.accent} />
@@ -227,7 +244,8 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
         <Text style={S.navTitle}>编辑资料</Text>
         {saving && <Text style={S.navStatus}>保存中...</Text>}
-        {!saving && !hasChanges && <Ionicons name="checkmark-circle" size={18} color="#34c759" />}
+        {!saving && hasChanges && <Text style={[S.navStatus, { color: C.accent }]}>有修改</Text>}
+        {!saving && !hasChanges && original.nickname && <Ionicons name="checkmark-circle" size={18} color="#34c759" />}
       </View>
 
       <KeyboardAvoidingView
@@ -235,14 +253,22 @@ export default function EditProfileScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={S.scrollView} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {/* Avatar Section */}
+          {/* Avatar Section with logout + delete account */}
           <View style={S.avatarSection}>
-            <View style={S.avatarCircle}>
-              <Text style={S.avatarText}>{(nickname || '我').charAt(0)}</Text>
+            <View style={S.avatarRow}>
+              <View style={S.avatarCircle}>
+                <Text style={S.avatarText}>{(nickname || '我').charAt(0)}</Text>
+              </View>
+              <View style={S.avatarActions}>
+                <TouchableOpacity onPress={handleLogout} style={S.avatarActionBtn}>
+                  <Ionicons name="log-out-outline" size={18} color={C.muted} />
+                  <Text style={S.avatarActionText}>退出登录</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleDeleteAccount} style={S.deleteIconBtn}>
+                  <Ionicons name="trash-outline" size={16} color={C.danger} />
+                </TouchableOpacity>
+              </View>
             </View>
-            <TouchableOpacity style={S.avatarHintWrap} onPress={() => showError('头像更换功能即将上线')}>
-              <Text style={S.avatarHint}>点击更换头像</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Basic Info */}
@@ -455,23 +481,6 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
-          {/* Delete Account */}
-          <TouchableOpacity
-            style={S.deleteSection}
-            onPress={() => {
-              confirmAction(
-                '注销账户',
-                '确定要注销账户吗？此操作不可恢复。',
-                () => { showError('注销账户功能尚未实现'); },
-                '确定注销',
-                '取消',
-              );
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={S.deleteText}>注销账户</Text>
-          </TouchableOpacity>
-
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -525,25 +534,53 @@ const S = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
   },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
   avatarCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 44,
+    fontSize: 32,
     fontWeight: '700',
     color: '#fff',
   },
-  avatarHintWrap: {
-    marginTop: 8,
+  avatarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  avatarHint: {
-    fontSize: 12,
+  avatarActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: C.surfaceSolid,
+    borderWidth: 0.5,
+    borderColor: C.border,
+  },
+  avatarActionText: {
+    fontSize: 13,
     color: C.muted,
+  },
+  deleteIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef2f2',
+    borderWidth: 0.5,
+    borderColor: '#fecaca',
   },
 
   // Section Title
@@ -713,16 +750,5 @@ const S = StyleSheet.create({
   privacyDesc: {
     fontSize: 12,
     color: C.muted,
-  },
-
-  // Delete
-  deleteSection: {
-    marginTop: 24,
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  deleteText: {
-    fontSize: 15,
-    color: C.danger,
   },
 });
