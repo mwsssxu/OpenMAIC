@@ -302,7 +302,7 @@ export default function ProfileScreen() {
       router.dismissAll();
       router.replace('/auth/login');
     };
-    confirmAction('退出登录', '确定要退出当前账号吗？', doLogout, '退出');
+    confirmAction(t('profile.logout'), t('profile.logoutConfirm'), doLogout, t('profile.logout'));
   };
 
   const handleHelp = () => {

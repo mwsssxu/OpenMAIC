@@ -3,11 +3,13 @@ import { View, StyleSheet } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import { useI18n } from '@/lib/i18n';
 import IOSTabBar from '@/lib/components/IOSTabBar';
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { onPress } = useFeedback();
+  const { t } = useI18n();
 
   if (isLoading) {
     return null;
@@ -28,7 +30,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: '首页',
+            title: t('tabs.home'),
             headerShown: false,
           }}
           listeners={{
@@ -38,7 +40,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="courses"
           options={{
-            title: '课程',
+            title: t('tabs.courses'),
             headerShown: true,
           }}
           listeners={{
@@ -48,7 +50,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="notes"
           options={{
-            title: '笔记',
+            title: t('tabs.questions'),
             headerShown: true,
           }}
           listeners={{
@@ -58,7 +60,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="profile"
           options={{
-            title: '我的',
+            title: t('tabs.profile'),
             headerShown: true,
           }}
           listeners={{
