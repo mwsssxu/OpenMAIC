@@ -411,14 +411,20 @@ const translations = {
 class I18n {
   private locale: Locale = defaultLocale;
   private listeners: Set<() => void> = new Set();
+  private loaded = false;
 
   setLocale(locale: Locale) {
     this.locale = locale;
+    this.loaded = true;
     this.listeners.forEach(fn => fn());
   }
 
   getLocale(): Locale {
     return this.locale;
+  }
+
+  isLoaded(): boolean {
+    return this.loaded;
   }
 
   subscribe(fn: () => void) {
@@ -477,15 +483,21 @@ export function useI18n() {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
-    // 启动时加载持久化的 locale
-    (async () => {
-      try {
-        const saved = await SecureStore.getItemAsync(LOCALE_KEY);
-        if (saved === 'zh-CN' || saved === 'en-US') {
-          i18n.setLocale(saved);
+    // 只在首次 mount 时加载持久化的 locale（避免多组件重复触发）
+    if (!i18n.isLoaded()) {
+      (async () => {
+        try {
+          const saved = await SecureStore.getItemAsync(LOCALE_KEY);
+          if (saved === 'zh-CN' || saved === 'en-US') {
+            i18n.setLocale(saved);
+          } else {
+            i18n.loaded = true; // 标记已加载，使用默认 locale
+          }
+        } catch {
+          i18n.loaded = true;
         }
-      } catch {}
-    })();
+      })();
+    }
 
     // 订阅 locale 变更 → 强制重渲染
     const unsub = i18n.subscribe(() => forceUpdate(n => n + 1));
