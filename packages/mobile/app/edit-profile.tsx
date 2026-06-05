@@ -258,25 +258,26 @@ export default function EditProfileScreen() {
               <View style={S.pickerOverlay}>
                 <View style={S.pickerCard}>
                   <View style={S.pickerHeader}>
-                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)} hitSlop={12}>
                       <Text style={S.pickerCancel}>取消</Text>
                     </TouchableOpacity>
                     <Text style={S.pickerTitle}>选择生日</Text>
-                    <TouchableOpacity onPress={confirmDate}>
+                    <TouchableOpacity onPress={confirmDate} hitSlop={12}>
                       <Text style={S.pickerConfirm}>确定</Text>
                     </TouchableOpacity>
                   </View>
                   <View style={S.pickerRow}>
-                    <Picker style={S.pickerItem} selectedValue={pickerYear} onValueChange={setPickerYear}>
-                      {years.map(y => <Picker.Item key={y} label={`${y}年`} value={y} />)}
+                    <Picker style={S.pickerItem} selectedValue={pickerYear} onValueChange={setPickerYear} itemStyle={S.pickerItemStyle}>
+                      {years.map(y => <Picker.Item key={y} label={`${y}`} value={y} />)}
                     </Picker>
-                    <Picker style={S.pickerItem} selectedValue={pickerMonth} onValueChange={setPickerMonth}>
-                      {months.map(m => <Picker.Item key={m} label={`${m}月`} value={m} />)}
+                    <Picker style={S.pickerItem} selectedValue={pickerMonth} onValueChange={setPickerMonth} itemStyle={S.pickerItemStyle}>
+                      {months.map(m => <Picker.Item key={m} label={`${m}`} value={m} />)}
                     </Picker>
-                    <Picker style={S.pickerItem} selectedValue={pickerDay} onValueChange={setPickerDay}>
-                      {days.map(d => <Picker.Item key={d} label={`${d}日`} value={d} />)}
+                    <Picker style={S.pickerItem} selectedValue={pickerDay} onValueChange={setPickerDay} itemStyle={S.pickerItemStyle}>
+                      {days.map(d => <Picker.Item key={d} label={`${d}`} value={d} />)}
                     </Picker>
                   </View>
+                  <Text style={S.pickerPreview}>{pickerYear}-{String(pickerMonth).padStart(2,'0')}-{String(pickerDay).padStart(2,'0')}</Text>
                 </View>
               </View>
             </Modal>
@@ -691,43 +692,54 @@ const S = StyleSheet.create({
   pickerOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   pickerCard: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 34,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
   },
   pickerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderBottomWidth: 0.5,
     borderBottomColor: C.border,
   },
   pickerCancel: {
-    fontSize: 16,
+    fontSize: 17,
     color: C.muted,
   },
   pickerTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
     color: C.fg,
   },
   pickerConfirm: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
     color: C.accent,
   },
   pickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 12,
   },
   pickerItem: {
     flex: 1,
-    height: 200,
+    height: 160,
+  },
+  pickerItemStyle: {
+    fontSize: 20,
+    fontWeight: '500',
+  },
+  pickerPreview: {
+    textAlign: 'center',
+    fontSize: 15,
+    color: C.muted,
+    marginTop: 4,
   },
 });
