@@ -43,7 +43,7 @@ export default function EditProfileScreen() {
   const { user, logout } = useAuth();
   const { onSuccess } = useFeedback();
   const haptics = useHaptics();
-  const { t } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const insets = useSafeAreaInsets();
 
   const [nickname, setNickname] = useState('');
@@ -521,6 +521,30 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
+          {/* Language */}
+          <Text style={S.sectionTitle}>{t('settings.language')}</Text>
+          <View style={S.formCard}>
+            <View style={[S.formRow, { borderBottomWidth: 0 }]}>
+              <Text style={S.formLabel}>{t('profile.language')}</Text>
+              <View style={S.langRow}>
+                <TouchableOpacity
+                  style={[S.langOption, locale === 'zh-CN' && S.langSelected]}
+                  onPress={() => setLocale('zh-CN')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[S.langText, locale === 'zh-CN' && S.langTextSelected]}>中文</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[S.langOption, locale === 'en-US' && S.langSelected]}
+                  onPress={() => setLocale('en-US')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[S.langText, locale === 'en-US' && S.langTextSelected]}>English</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
           {/* Logout */}
           <TouchableOpacity
             style={S.logoutSection}
@@ -930,6 +954,32 @@ const S = StyleSheet.create({
   },
   modalConfirmText: {
     fontSize: 15,
+    color: '#fff',
+    fontWeight: '600',
+  },
+
+  // Language
+  langRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  langOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  langSelected: {
+    backgroundColor: C.accent,
+    borderColor: C.accent,
+  },
+  langText: {
+    fontSize: 14,
+    color: C.muted,
+  },
+  langTextSelected: {
     color: '#fff',
     fontWeight: '600',
   },

@@ -30,7 +30,7 @@ async def register(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            detail="邮箱已注册"
         )
 
     # 创建用户
@@ -186,14 +186,14 @@ async def refresh_token(
     if not refresh_token_value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="refresh_token is required"
+            detail="缺少刷新令牌"
         )
 
     user_id = verify_token(refresh_token_value, expected_type="refresh")
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            detail="无效的刷新令牌"
         )
 
     # 验证用户是否存在
@@ -205,7 +205,7 @@ async def refresh_token(
     if row is None or not row["is_active"]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
+            detail="用户不存在或已禁用"
         )
 
     # 返回新 token
@@ -413,7 +413,7 @@ async def update_user_info(
     if not updates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fields to update"
+            detail="没有需要更新的字段"
         )
 
     updates.append(f"updated_at = ${idx}")
@@ -464,7 +464,7 @@ async def change_password(
     if not verify_password(body.old_password, row["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Old password is incorrect"
+            detail="旧密码不正确"
         )
 
     # 更新密码
@@ -500,7 +500,7 @@ async def delete_account(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="用户不存在"
         )
 
     # 删除用户（CASCADE 会自动删除关联数据）
