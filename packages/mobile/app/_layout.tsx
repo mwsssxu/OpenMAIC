@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
 import { TouchableOpacity, Platform, LogBox } from 'react-native';
 import { useRouter, usePathname, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useI18n } from '@/lib/i18n';
+import { useGoBack } from '@/lib/utils/navigation';
 
 // 全局抑制 useNativeDriver 警告（Expo Go 缺少 RCTAnimation 原生模块）
 // 第三方库（reanimated、react-navigation 等）内部硬编码 useNativeDriver: true，
@@ -120,6 +122,23 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <Redirect href="/auth/login" />;
 }
 
+function RootStack() {
+  const { t } = useI18n();
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="classroom/[id]" options={{ headerShown: true, title: t('classroom.detail'), headerLeft: () => <CustomBackButton /> }} />
+      <Stack.Screen name="classroom/create" options={{ headerShown: true, title: t('classroom.create'), headerLeft: () => <CustomBackButton /> }} />
+      <Stack.Screen name="course/[id]" options={{ headerShown: true, title: t('classroom.detail'), headerLeft: () => <CustomBackButton /> }} />
+      <Stack.Screen name="auth/login" />
+      <Stack.Screen name="auth/register" />
+      <Stack.Screen name="wallet" />
+      <Stack.Screen name="enterprise" />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   // 全局错误处理器已在模块加载时设置，无需在组件中再次调用
 
@@ -128,16 +147,7 @@ export default function RootLayout() {
       <AuthProvider>
         <AuthGuard>
           <StatusBar style="auto" />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="classroom/[id]" options={{ headerShown: true, title: '课程详情', headerLeft: () => <CustomBackButton /> }} />
-            <Stack.Screen name="classroom/create" options={{ headerShown: true, title: '创建课程', headerLeft: () => <CustomBackButton /> }} />
-            <Stack.Screen name="course/[id]" options={{ headerShown: true, title: '课程详情', headerLeft: () => <CustomBackButton /> }} />
-            <Stack.Screen name="auth/login" />
-            <Stack.Screen name="auth/register" />
-            <Stack.Screen name="wallet" />
-            <Stack.Screen name="enterprise" />
-          </Stack>
+          <RootStack />
           <GlobalDialog />
         </AuthGuard>
       </AuthProvider>

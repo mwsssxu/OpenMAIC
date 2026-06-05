@@ -231,7 +231,7 @@ export default function ProfileScreen() {
   const [profileData, setProfileData] = useState<ProfileData>({
     user: { nickname: '' },
     stats: { streak_days: 0, total_courses: 0, learned_courses: 0, total_hours: 0 },
-    level: { level: 1, title: '初学者' },
+    level: { level: 1, title: t('profile.beginner') },
     weekly_study: { total_hours: 0, daily_data: [] },
     achievements: [],
   });
@@ -288,7 +288,7 @@ export default function ProfileScreen() {
       });
     } catch (err) {
       console.error('Load profile error:', err);
-      setError('加载资料失败，请下拉重试');
+      setError(t('profile.loadFailed'));
       setBalance({ ...balance, isLoading: false });
     } finally {
       setIsLoading(false);
@@ -328,7 +328,7 @@ export default function ProfileScreen() {
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <Ionicons name="person-outline" size={48} color={iOSColors.muted} />
-          <Text style={styles.loadingText}>加载资料...</Text>
+          <Text style={styles.loadingText}>{t('profile.loadingProfile')}</Text>
         </View>
       </View>
     );
@@ -342,7 +342,7 @@ export default function ProfileScreen() {
           <Ionicons name="cloud-offline-outline" size={48} color={iOSColors.accent} />
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadProfileData} activeOpacity={0.7}>
-            <Text style={styles.retryButtonText}>重新加载</Text>
+            <Text style={styles.retryButtonText}>{t('profile.retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>
