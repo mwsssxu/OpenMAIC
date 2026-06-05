@@ -59,6 +59,7 @@ import {
   arraysEqual,
 } from '@/lib/quiz/grading';
 import { QUIZ_LEVEL_CONFIG } from '@/lib/quiz/levelConfig';
+import { showError } from '@/lib/utils/error-toast';
 import type { QuizLevel } from '@/lib/quiz/types';
 import {
   readChatHistory,
@@ -468,6 +469,7 @@ export default function ClassroomScreen() {
             setChatHistory([]); // 清空历史
           }
         } catch (err) {
+          showError(err);
           console.warn('[Chat] Failed to load history:', err);
         }
       };
@@ -622,6 +624,7 @@ export default function ClassroomScreen() {
       console.log(`[Background] 所有场景创建完成`);
     } catch (err: any) {
       eventSource?.close();
+      showError(err);
       console.error('[Background] 并行创建失败，尝试逐个创建:', err.message);
 
       // 降级：逐个创建未完成的场景
@@ -640,6 +643,7 @@ export default function ClassroomScreen() {
             setData(await apiClient.getClassroom(id));
           }
         } catch (sceneErr: any) {
+          showError(sceneErr);
           console.warn(`[Background] 场景创建失败:`, sceneErr.message);
         }
       }
@@ -777,6 +781,7 @@ export default function ClassroomScreen() {
       // API 失败，使用内置默认配置
       setAgents(defaultFallbackAgents);
     } catch (err) {
+      showError(err);
       console.warn('Agent加载失败，使用默认:', err);
       // 降级到内置默认配置（保持一致的4个）
       setAgents(defaultFallbackAgents);
@@ -1387,6 +1392,7 @@ export default function ClassroomScreen() {
         }
       );
     } catch (err: any) {
+      showError(err);
       console.error('[Chat] Failed:', err);
       setSendingMessage(false);
       setDiscussionRunning(false);
@@ -1409,6 +1415,7 @@ export default function ClassroomScreen() {
         const history = await readChatHistory(currentScene.id);
         setChatHistory(history);
       } catch (err) {
+        showError(err);
         console.warn('[Chat] Failed to load history:', err);
         setChatHistory([]);
       }
@@ -1454,6 +1461,7 @@ export default function ClassroomScreen() {
         Alert.alert('提示', '当前场景暂无讨论历史记录');
       }
     } catch (err) {
+      showError(err);
       console.warn('[Discussion] Failed to load history:', err);
       Alert.alert('提示', '加载讨论历史失败');
     }
@@ -1560,6 +1568,7 @@ export default function ClassroomScreen() {
             }
           );
         } catch (err) {
+          showError(err);
           console.error('[Discussion] Agent call failed:', err);
           setChatHistory(prev => [...prev, { agent: '系统', message: `${agentInfo?.name} 连接失败，继续下一个...` }]);
         }
@@ -1575,6 +1584,7 @@ export default function ClassroomScreen() {
       setHasDiscussionHistory(true);
       setChatHistory(prev => [...prev, { agent: '系统', message: '讨论结束' }]);
     } catch (err: any) {
+      showError(err);
       console.error('[Discussion] Batch failed:', err);
       setDiscussionRunning(false);
       setWaitingForAgent(false);

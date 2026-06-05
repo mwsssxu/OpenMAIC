@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { showError } from '@/lib/utils/error-toast';
 
 interface KnowledgeCardDetail {
   id: string;
@@ -142,6 +143,7 @@ export default function KnowledgeDetailScreen() {
       const result = await apiClient.searchKnowledgeCards(searchQuery.trim());
       setSearchResults(result.results || []);
     } catch (error) {
+      showError(error);
       console.error('Search error:', error);
     }
   }

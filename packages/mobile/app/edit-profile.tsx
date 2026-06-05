@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { showError } from '@/lib/utils/error-toast';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -82,6 +83,7 @@ export default function EditProfileScreen() {
       setGender(g);
       setOriginal({ nickname: n, bio: b, birthday: bd, gender: g });
     } catch (e) {
+      showError(e);
       console.error('Load profile error:', e);
     } finally {
       setIsLoading(false);

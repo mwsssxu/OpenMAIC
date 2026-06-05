@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { showError } from '@/lib/utils/error-toast';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 
 export default function InviteScreen() {
@@ -28,6 +29,7 @@ export default function InviteScreen() {
       setInviteCode(codeData.invite_code || '');
       setStats(statsData);
     } catch (error) {
+      showError(error);
       console.error('Load invite data error:', error);
     } finally {
       setIsLoading(false);

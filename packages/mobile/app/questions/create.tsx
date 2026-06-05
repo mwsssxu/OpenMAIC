@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+1|import { useState, useEffect } from 'react';
+import { showError } from '@/lib/utils/error-toast';
 import {
   View,
   Text,
@@ -149,6 +150,7 @@ export default function CreateQuestionScreen() {
       // 返回问题列表页
       router.replace('/(tabs)/questions' as any);
     } catch (err: any) {
+      showError(err);
       console.log('Error:', err.message);
       const errorMsg = getErrorMessage(err);
       // 如果是认证错误，提示用户登录

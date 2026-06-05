@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+1|import React, { useState, useEffect } from 'react';
+import { showError } from '@/lib/utils/error-toast';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +69,7 @@ export default function AssessmentScreen() {
       setTypes(data.types || []);
       setLoading(false);
     } catch (e) {
+      showError(e);
       setLoading(false);
     }
   }

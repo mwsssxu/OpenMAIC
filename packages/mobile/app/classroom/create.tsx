@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
+import { showError } from '@/lib/utils/error-toast';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

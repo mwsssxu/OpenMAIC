@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import { showError } from '@/lib/utils/error-toast';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -114,6 +115,7 @@ export default function PaymentScreen() {
       setOrders(ordersData.items || []);
       setOverview(overviewData);
     } catch (error) {
+      showError(error);
       console.error('Load payment data error:', error);
     } finally {
       setIsLoading(false);

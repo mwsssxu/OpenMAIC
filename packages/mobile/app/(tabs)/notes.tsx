@@ -16,6 +16,7 @@ import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { apiClient } from '@/lib/api-client';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { showError } from '@/lib/utils/error-toast';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
 
 // iOS 风格颜色系统
@@ -214,6 +215,7 @@ export default function NotesScreen() {
         week_count: data.week_count || 0,
       });
     } catch (err) {
+      showError(err);
       console.error('Load notes error:', err);
       setError('加载笔记失败，请下拉重试');
     } finally {
@@ -233,6 +235,7 @@ export default function NotesScreen() {
       // Refresh to get updated data
       await loadNotes();
     } catch (error) {
+      showError(error);
       console.error('Toggle star error:', error);
     }
   };

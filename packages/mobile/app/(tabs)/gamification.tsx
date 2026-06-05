@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { showError } from '@/lib/utils/error-toast';
 
 export default function GamificationScreen() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function GamificationScreen() {
       const data = await apiClient.getGamificationProfile();
       setProfile(data);
     } catch (error) {
+      showError(error);
       console.error('Load gamification error:', error);
     } finally {
       setIsLoading(false);

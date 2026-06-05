@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+1|import { useState, useEffect } from 'react';
+import { showError } from '@/lib/utils/error-toast';
 import {
   View,
   Text,
@@ -106,6 +107,7 @@ export default function QuestionDetailScreen() {
       const data = await apiClient.getAnswers(questionId);
       setAnswers(data.items || []);
     } catch (err: any) {
+      showError(err);
       console.error('Load answers error:', err);
     }
   };

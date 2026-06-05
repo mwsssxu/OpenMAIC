@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+1|import { useState, useCallback } from 'react';
+import { showError } from '@/lib/utils/error-toast';
 import {
   View,
   Text,
@@ -217,6 +218,7 @@ export default function SharedNotesScreen() {
       setMarketNotes(data.items || []);
       setMarketPage(1);
     } catch (err) {
+      showError(err);
       console.error('Load market notes error:', err);
     } finally {
       setIsLoading(false);
@@ -233,6 +235,7 @@ export default function SharedNotesScreen() {
       setMyNotes(sharesData.shares || []);
       setEarnings(earningsData);
     } catch (err) {
+      showError(err);
       console.error('Load my notes error:', err);
     } finally {
       setIsLoading(false);

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+1|import { useState, useEffect } from 'react';
+import { showError } from '@/lib/utils/error-toast';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -73,6 +74,7 @@ export default function EnterpriseScreen() {
         loadStats(data.enterprise_id);
       }
     } catch (e) {
+      showError(e);
       setLoading(false);
     }
   }
@@ -81,14 +83,14 @@ export default function EnterpriseScreen() {
     try {
       const data = await apiClient.getEnterpriseMembers(enterpriseId);
       setMembers(data.members || []);
-    } catch (e) {}
+    } catch (e) { showError(e); }
   }
 
   async function loadStats(enterpriseId: string) {
     try {
       const data = await apiClient.getEnterpriseStats(enterpriseId);
       setStats(data);
-    } catch (e) {}
+    } catch (e) { showError(e); }
   }
 
   async function createEnterprise() {

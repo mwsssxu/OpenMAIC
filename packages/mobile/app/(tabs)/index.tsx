@@ -12,6 +12,7 @@ import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { ResponsiveGrid } from '@/lib/components/ResponsiveGrid';
 import { useResponsiveDimensions, responsiveValue } from '@/lib/utils/responsive';
 import { apiClient, UserStats } from '@/lib/api-client';
+import { showError } from '@/lib/utils/error-toast';
 
 // iOS 风格颜色系统 - 与静态页一致
 const iOSColors = {
@@ -302,6 +303,7 @@ export default function HomeScreen() {
           streak: defaultStats.streak,
         });
       } catch (error) {
+        showError(error);
         console.warn('Failed to fetch dashboard stats:', error);
         setStats(defaultStats);
       } finally {
@@ -316,6 +318,7 @@ export default function HomeScreen() {
         const recent = (classrooms || []).slice(0, 3);
         setRecentCourses(recent);
       } catch (error) {
+        showError(error);
         console.warn('Failed to fetch recent courses:', error);
         setRecentCourses([]);
       } finally {
@@ -327,6 +330,7 @@ export default function HomeScreen() {
         const result = await apiClient.discoverSharedClassrooms(10);
         setSharedCourses(result?.classrooms || []);
       } catch (error) {
+        showError(error);
         console.warn('Failed to fetch shared courses:', error);
         setSharedCourses([]);
       }
@@ -539,6 +543,7 @@ export default function HomeScreen() {
                         const result = await apiClient.discoverSharedClassrooms(10);
                         setSharedCourses(result?.classrooms || []);
                       } catch (e) {
+                        showError(e);
                         console.warn('Rating failed:', e);
                       }
                     }

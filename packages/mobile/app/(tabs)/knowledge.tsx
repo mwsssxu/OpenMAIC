@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { showError } from '@/lib/utils/error-toast';
 import { useAuth } from '@/lib/auth/auth-context';
 
 interface KnowledgeCard {
@@ -95,6 +96,7 @@ export default function KnowledgeScreen() {
         setStats(statsData);
       }
     } catch (error) {
+      showError(error);
       console.error('Load knowledge error:', error);
     } finally {
       if (!cancelledRef.current) {
@@ -117,6 +119,7 @@ export default function KnowledgeScreen() {
         setCards(result.results || []);
       }
     } catch (error) {
+      showError(error);
       console.error('Search error:', error);
     } finally {
       if (!cancelledRef.current) {

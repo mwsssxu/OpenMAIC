@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+1|import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { showError } from '@/lib/utils/error-toast';
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +44,7 @@ export default function WalletScreen() {
       setTokenTransactions(tokenTx.transactions || []);
       setPointsTransactions(pointsTx.transactions || []);
     } catch (error) {
+      showError(error);
       console.error('Load wallet data error:', error);
     } finally {
       setIsLoading(false);
