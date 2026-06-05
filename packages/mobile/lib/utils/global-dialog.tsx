@@ -33,7 +33,7 @@ export function GlobalDialog() {
   return (
     <Modal transparent visible animationType="fade" onRequestClose={() => dismissDialog(dialog.id, false)}>
       <View style={S.overlay}>
-        <Animated.View style={S.card}>
+        <View style={S.card}>
           <Text style={S.title}>{dialog.title}</Text>
           {!!dialog.message && <Text style={S.message}>{dialog.message}</Text>}
           <View style={S.btnRow}>
