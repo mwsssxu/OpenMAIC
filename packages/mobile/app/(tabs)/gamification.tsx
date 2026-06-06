@@ -19,7 +19,7 @@ export default function GamificationScreen() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const data = await apiClient.getGamificationProfile();
+      const data = await apiClient.getGamificationOverview();
       setProfile(data);
     } catch (error) {
       showError(error);
