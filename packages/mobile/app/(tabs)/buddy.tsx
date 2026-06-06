@@ -19,7 +19,7 @@ export default function BuddyScreen() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const data = await apiClient.getMyBuddy();
+      const data = await apiClient.getMyBuddyConfig();
       setBuddy(data);
     } catch (error) {
       showError(error);
