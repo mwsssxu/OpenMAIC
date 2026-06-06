@@ -13,10 +13,9 @@ import {
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { apiClient } from '@/lib/api-client';
-import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 
@@ -472,8 +471,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.sm,
     paddingBottom: Spacing.sm,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#d8d8d8',
   },
