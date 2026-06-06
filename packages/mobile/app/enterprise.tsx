@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { showError } from '@/lib/utils/error-toast';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 interface Enterprise {
   has_enterprise: boolean;
@@ -38,7 +39,6 @@ interface Stats {
 export default function EnterpriseScreen() {
   const { onSuccess, onError } = useFeedback();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
@@ -135,7 +135,8 @@ export default function EnterpriseScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <TabPageWrapper hasHeader>
+      <View style={styles.container}>
         {/* 导航栏 */}
         <View style={styles.pageHeader}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -148,12 +149,14 @@ export default function EnterpriseScreen() {
           <Text>加载中...</Text>
         </View>
       </View>
+    </TabPageWrapper>
     );
   }
 
   if (showCreate) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <TabPageWrapper hasHeader>
+      <View style={styles.container}>
         {/* 导航栏 */}
         <View style={styles.pageHeader}>
           <TouchableOpacity style={styles.backBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
@@ -196,12 +199,14 @@ export default function EnterpriseScreen() {
           </TouchableOpacity>
         </ScrollView>
       </View>
+    </TabPageWrapper>
     );
   }
 
   if (!enterprise?.has_enterprise) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <TabPageWrapper hasHeader>
+      <View style={styles.container}>
         {/* 导航栏 */}
         <View style={styles.pageHeader}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -218,11 +223,13 @@ export default function EnterpriseScreen() {
           </TouchableOpacity>
         </View>
       </View>
+    </TabPageWrapper>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
       {/* 导航栏 */}
       <View style={styles.pageHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -291,7 +298,8 @@ export default function EnterpriseScreen() {
           </View>
         ))}
       </ScrollView>
-    </View>
+      </View>
+    </TabPageWrapper>
   );
 }
 

@@ -13,6 +13,7 @@ import {
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { apiClient } from '@/lib/api-client';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
@@ -460,6 +461,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: iOSColors.bgSolid,
+  },
+  content: {
+    flex: 1,
   },
 
   // Navigation

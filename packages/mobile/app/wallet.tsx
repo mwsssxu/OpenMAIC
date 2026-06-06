@@ -3,10 +3,10 @@ import { showError } from '@/lib/utils/error-toast';
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
-import { useFeedback } from '@/lib/hooks/use-feedback';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 interface Transaction {
   id: string;
@@ -17,9 +17,7 @@ interface Transaction {
 }
 
 export default function WalletScreen() {
-  const { onPress } = useFeedback();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [tokenBalance, setTokenBalance] = useState(0);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [tokenTransactions, setTokenTransactions] = useState<Transaction[]>([]);
@@ -79,7 +77,8 @@ export default function WalletScreen() {
   const transactions = activeTab === 'token' ? tokenTransactions : pointsTransactions;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
       {/* 页面头部 */}
       <View style={styles.pageHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -133,7 +132,8 @@ export default function WalletScreen() {
         }
         contentContainerStyle={styles.listContent}
       />
-    </View>
+      </View>
+    </TabPageWrapper>
   );
 }
 
