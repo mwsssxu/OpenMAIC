@@ -259,17 +259,17 @@ export default function SharedNotesScreen() {
   return (
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
-        {/* 导航栏 */}
-        <View style={styles.navBar}>
+        {/* 页面头部 */}
+        <View style={styles.pageHeader}>
           <TouchableOpacity
-            style={styles.navBtn}
+            style={styles.backBtn}
             onPress={() => router.replace('/(tabs)' as any)}
             activeOpacity={0.7}
           >
             <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
           </TouchableOpacity>
-          <Text style={styles.navTitle}>共享笔记</Text>
-          <View style={styles.navRight} />
+          <Text style={styles.pageTitle}>共享笔记</Text>
+          <View style={styles.pageHeaderActions} />
         </View>
 
         {/* 双Tab切换 */}
@@ -463,31 +463,34 @@ const styles = StyleSheet.create({
   },
 
   // Navigation
-  navBar: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
   },
-  navBtn: {
+  backBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: iOSColors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0.5,
     borderColor: iOSColors.border,
   },
-  navTitle: {
-    fontSize: 17,
+  pageTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: iOSColors.fg,
+    letterSpacing: -0.3,
+    flex: 1,
   },
-  navRight: {
-    width: 44,
+  pageHeaderActions: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
   },
 
   // Tab切换

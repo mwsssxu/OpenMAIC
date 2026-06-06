@@ -80,13 +80,13 @@ export default function WalletScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* 导航栏 */}
-      <View style={styles.navBar}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+      {/* 页面头部 */}
+      <View style={styles.pageHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>钱包</Text>
-        <View style={styles.navRight} />
+        <Text style={styles.pageTitle}>钱包</Text>
+        <View style={styles.pageHeaderActions} />
       </View>
       {/* 余额显示 */}
       <View style={styles.balanceHeader}>
@@ -139,15 +139,15 @@ export default function WalletScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
-  navBar: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
   },
-  navBtn: {
+  backBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -157,8 +157,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.neutral.border,
   },
-  navTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary },
-  navRight: { width: 44 },
+  pageTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary, letterSpacing: -0.3, flex: 1 },
+  pageHeaderActions: { flexDirection: 'row', gap: Spacing.xs },
   balanceHeader: {
     backgroundColor: Colors.neutral.card,
     padding: Spacing.lg,

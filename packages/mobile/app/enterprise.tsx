@@ -137,12 +137,12 @@ export default function EnterpriseScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 导航栏 */}
-        <View style={styles.navBar}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+        <View style={styles.pageHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
           </TouchableOpacity>
-          <Text style={styles.navTitle}>企业服务</Text>
-          <View style={styles.navRight} />
+          <Text style={styles.pageTitle}>企业服务</Text>
+          <View style={styles.pageHeaderActions} />
         </View>
         <View style={styles.center}>
           <Text>加载中...</Text>
@@ -155,12 +155,12 @@ export default function EnterpriseScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 导航栏 */}
-        <View style={styles.navBar}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
+        <View style={styles.pageHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
           </TouchableOpacity>
-          <Text style={styles.navTitle}>创建企业账户</Text>
-          <View style={styles.navRight} />
+          <Text style={styles.pageTitle}>创建企业账户</Text>
+          <View style={styles.pageHeaderActions} />
         </View>
         <ScrollView style={styles.content}>
           <Text style={styles.title}>创建企业账户</Text>
@@ -203,12 +203,12 @@ export default function EnterpriseScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 导航栏 */}
-        <View style={styles.navBar}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+        <View style={styles.pageHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
           </TouchableOpacity>
-          <Text style={styles.navTitle}>企业服务</Text>
-          <View style={styles.navRight} />
+          <Text style={styles.pageTitle}>企业服务</Text>
+          <View style={styles.pageHeaderActions} />
         </View>
         <View style={styles.center}>
           <Text style={styles.noEnterpriseTitle}>企业功能</Text>
@@ -224,12 +224,12 @@ export default function EnterpriseScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* 导航栏 */}
-      <View style={styles.navBar}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+      <View style={styles.pageHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>企业服务</Text>
-        <View style={styles.navRight} />
+        <Text style={styles.pageTitle}>企业服务</Text>
+        <View style={styles.pageHeaderActions} />
       </View>
       <View style={styles.header}>
         <Text style={styles.enterpriseName}>{enterprise?.name}</Text>
@@ -299,15 +299,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
   content: { flex: 1, padding: Spacing.md },
-  navBar: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
   },
-  navBtn: {
+  backBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -317,8 +317,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.neutral.border,
   },
-  navTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary },
-  navRight: { width: 44 },
+  pageTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary, letterSpacing: -0.3, flex: 1 },
+  pageHeaderActions: { flexDirection: 'row', gap: Spacing.xs },
   header: {
     padding: Spacing.md,
     backgroundColor: Colors.neutral.card,
