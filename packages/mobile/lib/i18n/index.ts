@@ -86,6 +86,7 @@ const translations = {
       title: '我的课程',
       create: '创建课程',
       detail: '课程详情',
+      download: '下载课程',
       delete: '删除课程',
       noClassrooms: '暂无课程',
       loadingScene: '加载场景...',
@@ -94,6 +95,82 @@ const translations = {
       searchPlaceholder: '搜索课程...',
       noResults: '未找到匹配的课程',
     },
+    // 课程页面
+    courses: {
+      pageTitle: '我的课程',
+      filterAll: '全部',
+      filterInProgress: '学习中',
+      filterCompleted: '已完成',
+      filterNotStarted: '未开始',
+      courseCount: '共 {count} 门课程',
+      sectionsCount: '共 {count} 节',
+      statusInProgress: '学习中',
+      statusCompleted: '已完成',
+      statusNotStarted: '未开始',
+      loadFailed: '加载失败',
+      retry: '重试',
+      emptyTitle: '暂无课程',
+      emptyDesc: '创建你的第一个课程开始学习',
+      sortRecentUpdate: '最近更新',
+      sortLabel: '排序',
+      sortRecentUpdateHint: '按最近更新排序',
+    },
+    // 首页
+    home: {
+      myCourses: '我的课程',
+      recentCourses: '最近课程',
+      recommendedCourses: '推荐课程',
+      allNotes: '全部笔记',
+      favorites: '收藏',
+      today: '今天',
+      quickRecord: '速记',
+      qaBounty: '问答悬赏',
+      sharedNotes: '共享笔记',
+      studyBuddy: '学习搭子',
+      studyMatching: '学习匹配',
+      growthSystem: '成长体系',
+      inviteRewards: '邀请奖励',
+      recharge: '充值',
+      wallet: '钱包',
+      enterpriseServices: '企业服务',
+      loading: '加载中...',
+      days: '天',
+      courses: '门课',
+      hours: '小时',
+      streak: '连续学习',
+      streakDays: '连续天数',
+      viewDetails: '查看详情',
+      newLessonReminder: '新课提醒',
+      startLearning: '开始学习',
+      remindLater: '稍后提醒',
+    },
+    // 无障碍
+    accessibility: {
+      backArrowIcon: '返回箭头图标',
+      backButton: '返回按钮',
+      backButtonHint: '点击返回上一页',
+      empty: '暂无内容',
+      error: '加载失败',
+      errorHint: '点击重试',
+      errorIcon: '错误图标',
+      emptyFolderIcon: '空文件夹图标',
+      listIcon: '列表图标',
+      gridIcon: '网格图标',
+      dropdownArrow: '下拉箭头',
+      filterAll: '筛选全部',
+      filterCompleted: '筛选已完成',
+      filterInProgress: '筛选进行中',
+      filterNotStarted: '筛选未开始',
+      filterHint: '点击筛选{status}课程',
+      loading: '正在加载',
+      searchButton: '搜索按钮',
+      searchButtonHint: '点击搜索课程',
+      searchIcon: '搜索图标',
+      tapToViewCourse: '点击查看课程详情',
+      viewModeGrid: '网格视图',
+      viewModeList: '列表视图',
+      viewModeHint: '切换为{mode}',
+    },
     // 笔记
     note: {
       title: '我的笔记',
@@ -101,6 +178,27 @@ const translations = {
       delete: '删除笔记',
       empty: '暂无笔记',
       searchPlaceholder: '搜索笔记...',
+      loadFailed: '加载笔记失败，请下拉重试',
+      loading: '加载笔记...',
+      count: '{count} 条笔记',
+      todayWritten: '今天写了 {count} 条，继续保持！',
+      today: '今天',
+      thisWeek: '本周',
+      itemCount: '{count} 条',
+    },
+    // 笔记页面
+    notes: {
+      filterAll: '全部',
+      filterFavorites: '收藏',
+      loadFailed: '加载笔记失败，请下拉重试',
+      loading: '加载笔记...',
+      retry: '重新加载',
+      bannerTitle: '{count} 条笔记',
+      bannerDesc: '今天写了 {count} 条，继续保持！',
+      searchPlaceholder: '搜索笔记内容...',
+      sectionToday: '今天',
+      sectionThisWeek: '本周',
+      sectionCount: '{count} 条',
     },
     // 个人资料
     profile: {
@@ -285,6 +383,7 @@ const translations = {
       title: 'My Courses',
       create: 'Create Course',
       detail: 'Course Details',
+      download: 'Download Course',
       delete: 'Delete Course',
       noClassrooms: 'No courses yet',
       loadingScene: 'Loading scene...',
@@ -293,12 +392,105 @@ const translations = {
       searchPlaceholder: 'Search courses...',
       noResults: 'No matching courses found',
     },
+    courses: {
+      pageTitle: 'My Courses',
+      filterAll: 'All',
+      filterInProgress: 'In Progress',
+      filterCompleted: 'Completed',
+      filterNotStarted: 'Not Started',
+      courseCount: '{count} courses total',
+      sectionsCount: '{count} sections',
+      statusInProgress: 'In Progress',
+      statusCompleted: 'Completed',
+      statusNotStarted: 'Not Started',
+      loadFailed: 'Failed to load',
+      retry: 'Retry',
+      emptyTitle: 'No courses yet',
+      emptyDesc: 'Create your first course to start learning',
+      sortRecentUpdate: 'Recently Updated',
+      sortLabel: 'Sort',
+      sortRecentUpdateHint: 'Sort by recently updated',
+    },
+    home: {
+      myCourses: 'My Courses',
+      recentCourses: 'Recent Courses',
+      recommendedCourses: 'Recommended',
+      allNotes: 'All Notes',
+      favorites: 'Favorites',
+      today: 'Today',
+      quickRecord: 'Quick Note',
+      qaBounty: 'Q&A Bounty',
+      sharedNotes: 'Shared Notes',
+      studyBuddy: 'Study Buddy',
+      studyMatching: 'Study Matching',
+      growthSystem: 'Growth System',
+      inviteRewards: 'Invite Rewards',
+      recharge: 'Recharge',
+      wallet: 'Wallet',
+      enterpriseServices: 'Enterprise',
+      loading: 'Loading...',
+      days: 'days',
+      courses: 'courses',
+      hours: 'hours',
+      streak: 'Streak',
+      streakDays: 'Streak Days',
+      viewDetails: 'View Details',
+      newLessonReminder: 'New Lesson',
+      startLearning: 'Start Learning',
+      remindLater: 'Remind Later',
+    },
+    accessibility: {
+      backArrowIcon: 'Back arrow icon',
+      backButton: 'Back button',
+      backButtonHint: 'Tap to go back',
+      empty: 'No content',
+      error: 'Load failed',
+      errorHint: 'Tap to retry',
+      errorIcon: 'Error icon',
+      emptyFolderIcon: 'Empty folder icon',
+      listIcon: 'List icon',
+      gridIcon: 'Grid icon',
+      dropdownArrow: 'Dropdown arrow',
+      filterAll: 'Filter all',
+      filterCompleted: 'Filter completed',
+      filterInProgress: 'Filter in progress',
+      filterNotStarted: 'Filter not started',
+      filterHint: 'Tap to filter {status} courses',
+      loading: 'Loading',
+      searchButton: 'Search button',
+      searchButtonHint: 'Tap to search courses',
+      searchIcon: 'Search icon',
+      tapToViewCourse: 'Tap to view course details',
+      viewModeGrid: 'Grid view',
+      viewModeList: 'List view',
+      viewModeHint: 'Switch to {mode}',
+    },
     note: {
       title: 'My Notes',
       create: 'New Note',
       delete: 'Delete Note',
       empty: 'No notes yet',
       searchPlaceholder: 'Search notes...',
+      loadFailed: 'Failed to load notes, pull down to retry',
+      loading: 'Loading notes...',
+      count: '{count} notes',
+      todayWritten: 'Wrote {count} notes today, keep it up!',
+      today: 'Today',
+      thisWeek: 'This Week',
+      itemCount: '{count} items',
+    },
+    notes: {
+      filterAll: 'All',
+      filterFavorites: 'Favorites',
+      loadFailed: 'Failed to load notes, pull down to retry',
+      loading: 'Loading notes...',
+      retry: 'Retry',
+      bannerTitle: '{count} notes',
+      bannerDesc: 'You wrote {count} notes today, keep it up!',
+      searchPlaceholder: 'Search note content...',
+      sectionToday: 'Today',
+      sectionThisWeek: 'This Week',
+      sectionCount: '{count} notes',
     },
     profile: {
       edit: 'Edit Profile',
@@ -411,11 +603,11 @@ const translations = {
 class I18n {
   private locale: Locale = defaultLocale;
   private listeners: Set<() => void> = new Set();
-  private loaded = false;
+  private _loaded = false;
 
   setLocale(locale: Locale) {
     this.locale = locale;
-    this.loaded = true;
+    this._loaded = true;
     this.listeners.forEach(fn => fn());
   }
 
@@ -424,7 +616,11 @@ class I18n {
   }
 
   isLoaded(): boolean {
-    return this.loaded;
+    return this._loaded;
+  }
+
+  markLoaded(): void {
+    this._loaded = true;
   }
 
   subscribe(fn: () => void) {
@@ -491,10 +687,10 @@ export function useI18n() {
           if (saved === 'zh-CN' || saved === 'en-US') {
             i18n.setLocale(saved);
           } else {
-            i18n.loaded = true; // 标记已加载，使用默认 locale
+            i18n.markLoaded(); // 标记已加载，使用默认 locale
           }
         } catch {
-          i18n.loaded = true;
+          i18n.markLoaded();
         }
       })();
     }

@@ -217,7 +217,7 @@ export default function NotesScreen() {
     } catch (err) {
       showError(err);
       console.error('Load notes error:', err);
-      setError('加载笔记失败，请下拉重试');
+      setError(t('note.loadFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -248,7 +248,7 @@ export default function NotesScreen() {
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
-          <Text style={styles.loadingText}>加载笔记...</Text>
+          <Text style={styles.loadingText}>{t('common.loading')}</Text>
         </View>
       </View>
     );
@@ -262,7 +262,7 @@ export default function NotesScreen() {
           <Ionicons name="cloud-offline-outline" size={48} color={iOSColors.accent} />
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadNotes} activeOpacity={0.7}>
-            <Text style={styles.retryButtonText}>重新加载</Text>
+            <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -282,8 +282,8 @@ export default function NotesScreen() {
         {/* 笔记本Banner */}
         <View style={styles.notesBanner}>
           <View style={styles.notesBannerText}>
-            <Text style={styles.notesBannerTitle}>{totalNotes} 条笔记</Text>
-            <Text style={styles.notesBannerDesc}>今天写了 {notesData.today.length} 条，继续保持！</Text>
+            <Text style={styles.notesBannerTitle}>{t('note.count', { count: totalNotes })}</Text>
+            <Text style={styles.notesBannerDesc}>{t('note.todayWritten', { count: notesData.today.length })}</Text>
           </View>
           <View style={styles.notesBannerIcon}>
             <Text style={styles.notesBannerEmoji}>📝</Text>
@@ -296,7 +296,7 @@ export default function NotesScreen() {
           <Ionicons name="search-outline" size={16} color={iOSColors.muted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索笔记内容..."
+            placeholder={t('note.searchPlaceholder')}
             placeholderTextColor={iOSColors.muted}
             value={searchText}
             onChangeText={setSearchText}
@@ -323,8 +323,8 @@ export default function NotesScreen() {
 
         {/* 今天 */}
         <View style={styles.sectionLabel}>
-          <Text style={styles.sectionTitle}>今天</Text>
-          <Text style={styles.sectionCount}>{notesData.today.length} 条</Text>
+          <Text style={styles.sectionTitle}>{t('note.today')}</Text>
+          <Text style={styles.sectionCount}>{t('note.itemCount', { count: notesData.today.length })}</Text>
         </View>
         <View style={styles.notesList}>
           {notesData.today.map(note => (
@@ -339,8 +339,8 @@ export default function NotesScreen() {
 
         {/* 本周 */}
         <View style={styles.sectionLabel}>
-          <Text style={styles.sectionTitle}>本周</Text>
-          <Text style={styles.sectionCount}>{notesData.this_week.length} 条</Text>
+          <Text style={styles.sectionTitle}>{t('note.thisWeek')}</Text>
+          <Text style={styles.sectionCount}>{t('note.itemCount', { count: notesData.this_week.length })}</Text>
         </View>
         <View style={styles.notesList}>
           {notesData.this_week.map(note => (
