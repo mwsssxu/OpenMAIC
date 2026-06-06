@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { showError } from '@/lib/utils/error-toast';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,6 +38,7 @@ interface Stats {
 export default function EnterpriseScreen() {
   const { onSuccess, onError } = useFeedback();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
@@ -134,7 +135,7 @@ export default function EnterpriseScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 导航栏 */}
         <View style={styles.navBar}>
           <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -146,13 +147,13 @@ export default function EnterpriseScreen() {
         <View style={styles.center}>
           <Text>加载中...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (showCreate) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 导航栏 */}
         <View style={styles.navBar}>
           <TouchableOpacity style={styles.navBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
@@ -194,13 +195,13 @@ export default function EnterpriseScreen() {
             <Text style={styles.buttonOutlineText}>取消</Text>
           </TouchableOpacity>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!enterprise?.has_enterprise) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 导航栏 */}
         <View style={styles.navBar}>
           <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -216,12 +217,12 @@ export default function EnterpriseScreen() {
             <Text style={styles.buttonText}>创建企业账户</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* 导航栏 */}
       <View style={styles.navBar}>
         <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -290,7 +291,7 @@ export default function EnterpriseScreen() {
           </View>
         ))}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -303,7 +304,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
     paddingBottom: Spacing.xs,
   },
   navBtn: {

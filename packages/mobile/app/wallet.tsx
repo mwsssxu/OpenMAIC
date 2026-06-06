@@ -3,7 +3,7 @@ import { showError } from '@/lib/utils/error-toast';
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
@@ -19,6 +19,7 @@ interface Transaction {
 export default function WalletScreen() {
   const { onPress } = useFeedback();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [tokenBalance, setTokenBalance] = useState(0);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [tokenTransactions, setTokenTransactions] = useState<Transaction[]>([]);
@@ -78,7 +79,7 @@ export default function WalletScreen() {
   const transactions = activeTab === 'token' ? tokenTransactions : pointsTransactions;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* 导航栏 */}
       <View style={styles.navBar}>
         <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
@@ -132,7 +133,7 @@ export default function WalletScreen() {
         }
         contentContainerStyle={styles.listContent}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -143,7 +144,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
     paddingBottom: Spacing.xs,
   },
   navBtn: {
