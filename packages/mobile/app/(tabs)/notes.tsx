@@ -18,6 +18,7 @@ import { apiClient } from '@/lib/api-client';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { showError } from '@/lib/utils/error-toast';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -178,6 +179,7 @@ export default function NotesScreen() {
   const router = useRouter();
   const haptics = useHaptics();
   const { isTablet } = useResponsiveDimensions();
+  const { t } = useI18n();
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [refreshing, setRefreshing] = useState(false);
