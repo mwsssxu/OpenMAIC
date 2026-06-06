@@ -144,7 +144,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.xs,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   navBtn: {
     width: 44,
