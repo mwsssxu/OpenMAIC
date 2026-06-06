@@ -474,6 +474,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
+    backgroundColor: iOSColors.surfaceSolid,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#d8d8d8',
   },
   backBtn: {
     width: 44,
