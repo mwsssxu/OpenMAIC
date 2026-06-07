@@ -133,8 +133,9 @@ function RootStack() {
       <Stack.Screen name="course/[id]" options={{ headerShown: true, title: t('classroom.detail'), headerLeft: () => <CustomBackButton /> }} />
       <Stack.Screen name="auth/login" />
       <Stack.Screen name="auth/register" />
-      <Stack.Screen name="wallet" />
-      <Stack.Screen name="enterprise" />
+      <Stack.Screen name="wallet" options={{ headerShown: true, title: t('home.wallet'), headerLeft: () => <CustomBackButton /> }} />
+      <Stack.Screen name="enterprise" options={{ headerShown: true, title: t('home.enterpriseServices'), headerLeft: () => <CustomBackButton /> }} />
+      <Stack.Screen name="shared-notes" options={{ headerShown: true, title: t('home.sharedNotes'), headerLeft: () => <CustomBackButton /> }} />
     </Stack>
   );
 }
