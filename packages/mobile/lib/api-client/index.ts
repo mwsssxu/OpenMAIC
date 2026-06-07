@@ -1231,7 +1231,7 @@ class ApiClient {
   }
 
   async applyInviteCode(code: string) {
-    const { data } = await this.client.post('/invitations/apply', { code });
+    const { data } = await this.client.post('/invitations/apply', { invite_code: code });
     return data;
   }
 
