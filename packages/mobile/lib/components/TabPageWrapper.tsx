@@ -16,7 +16,7 @@ interface TabPageWrapperProps {
  * - 手机：全宽布局，底部适配 TabBar
  * - 平板：添加水平边距，更大的底部 padding
  */
-export const TabPageWrapper: React.FC<TabPageWrapperProps> = ({ children }) => {
+export const TabPageWrapper: React.FC<TabPageWrapperProps> = ({ children, hasHeader }) => {
   const insets = useSafeAreaInsets();
   const { breakpoint, isTablet } = useResponsiveDimensions();
 
@@ -38,7 +38,7 @@ export const TabPageWrapper: React.FC<TabPageWrapperProps> = ({ children }) => {
     <View style={[
       styles.container,
       {
-        paddingTop: insets.top,
+        paddingTop: hasHeader ? 0 : insets.top,
         paddingHorizontal: isTablet ? horizontalPadding : 0,
       }
     ]}>
