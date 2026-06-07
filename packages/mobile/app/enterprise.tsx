@@ -137,15 +137,14 @@ export default function EnterpriseScreen() {
     return (
       <TabPageWrapper hasHeader>
       <View style={styles.container}>
-        {/* 页面标题 */}
+        {/* 页面头部：返回按钮+标题 */}
         <View style={styles.pageHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+          </TouchableOpacity>
           <Text style={styles.pageTitle}>企业服务</Text>
           <View style={styles.pageHeaderActions} />
         </View>
-        {/* 返回按钮 */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
-        </TouchableOpacity>
         <View style={styles.center}>
           <Text>加载中...</Text>
         </View>
@@ -158,15 +157,14 @@ export default function EnterpriseScreen() {
     return (
       <TabPageWrapper hasHeader>
       <View style={styles.container}>
-        {/* 页面标题 */}
+        {/* 页面头部：返回按钮+标题 */}
         <View style={styles.pageHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+          </TouchableOpacity>
           <Text style={styles.pageTitle}>创建企业账户</Text>
           <View style={styles.pageHeaderActions} />
         </View>
-        {/* 返回按钮 */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => setShowCreate(false)} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
-        </TouchableOpacity>
         <ScrollView style={styles.content}>
           <Text style={styles.title}>创建企业账户</Text>
           <TextInput
@@ -209,15 +207,14 @@ export default function EnterpriseScreen() {
     return (
       <TabPageWrapper hasHeader>
       <View style={styles.container}>
-        {/* 页面标题 */}
+        {/* 页面头部：返回按钮+标题 */}
         <View style={styles.pageHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+          </TouchableOpacity>
           <Text style={styles.pageTitle}>企业服务</Text>
           <View style={styles.pageHeaderActions} />
         </View>
-        {/* 返回按钮 */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
-        </TouchableOpacity>
         <View style={styles.center}>
           <Text style={styles.noEnterpriseTitle}>企业功能</Text>
           <Text style={styles.noEnterpriseDesc}>创建企业账户，管理团队学习</Text>
@@ -233,15 +230,14 @@ export default function EnterpriseScreen() {
   return (
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
-      {/* 页面标题 */}
+      {/* 页面头部：返回按钮+标题 */}
       <View style={styles.pageHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+        </TouchableOpacity>
         <Text style={styles.pageTitle}>企业服务</Text>
         <View style={styles.pageHeaderActions} />
       </View>
-      {/* 返回按钮 */}
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
-      </TouchableOpacity>
       <View style={styles.header}>
         <Text style={styles.enterpriseName}>{enterprise?.name}</Text>
         <Text style={styles.enterpriseInfo}>

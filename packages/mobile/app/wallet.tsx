@@ -78,15 +78,14 @@ export default function WalletScreen() {
   return (
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
-      {/* 页面标题 */}
+      {/* 页面头部：返回按钮+标题 */}
       <View style={styles.pageHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+        </TouchableOpacity>
         <Text style={styles.pageTitle}>钱包</Text>
         <View style={styles.pageHeaderActions} />
       </View>
-      {/* 返回按钮 */}
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
-      </TouchableOpacity>
       {/* 余额显示 */}
       <View style={styles.balanceHeader}>
         <View style={styles.balanceBox}>
