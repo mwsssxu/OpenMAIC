@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, RefreshControl, TextInput, Modal } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ export default function InviteScreen() {
   const [inviteCode, setInviteCode] = useState('');
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [inputCode, setInputCode] = useState('');
 
   useEffect(() => {
     loadData();
@@ -49,27 +51,20 @@ export default function InviteScreen() {
   };
 
   const applyCode = async () => {
-    Alert.prompt(
-      '输入邀请码',
-      '输入朋友的邀请码获得奖励',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确定',
-          onPress: async (code?: string) => {
-            if (!code) return;
-            try {
-              await apiClient.applyInviteCode(code);
-              showError('已获得邀请奖励！');
-              loadData();
-            } catch (error: any) {
-              showError(error.response?.data?.detail || '邀请码无效');
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
+    setInputCode('');
+    setShowCodeModal(true);
+  };
+
+  const submitCode = async () => {
+    if (!inputCode.trim()) return;
+    setShowCodeModal(false);
+    try {
+      await apiClient.applyInviteCode(inputCode.trim());
+      showError('已获得邀请奖励！');
+      loadData();
+    } catch (error: any) {
+      showError(error.response?.data?.detail || '邀请码无效');
+    }
   };
 
   return (
@@ -148,6 +143,31 @@ export default function InviteScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* 输入邀请码弹框 */}
+      <Modal transparent visible={showCodeModal} animationType="fade" onRequestClose={() => setShowCodeModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>输入邀请码</Text>
+            <Text style={styles.modalDesc}>输入朋友的邀请码获得奖励</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={inputCode}
+              onChangeText={setInputCode}
+              placeholder="请输入邀请码"
+              autoFocus
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setShowCodeModal(false)} activeOpacity={0.6}>
+                <Text style={styles.modalBtnCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnConfirm} onPress={submitCode} activeOpacity={0.6}>
+                <Text style={styles.modalBtnConfirmText}>确定</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -234,4 +254,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   applyButtonText: { fontSize: 16, fontWeight: '600', color: Colors.neutral.white },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalCard: { width: 320, backgroundColor: '#fff', borderRadius: 16, padding: 24 },
+  modalTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a', textAlign: 'center', marginBottom: 8 },
+  modalDesc: { fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 16 },
+  modalInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 15, marginBottom: 20 },
+  modalBtnRow: { flexDirection: 'row', gap: 10 },
+  modalBtnCancel: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: '#f5f5f5', alignItems: 'center' },
+  modalBtnCancelText: { fontSize: 15, color: '#666', fontWeight: '500' },
+  modalBtnConfirm: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: '#c45a1a', alignItems: 'center' },
+  modalBtnConfirmText: { fontSize: 15, color: '#fff', fontWeight: '600' },
 });
