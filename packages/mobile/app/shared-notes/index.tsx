@@ -259,8 +259,8 @@ export default function SharedNotesScreen() {
   return (
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
-        {/* 页面头部 */}
-        <View style={styles.pageHeader}>
+        {/* 双Tab切换 + 返回按钮 */}
+        <View style={styles.tabSwitcher}>
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => router.replace('/(tabs)' as any)}
@@ -268,12 +268,6 @@ export default function SharedNotesScreen() {
           >
             <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
           </TouchableOpacity>
-          <Text style={styles.pageTitle}>共享笔记</Text>
-          <View style={styles.pageHeaderActions} />
-        </View>
-
-        {/* 双Tab切换 */}
-        <View style={styles.tabSwitcher}>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'market' && styles.tabButtonActive]}
             onPress={() => { haptics.light(); setActiveTab('market'); }}
@@ -471,7 +465,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.sm,
     paddingBottom: Spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#d8d8d8',
