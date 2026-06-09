@@ -5,13 +5,15 @@
  * 支持与 WebView 内容的双向通信
  */
 
-import React, { useRef, useCallback, useState, forwardRef, useImperativeHandle, memo } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
+import React, { useRef, useCallback, useState, forwardRef, useImperativeHandle, memo, useEffect } from 'react';
+import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity, StyleProp, ViewStyle, Platform } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { useI18n } from '@/lib/i18n';
 import { useHaptics } from '@/lib/hooks/use-haptics';
+
+const isWeb = Platform.OS === 'web';
 
 // 加载状态
 type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -141,41 +143,60 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
       true;
     `;
 
-    // 暴露 ref 方法
+    // 暴露 ref 方法 — Web 用 iframe contentWindow，原生用 WebView
     useImperativeHandle(ref, () => ({
       postMessage: (data: any) => {
-        webViewRef.current?.postMessage(JSON.stringify(data));
+        if (isWeb) {
+          const iframe = (webViewRef as any)._iframeEl as HTMLIFrameElement | null;
+          iframe?.contentWindow?.postMessage(data, '*');
+        } else {
+          webViewRef.current?.postMessage(JSON.stringify(data));
+        }
       },
       injectJavaScript: (js: string) => {
-        webViewRef.current?.injectJavaScript(js);
+        if (isWeb) {
+          const iframe = (webViewRef as any)._iframeEl as HTMLIFrameElement | null;
+          // iframe 同源策略下通过 eval 注入
+          try { iframe?.contentWindow?.eval(js); } catch { /* cross-origin */ }
+        } else {
+          webViewRef.current?.injectJavaScript(js);
+        }
       },
       reload: () => {
-        webViewRef.current?.reload();
+        if (isWeb) {
+          const iframe = (webViewRef as any)._iframeEl as HTMLIFrameElement | null;
+          if (iframe) iframe.src = iframe.src; // force reload
+        } else {
+          webViewRef.current?.reload();
+        }
       },
       goBack: () => {
-        if (state.canGoBack) {
+        if (!isWeb && state.canGoBack) {
           webViewRef.current?.goBack();
         }
       },
       goForward: () => {
-        if (state.canGoForward) {
+        if (!isWeb && state.canGoForward) {
           webViewRef.current?.goForward();
         }
       },
       sendWidgetMessage: (type: string, payload: Record<string, unknown>) => {
-        // Inject JS that dispatches a MessageEvent inside the WebView
-        // This mirrors Web's iframe.contentWindow.postMessage({ type, ...payload }, '*')
-        // Security: pass JSON via JSON.parse to prevent template literal injection
         const jsonPayload = JSON.stringify({ type, ...payload });
-        const js = `
-          (function() {
-            var data = JSON.parse(${JSON.stringify(jsonPayload)});
-            var evt = new MessageEvent('message', { data: data, origin: 'native' });
-            window.dispatchEvent(evt);
-          })();
-          true;
-        `;
-        webViewRef.current?.injectJavaScript(js);
+        if (isWeb) {
+          const iframe = (webViewRef as any)._iframeEl as HTMLIFrameElement | null;
+          iframe?.contentWindow?.postMessage(JSON.parse(jsonPayload), '*');
+        } else {
+          // Inject JS that dispatches a MessageEvent inside the WebView
+          const js = `
+            (function() {
+              var data = JSON.parse(${JSON.stringify(jsonPayload)});
+              var evt = new MessageEvent('message', { data: data, origin: 'native' });
+              window.dispatchEvent(evt);
+            })();
+            true;
+          `;
+          webViewRef.current?.injectJavaScript(js);
+        }
       },
     }), [state.canGoBack, state.canGoForward]);
 
@@ -204,6 +225,32 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
       } catch (e) {
         console.warn('[InteractiveWebView] Failed to parse message:', e);
       }
+    }, [onComplete, onError, onMessage, haptics]);
+
+    // Web 平台：监听 iframe 发出的 postMessage
+    useEffect(() => {
+      if (!isWeb) return;
+      const handler = (event: MessageEvent) => {
+        // 忽略 React DevTools 等无关消息
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if (!isValidMessage(data)) return;
+        switch (data.type) {
+          case 'complete':
+            haptics.success();
+            onComplete?.(data.payload);
+            break;
+          case 'error':
+            onError?.(new Error(data.payload?.message || 'WebView error'));
+            break;
+          case 'state':
+            break;
+          default:
+            onMessage?.(data);
+        }
+      };
+      window.addEventListener('message', handler);
+      return () => window.removeEventListener('message', handler);
     }, [onComplete, onError, onMessage, haptics]);
 
     // 加载开始
@@ -344,7 +391,34 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
       );
     }
 
-    // 主渲染
+    // 主渲染 — Web 平台使用 iframe，原生平台使用 react-native-webview
+    if (isWeb) {
+      return (
+        <View style={[styles.container, style]}>
+          <iframe
+            ref={(el) => {
+              // 存储到实例变量以便 ref 方法使用
+              (webViewRef as any)._iframeEl = el;
+            }}
+            src={url || undefined}
+            srcDoc={htmlContent || undefined}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              borderRadius: 12,
+            }}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            onLoad={() => {
+              setState(prev => ({ ...prev, loadState: 'loaded' }));
+              onLoad?.();
+            }}
+            title={t('accessibility.interactiveContent')}
+          />
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.container, style]}>
         <WebView
@@ -366,6 +440,8 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
           originWhitelist={['https://*', 'http://localhost:*', 'http://127.0.0.1:*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          scalesPageToFit={false}
+          allowsBackForwardNavigationGestures={false}
           accessibilityLabel={t('accessibility.interactiveContent')}
           accessibilityHint={t('accessibility.interactiveContentHint')}
         />

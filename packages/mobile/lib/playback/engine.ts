@@ -41,8 +41,8 @@ const DEFAULT_TTS_CONFIG: TTSConfig = {
   model: 'qwen3-tts-flash',
 };
 
-// 不需要播放音频的场景类型
-const NON_SPEECH_SCENE_TYPES = ['quiz', 'interactive', 'pbl'];
+// 不需要播放音频的场景类型（quiz 不需要 TTS，但 interactive/pbl 的 widget actions 需要执行）
+const NON_SPEECH_SCENE_TYPES = ['quiz'];
 
 // Fire-and-forget effects auto-clear after 5 seconds (aligned with web)
 const EFFECT_AUTO_CLEAR_MS = 5000;
@@ -78,6 +78,7 @@ export class PlaybackEngine {
   private mode: EngineMode = 'idle';
   private audioPlayer: AudioPlayer;
   private callbacks: PlaybackEngineCallbacks = {};
+  private _interactiveWebViewReady: boolean = false;
   private ttsConfig: TTSConfig = DEFAULT_TTS_CONFIG;
   private audioCache: Map<string, { base64: string; format: string }> = new Map();
   private speechPlaying: boolean = false;
@@ -109,10 +110,57 @@ export class PlaybackEngine {
   setTTSConfig(config: Partial<TTSConfig>) {
     this.ttsConfig = { ...this.ttsConfig, ...config };
 
-    if (config.speed !== undefined && this.audioPlayer.isPlaying()) {
-      this.audioPlayer.setRate(config.speed);
-    } else {
-      this.audioCache.clear();
+    if (config.speed !== undefined) {
+      if (this.audioPlayer.isPlaying()) {
+        // TTS API 音频播放中：实时调速
+        this.audioPlayer.setRate(config.speed);
+      } else if (this.speechPlaying) {
+        // expo-speech fallback：停止当前朗读，以新语速重新朗读
+        // expo-speech 不支持运行中调速，需要 stop + re-speak
+        this.speechPlaying = false;
+        Speech.stop();
+        // 重新朗读当前场景的语音内容（不重做 spotlight/laser 等视觉效果）
+        const scene = this.getCurrentScene();
+        if (scene && this.mode === 'playing') {
+          const actions = scene.actions || [];
+          const speechActions = actions.filter(a => a.type === 'speech');
+          if (speechActions.length > 0) {
+            // 有显式 speech actions：重新执行它们
+            this.replaySpeechActions(speechActions as SceneAction<'speech'>[]);
+          } else {
+            // 无 actions：重新朗读场景文本
+            this.replaySceneText(scene);
+          }
+        }
+      } else {
+        this.audioCache.clear();
+      }
+    }
+  }
+
+  /**
+   * 重新播放 speech actions（expo-speech 语速调整时使用）
+   * 只播放语音，不重复视觉效果
+   */
+  private async replaySpeechActions(actions: SceneAction<'speech'>[]): Promise<void> {
+    for (const action of actions) {
+      if (this.mode !== 'playing') return;
+      await this.executeSpeech(action);
+    }
+    if (this.mode === 'playing') {
+      this.mode = 'idle';
+      this.callbacks.onModeChange?.(this.mode);
+    }
+  }
+
+  /**
+   * 重新朗读场景文本（expo-speech 语速调整时使用）
+   */
+  private async replaySceneText(scene: Scene): Promise<void> {
+    await this.speakSceneContent(scene);
+    if (this.mode === 'playing') {
+      this.mode = 'idle';
+      this.callbacks.onModeChange?.(this.mode);
     }
   }
 
@@ -471,6 +519,22 @@ export class PlaybackEngine {
       this.sceneIndex = index;
       this.callbacks.onSceneChange?.(this.sceneIndex, this.getCurrentScene());
     }
+  }
+
+  /**
+   * Interactive WebView 加载完成通知
+   * 当 WebView 内容加载完成后调用，标记 WebView 就绪状态
+   * Widget actions 由 processSceneActions 统一执行，此处不重复执行
+   */
+  notifyInteractiveLoaded(): void {
+    const scene = this.getCurrentScene();
+    if (!scene || scene.type !== 'interactive') return;
+    // 仅在播放/暂停状态下标记就绪（idle 状态忽略）
+    if (this.mode === 'idle') return;
+
+    // 标记 WebView 已就绪，后续 widget actions 可直接发送
+    this._interactiveWebViewReady = true;
+    console.log('[PlaybackEngine] Interactive WebView loaded and ready');
   }
 
   /**

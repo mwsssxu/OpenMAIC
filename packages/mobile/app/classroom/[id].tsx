@@ -31,7 +31,7 @@ import { saveAudioFile } from '@/lib/storage/audio-storage';
 import { AudioPlayer } from '@/lib/playback/audio-player';
 import { useAuth } from '@/lib/auth/auth-context';
 import { PlaybackEngine, EngineMode, TTSConfig } from '@/lib/playback/engine';
-import { Scene, Agent as LibAgent, QuizQuestion, QuizContent } from '@/lib/types/scene';
+import { Scene, Agent as LibAgent, QuizQuestion, QuizContent, InteractiveContent } from '@/lib/types/scene';
 import { ScreenCanvas, SlideBackground } from '@/components/slide';
 import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { BottomSheetModal } from '@/components/common/BottomSheetModal';
@@ -78,6 +78,71 @@ import {
   extractWhiteboardText,
   type ParsedContent,
 } from '@/lib/utils/sse-parser';
+
+// Widget 类型 → 图标/标签映射
+const WIDGET_ICON_MAP: Record<string, string> = {
+  simulation: 'flask-outline',
+  game: 'game-controller-outline',
+  diagram: 'git-branch-outline',
+  code: 'code-slash-outline',
+  visualization3d: 'cube-outline',
+  html: 'code-working',
+  'scientific-model': 'beaker-outline',
+};
+
+const WIDGET_LABEL_MAP: Record<string, string> = {
+  simulation: '模拟',
+  game: '游戏',
+  diagram: '图表',
+  code: '编程',
+  visualization3d: '3D',
+  html: '互动',
+  'scientific-model': '科学模型',
+};
+
+/**
+ * 注入移动端适配脚本到 WebView HTML 内容
+ * 确保 viewport、触摸交互、安全区域、性能优化
+ */
+function injectMobileAdaptation(html: string, widgetType?: string): string {
+  // 检查 HTML 是否已有 viewport meta
+  const hasViewport = html.includes('viewport');
+  
+  const mobileScript = `
+<script>
+(function() {
+  // 确保 viewport meta 存在（移动端适配的关键）
+  if (!document.querySelector('meta[name="viewport"]')) {
+    var meta = document.createElement('meta');
+    meta.name = 'viewport';
+    meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+    document.head.appendChild(meta);
+  }
+  
+  // 3D 性能优化：在移动端降低渲染质量
+  if (${widgetType === 'visualization3d' ? 'true' : 'false'}) {
+    window.__MOBILE_3D_OPTIMIZED__ = true;
+  }
+})();
+</script>`;
+
+  // 如果 HTML 没有 viewport，在 <head> 中注入
+  if (!hasViewport) {
+    const headCloseIdx = html.indexOf('</head>');
+    if (headCloseIdx !== -1) {
+      return html.slice(0, headCloseIdx) + mobileScript + html.slice(headCloseIdx);
+    }
+  }
+  
+  // 已有 viewport，在 </body> 前注入脚本
+  const bodyCloseIdx = html.lastIndexOf('</body>');
+  if (bodyCloseIdx !== -1) {
+    return html.slice(0, bodyCloseIdx) + mobileScript + html.slice(bodyCloseIdx);
+  }
+  
+  // 没有 body 标签，直接追加
+  return html + mobileScript;
+}
 
 // 清理 JSON 残留内容和扁平化 action 格式的辅助函数
 function cleanJsonFromText(text: string): string {
@@ -873,7 +938,7 @@ export default function ClassroomScreen() {
       },
       ttsConfig
     );
-  }, [data, ttsConfig]);
+  }, [data]);
 
   // 当数据加载完成后初始化引擎
   useEffect(() => {
@@ -1429,8 +1494,9 @@ export default function ClassroomScreen() {
     if (!scene) return '课程主题讨论';
 
     const title = scene.title;
-    const description = (scene.content as any)?.description || '';
-    const keyPoints = (scene.content as any)?.key_points || [];
+    const interactiveContent = scene.type === 'interactive' ? (scene.content as InteractiveContent) : null;
+    const description = interactiveContent?.description || '';
+    const keyPoints = interactiveContent?.key_points || [];
 
     // 构建包含上下文的讨论主题
     let topic = title;
@@ -1488,10 +1554,11 @@ export default function ClassroomScreen() {
     });
 
     // 场景上下文
+    const interactiveCtx = currentScene?.type === 'interactive' ? (currentScene?.content as InteractiveContent) : null;
     const context = {
       scene_title: currentScene?.title || '',
-      description: (currentScene?.content as any)?.description || '',
-      key_points: (currentScene?.content as any)?.key_points || [],
+      description: interactiveCtx?.description || '',
+      key_points: interactiveCtx?.key_points || [],
     };
 
     console.log('[Discussion] Batch mode - agents:', discussionAgents.length);
@@ -2188,22 +2255,47 @@ export default function ClassroomScreen() {
           );
         })()}
 
-        {/* Interactive 类型：互动讨论场景 */}
+        {/* Interactive 类型：互动场景（含 WebView 交互页面 + 讨论界面） */}
         {currentScene?.type === 'interactive' && (() => {
-          const content = currentScene.content as any;
-          // 如果有 URL 或 HTML，渲染 WebView
-          if (content?.url || content?.html) {
+          const content = currentScene.content as InteractiveContent;
+          // 如果有 HTML 内容（interactive-html/scientific-model 模板生成的交互页面）
+          // 或有外部 URL，渲染 WebView
+          const htmlContent = content?.html;
+          const url = content?.url;
+          if (htmlContent || url) {
+            // 注入移动端适配脚本：确保 viewport、触摸交互、安全区域
+            const mobileAdaptedHtml = htmlContent
+              ? injectMobileAdaptation(htmlContent, content?.widgetType)
+              : undefined;
             return (
               <View style={styles.webviewContainer}>
                 <InteractiveWebView
                   ref={interactiveWebViewRef}
                   sceneId={currentScene.id}
-                  url={content.url}
-                  htmlContent={content.html}
+                  url={url}
+                  htmlContent={mobileAdaptedHtml}
+                  baseUrl="about:blank"
                   onComplete={handleInteractiveComplete}
                   onMessage={handleInteractiveMessage}
+                  onLoad={() => {
+                    // WebView 加载完成后，通知播放引擎（interactive 场景不再被跳过）
+                    playbackEngineRef.current?.notifyInteractiveLoaded?.();
+                  }}
                   style={styles.webview}
                 />
+                {/* Widget 类型标识 */}
+                {content?.widgetType && (
+                  <View style={styles.widgetBadge}>
+                    <Ionicons
+                      name={(WIDGET_ICON_MAP[content.widgetType] || 'code-working') as any}
+                      size={14}
+                      color="#10b981"
+                    />
+                    <Text style={styles.widgetBadgeText}>
+                      {WIDGET_LABEL_MAP[content.widgetType] || content.widgetType}
+                    </Text>
+                  </View>
+                )}
               </View>
             );
           }
@@ -2216,13 +2308,13 @@ export default function ClassroomScreen() {
                 <Text style={styles.interactiveTitle}>互动讨论</Text>
               </View>
               <Text style={styles.interactiveTopic}>{currentScene?.title}</Text>
-              <Text style={styles.interactiveDesc}>{(currentScene?.content as any)?.description || '互动讨论场景，点击下方按钮开始与Agent互动'}</Text>
+              <Text style={styles.interactiveDesc}>{content?.description || '互动讨论场景，点击下方按钮开始与Agent互动'}</Text>
 
               {/* 关键讨论点 */}
-              {(currentScene?.content as any)?.key_points?.length > 0 && (
+              {content?.key_points && content.key_points.length > 0 && (
                 <View style={styles.discussionPoints}>
                   <Text style={styles.discussionLabel}>讨论要点：</Text>
-                  {(currentScene?.content as any)?.key_points?.map((point: string, idx: number) => (
+                  {content.key_points.map((point: string, idx: number) => (
                     <View key={idx} style={styles.discussionItem}>
                       <Ionicons name="chatbubble-outline" size={16} color="#10b981" />
                       <Text style={styles.discussionText}>{point}</Text>
@@ -2781,8 +2873,8 @@ export default function ClassroomScreen() {
         sceneData={{
           id: currentScene?.id || '',
           title: currentScene?.title || '',
-          description: (currentScene?.content as any)?.description || '',
-          key_points: (currentScene?.content as any)?.key_points || [],
+          description: (currentScene?.type === 'interactive' ? (currentScene?.content as InteractiveContent) : null)?.description || '',
+          key_points: (currentScene?.type === 'interactive' ? (currentScene?.content as InteractiveContent) : null)?.key_points || [],
           type: currentScene?.type || 'slide',
         }}
         courseId={id || ''}
@@ -3963,5 +4055,23 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
+  },
+  // Widget 类型标识样式
+  widgetBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  widgetBadgeText: {
+    fontSize: 12,
+    color: '#10b981',
+    fontWeight: '500',
+    marginLeft: 4,
   },
 });
