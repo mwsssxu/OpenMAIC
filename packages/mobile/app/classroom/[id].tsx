@@ -923,6 +923,14 @@ export default function ClassroomScreen() {
         onWhiteboardDelete: (elementId: string) => {
           whiteboardStore.deleteElement(elementId);
         },
+        onWhiteboardClear: () => {
+          mobileActionEngine.execute('wb_clear', {});
+          whiteboardStore.clear();
+        },
+        onWhiteboardClose: () => {
+          setShowWhiteboard(false);
+          whiteboardStore.clear();
+        },
         onDiscussionTrigger: (topic: string, prompt?: string, agentId?: string) => {
           // Show discussion hint badge — non-blocking
           setDiscussionHint({ topic, prompt, agentId });

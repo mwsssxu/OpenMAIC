@@ -62,6 +62,9 @@ export type PlaybackEngineCallbacks = {
   // Whiteboard actions
   onWhiteboardAction?: (action: SceneAction) => void;
   onWhiteboardOpen?: () => void;
+  // 新增：白板清除和关闭
+  onWhiteboardClear?: () => void;
+  onWhiteboardClose?: () => void;
   // 新增：白板元素删除
   onWhiteboardDelete?: (elementId: string) => void;
   // 新增：讨论触发（不侵入状态机，走独立 Modal）
@@ -260,7 +263,11 @@ export class PlaybackEngine {
           this.executeWhiteboardDelete(action);
           break;
         case 'wb_clear':
+          this.callbacks.onWhiteboardClear?.();
+          this.clearEffects();
+          break;
         case 'wb_close':
+          this.callbacks.onWhiteboardClose?.();
           this.clearEffects();
           break;
 
@@ -374,7 +381,11 @@ export class PlaybackEngine {
           this.executeWhiteboardDelete(action);
           break;
         case 'wb_clear':
+          this.callbacks.onWhiteboardClear?.();
+          this.clearEffects();
+          break;
         case 'wb_close':
+          this.callbacks.onWhiteboardClose?.();
           this.clearEffects();
           break;
 
