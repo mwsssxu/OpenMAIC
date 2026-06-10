@@ -2462,12 +2462,15 @@ export default function ClassroomScreen() {
       </Animated.View>
     </ScrollView>
 
-    {/* 白板区域 - 使用 absolute 定位，与聊天同时显示 */}
+    {/* 白板区域 - 全屏覆盖，白板优先；聊天面板可展开/收起 */}
       <WhiteboardOverlay
         visible={showWhiteboard}
         textContent={whiteboardTextContent}
         onClose={() => setShowWhiteboard(false)}
-        useAbsolute={showChatModal}
+        chatVisible={showChatModal}
+        onToggleChat={() => setShowChatModal(!showChatModal)}
+        playbackMode={playbackMode}
+        isLandscape={isLandscape}
       />
 
       {/* 场景缩略图导航（可展开） */}
@@ -2638,9 +2641,9 @@ export default function ClassroomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 智能体聊天面板 - 白板打开时使用固定底部布局 */}
+      {/* 智能体聊天面板 - 白板打开时覆盖在白板底部 */}
       {showChatModal && showWhiteboard ? (
-        <View style={styles.chatPanelFixed}>
+        <View style={styles.chatPanelOverWhiteboard}>
           {/* 头部 */}
           <View style={styles.chatPanelHeader}>
             {selectedAgent && (
@@ -2656,7 +2659,6 @@ export default function ClassroomScreen() {
             <Text style={styles.chatPanelTitle}>{selectedAgent?.name || (discussionMode ? '多Agent讨论' : '对话')}</Text>
             <TouchableOpacity onPress={() => {
               setShowChatModal(false);
-              // 不停止讨论，让讨论在后台继续进行
               if (!discussionMode) {
                 Speech.stop();
               }
@@ -2685,7 +2687,7 @@ export default function ClassroomScreen() {
           )}
 
           {/* 聊天历史 */}
-          <ScrollView style={styles.chatHistoryCompact}>
+          <ScrollView style={styles.chatHistoryCompact} keyboardShouldPersistTaps="handled">
             {chatHistory.map((item, index) => {
               const isSpeaking = discussionRunning && item.agentId && item.agentId === speakingAgentId;
               const stableKey = `${item.agentId || item.agent}-${index}`;
@@ -3751,22 +3753,22 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: '#ccc' },
 
-  // 固定底部聊天面板样式（白板打开时使用）
-  chatPanelFixed: {
+  // 聊天面板覆盖在白板底部（白板打开时使用）
+  chatPanelOverWhiteboard: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '33%', // 占屏幕 1/3
+    height: '45%',
     backgroundColor: 'white',
     borderTopLeftRadius: Rounded.lg,
     borderTopRightRadius: Rounded.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 20,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 10,
+    zIndex: 110, // 在白板之上
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
   },
@@ -3791,7 +3793,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   chatHistoryCompact: {
-    maxHeight: 150, // 固定最大高度，防止溢出
+    maxHeight: 200,
     minHeight: 80,
     marginBottom: Spacing.sm,
   },
