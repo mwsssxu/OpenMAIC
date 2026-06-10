@@ -7,9 +7,11 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { apiClient } from '@/lib/api-client';
 import { showError } from '@/lib/utils/error-toast';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -285,6 +287,11 @@ export default function CreateClassroomScreen() {
   const [language, setLanguage] = useState<'zh-CN' | 'en-US'>('zh-CN');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
+  // PDF 上传
+  const [pdfFile, setPdfFile] = useState<{ uri: string; name: string; size?: number } | null>(null);
+  const [pdfContent, setPdfContent] = useState<string | null>(null);
+  const [parsingPdf, setParsingPdf] = useState(false);
+
   // 步骤2: 智能体
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [generatingAgents, setGeneratingAgents] = useState(false);
@@ -311,6 +318,58 @@ export default function CreateClassroomScreen() {
       </View>
     );
   }
+
+  // 选择 PDF 文件
+  const handlePickPdf = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (!asset) return;
+
+      // 大小限制 50MB
+      if (asset.size && asset.size > 50 * 1024 * 1024) {
+        Alert.alert('文件过大', 'PDF 文件不能超过 50MB');
+        return;
+      }
+
+      setPdfFile({ uri: asset.uri, name: asset.name, size: asset.size });
+      setPdfContent(null); // 需要重新解析
+    } catch (err: any) {
+      console.warn('[PDF] Picker error:', err);
+    }
+  };
+
+  // 解析 PDF 为文本
+  const handleParsePdf = async () => {
+    if (!pdfFile) return;
+    setParsingPdf(true);
+    setError(null);
+    try {
+      const result = await apiClient.parsePdf(pdfFile.uri, pdfFile.name);
+      if (result.success && result.text) {
+        setPdfContent(result.text);
+        onSuccess();
+      } else {
+        setError('PDF 解析失败，请重试或直接输入课程需求');
+      }
+    } catch (err: any) {
+      console.warn('[PDF] Parse error:', err);
+      setError('PDF 解析失败：' + (err.message || '网络错误'));
+    } finally {
+      setParsingPdf(false);
+    }
+  };
+
+  // 移除 PDF
+  const handleRemovePdf = () => {
+    setPdfFile(null);
+    setPdfContent(null);
+  };
 
   // 步骤1: 提交需求
   const handleStep1Next = () => {
@@ -351,6 +410,7 @@ export default function CreateClassroomScreen() {
           setError(errorMsg);
           setGeneratingOutlines(false);
         },
+        pdfContent || undefined,
       );
 
       if (outlinesRef.current.length === 0) {
@@ -465,6 +525,49 @@ export default function CreateClassroomScreen() {
           textAlignVertical="top"
           placeholderTextColor="#aaa"
         />
+      </View>
+
+      {/* PDF 上传区域 */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>上传 PDF（可选）</Text>
+        {pdfFile ? (
+          <View style={styles.pdfFileInfo}>
+            <View style={styles.pdfFileInfoLeft}>
+              <View style={styles.pdfIcon}>
+                <Ionicons name="document-text" size={20} color={iOSColors.accent} />
+              </View>
+              <View style={styles.pdfFileInfoText}>
+                <Text style={styles.pdfFileName} numberOfLines={1}>{pdfFile.name}</Text>
+                {pdfFile.size && (
+                  <Text style={styles.pdfFileSize}>{(pdfFile.size / 1024 / 1024).toFixed(2)} MB</Text>
+                )}
+              </View>
+            </View>
+            <View style={styles.pdfFileActions}>
+              {!pdfContent && !parsingPdf && (
+                <TouchableOpacity style={styles.pdfParseBtn} onPress={handleParsePdf}>
+                  <Text style={styles.pdfParseBtnText}>解析</Text>
+                </TouchableOpacity>
+              )}
+              {parsingPdf && <ActivityIndicator size="small" color={iOSColors.accent} />}
+              {pdfContent && (
+                <Ionicons name="checkmark-circle" size={20} color={iOSColors.success} />
+              )}
+              <TouchableOpacity onPress={handleRemovePdf} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={18} color="#999" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.pdfUploadArea} onPress={handlePickPdf} activeOpacity={0.7}>
+            <Ionicons name="cloud-upload-outline" size={28} color={iOSColors.muted} />
+            <Text style={styles.pdfUploadText}>点击选择 PDF 文件</Text>
+            <Text style={styles.pdfUploadHint}>支持 .pdf，最大 50MB</Text>
+          </TouchableOpacity>
+        )}
+        {pdfContent && (
+          <Text style={styles.pdfParsedHint}>✅ PDF 已解析，内容将用于辅助大纲生成</Text>
+        )}
       </View>
 
       <View style={styles.optionsSection}>
@@ -920,4 +1023,86 @@ const styles = StyleSheet.create({
   },
   successText: { fontSize: 18, fontWeight: '600', color: iOSColors.success, marginTop: 12 },
   successId: { fontSize: 12, color: iOSColors.muted, marginTop: 4 },
+
+  // PDF 上传样式
+  pdfUploadArea: {
+    borderWidth: 2,
+    borderColor: iOSColors.border,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: iOSColors.surface,
+  },
+  pdfUploadText: {
+    fontSize: 14,
+    color: iOSColors.fg,
+    fontWeight: '500',
+    marginTop: 8,
+  },
+  pdfUploadHint: {
+    fontSize: 12,
+    color: iOSColors.muted,
+    marginTop: 4,
+  },
+  pdfFileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: iOSColors.surfaceSolid,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: iOSColors.border,
+  },
+  pdfFileInfoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  pdfIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: iOSColors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pdfFileInfoText: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  pdfFileName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: iOSColors.fg,
+  },
+  pdfFileSize: {
+    fontSize: 12,
+    color: iOSColors.muted,
+    marginTop: 2,
+  },
+  pdfFileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pdfParseBtn: {
+    backgroundColor: iOSColors.accentLight,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  pdfParseBtnText: {
+    fontSize: 12,
+    color: iOSColors.accent,
+    fontWeight: '600',
+  },
+  pdfParsedHint: {
+    fontSize: 12,
+    color: iOSColors.success,
+    marginTop: 8,
+  },
 });

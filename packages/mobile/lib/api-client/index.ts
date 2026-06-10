@@ -474,6 +474,7 @@ class ApiClient {
     onOutline?: (outline: any) => void,
     onComplete?: (count: number) => void,
     onError?: (error: string) => void,
+    pdfContent?: string,
   ): Promise<void> {
     const url = `${this.getBaseUrl()}/generate/outlines-stream`;
     const token = this.token;
@@ -524,6 +525,7 @@ class ApiClient {
                   agent_ids: agents?.map(a => a.id),
                   web_search: webSearch,
                   agents: agents,
+                  pdf_content: pdfContent,
                 }));
               } else {
                 if (onError) onError('登录已过期，请重新登录');
@@ -597,6 +599,7 @@ class ApiClient {
         agent_ids: agents?.map(a => a.id),
         web_search: webSearch,
         agents: agents,  // 传递完整agent信息用于构建teacherContext
+        pdf_content: pdfContent,
       }));
     });
   }
@@ -2250,6 +2253,30 @@ class ApiClient {
 
     const { data } = await this.client.post('/maic-ui/ppt/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  }
+
+  // 解析 PDF 文件为文本内容（用于课程创建时的大纲生成）
+  async parsePdf(
+    fileUri: string,
+    fileName: string,
+    providerId?: string,
+  ): Promise<{ success: boolean; text?: string; images?: string[]; metadata?: any }> {
+    const formData = new FormData();
+    // React Native FormData: 使用 uri + name + type
+    formData.append('pdf', {
+      uri: fileUri,
+      name: fileName || 'document.pdf',
+      type: 'application/pdf',
+    } as any);
+    if (providerId) {
+      formData.append('providerId', providerId);
+    }
+
+    const { data } = await this.client.post('/generate/parse-pdf', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000, // PDF 解析可能较慢
     });
     return data;
   }
