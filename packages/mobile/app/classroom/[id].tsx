@@ -1421,16 +1421,18 @@ export default function ClassroomScreen() {
           } else if (event.type === 'agent_end') {
             const agentId = event.agentId || '';
             setSpeakingAgentId(null);
-            // TTS播放Agent发言
+            // TTS播放Agent发言 — 统一使用课程音色
             const textToSpeak = currentAgentTextRef.current.trim();
             if (textToSpeak) {
               console.log('[TTS] Speaking agent text:', textToSpeak.slice(0, 50));
-              // 使用配置的语音速度
-              Speech.speak(textToSpeak, {
-                language: 'zh-CN',
-                rate: ttsConfig.speed,
-                pitch: 1.0,
-              });
+              const agentVC = agentInfoMap[agentId]?.voiceConfig;
+              if (agentVC?.voiceId) {
+                // Agent 有独立 voiceConfig — 使用其音色
+                playDiscussionTTS(textToSpeak, agentVC);
+              } else {
+                // 使用课程统一音色（PlaybackEngine 同款）
+                playDiscussionTTS(textToSpeak, { providerId: ttsConfig.provider, voiceId: ttsConfig.voice });
+              }
             }
             // 保存聊天记录
             if (currentScene && textToSpeak) {
@@ -1620,9 +1622,11 @@ export default function ClassroomScreen() {
                 const text = cleanJsonFromText(currentAgentTextRef.current.trim());
                 if (text) {
                   allResponses.push({ agent: agentInfo?.name || agentRole, agentId: agentRole, content: text });
-                  // TTS
+                  // TTS — 统一使用课程音色
                   if (agentInfo?.voiceConfig?.voiceId) {
                     playDiscussionTTS(text, agentInfo.voiceConfig);
+                  } else {
+                    playDiscussionTTS(text, { providerId: ttsConfig.provider, voiceId: ttsConfig.voice });
                   }
                   // 保存历史
                   if (currentScene) {
@@ -1674,12 +1678,12 @@ export default function ClassroomScreen() {
     handleWhiteboardAction(actionName, params, 'Discussion');
   }
 
-  // 播放讨论 TTS
+  // 播放讨论 TTS — 统一使用课程音色和语速
   function playDiscussionTTS(text: string, voiceConfig: { providerId: string; voiceId: string }) {
     if (!discussionAudioPlayerRef.current) {
       discussionAudioPlayerRef.current = new AudioPlayer({ onPlayEnd: () => {}, onError: () => {} });
     }
-    apiClient.generateTTS(text.slice(0, 200), `disc_${Date.now()}`, voiceConfig.providerId || 'qwen', voiceConfig.voiceId, 1.0)
+    apiClient.generateTTS(text, `disc_${Date.now()}`, voiceConfig.providerId || ttsConfig.provider, voiceConfig.voiceId, ttsConfig.speed)
       .then(res => {
         if (res.success && res.base64) {
           Platform.OS === 'web'
