@@ -319,7 +319,7 @@ async def generate_outlines_stream_endpoint(
     """生成大纲（SSE 流式，带 heartbeat 和自动重试）"""
     # 参数验证
     requirement = body.get("requirement", "")
-    if not requirement.strip():
+    if not requirement.strip() and not body.get("pdf_content"):
         raise HTTPException(status_code=400, detail="课程需求不能为空")
 
     total_count = body.get("total_count", 5)

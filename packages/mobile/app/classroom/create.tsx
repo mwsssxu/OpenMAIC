@@ -373,8 +373,8 @@ export default function CreateClassroomScreen() {
 
   // 步骤1: 提交需求
   const handleStep1Next = () => {
-    if (!requirement.trim()) {
-      setError('请输入课程需求');
+    if (!requirement.trim() && !pdfContent) {
+      setError('请输入课程需求或上传 PDF 文件');
       return;
     }
     setError(null);
@@ -388,9 +388,12 @@ export default function CreateClassroomScreen() {
     setError(null);
     setOutlines([]);
 
+    // 当 requirement 为空但有 PDF 时，用文件名构造默认需求
+    const effectiveRequirement = requirement.trim() || (pdfFile ? `基于文档「${pdfFile.name}」创建课程` : '');
+
     try {
       await apiClient.generateOutlinesStream(
-        requirement,
+        effectiveRequirement,
         language,
         agents.length > 0 ? agents.map(a => ({ id: a.id, name: a.name, role: a.role, persona: a.persona || '' })) : undefined,
         webSearchEnabled,
