@@ -3,11 +3,12 @@ import { GlobalDialog } from '@/lib/utils/global-dialog';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
-import { TouchableOpacity, Platform, LogBox } from 'react-native';
+import { TouchableOpacity, Platform, LogBox, View } from 'react-native';
 import { useRouter, usePathname, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useI18n } from '@/lib/i18n';
 import { useGoBack } from '@/lib/utils/navigation';
+import { QuoteHeader } from '@/lib/components/QuoteHeader';
 
 // 全局抑制 useNativeDriver 警告（Expo Go 缺少 RCTAnimation 原生模块）
 // 第三方库（reanimated、react-navigation 等）内部硬编码 useNativeDriver: true，
@@ -133,9 +134,9 @@ function RootStack() {
       <Stack.Screen name="course/[id]" options={{ headerShown: true, title: t('classroom.detail'), headerLeft: () => <CustomBackButton /> }} />
       <Stack.Screen name="auth/login" />
       <Stack.Screen name="auth/register" />
-      <Stack.Screen name="wallet" options={{ headerShown: true, title: t('home.wallet'), headerLeft: () => null }} />
-      <Stack.Screen name="enterprise" options={{ headerShown: true, title: t('home.enterpriseServices'), headerLeft: () => null }} />
-      <Stack.Screen name="shared-notes" options={{ headerShown: true, title: t('home.sharedNotes'), headerLeft: () => null }} />
+      <Stack.Screen name="wallet" options={{ headerShown: true, header: () => <QuoteHeader /> }} />
+      <Stack.Screen name="enterprise" options={{ headerShown: true, header: () => <QuoteHeader /> }} />
+      <Stack.Screen name="shared-notes" options={{ headerShown: false }} />
     </Stack>
   );
 }

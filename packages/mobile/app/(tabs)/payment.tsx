@@ -2,11 +2,12 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
-import { showError, confirmAction } from '@/lib/utils/error-toast';
+import { showError, showSuccess, confirmAction } from '@/lib/utils/error-toast';
+import { useGoBack } from '@/lib/utils/navigation';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 const C = {
   bgSolid: '#f5f3f2',
@@ -81,6 +82,7 @@ const POLL_INTERVAL = 30_000;
 export default function PaymentScreen() {
   const { onSuccess, onError } = useFeedback();
   const router = useRouter();
+  const goBack = useGoBack();
   const [packages, setPackages] = useState<Package[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -157,7 +159,7 @@ export default function PaymentScreen() {
               try {
                 await apiClient.mockPayment(result.order_id);
                 onSuccess();
-                showError(type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
+                showSuccess(type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
                 loadData();
               } catch (error) {
                 onError();
@@ -194,30 +196,33 @@ export default function PaymentScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.navBar}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-            <Ionicons name="chevron-back" size={20} color={C.fg} />
-          </TouchableOpacity>
-          <Text style={styles.navTitle}>账户中心</Text>
-          <View style={styles.navRight} />
+      <TabPageWrapper hasHeader>
+        <View style={styles.container}>
+          <View style={styles.pageHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => goBack()} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color={C.fg} />
+            </TouchableOpacity>
+            <Text style={styles.pageTitle}>账户中心</Text>
+            <View style={styles.pageHeaderActions} />
+          </View>
+          <View style={styles.loadingContainer}>
+            <Ionicons name="card-outline" size={48} color={C.muted} />
+            <Text style={styles.loadingText}>加载中...</Text>
+          </View>
         </View>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="card-outline" size={48} color={C.muted} />
-          <Text style={styles.loadingText}>加载中...</Text>
-        </View>
-      </SafeAreaView>
+      </TabPageWrapper>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.navBar}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
+      <View style={styles.pageHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack()} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={20} color={C.fg} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>账户中心</Text>
-        <View style={styles.navRight} />
+        <Text style={styles.pageTitle}>账户中心</Text>
+        <View style={styles.pageHeaderActions} />
       </View>
 
       <ScrollView
@@ -309,13 +314,15 @@ export default function PaymentScreen() {
             <Text style={styles.sectionTitle}>订阅计划</Text>
             <View style={styles.subGrid}>
               {subPlans.map((plan) => {
-                const isCurrent = overview?.subscription?.is_pro;
+                const isCurrent = overview?.subscription?.is_pro && overview?.subscription?.plan_id === plan.id;
+                const isAnySubscribed = overview?.subscription?.is_pro;
                 return (
                   <TouchableOpacity
                     key={plan.id}
-                    style={[styles.subCard, plan.popular && styles.subCardPopular]}
-                    onPress={() => purchasePackage(plan)}
-                    activeOpacity={0.85}
+                    style={[styles.subCard, plan.popular && styles.subCardPopular, isCurrent && styles.subCardCurrent]}
+                    onPress={() => !isAnySubscribed && purchasePackage(plan)}
+                    activeOpacity={isAnySubscribed ? 1 : 0.85}
+                    disabled={isAnySubscribed}
                   >
                     {plan.popular && (
                       <View style={styles.popularBadge}>
@@ -346,7 +353,7 @@ export default function PaymentScreen() {
                     ))}
                     <View style={[styles.subBtn, plan.popular ? styles.subBtnPopular : styles.subBtnDefault]}>
                       <Text style={[styles.subBtnText, plan.popular && styles.subBtnTextPopular]}>
-                        {isCurrent ? '已订阅' : '立即订阅'}
+                        {isCurrent ? '当前计划' : isAnySubscribed ? '已订阅' : '立即订阅'}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -434,7 +441,8 @@ export default function PaymentScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+      </View>
+    </TabPageWrapper>
   );
 }
 
@@ -443,31 +451,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: C.bgSolid,
   },
-  navBar: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.xs,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
-  navBtn: {
+  backBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: C.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0.5,
     borderColor: C.border,
   },
-  navTitle: {
-    fontSize: 17,
+  pageTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: C.fg,
+    letterSpacing: -0.3,
+    flex: 1,
   },
-  navRight: {
-    width: 44,
+  pageHeaderActions: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
   },
   scrollView: {
     flex: 1,
@@ -647,11 +658,13 @@ const styles = StyleSheet.create({
   // ===== 订阅计划 =====
   subGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
   },
   subCard: {
     flex: 1,
+    minWidth: '45%',
     backgroundColor: C.surfaceSolid,
     borderRadius: Rounded.lg,
     padding: Spacing.md,
@@ -664,6 +677,10 @@ const styles = StyleSheet.create({
   subCardPopular: {
     backgroundColor: C.purple,
     borderColor: C.purple,
+  },
+  subCardCurrent: {
+    borderColor: C.green,
+    borderWidth: 2,
   },
   popularBadge: {
     position: 'absolute',

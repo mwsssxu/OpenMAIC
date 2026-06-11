@@ -18,7 +18,7 @@ services:
       - DEBUG=true
       - TESTING_MODE=true
       # LLM 提供商 - 阿里云 DashScope
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-8534df2141cc4c548e30097ae52511b2}
+      - OPENAI_API_KEY=sk-8534df2141cc4c548e30097ae52511b2
       - OPENAI_API_BASE=${OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-qwen3.6-plus}
       - HTTP_PROXY=  # 禁用代理（DashScope直接访问）

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Animated,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Rounded, Spacing, Colors } from '@/lib/constants/theme';
-import { useHaptics } from '@/lib/hooks/use-haptics';
-import { apiClient } from '@/lib/api-client';
+import { LinearGradient } from 'expo-linear-gradient';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { Rounded, Spacing } from '@/lib/constants/theme';
+import { apiClient } from '@/lib/api-client';
+import { useHaptics } from '@/lib/hooks/use-haptics';
 import { showError } from '@/lib/utils/error-toast';
-import { useResponsiveDimensions } from '@/lib/utils/responsive';
 import { useI18n } from '@/lib/i18n';
 
 // iOS 风格颜色系统
@@ -38,360 +37,434 @@ const iOSColors = {
   blueLight: '#dbeafe',
   purple: '#8b5cf6',
   purpleLight: '#ede9fe',
+  green: '#10b981',
+  greenLight: '#d1fae5',
 };
-
-interface NoteItem {
-  id: string;
-  title: string;
-  preview: string;
-  category: string;
-  starred: boolean;
-  color: string;
-  time: string;
-  course_id?: string;
-}
-
-interface NotesData {
-  today: NoteItem[];
-  this_week: NoteItem[];
-  total: number;
-  today_count: number;
-  week_count: number;
-}
-
-// 筛选标签
-const filterTabs = [
-  { key: 'all', label: '全部' },
-  { key: 'data', label: '数据分析' },
-  { key: 'python', label: 'Python' },
-  { key: 'ui', label: 'UI 设计' },
-  { key: 'fav', label: '收藏' },
-];
 
 // 颜色映射
-const colorMap = {
-  coral: { bg: iOSColors.accentLight, stroke: iOSColors.accent, tagBg: '#fce8e0', tagText: '#c45a1a', icon: 'bar-chart' },
-  mint: { bg: iOSColors.secondaryLight, stroke: iOSColors.secondary, tagBg: '#e8f5f5', tagText: '#1a8a8a', icon: 'code' },
-  gold: { bg: iOSColors.goldLight, stroke: iOSColors.gold, tagBg: '#fef3c7', tagText: '#f59e0b', icon: 'sunny' },
-  blue: { bg: iOSColors.blueLight, stroke: iOSColors.blue, tagBg: '#dbeafe', tagText: '#2563eb', icon: 'server' },
-  purple: { bg: iOSColors.purpleLight, stroke: iOSColors.purple, tagBg: '#ede9fe', tagText: '#8b5cf6', icon: 'book' },
+const colorMap: Record<string, { bg: string; text: string; stroke: string }> = {
+  coral: { bg: '#fce8e0', text: '#c45a1a', stroke: iOSColors.accent },
+  mint: { bg: '#e8f5f5', text: '#1a8a8a', stroke: iOSColors.secondary },
+  gold: { bg: '#fef3c7', text: '#b45309', stroke: iOSColors.gold },
+  blue: { bg: '#dbeafe', text: '#1d4ed8', stroke: iOSColors.blue },
+  purple: { bg: '#ede9fe', text: '#7c3aed', stroke: iOSColors.purple },
 };
 
-// 笔记项组件
-function NoteItem({ note, onPress, onStarToggle }: { note: NoteItem; onPress: () => void; onStarToggle: () => void }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const [starred, setStarred] = useState(note.starred);
-  const haptics = useHaptics();
-  const colors = colorMap[note.color as keyof typeof colorMap] || colorMap.coral;
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-  };
-
-  const toggleStar = () => {
-    haptics.light();
-    setStarred(!starred);
-    onStarToggle();
-  };
-
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      activeOpacity={0.9}
-    >
-      <Animated.View style={[styles.noteItem, { transform: [{ scale: scaleAnim }] }]}>
-        <View style={[styles.noteThumb, { backgroundColor: colors.bg }]}>
-          <Ionicons name={colors.icon as any} size={20} color={colors.stroke} />
-        </View>
-        <View style={styles.noteBody}>
-          <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
-          <Text style={styles.notePreview} numberOfLines={2}>{note.preview}</Text>
-          <View style={styles.noteMeta}>
-            <View style={[styles.noteTag, { backgroundColor: colors.tagBg }]}>
-              <Text style={[styles.noteTagText, { color: colors.tagText }]}>{note.category}</Text>
-            </View>
-            <Text style={styles.noteTime}>{note.time}</Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.noteStar} onPress={toggleStar} activeOpacity={0.7}>
-          <Ionicons
-            name={starred ? 'star' : 'star-outline'}
-            size={18}
-            color={starred ? iOSColors.gold : iOSColors.muted}
-          />
-        </TouchableOpacity>
-      </Animated.View>
-    </TouchableOpacity>
-  );
+// 笔记项接口（个人笔记+共享笔记统一）
+interface MyNoteItem {
+  id: string;
+  title: string;
+  content: string;
+  preview?: string;
+  course?: string;
+  category?: string;
+  starred?: boolean;
+  color?: string;
+  tags?: string[];
+  visibility?: string;
+  price?: number;
+  rating?: number;
+  rating_count?: number;
+  purchase_count?: number;
+  is_personal?: boolean;
+  created_at: string;
 }
 
-// 筛选标签组件
-function FilterTab({ tab, active, onPress }: { tab: typeof filterTabs[0]; active: boolean; onPress: () => void }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const haptics = useHaptics();
+// 格式化时间显示
+function formatTime(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  const handlePress = () => {
-    haptics.light();
-    Animated.spring(scaleAnim, {
-      toValue: 0.96,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-    onPress();
-    setTimeout(() => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: USE_NATIVE_DRIVER,
-      }).start();
-    }, 100);
-  };
+    if (diffHours < 1) return '刚刚';
+    if (diffHours < 24) return `${diffHours}小时前`;
+    if (diffDays === 1) return '昨天';
+    if (diffDays < 7) return `${diffDays}天前`;
+    if (diffDays === 7) return '一周前';
 
-  return (
-    <TouchableOpacity
-      onPress={handlePress}
-      activeOpacity={0.9}
-    >
-      <Animated.View style={[
-        styles.filterTab,
-        active && styles.filterTabActive,
-        { transform: [{ scale: scaleAnim }] }
-      ]}>
-        <Text style={[styles.filterTabText, active && styles.filterTabTextActive]}>
-          {tab.label}
-        </Text>
-      </Animated.View>
-    </TouchableOpacity>
-  );
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}月${day}日`;
+  } catch {
+    return dateStr;
+  }
 }
 
-export default function NotesScreen() {
+// 格式化日期显示
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+export default function NotesPage() {
   const router = useRouter();
   const haptics = useHaptics();
-  const { isTablet } = useResponsiveDimensions();
   const { t } = useI18n();
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [searchText, setSearchText] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-  const [notesData, setNotesData] = useState<NotesData>({
-    today: [],
-    this_week: [],
-    total: 0,
-    today_count: 0,
-    week_count: 0,
-  });
+
+  const [notes, setNotes] = useState<MyNoteItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
 
-  // 页面获得焦点时刷新（只使用useFocusEffect，避免与useEffect重复调用）
-  useFocusEffect(
-    useCallback(() => {
-      loadNotes();
-    }, [activeFilter])
-  );
-
-  // 移除了useEffect，避免双重调用
-
-  async function loadNotes() {
+  // 加载笔记（用户所有笔记：个人+共享）
+  const loadNotes = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const starredOnly = activeFilter === 'fav';
-      const filter = activeFilter === 'all' || activeFilter === 'fav' ? undefined : activeFilter;
-      const data = await apiClient.getPersonalNotes(1, 50, filter, starredOnly);
-      setNotesData({
-        today: data.today || [],
-        this_week: data.this_week || [],
-        total: data.total || 0,
-        today_count: data.today_count || 0,
-        week_count: data.week_count || 0,
-      });
-    } catch (err) {
-      showError(err);
+      const data = await apiClient.getPersonalNotes(1, 100, undefined, undefined, true);
+      setNotes(data?.notes || []);
+    } catch (err: any) {
+      setError(err.message || '加载失败');
       console.error('Load notes error:', err);
-      setError(t('note.loadFailed'));
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
+  // 页面聚焦时加载
+  useFocusEffect(
+    useCallback(() => {
+      loadNotes();
+    }, [loadNotes])
+  );
+
+  // 刷新
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
     await loadNotes();
-    setRefreshing(false);
+    setIsRefreshing(false);
   };
 
-  const handleToggleStar = async (noteId: string) => {
-    try {
-      await apiClient.toggleNoteStar(noteId);
-      // Refresh to get updated data
-      await loadNotes();
-    } catch (error) {
-      showError(error);
-      console.error('Toggle star error:', error);
-    }
-  };
+  // 搜索过滤
+  const filteredNotes = notes.filter(note => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return note.title.toLowerCase().includes(query) ||
+           (note.preview || note.content || '').toLowerCase().includes(query);
+  });
 
-  const totalNotes = notesData.today.length + notesData.this_week.length;
+  // 按时间分组
+  const todayNotes = filteredNotes.filter(note => {
+    const date = new Date(note.created_at);
+    const now = new Date();
+    return date.toDateString() === now.toDateString();
+  });
 
-  // Loading state
-  if (isLoading && !refreshing) {
+  const weekNotes = filteredNotes.filter(note => {
+    const date = new Date(note.created_at);
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return date >= weekAgo && date.toDateString() !== now.toDateString();
+  });
+
+  // 笔记卡片组件
+  const NoteCard = ({ note, colorKey = 'coral' }: { note: MyNoteItem; colorKey?: string }) => {
+    const colors = colorMap[colorKey] || colorMap.coral;
+
     return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
-          <Text style={styles.loadingText}>{t('common.loading')}</Text>
+      <TouchableOpacity
+        style={styles.noteItem}
+        onPress={() => {
+          haptics.light();
+          const source = note.is_personal ? 'personal' : 'shared';
+          router.push(`/note/${note.id}?source=${source}` as any);
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.noteThumb, { backgroundColor: colors.bg }]}>
+          <Ionicons name="document-text" size={24} color={colors.stroke} />
         </View>
-      </View>
+        <View style={styles.noteBody}>
+          <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
+          <Text style={styles.notePreview} numberOfLines={2}>
+            {note.preview || note.content?.slice(0, 80) || ''}
+          </Text>
+          <View style={styles.noteMeta}>
+            <View style={[styles.noteTag, { backgroundColor: colors.bg }]}>
+              <Text style={[styles.noteTagText, { color: colors.text }]}>
+                {note.visibility === 'paid' ? `${note.price ?? 0}积分` : '免费'}
+              </Text>
+            </View>
+            <Text style={styles.noteTime}>{formatTime(note.created_at)}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.noteStar}
+          onPress={() => haptics.light()}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={(note.rating ?? 0) > 0 ? 'star' : 'star-outline'}
+            size={14}
+            color={(note.rating ?? 0) > 0 ? iOSColors.gold : iOSColors.muted}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  // 加载状态
+  if (isLoading && !isRefreshing) {
+    return (
+      <TabPageWrapper hasHeader>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={iOSColors.accent} />
+          <Text style={styles.loadingText}>加载笔记...</Text>
+        </View>
+      </TabPageWrapper>
     );
   }
 
-  // Error state
-  if (error && totalNotes === 0) {
+  // 错误状态
+  if (error && notes.length === 0) {
     return (
-      <View style={styles.container}>
+      <TabPageWrapper hasHeader>
         <View style={styles.errorContainer}>
-          <Ionicons name="cloud-offline-outline" size={48} color={iOSColors.accent} />
+          <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadNotes} activeOpacity={0.7}>
-            <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+            <Text style={styles.retryButtonText}>重新加载</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TabPageWrapper>
     );
   }
+
+  // 计算颜色分配
+  const getColorKey = (index: number) => {
+    const keys = ['coral', 'mint', 'gold', 'blue', 'purple'];
+    return keys[index % keys.length];
+  };
 
   return (
     <TabPageWrapper hasHeader>
-      <View style={styles.container}>
       <ScrollView
-        style={[styles.scrollView, isTablet && styles.scrollViewTablet]}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={iOSColors.accent}
+          />
         }
       >
-        {/* 笔记本Banner */}
-        <View style={styles.notesBanner}>
+        {/* Banner */}
+        <LinearGradient
+          colors={['#fce8e0', '#f5f3f2']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.notesBanner}
+        >
           <View style={styles.notesBannerText}>
-            <Text style={styles.notesBannerTitle}>{t('note.count', { count: totalNotes })}</Text>
-            <Text style={styles.notesBannerDesc}>{t('note.todayWritten', { count: notesData.today.length })}</Text>
+            <Text style={styles.notesBannerTitle}>
+              {t('note.count', { count: notes.length })}
+            </Text>
+            <Text style={styles.notesBannerDesc}>
+              {todayNotes.length > 0
+                ? `今天写了 ${todayNotes.length} 条，继续保持！`
+                : '开始记录你的学习笔记'
+              }
+            </Text>
           </View>
-          <View style={styles.notesBannerIcon}>
-            <Text style={styles.notesBannerEmoji}>📝</Text>
-            <Text style={styles.notesBannerPencil}>✏️</Text>
+          {/* 插图区域 */}
+          <View style={styles.notesBannerIllustration}>
+            <Ionicons name="book" size={40} color={iOSColors.accent} />
           </View>
-        </View>
+        </LinearGradient>
 
         {/* 搜索栏 */}
         <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={16} color={iOSColors.muted} />
+          <Ionicons name="search" size={16} color={iOSColors.muted} />
           <TextInput
             style={styles.searchInput}
-            placeholder={t('note.searchPlaceholder')}
+            placeholder="搜索笔记内容..."
             placeholderTextColor={iOSColors.muted}
-            value={searchText}
-            onChangeText={setSearchText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
+          {searchQuery && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={16} color={iOSColors.muted} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* 筛选标签 */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterTabsScroll}
-        >
-          <View style={styles.filterTabs}>
-            {filterTabs.map(tab => (
-              <FilterTab
-                key={tab.key}
-                tab={tab}
-                active={activeFilter === tab.key}
-                onPress={() => setActiveFilter(tab.key)}
-              />
-            ))}
-          </View>
-        </ScrollView>
+        <View style={styles.filterTabs}>
+          <TouchableOpacity
+            style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
+            onPress={() => { haptics.light(); setActiveFilter('all'); }}
+          >
+            <Text style={[styles.filterTabText, activeFilter === 'all' && styles.filterTabTextActive]}>
+              全部
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterTab, activeFilter === 'free' && styles.filterTabActive]}
+            onPress={() => { haptics.light(); setActiveFilter('free'); }}
+          >
+            <Text style={[styles.filterTabText, activeFilter === 'free' && styles.filterTabTextActive]}>
+              免费
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterTab, activeFilter === 'paid' && styles.filterTabActive]}
+            onPress={() => { haptics.light(); setActiveFilter('paid'); }}
+          >
+            <Text style={[styles.filterTabText, activeFilter === 'paid' && styles.filterTabTextActive]}>
+              付费
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* 今天 */}
-        <View style={styles.sectionLabel}>
-          <Text style={styles.sectionTitle}>{t('note.today')}</Text>
-          <Text style={styles.sectionCount}>{t('note.itemCount', { count: notesData.today.length })}</Text>
-        </View>
-        <View style={styles.notesList}>
-          {notesData.today.map(note => (
-            <NoteItem
-              key={note.id}
-              note={note}
-              onPress={() => router.push(`/note/${note.id}` as any)}
-              onStarToggle={() => handleToggleStar(note.id)}
-            />
-          ))}
-        </View>
+        {todayNotes.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionLabel}>
+              <Text style={styles.sectionTitle}>今天</Text>
+              <Text style={styles.sectionCount}>{todayNotes.length} 条</Text>
+            </View>
+            <View style={styles.notesList}>
+              {todayNotes.map((note, index) => (
+                <NoteCard key={note.id} note={note} colorKey={getColorKey(index)} />
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* 本周 */}
-        <View style={styles.sectionLabel}>
-          <Text style={styles.sectionTitle}>{t('note.thisWeek')}</Text>
-          <Text style={styles.sectionCount}>{t('note.itemCount', { count: notesData.this_week.length })}</Text>
-        </View>
-        <View style={styles.notesList}>
-          {notesData.this_week.map(note => (
-            <NoteItem
-              key={note.id}
-              note={note}
-              onPress={() => router.push(`/note/${note.id}` as any)}
-              onStarToggle={() => handleToggleStar(note.id)}
-            />
-          ))}
-        </View>
+        {weekNotes.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionLabel}>
+              <Text style={styles.sectionTitle}>本周</Text>
+              <Text style={styles.sectionCount}>{weekNotes.length} 条</Text>
+            </View>
+            <View style={styles.notesList}>
+              {weekNotes.map((note, index) => (
+                <NoteCard key={note.id} note={note} colorKey={getColorKey(index + todayNotes.length)} />
+              ))}
+            </View>
+          </View>
+        )}
 
-        {/* 占位 */}
-        <View style={{ height: 20 }} />
+        {/* 全部笔记（无分组时直接显示） */}
+        {todayNotes.length === 0 && weekNotes.length === 0 && filteredNotes.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionLabel}>
+              <Text style={styles.sectionTitle}>我的笔记</Text>
+              <Text style={styles.sectionCount}>{filteredNotes.length} 条</Text>
+            </View>
+            <View style={styles.notesList}>
+              {filteredNotes.map((note, index) => (
+                <NoteCard key={note.id} note={note} colorKey={getColorKey(index)} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* 空状态 */}
+        {filteredNotes.length === 0 && !isLoading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="document-text-outline" size={64} color={iOSColors.muted} />
+            <Text style={styles.emptyTitle}>暂无笔记</Text>
+            <Text style={styles.emptyDesc}>
+              {searchQuery ? '没有找到匹配的笔记' : '点击右上角开始写笔记'}
+            </Text>
+            {!searchQuery && (
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => {
+                  haptics.light();
+                  router.push('/notes/new' as any);
+                }}
+              >
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={styles.emptyButtonText}>写笔记</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* 底部占位 */}
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* 新建笔记按钮 */}
-      {/* TODO: When implementing the note creation dialog/screen, add character limit hints:
-          - Title: maxLength={50}, display "标题 ({title.length}/50)"
-          - Content: maxLength={1000}, display "内容 ({content.length}/1000)"
-      */}
+      {/* 悬浮新建按钮 */}
       <TouchableOpacity
-        style={styles.fab}
+        style={styles.fabButton}
         onPress={() => {
           haptics.medium();
           router.push('/notes/new' as any);
         }}
-        activeOpacity={0.85}
+        activeOpacity={0.8}
       >
-        <Ionicons name="add" size={24} color="#fff" />
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
-    </View>
     </TabPageWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  // 容器
+  loadingContainer: {
     flex: 1,
-    backgroundColor: iOSColors.bgSolid,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  loadingText: {
+    fontSize: 16,
+    color: iOSColors.muted,
+    marginTop: Spacing.sm,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  errorText: {
+    fontSize: 16,
+    color: iOSColors.fg,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.accent,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // ScrollView
   scrollView: {
     flex: 1,
-    paddingHorizontal: Spacing.md,
   },
-  scrollViewTablet: {
-    maxWidth: 800,
-    alignSelf: 'center',
-    width: '100%',
+  scrollContent: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
   },
 
   // Banner
@@ -400,10 +473,9 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginBottom: Spacing.md,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     minHeight: 100,
-    backgroundColor: '#fce8e0',
   },
   notesBannerText: {
     flex: 1,
@@ -412,40 +484,33 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: iOSColors.fg,
-    letterSpacing: -0.02,
     marginBottom: 4,
   },
   notesBannerDesc: {
     fontSize: 13,
     color: iOSColors.muted,
-    lineHeight: 20,
+    lineHeight: 18,
   },
-  notesBannerIcon: {
-    flexDirection: 'row',
+  notesBannerIllustration: {
+    width: 80,
+    height: 80,
     alignItems: 'center',
-  },
-  notesBannerEmoji: {
-    fontSize: 32,
-  },
-  notesBannerPencil: {
-    fontSize: 20,
-    marginLeft: -8,
-    marginTop: 16,
+    justifyContent: 'center',
   },
 
-  // Search
+  // 搜索栏
   searchBar: {
     backgroundColor: iOSColors.surface,
     borderRadius: Rounded.md,
-    borderWidth: 0.5,
-    borderColor: iOSColors.border,
     padding: Spacing.xs,
     paddingHorizontal: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.xs,
     marginBottom: Spacing.md,
     minHeight: 44,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
   },
   searchInput: {
     flex: 1,
@@ -453,21 +518,19 @@ const styles = StyleSheet.create({
     color: iOSColors.fg,
   },
 
-  // Filter Tabs
-  filterTabsScroll: {
-    marginBottom: Spacing.md,
-  },
+  // 筛选标签
   filterTabs: {
     flexDirection: 'row',
     gap: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   filterTab: {
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 20,
+    backgroundColor: iOSColors.surface,
     borderWidth: 0.5,
     borderColor: iOSColors.border,
-    backgroundColor: iOSColors.surface,
   },
   filterTabActive: {
     backgroundColor: iOSColors.accent,
@@ -482,18 +545,20 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // Section
+  // 区块
+  sectionBlock: {
+    marginBottom: Spacing.lg,
+  },
   sectionLabel: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: Spacing.xs,
   },
   sectionTitle: {
     fontSize: 15,
     fontWeight: '600',
     color: iOSColors.fg,
-    letterSpacing: -0.01,
   },
   sectionCount: {
     fontSize: 12,
@@ -501,19 +566,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Notes List
+  // 笔记列表
   notesList: {
     gap: Spacing.sm,
-    marginBottom: Spacing.lg,
   },
+
+  // 笔记卡片
   noteItem: {
     backgroundColor: iOSColors.surface,
     borderRadius: Rounded.md,
-    borderWidth: 0.5,
-    borderColor: iOSColors.border,
     padding: Spacing.sm,
     flexDirection: 'row',
     gap: Spacing.sm,
+    minHeight: 44,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
   },
   noteThumb: {
     width: 44,
@@ -530,19 +597,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: iOSColors.fg,
-    letterSpacing: -0.005,
     marginBottom: 3,
   },
   notePreview: {
     fontSize: 12,
     color: iOSColors.muted,
-    lineHeight: 18,
-    marginBottom: 6,
+    lineHeight: 16,
   },
   noteMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.xs,
+    marginTop: 6,
   },
   noteTag: {
     paddingVertical: 2,
@@ -563,61 +629,55 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'flex-start',
     justifyContent: 'center',
-    paddingTop: 2,
   },
 
-  // FAB
-  fab: {
+  // 空状态
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: iOSColors.fg,
+    marginTop: Spacing.md,
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: iOSColors.muted,
+    marginTop: 4,
+  },
+  emptyButton: {
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // 悬浮按钮
+  fabButton: {
     position: 'absolute',
-    bottom: Spacing.lg,
-    right: Spacing.lg,
+    right: Spacing.md,
+    bottom: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: iOSColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: iOSColors.accent,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
-  },
-
-  // Loading & Error
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: iOSColors.muted,
-    marginTop: Spacing.sm,
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-  },
-  errorText: {
-    fontSize: 16,
-    color: iOSColors.fg,
-    marginTop: Spacing.sm,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Rounded.md,
-    backgroundColor: iOSColors.accent,
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
   },
 });

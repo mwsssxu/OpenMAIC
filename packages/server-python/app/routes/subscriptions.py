@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.core.redis import invalidate_balance_cache
+from app.core.pricing import PLAN_PRICES, TOKEN_PACKAGES
 import asyncpg
 import uuid
 from datetime import datetime, timedelta
@@ -20,12 +21,7 @@ from app.core.time_utils import utcnow
 router = APIRouter()
 
 
-# ==================== 套餐配置 ====================
-
-PLAN_PRICES = {
-    "pro_monthly": {"price": 1900, "days": 30, "name": "Pro 月卡"},       # ¥19/月
-    "pro_yearly": {"price": 19000, "days": 365, "name": "Pro 年卡"},      # ¥190/年（省¥38）
-}
+# ==================== 套餐配置（价格统一在 app.core.pricing 中管理） ====================
 
 PLAN_FEATURES = {
     "free": {
@@ -101,7 +97,7 @@ TOKEN_COST_MAP = {
 }
 
 # 新用户注册赠送
-NEW_USER_TOKEN_GRANT = 20
+NEW_USER_TOKEN_GRANT = 200
 
 
 # ==================== API端点 ====================

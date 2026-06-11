@@ -124,6 +124,6 @@ export function SimplifiedTextElement({
 
 const styles = StyleSheet.create({
   wrapper: {
-    overflow: 'hidden',
+    overflow: 'visible',
   },
 });

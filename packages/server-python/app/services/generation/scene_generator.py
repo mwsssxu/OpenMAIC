@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import hashlib
 import json
 import re
 import logging
@@ -305,7 +306,7 @@ async def generate_scene_content(
 
         if not system_prompt or not user_prompt:
             logger.warning(f"[SceneGenerator] {widget_prompt_id} template not found for widget_type={widget_type}, using default")
-            return {"type": "interactive", "content": {}, "widgetType": widget_type}
+            return {"type": "interactive", "widgetType": widget_type, "html": f"<div style='padding:20px;text-align:center'><h3>互动场景</h3><p>模板未找到，内容暂不可用</p></div>"}
 
     else:
         # pbl等其他类型暂时返回默认结构
@@ -350,15 +351,40 @@ async def generate_scene_content(
             scene_type=scene_type,
         )
 
-    # 解析JSON
-    content = parse_json_response(response, outline.type)
+    # 解析响应内容
+    # 所有 interactive 场景的内容模板（simulation/game/diagram/code/visualization3d/html/scientific-model）
+    # 都输出自包含的 HTML 文档，而非 JSON。统一走 HTML 直存路径。
+    if outline.type == "interactive":
+        widget_type = getattr(outline, 'widget_type', None) or 'simulation'
+        # 检测 LLM 返回的是 HTML 还是 JSON
+        stripped = response.strip()
+        if re.match(r'^\s*<!DOCTYPE|^\s*<html|^\s*```html', stripped, re.I):
+            # HTML 输出：直接存储为 html 字段
+            html_content = stripped
+            # 去除可能的 markdown 代码块包装（严格锚定首尾，避免误删内部反引号块）
+            html_content = re.sub(r"^```(?:html)?\s*\n", "", html_content)
+            if html_content.rstrip().endswith("```"):
+                html_content = html_content.rstrip()[:-3].rstrip()
+            content = {
+                "type": "interactive",
+                "widgetType": widget_type,
+                "html": html_content,
+            }
+        else:
+            # JSON 输出（罕见情况，仅当 LLM 不遵循模板时）
+            content = parse_json_response(response, outline.type)
+            content["widgetType"] = widget_type
+    else:
+        content = parse_json_response(response, outline.type)
 
     # 后处理
     if outline.type == "slide" and content.get("canvas"):
         content = fix_element_format(content)
+        # 安全网：如果LLM没有生成ShapeElement，自动注入装饰色条
+        content = _ensure_visual_shapes(content)
 
-    # Interactive场景添加widgetType标记
-    if outline.type == "interactive":
+    # Interactive场景确保widgetType标记存在
+    if outline.type == "interactive" and not content.get("widgetType"):
         content["widgetType"] = getattr(outline, 'widget_type', 'simulation')
 
     return content
@@ -429,7 +455,99 @@ def parse_json_response(response: str, content_type: str) -> Dict[str, Any]:
             }
         elif content_type == "quiz":
             return {"type": "quiz", "questions": []}
+        elif content_type == "interactive":
+            return {"type": "interactive", "widgetType": "simulation", "html": "<div style='padding:20px;text-align:center'><h3>内容生成失败</h3><p>互动内容暂时无法加载</p></div>"}
         return {"type": content_type, "content": {}}
+
+
+def _ensure_visual_shapes(content: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    安全网：如果LLM没有生成任何ShapeElement，自动注入装饰色条。
+
+    当slide只有纯text元素时，视觉上显得单调。
+    此函数在标题左侧注入一个accent色条，在标题下方注入分隔线。
+
+    Args:
+        content: 场景内容
+
+    Returns:
+        补全装饰shape后的内容
+    """
+    canvas = content.get("canvas")
+    if not canvas:
+        return content
+
+    elements = canvas.get("elements", [])
+    if not elements:
+        return content
+
+    # 已有shape元素则跳过
+    has_shape = any(el.get("type") == "shape" for el in elements)
+    if has_shape:
+        return content
+
+    # 常用accent色板
+    accent_colors = ["#4472C4", "#ED7D31", "#70AD47", "#FFC000", "#5B9BD5"]
+    # 根据标题hash选色，保持同一课程内一致
+    title_text = ""
+    for el in elements:
+        if el.get("type") == "text" and el.get("id", "").find("title") != -1:
+            raw = el.get("content", "")
+            # 简单提取纯文本
+            import re as _re
+            title_text = _re.sub(r"<[^>]+>", "", raw).strip()
+            break
+    color_idx = int(hashlib.md5(title_text.encode()).hexdigest()[:8], 16) % len(accent_colors)
+    accent_color = accent_colors[color_idx]
+
+    injected = []
+
+    # 找到第一个text元素（通常是标题），在其左侧插入accent色条
+    first_text = None
+    for el in elements:
+        if el.get("type") == "text":
+            first_text = el
+            break
+
+    if first_text:
+        bar_left = max(30, first_text.get("left", 60) - 20)
+        bar_top = first_text.get("top", 30)
+        bar_height = first_text.get("height", 58)
+        injected.append({
+            "id": "auto_accent_bar",
+            "type": "shape",
+            "left": bar_left,
+            "top": bar_top,
+            "width": 5,
+            "height": bar_height,
+            "path": "M 0 0 L 1 0 L 1 1 L 0 1 Z",
+            "viewBox": [1, 1],
+            "fill": accent_color,
+            "fixedRatio": False,
+        })
+
+        # 标题下方分隔线
+        divider_top = bar_top + bar_height + 12
+        if divider_top < (canvas.get("height") or 562) - 60:
+            injected.append({
+                "id": "auto_divider",
+                "type": "shape",
+                "left": bar_left,
+                "top": divider_top,
+                "width": (canvas.get("width") or 1000) - bar_left * 2,
+                "height": 2,
+                "path": "M 0 0 L 1 0 L 1 1 L 0 1 Z",
+                "viewBox": [1, 1],
+                "fill": accent_color,
+                "fixedRatio": False,
+            })
+
+    if injected:
+        # shape放在text之前（底层渲染）
+        canvas["elements"] = injected + elements
+        logger.info(f"[SceneGenerator] Auto-injected {len(injected)} visual shapes (LLM produced text-only slide)")
+
+    return content
 
 
 def fix_element_format(content: Dict[str, Any]) -> Dict[str, Any]:

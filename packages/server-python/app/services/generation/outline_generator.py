@@ -20,6 +20,115 @@ import time
 logger = logging.getLogger(__name__)
 
 
+# 关键词 → widget 类型映射（用于智能推断）
+_WIDGET_TYPE_KEYWORDS: Dict[str, list] = {
+    "simulation": [
+        "力", "运动", "速度", "加速度", "抛体", "波动", "电路", "电压", "电流",
+        "化学反应", "分子", "pH", "细胞", "生态",
+        "函数", "图像", "概率", "统计分布",
+        "force", "motion", "velocity", "projectile", "wave", "circuit",
+        "reaction", "molecule", "cell", "ecosystem",
+        "function", "graph", "probability",
+    ],
+    "visualization3d": [
+        "3D", "三维", "立体", "分子结构", "原子", "太阳系", "行星", "轨道",
+        "骨骼", "器官", "解剖", "几何体", "体积",
+        "molecular", "solar system", "planet", "orbit",
+        "anatomy", "organ", "geometry", "3d",
+    ],
+    "code": [
+        "编程", "代码", "算法", "数据结构", "排序", "搜索", "递归",
+        "Python", "JavaScript", "Java", "C++",
+        "programming", "code", "algorithm", "data structure",
+        "sorting", "recursion",
+    ],
+    "game": [
+        "挑战", "游戏", "竞速", "着陆", "射击", "闯关", "练习",
+        "challenge", "game", "racing", "landing", "shooting",
+    ],
+    "diagram": [
+        "流程", "架构", "系统", "决策树", "思维导图", "层次", "关系",
+        "process", "architecture", "system", "decision tree",
+        "mind map", "hierarchy", "relationship",
+    ],
+}
+
+
+def _infer_widget_type(outline: "SceneOutline") -> str:
+    """根据大纲标题和描述中的关键词推断最合适的 widget 类型。"""
+    text = f"{outline.title} {outline.description} {' '.join(outline.key_points or [])}".lower()
+
+    best_type = "simulation"
+    best_score = 0
+
+    for widget_type, keywords in _WIDGET_TYPE_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw.lower() in text)
+        if score > best_score:
+            best_score = score
+            best_type = widget_type
+
+    return best_type
+
+
+def _build_widget_outline(outline: "SceneOutline") -> Dict[str, Any]:
+    """根据推断的 widget 类型构建对应的 widgetOutline 配置。"""
+    widget_type = outline.widget_type or _infer_widget_type(outline)
+    title = outline.title
+    description = outline.description or ""
+    key_points = outline.key_points or []
+
+    if widget_type == "simulation":
+        return {
+            "conceptName": title,
+            "subject": "综合学习",
+            "conceptOverview": description,
+            "keyPoints": ", ".join(key_points),
+            "scientificConstraints": "模拟需遵循物理/数学规律",
+            "designIdea": "可调参数的交互式模拟，用户通过滑块或拖拽控制变量，实时观察变化",
+        }
+    elif widget_type == "visualization3d":
+        return {
+            "visualizationType": "custom",
+            "objects": key_points[:5] if key_points else [title],
+            "interactions": ["orbit", "zoom", "speed_slider"],
+            "conceptName": title,
+            "conceptOverview": description,
+        }
+    elif widget_type == "code":
+        return {
+            "language": "python",
+            "challengeType": "concept_demo",
+            "conceptName": title,
+            "conceptOverview": description,
+            "keyPoints": ", ".join(key_points),
+        }
+    elif widget_type == "game":
+        return {
+            "gameType": "action",
+            "challenge": description,
+            "playerControls": key_points[:3] if key_points else ["interact"],
+            "conceptName": title,
+        }
+    elif widget_type == "diagram":
+        return {
+            "diagramType": "flowchart",
+            "nodeCount": max(5, len(key_points) * 2),
+            "conceptName": title,
+            "conceptOverview": description,
+            "keyPoints": ", ".join(key_points),
+        }
+    else:
+        # html fallback
+        return {
+            "conceptName": title,
+            "subject": "综合学习",
+            "conceptOverview": description,
+            "keyPoints": ", ".join(key_points),
+            "scientificConstraints": "互动内容需符合教学逻辑",
+            "designIdea": "交互式学习界面",
+        }
+
+
 class SceneOutline(BaseModel):
     """场景大纲（与Web端一致）"""
     id: str
@@ -37,6 +146,8 @@ class SceneOutline(BaseModel):
     # Widget字段（Web端新功能）
     widget_type: Optional[str] = None  # simulation, game, diagram, code, visualization3d
     widget_outline: Optional[Dict] = None  # Widget配置
+    # 语言指令（从大纲生成阶段传递给场景内容生成）
+    language_directive: Optional[str] = None
 
 
 # 增量JSON解析器（与Web端一致）
@@ -97,7 +208,6 @@ async def generate_outlines(
     requirement: str,
     pdf_content: Optional[str] = None,
     language: str = "zh-CN",
-    available_images: Optional[List[str]] = None,
     model: Optional[str] = None,
     agent_ids: Optional[List[str]] = None,
     web_search: bool = False,
@@ -108,12 +218,11 @@ async def generate_outlines(
     生成课程大纲（使用Web端一致的prompt模板）
 
     Args:
-        requirement: 用户需求描述
-        pdf_content: PDF 文本内容
-        language: 语言
-        available_images: 可用图片描述列表
-        model: LLM 模型
-        agent_ids: 选用的智能体ID列表
+        requirement: 用户需求文本
+        pdf_content: PDF文档内容
+        language: 课程语言
+        model: LLM模型名称
+        agent_ids: 智能体ID列表
         web_search: 是否启用网络搜索增强
         web_search_context: 网络搜索结果内容
         agents: 完整agent信息列表，用于构建teacherContext（与Web端一致）
@@ -147,14 +256,14 @@ Design the course content and teaching style to match this teacher's persona."""
         "requirement": requirement,
         "language": language,
         "pdfContent": (pdf_content[:MAX_PDF_CONTENT_CHARS] if pdf_content else ("无" if language == "zh-CN" else "None")),
-        "availableImages": "\n".join(available_images) if available_images else ("无可用图片" if language == "zh-CN" else "No images available"),
+        "availableImages": ("无可用图片" if language == "zh-CN" else "No images available"),
         "researchContext": web_search_context or ("无" if language == "zh-CN" else "None"),
         "mediaGenerationPolicy": "",  # 媒体生成策略，默认空
         "teacherContext": teacher_context,  # 教师上下文
         "userProfile": "",  # 用户画像，暂时空
     }
 
-    # 加载prompt模板（与Web端一致）
+    # 加载prompt模板
     system_prompt, user_prompt = build_prompt(
         PROMPT_IDS["REQUIREMENTS_TO_OUTLINES"],
         variables
@@ -253,21 +362,14 @@ type可选：slide/quiz/interactive/pbl
                 widget_outline=item.get("widgetOutline"),
             )
 
-            # 为 interactive 场景补充默认 widget 配置（如果 LLM 未提供）
+            # 为 interactive 场景补充智能 widget 配置（如果 LLM 未提供）
             if outline.type == "interactive" and not outline.widget_type:
-                outline.widget_type = "html"
-                outline.widget_outline = {
-                    "conceptName": outline.title,
-                    "subject": "综合学习",
-                    "conceptOverview": outline.description,
-                    "keyPoints": ", ".join(outline.key_points or []),
-                    "scientificConstraints": "互动内容需符合教学逻辑",
-                    "designIdea": "交互式学习界面"
-                }
-                logger.info(f"[Outline] 为 interactive 场景 '{outline.title}' 补充默认 widget 配置")
+                outline.widget_type = _infer_widget_type(outline)
+                outline.widget_outline = _build_widget_outline(outline)
+                logger.info(f"[Outline] 为 interactive 场景 '{outline.title}' 推断 widget 类型: {outline.widget_type}")
 
             # 存储 languageDirective 到大纲对象（传递给后续生成）
-            if language_directive and i == 0:
+            if language_directive:
                 outline.language_directive = language_directive
             outlines.append(outline)
 
@@ -395,18 +497,11 @@ Design the course content and teaching style to match this teacher's persona."""
                     widget_outline=outline_data.get("widgetOutline"),
                 )
 
-                # 为 interactive 场景补充默认 widget 配置（如果 LLM 未提供）
+                # 为 interactive 场景补充智能 widget 配置（如果 LLM 未提供）
                 if outline.type == "interactive" and not outline.widget_type:
-                    outline.widget_type = "html"
-                    outline.widget_outline = {
-                        "conceptName": outline.title,
-                        "subject": "综合学习",
-                        "conceptOverview": outline.description,
-                        "keyPoints": ", ".join(outline.key_points or []),
-                        "scientificConstraints": "互动内容需符合教学逻辑",
-                        "designIdea": "交互式学习界面"
-                    }
-                    logger.info(f"[StreamOutline] 为 interactive 场景 '{outline.title}' 补充默认 widget 配置")
+                    outline.widget_type = _infer_widget_type(outline)
+                    outline.widget_outline = _build_widget_outline(outline)
+                    logger.info(f"[StreamOutline] 为 interactive 场景 '{outline.title}' 推断 widget 类型: {outline.widget_type}")
 
                 elapsed = time.time() - start_time
                 logger.info(f"[StreamOutline] 大纲 #{parsed_count} 解析完成 - {outline.title} (耗时: {elapsed:.1f}s)")
@@ -700,6 +795,8 @@ def generate_smart_default_outlines(
 
     # 是否有智能体配置
     has_agents = agent_ids and len(agent_ids) > 0
+
+    outlines: List[SceneOutline] = []
 
     if language == "zh-CN":
         outlines.extend([

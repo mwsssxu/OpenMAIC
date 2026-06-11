@@ -9,6 +9,7 @@ from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.core.redis import invalidate_balance_cache
 from app.core.config import settings
+from app.core.pricing import TOKEN_PACKAGES, SUBSCRIPTION_PACKAGES, PRO_MONTHLY_TOKEN_GRANT
 import asyncpg
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -20,19 +21,7 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# ==================== Token套餐配置 ====================
-
-TOKEN_PACKAGES = {
-    "starter": {"price": 600, "tokens": 50, "bonus": 0, "name": "体验包"},      # ¥6 = 50 Token
-    "learning": {"price": 1800, "tokens": 180, "bonus": 20, "name": "学习包"},   # ¥18 = 200 Token
-    "unlimited": {"price": 4800, "tokens": 500, "bonus": 100, "name": "畅学包"}, # ¥48 = 600 Token
-}
-
-# 订阅套餐配置（与 subscriptions.py PLAN_PRICES 保持一致）
-SUBSCRIPTION_PACKAGES = {
-    "pro_monthly": {"price": 1900, "days": 30, "name": "Pro 月卡"},       # ¥19/月
-    "pro_yearly": {"price": 19000, "days": 365, "name": "Pro 年卡"},      # ¥190/年
-}
+# ==================== 价格配置（统一在 app.core.pricing 中管理） ====================
 
 # 新用户首购折扣
 NEW_USER_DISCOUNT = 0.5  # 50% 折扣
@@ -72,7 +61,7 @@ async def get_payment_packages():
                 "无限AI问答",
                 "5次/天讨论模式",
                 "5次/天课程生成",
-                "每月50 Token赠送",
+                f"每月{PRO_MONTHLY_TOKEN_GRANT} Token赠送",
             ],
         }
         for id_, data in SUBSCRIPTION_PACKAGES.items()
@@ -101,7 +90,7 @@ async def create_payment_order(
         if package_id not in SUBSCRIPTION_PACKAGES:
             raise HTTPException(status_code=400, detail="无效的订阅套餐")
         package = SUBSCRIPTION_PACKAGES[package_id]
-        token_amount = 50  # Pro 月赠50 Token
+        token_amount = PRO_MONTHLY_TOKEN_GRANT  # Pro 月赠送
         subscription_days = package["days"]
         subscription_plan = "pro"
     elif order_type == "token":

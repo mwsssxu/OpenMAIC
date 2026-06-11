@@ -38,7 +38,7 @@ export const TabPageWrapper: React.FC<TabPageWrapperProps> = ({ children, hasHea
     <View style={[
       styles.container,
       {
-        paddingTop: hasHeader ? 0 : insets.top,
+        paddingTop: hasHeader ? 0 : Math.max(insets.top, 44), // 确保至少44px顶部空间
         paddingHorizontal: isTablet ? horizontalPadding : 0,
       }
     ]}>

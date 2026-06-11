@@ -284,7 +284,6 @@ export default function CreateClassroomScreen() {
   const [requirement, setRequirement] = useState('');
   const [language, setLanguage] = useState<'zh-CN' | 'en-US'>('zh-CN');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
-
   // 步骤2: 智能体
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [generatingAgents, setGeneratingAgents] = useState(false);
@@ -496,6 +495,7 @@ export default function CreateClassroomScreen() {
           </TouchableOpacity>
           <Text style={styles.webSearchLabel}>🌐 启用网络搜索增强内容</Text>
         </View>
+
       </View>
 
       {error && <Text style={styles.errorText}>{error}</Text>}

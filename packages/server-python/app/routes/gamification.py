@@ -963,13 +963,103 @@ async def get_gamification_overview(
     )
     streak = today_checkin["streak_count"] if today_checkin else 0
 
+    # 获取今日学习分钟数
+    today_minutes = await db.fetchval(
+        """SELECT COALESCE(SUM(duration_seconds), 0) / 60
+           FROM learning_records
+           WHERE user_id = $1 AND DATE(created_at) = $2""",
+        user_uuid, today
+    ) or 0
+
+    # 获取近7天打卡日期
+    recent_dates_rows = await db.fetch(
+        """SELECT checkin_date FROM daily_checkins
+           WHERE user_id = $1 AND checkin_date >= $2
+           ORDER BY checkin_date DESC""",
+        user_uuid, today - timedelta(days=7)
+    )
+    recent_dates = [r["checkin_date"].isoformat() for r in recent_dates_rows]
+
     # 获取任务完成情况
     tasks_result = await get_daily_tasks(current_user_id, db)
 
-    # 获取成就数量
-    achievements_count = await db.fetchval(
-        "SELECT COUNT(*) FROM user_achievements WHERE user_id = $1",
+    # 获取成就信息
+    achievements_rows = await db.fetch(
+        """SELECT achievement_id, earned_at, progress
+           FROM user_achievements WHERE user_id = $1
+           ORDER BY earned_at DESC""",
         user_uuid
+    )
+    
+    # 导入成就配置
+    from app.routes.achievements import ACHIEVEMENTS
+    
+    earned_achievements = []
+    for row in achievements_rows:
+        ach_data = ACHIEVEMENTS.get(row["achievement_id"])
+        if ach_data:
+            earned_achievements.append({
+                "id": row["achievement_id"],
+                "name": ach_data["name"],
+                "icon": ach_data["icon"],
+                "description": ach_data["description"],
+                "category": ach_data.get("category", "learning"),
+                "points": ach_data.get("points", 0),
+                "earned_at": row["earned_at"].isoformat(),
+            })
+    
+    # 获取成就进度（未获得的）
+    progress_rows = await db.fetch(
+        """SELECT achievement_id, progress FROM user_achievements
+           WHERE user_id = $1 AND progress < 100
+           ORDER BY progress DESC LIMIT 3""",
+        user_uuid
+    )
+    
+    next_achievements = []
+    for row in progress_rows:
+        ach_data = ACHIEVEMENTS.get(row["achievement_id"])
+        if ach_data:
+            next_achievements.append({
+                "id": row["achievement_id"],
+                "name": ach_data["name"],
+                "icon": ach_data["icon"],
+                "description": ach_data["description"],
+                "current": row["progress"],
+                "target": ach_data.get("target", 1),
+                "percentage": min(100, int(row["progress"] / max(ach_data.get("target", 1), 1) * 100)),
+            })
+
+    # 获取搭子信息
+    buddy_config = await db.fetchrow(
+        """SELECT buddy_name, active
+           FROM buddy_configs
+           WHERE user_id = $1 AND active = TRUE""",
+        user_uuid
+    )
+    
+    buddy_info = {"has_buddy": False}
+    if buddy_config:
+        buddy_info = {
+            "has_buddy": True,
+            "buddy_name": buddy_config["buddy_name"] or "学习搭子",
+        }
+
+    # 获取积分统计
+    today_points = await db.fetchval(
+        """SELECT COALESCE(SUM(amount), 0) FROM point_transactions
+           WHERE user_id = $1 AND DATE(created_at) = $2""",
+        user_uuid, today
+    ) or 0
+    
+    week_points = await db.fetchval(
+        """SELECT COALESCE(SUM(amount), 0) FROM point_transactions
+           WHERE user_id = $1 AND created_at >= $2""",
+        user_uuid, today - timedelta(days=7)
+    ) or 0
+    
+    current_balance = await db.fetchval(
+        "SELECT balance FROM point_accounts WHERE user_id = $1", user_uuid
     ) or 0
 
     # 检查隐藏成就里程碑
@@ -996,21 +1086,49 @@ async def get_gamification_overview(
         "streak": {
             "current": streak,
             "today_checked": bool(today_checkin),
+            "today_learning_minutes": int(today_minutes),
             "reward_preview": calculate_streak_reward(streak + 1) if not today_checkin else 0,
+            "streak_level": get_streak_level(streak),
+            "recent_dates": recent_dates,
         },
         "tasks": {
             "total": tasks_result["total_tasks"],
             "completed": tasks_result["completed_tasks"],
             "total_reward_available": tasks_result["total_reward"],
             "reward_earned": tasks_result["completed_reward"],
+            "items": tasks_result.get("tasks", []),
         },
         "achievements": {
-            "earned": achievements_count,
-            "total": len(HIDDEN_ACHIEVEMENTS) + 14,  # 隐藏成就 + 普通成就
+            "earned": len(earned_achievements),
+            "total": len(ACHIEVEMENTS),
+            "items": earned_achievements[:10],
+            "next_achievements": next_achievements,
+        },
+        "buddy": buddy_info,
+        "points": {
+            "current_balance": current_balance,
+            "today_earned": today_points,
+            "this_week_earned": week_points,
         },
         "pending_milestones": hidden_unlocked,
-        "motivation_message": get_motivation_message(streak, tasks_result["completed_tasks"], achievements_count),
+        "motivation_message": get_motivation_message(streak, tasks_result["completed_tasks"], len(earned_achievements)),
     }
+
+
+def get_streak_level(streak: int) -> str:
+    """根据连续天数返回等级"""
+    if streak >= 30:
+        return "传奇"
+    elif streak >= 21:
+        return "大师"
+    elif streak >= 14:
+        return "专家"
+    elif streak >= 7:
+        return "学徒"
+    elif streak >= 3:
+        return "新手"
+    else:
+        return "起步"
 
 
 def get_motivation_message(streak: int, tasks_completed: int, achievements: int) -> str:
@@ -1027,3 +1145,90 @@ def get_motivation_message(streak: int, tasks_completed: int, achievements: int)
         return "开始你的学习之旅吧！"
     else:
         return f"已连续学习{streak}天，继续保持！"
+
+
+# ==================== 学习时长上报 ====================
+
+@router.post("/report-learning-time")
+async def report_learning_time(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """前端定时上报学习时长"""
+    minutes = min(body.get("minutes", 0), 30)  # 单次上限30分钟防刷
+    user_uuid = uuid.UUID(current_user_id)
+    
+    from app.services.gamification_events import record_learning_activity
+    result = await record_learning_activity(
+        db, user_uuid, "learn", value=minutes, user_id=current_user_id,
+        context={"stage_id": body.get("stage_id")}
+    )
+    
+    return {
+        "recorded_minutes": minutes,
+        "message": f"已记录 {minutes} 分钟学习时长",
+        "gamification": result,
+    }
+
+
+# ==================== 学习档案 ====================
+
+@router.get("/learning-profile")
+async def get_learning_profile(
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """获取用户学习档案"""
+    user_uuid = uuid.UUID(current_user_id)
+    
+    # 总学习天数
+    total_days = await db.fetchval(
+        "SELECT COUNT(DISTINCT checkin_date) FROM daily_checkins WHERE user_id = $1",
+        user_uuid
+    ) or 0
+    
+    # 总课程完成
+    total_courses = await db.fetchval(
+        "SELECT COUNT(*) FROM course_completions WHERE user_id = $1 AND completion_status = 'completed'",
+        user_uuid
+    ) or 0
+    
+    # 当前连续天数
+    current_streak = await db.fetchval(
+        "SELECT current_streak FROM users WHERE id = $1", user_uuid
+    ) or 0
+    
+    # 最大连续天数
+    max_streak = await db.fetchval(
+        "SELECT max_streak FROM users WHERE id = $1", user_uuid
+    ) or 0
+    
+    # 加入日期
+    join_date = await db.fetchval(
+        "SELECT created_at FROM users WHERE id = $1", user_uuid
+    )
+    
+    # 成就统计
+    achievement_count = await db.fetchval(
+        "SELECT COUNT(*) FROM user_achievements WHERE user_id = $1", user_uuid
+    ) or 0
+    
+    # 总积分
+    total_points = await db.fetchval(
+        "SELECT COALESCE(SUM(amount), 0) FROM point_transactions WHERE user_id = $1",
+        user_uuid
+    ) or 0
+    
+    league = get_user_league(total_points)
+    
+    return {
+        "total_days": total_days,
+        "total_courses": total_courses,
+        "current_streak": current_streak,
+        "max_streak": max_streak,
+        "join_date": join_date.isoformat() if join_date else None,
+        "achievement_count": achievement_count,
+        "total_points": total_points,
+        "league": league,
+    }

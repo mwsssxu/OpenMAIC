@@ -143,6 +143,7 @@ Interactive 3D scenes using Three.js for immersive learning experiences.
 - Touch-friendly controls for mobile
 - Performance-optimized geometry
 - Smooth animations with requestAnimationFrame
+- **Mobile performance**: Limit to ≤5000 vertices total; use BufferGeometry; avoid real-time shadows on mobile; prefer simple materials over PBR
 
 ## Widget Selection Guide
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { showError, showSuccess } from '@/lib/error-toast';
 
 export default function CreateQuestionPage() {
   const router = useRouter();
@@ -21,8 +22,8 @@ export default function CreateQuestionPage() {
     try {
       const data = await apiClient.getPointBalance();
       setPointBalance(data.balance || 0);
-    } catch (error) {
-      console.error('Load balance error:', error);
+    } catch (err) {
+      console.error('Load balance error:', err);
     }
   }
 
@@ -36,9 +37,10 @@ export default function CreateQuestionPage() {
         bounty,
         tags,
       });
+      showSuccess('问题已发布');
       router.push('/questions');
-    } catch (error: any) {
-      alert(error.response?.data?.detail || '发布失败');
+    } catch (err) {
+      showError(err);
     } finally {
       setSubmitting(false);
     }

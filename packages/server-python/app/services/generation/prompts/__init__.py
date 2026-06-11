@@ -21,6 +21,7 @@ SNIPPET_DIR = os.path.join(os.path.dirname(__file__), "snippets")
 
 PROMPT_IDS = {
     "REQUIREMENTS_TO_OUTLINES": "requirements-to-outlines",
+    "INTERACTIVE_OUTLINES": "interactive-outlines",
     "SLIDE_CONTENT": "slide-content",
     "SLIDE_ACTIONS": "slide-actions",
     "QUIZ_CONTENT": "quiz-content",

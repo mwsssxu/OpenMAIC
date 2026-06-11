@@ -1198,8 +1198,9 @@ class ApiClient {
 
   // ==================== Answers ====================
 
-  async getAnswers(questionId: string) {
-    const { data } = await this.client.get(`/answers/question/${questionId}`);
+  async getAnswers(questionId: string, sort?: string) {
+    const params = sort ? `?sort=${sort}` : '';
+    const { data } = await this.client.get(`/answers/question/${questionId}${params}`);
     return data;
   }
 
@@ -1437,6 +1438,24 @@ class ApiClient {
     return data;
   }
 
+  async reportLearningTime(minutes: number, stageId?: string) {
+    const { data } = await this.client.post('/gamification/report-learning-time', {
+      minutes,
+      stage_id: stageId,
+    });
+    return data;
+  }
+
+  async trackChat() {
+    const { data } = await this.client.post('/chat/track-chat');
+    return data;
+  }
+
+  async getLearningProfile() {
+    const { data } = await this.client.get('/gamification/learning-profile');
+    return data;
+  }
+
   async getRarityLevels() {
     const { data } = await this.client.get('/gamification/rarity-levels');
     return data;
@@ -1648,13 +1667,13 @@ class ApiClient {
     return data;
   }
 
-  async createEnterprise(name: string, industry?: string, size?: string, planType?: string) {
+  async createEnterprise(name: string, industry?: string, size?: string, planType?: string, contactEmail?: string) {
     const { data } = await this.client.post('/enterprise/', {
       name,
       industry,
       size,
       plan_type: planType || 'basic',
-      contact_email: '', // will be filled from user
+      ...(contactEmail ? { contact_email: contactEmail } : {}),
     });
     return data;
   }
@@ -1687,6 +1706,29 @@ class ApiClient {
 
   async getEnterpriseStats(enterpriseId: string) {
     const { data } = await this.client.get(`/enterprise/${enterpriseId}/stats`);
+    return data;
+  }
+
+  async updateEnterpriseMemberRole(enterpriseId: string, memberId: string, role: string) {
+    const { data } = await this.client.post(`/enterprise/${enterpriseId}/members/${memberId}/role`, { role });
+    return data;
+  }
+
+  async removeEnterpriseMember(enterpriseId: string, memberId: string) {
+    const { data } = await this.client.delete(`/enterprise/${enterpriseId}/members/${memberId}`);
+    return data;
+  }
+
+  async assignEnterpriseCourses(enterpriseId: string, courseIds: string[], memberIds?: string[]) {
+    const { data } = await this.client.post(`/enterprise/${enterpriseId}/courses/assign`, {
+      course_ids: courseIds,
+      member_ids: memberIds,
+    });
+    return data;
+  }
+
+  async getEnterpriseLearningReport(enterpriseId: string) {
+    const { data } = await this.client.get(`/enterprise/${enterpriseId}/reports/learning`);
     return data;
   }
 
@@ -2012,9 +2054,9 @@ class ApiClient {
 
   // ==================== Personal Notes ====================
 
-  async getPersonalNotes(page?: number, limit?: number, filter?: string, starredOnly?: boolean) {
+  async getPersonalNotes(page?: number, limit?: number, filter?: string, starredOnly?: boolean, includeShared?: boolean) {
     const { data } = await this.client.get('/personal-notes', {
-      params: { page, limit, filter, starred_only: starredOnly },
+      params: { page, limit, filter, starred_only: starredOnly, include_shared: includeShared },
     });
     return data;
   }

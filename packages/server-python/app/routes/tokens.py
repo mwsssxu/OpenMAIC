@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.core.redis import (
     get_cached_token_balance, cache_token_balance, invalidate_balance_cache
 )
+from app.core.pricing import TOKEN_PACKAGES
 import asyncpg
 import uuid
 from datetime import datetime
@@ -16,13 +17,7 @@ from app.core.time_utils import utcnow
 router = APIRouter()
 
 
-# ==================== Token套餐 ====================
-
-TOKEN_PACKAGES = {
-    "starter": {"price": 600, "tokens": 50, "bonus": 0},      # ¥6 = 50 Token
-    "learning": {"price": 1800, "tokens": 180, "bonus": 20},   # ¥18 = 200 Token
-    "unlimited": {"price": 4800, "tokens": 500, "bonus": 100}, # ¥48 = 600 Token
-}
+# ==================== Token套餐（统一在 app.core.pricing 中管理） ====================
 
 
 # ==================== 积分兑换档位 ====================

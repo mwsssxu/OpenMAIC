@@ -75,6 +75,173 @@ async def get_dashboard_stats(
     }
 
 
+@router.get("/stats/token-consumption")
+async def get_token_consumption_stats(
+    days: int = Query(7, ge=1, le=30),
+    admin: dict = Depends(require_statistics_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """Token消耗统计 - 按天/按功能/趋势"""
+    # 今日消耗
+    spent_today = await db.fetchval(
+        "SELECT COALESCE(SUM(ABS(amount)), 0) FROM token_transactions WHERE type = 'spend' AND DATE(created_at) = CURRENT_DATE"
+    ) or 0
+
+    # 7天/30天消耗趋势
+    consumption_trend = await db.fetch(
+        """
+        SELECT DATE(created_at) as date, COALESCE(SUM(ABS(amount)), 0) as consumed
+        FROM token_transactions
+        WHERE type = 'spend' AND created_at >= NOW() - ($1 || ' days')::interval
+        GROUP BY DATE(created_at) ORDER BY date
+        """,
+        days,
+    )
+
+    # 按功能分类消耗（从description字段提取）
+    # 注意：description 格式如 "课程生成", "AI问答", "学习搭子"
+    feature_breakdown = await db.fetch(
+        """
+        SELECT
+            CASE
+                WHEN description LIKE '%课程%' THEN 'course_generation'
+                WHEN description LIKE '%问答%' OR description LIKE '%AI交互%' THEN 'ai_interaction'
+                WHEN description LIKE '%搭子%' OR description LIKE '%buddy%' THEN 'buddy_chat'
+                WHEN description LIKE '%讨论%' THEN 'discussion'
+                WHEN description LIKE '%报告%' THEN 'report'
+                WHEN description LIKE '%图片%' THEN 'image'
+                ELSE 'other'
+            END as feature,
+            COUNT(*) as call_count,
+            COALESCE(SUM(ABS(amount)), 0) as total_consumed
+        FROM token_transactions
+        WHERE type = 'spend' AND DATE(created_at) = CURRENT_DATE
+        GROUP BY feature
+        ORDER BY total_consumed DESC
+        """
+    )
+
+    return {
+        "spent_today": spent_today,
+        "trend": [{"date": str(r["date"]), "consumed": r["consumed"]} for r in consumption_trend],
+        "feature_breakdown": [
+            {"feature": r["feature"], "call_count": r["call_count"], "total_consumed": r["total_consumed"]}
+            for r in feature_breakdown
+        ],
+    }
+
+
+@router.get("/stats/cost-revenue")
+async def get_cost_revenue_stats(
+    days: int = Query(7, ge=1, le=30),
+    admin: dict = Depends(require_finance_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """成本 vs 收入统计 - 利润分析"""
+    # 今日收入
+    revenue_today = await db.fetchval(
+        "SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status = 'paid' AND DATE(created_at) = CURRENT_DATE"
+    ) or 0
+
+    # 今日API成本
+    cost_today = await db.fetchval(
+        "SELECT COALESCE(SUM(cost_yuan), 0) FROM llm_usage_logs WHERE DATE(created_at) = CURRENT_DATE AND status = 'success'"
+    ) or 0
+
+    # 今日调用次数
+    calls_today = await db.fetchval(
+        "SELECT COUNT(*) FROM llm_usage_logs WHERE DATE(created_at) = CURRENT_DATE"
+    ) or 0
+
+    # 今日成功调用
+    success_today = await db.fetchval(
+        "SELECT COUNT(*) FROM llm_usage_logs WHERE DATE(created_at) = CURRENT_DATE AND status = 'success'"
+    ) or 0
+
+    # 今日失败调用
+    error_today = await db.fetchval(
+        "SELECT COUNT(*) FROM llm_usage_logs WHERE DATE(created_at) = CURRENT_DATE AND status = 'error'"
+    ) or 0
+
+    # 收入趋势
+    revenue_trend = await db.fetch(
+        """
+        SELECT DATE(created_at) as date, COALESCE(SUM(amount), 0) as revenue
+        FROM orders WHERE status = 'paid' AND created_at >= NOW() - ($1 || ' days')::interval
+        GROUP BY DATE(created_at) ORDER BY date
+        """,
+        days,
+    )
+
+    # 成本趋势
+    cost_trend = await db.fetch(
+        """
+        SELECT DATE(created_at) as date, COALESCE(SUM(cost_yuan), 0) as cost, COUNT(*) as calls
+        FROM llm_usage_logs WHERE status = 'success' AND created_at >= NOW() - ($1 || ' days')::interval
+        GROUP BY DATE(created_at) ORDER BY date
+        """,
+        days,
+    )
+
+    # 模型使用量排行
+    model_usage = await db.fetch(
+        """
+        SELECT model, COUNT(*) as calls,
+               COALESCE(SUM(cost_yuan), 0) as total_cost,
+               COALESCE(SUM(total_tokens), 0) as total_tokens
+        FROM llm_usage_logs
+        WHERE DATE(created_at) = CURRENT_DATE AND status = 'success'
+        GROUP BY model ORDER BY total_cost DESC
+        """
+    )
+
+    # 用户利润排行（Top 10）
+    user_profit = await db.fetch(
+        """
+        WITH user_revenue AS (
+            SELECT user_id, COALESCE(SUM(amount), 0) as revenue
+            FROM orders WHERE status = 'paid' AND created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY user_id
+        ),
+        user_cost AS (
+            SELECT user_id, COALESCE(SUM(cost_yuan), 0) as cost
+            FROM llm_usage_logs WHERE status = 'success' AND created_at >= NOW() - ($2 || ' days')::interval
+            GROUP BY user_id
+        )
+        SELECT
+            COALESCE(ur.user_id, uc.user_id) as user_id,
+            COALESCE(ur.revenue, 0) as revenue,
+            COALESCE(uc.cost, 0) as cost,
+            COALESCE(ur.revenue, 0) - COALESCE(uc.cost, 0) as profit
+        FROM user_revenue ur FULL OUTER JOIN user_cost uc ON ur.user_id = uc.user_id
+        ORDER BY profit DESC LIMIT 10
+        """,
+        days, days,
+    )
+
+    return {
+        "today": {
+            "revenue": revenue_today / 100,  # 分转元
+            "cost": cost_today,
+            "profit": (revenue_today / 100) - cost_today,
+            "calls": calls_today,
+            "success": success_today,
+            "errors": error_today,
+            "cost_per_call": cost_today / success_today if success_today > 0 else 0,
+        },
+        "revenue_trend": [{"date": str(r["date"]), "revenue": r["revenue"] / 100} for r in revenue_trend],
+        "cost_trend": [{"date": str(r["date"]), "cost": r["cost"], "calls": r["calls"]} for r in cost_trend],
+        "model_usage": [
+            {"model": r["model"], "calls": r["calls"], "total_cost": r["total_cost"], "total_tokens": r["total_tokens"]}
+            for r in model_usage
+        ],
+        "user_profit": [
+            {"user_id": str(r["user_id"]), "revenue": r["revenue"] / 100, "cost": r["cost"], "profit": r["profit"]}
+            for r in user_profit
+        ],
+    }
+
+
 # ============ User Management ============
 
 @router.get("/users")

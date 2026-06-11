@@ -1,11 +1,13 @@
 /**
  * 全局弹框 UI 组件 — 在 _layout.tsx 中渲染一次即可
  * 页面居中弹出，带遮罩和动画
+ * 支持 alert / success / confirm 三种类型
  */
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Dimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { subscribeDialogs, dismissDialog, type DialogItem } from './error-toast';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -20,6 +22,12 @@ const C = {
   confirm: '#c45a1a',
   danger: '#dc2626',
   border: 'rgba(0,0,0,0.08)',
+  // success 主题
+  successBg: '#ECFDF5',
+  successBorder: '#6EE7B7',
+  successTitle: '#065F46',
+  successMessage: '#047857',
+  successBtn: '#10B981',
 };
 
 export function GlobalDialog() {
@@ -29,13 +37,21 @@ export function GlobalDialog() {
 
   if (queue.length === 0) return null;
   const dialog = queue[0];
+  const isSuccess = dialog.type === 'success';
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={() => dismissDialog(dialog.id, false)}>
       <View style={S.overlay}>
-        <View style={S.card}>
-          <Text style={S.title}>{dialog.title}</Text>
-          {!!dialog.message && <Text style={S.message}>{dialog.message}</Text>}
+        <View style={[S.card, isSuccess && S.cardSuccess]}>
+          {isSuccess && (
+            <View style={S.iconCircle}>
+              <Ionicons name="checkmark" size={28} color="#10B981" />
+            </View>
+          )}
+          <Text style={[S.title, isSuccess && S.titleSuccess]}>{dialog.title}</Text>
+          {!!dialog.message && (
+            <Text style={[S.message, isSuccess && S.messageSuccess]}>{dialog.message}</Text>
+          )}
           <View style={S.btnRow}>
             {dialog.type === 'confirm' && (
               <TouchableOpacity
@@ -47,11 +63,18 @@ export function GlobalDialog() {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={[S.btn, dialog.destructive ? S.btnDanger : S.btnConfirm]}
+              style={[
+                S.btn,
+                dialog.destructive
+                  ? S.btnDanger
+                  : isSuccess
+                    ? S.btnSuccess
+                    : S.btnConfirm,
+              ]}
               onPress={() => dismissDialog(dialog.id, true)}
               activeOpacity={0.6}
             >
-              <Text style={dialog.destructive ? S.btnDangerText : S.btnConfirmText}>
+              <Text style={isSuccess ? S.btnSuccessText : (dialog.destructive ? S.btnDangerText : S.btnConfirmText)}>
                 {dialog.confirmText}
               </Text>
             </TouchableOpacity>
@@ -80,6 +103,21 @@ const S = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  cardSuccess: {
+    backgroundColor: C.successBg,
+    borderWidth: 1,
+    borderColor: C.successBorder,
+  },
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
   title: {
     fontSize: 17,
     fontWeight: '600',
@@ -87,12 +125,18 @@ const S = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
   },
+  titleSuccess: {
+    color: C.successTitle,
+  },
   message: {
     fontSize: 14,
     color: C.message,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 20,
+  },
+  messageSuccess: {
+    color: C.successMessage,
   },
   btnRow: {
     flexDirection: 'row',
@@ -118,6 +162,14 @@ const S = StyleSheet.create({
     backgroundColor: C.confirm,
   },
   btnConfirmText: {
+    fontSize: 15,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  btnSuccess: {
+    backgroundColor: C.successBtn,
+  },
+  btnSuccessText: {
     fontSize: 15,
     color: '#fff',
     fontWeight: '600',

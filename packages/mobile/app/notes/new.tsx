@@ -9,13 +9,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
+import { showError, showSuccess, confirmAction } from '@/lib/utils/error-toast';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 const iOSColors = {
   bgSolid: '#f5f3f2',
@@ -34,22 +35,6 @@ const iOSColors = {
 const MAX_TITLE_LENGTH = 50;
 const MAX_CONTENT_LENGTH = 1000;
 
-// Web 兼容的 Alert
-const showAlert = (title: string, message?: string, buttons?: any[]) => {
-  if (Platform.OS === 'web') {
-    if (buttons && buttons.length > 0) {
-      const result = (globalThis as any).window?.confirm(`${title}\n${message || ''}`);
-      if (result && buttons[1]?.onPress) {
-        buttons[1].onPress();
-      }
-    } else {
-      (globalThis as any).window?.alert(`${title}${message ? '\n' + message : ''}`);
-    }
-  } else {
-    Alert.alert(title, message, buttons);
-  }
-};
-
 export default function NewNoteScreen() {
   const router = useRouter();
   const haptics = useHaptics();
@@ -66,25 +51,25 @@ export default function NewNoteScreen() {
   const handleSubmit = async () => {
     // 验证
     if (!title.trim()) {
-      showAlert('提示', '请输入笔记标题');
+      showError('请输入笔记标题');
       return;
     }
     if (!content.trim()) {
-      showAlert('提示', '请输入笔记内容');
+      showError('请输入笔记内容');
       return;
     }
     if (title.length > MAX_TITLE_LENGTH) {
-      showAlert('提示', `标题不能超过${MAX_TITLE_LENGTH}个字符`);
+      showError(`标题不能超过${MAX_TITLE_LENGTH}个字符`);
       return;
     }
     if (content.length > MAX_CONTENT_LENGTH) {
-      showAlert('提示', `内容不能超过${MAX_CONTENT_LENGTH}个字符`);
+      showError(`内容不能超过${MAX_CONTENT_LENGTH}个字符`);
       return;
     }
 
     const priceNum = parseInt(price) || 0;
     if (visibility === 'paid' && priceNum < 1) {
-      showAlert('提示', '付费笔记请设置价格');
+      showError('付费笔记请设置价格');
       return;
     }
 
@@ -99,17 +84,14 @@ export default function NewNoteScreen() {
       );
 
       haptics.medium();
-      showAlert('成功', '笔记已发布');
+      showSuccess('笔记已发布');
       router.replace('/(tabs)/notes' as any);
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
       if (err.response?.status === 401) {
-        showAlert('需要登录', '请先登录后再发布笔记', [
-          { text: '取消', style: 'cancel' },
-          { text: '去登录', onPress: () => router.push('/auth/login' as any) },
-        ]);
+        confirmAction('需要登录', '请先登录后再发布笔记', () => router.push('/auth/login' as any));
       } else {
-        showAlert('发布失败', errorMsg);
+        showError(errorMsg);
       }
     } finally {
       setSubmitting(false);
@@ -117,32 +99,32 @@ export default function NewNoteScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      {/* 页面头部 */}
-      <View style={styles.pageHeader}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.replace('/(tabs)/notes' as any)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="close" size={20} color={iOSColors.fg} />
-        </TouchableOpacity>
-        <Text style={styles.pageTitle}>写笔记</Text>
-        <TouchableOpacity
-          style={[styles.publishBtn, submitting && styles.publishBtnDisabled]}
-          onPress={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.publishBtnText}>发布</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+    <TabPageWrapper>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        {/* 操作栏 */}
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => router.replace('/(tabs)/notes' as any)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.publishBtn, submitting && styles.publishBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.publishBtnText}>发布</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* 标题输入 */}
@@ -320,7 +302,8 @@ export default function NewNoteScreen() {
           </View>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </TabPageWrapper>
   );
 }
 
@@ -328,6 +311,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: iOSColors.bgSolid,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  navBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
   },
   pageHeader: {
     flexDirection: 'row',

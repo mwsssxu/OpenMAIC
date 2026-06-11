@@ -36,8 +36,8 @@ export default function HomePage() {
       setTokenBalance(tokenData.balance || 0);
       setPointBalance(pointData.balance || 0);
       setClassroomCount(classroomsData.length || 0);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
+    } catch (err) {
+      console.error('Failed to load stats:', err);
     } finally {
       setStatsLoading(false);
     }

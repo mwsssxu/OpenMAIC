@@ -253,7 +253,7 @@ export default function SharedNotesScreen() {
   };
 
   const handleNotePress = (noteId: string) => {
-    router.push(`/shared-notes/${noteId}` as any);
+    router.push(`/note/${noteId}?source=shared` as any);
   };
 
   return (

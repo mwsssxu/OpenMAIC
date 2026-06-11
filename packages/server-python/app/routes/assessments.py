@@ -370,6 +370,14 @@ async def submit_assessment(
         assessment["course_id"]
     )
 
+    # 触发成长体系事件（自动打卡+测验任务+积分）
+    from app.services.gamification_events import record_learning_activity
+    user_uuid = uuid.UUID(user_id)
+    gamification_result = await record_learning_activity(
+        db, user_uuid, "quiz", value=1, user_id=user_id,
+        context={"assessment_id": request.assessment_id, "score": result["score"]}
+    )
+
     return {
         "assessment_id": str(assessment["id"]),
         "course_id": str(assessment["course_id"]),
@@ -381,6 +389,7 @@ async def submit_assessment(
         "time_spent": time_spent,
         "recommendations": recommendations,
         "earned_points": total_points,
+        "gamification": gamification_result,
         "message": f"测评完成，掌握程度：{result['mastery_level']}"
     }
 

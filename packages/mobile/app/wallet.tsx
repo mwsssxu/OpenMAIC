@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { showError } from '@/lib/utils/error-toast';
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'expo-router';
@@ -6,6 +6,21 @@ import { Ionicons } from '@expo/vector-icons';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
+import { useGoBack } from '@/lib/utils/navigation';
+
+// iOS 风格颜色系统
+const iOSColors = {
+  bgSolid: '#f5f3f2',
+  surface: 'rgba(255, 255, 255, 0.55)',
+  surfaceSolid: '#FFFFFF',
+  fg: '#1a1a1a',
+  muted: '#666666',
+  border: 'rgba(230, 225, 220, 0.6)',
+  accent: '#c45a1a',
+  accentLight: '#fde8e0',
+  secondary: '#1a8a8a',
+  secondaryLight: '#e8f5f5',
+};
 
 interface Transaction {
   id: string;
@@ -17,6 +32,7 @@ interface Transaction {
 
 export default function WalletScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const [tokenBalance, setTokenBalance] = useState(0);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [tokenTransactions, setTokenTransactions] = useState<Transaction[]>([]);
@@ -78,10 +94,9 @@ export default function WalletScreen() {
   return (
     <TabPageWrapper hasHeader>
       <View style={styles.container}>
-      {/* 页面头部：返回按钮+标题 */}
       <View style={styles.pageHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack()} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
         </TouchableOpacity>
         <Text style={styles.pageTitle}>钱包</Text>
         <View style={styles.pageHeaderActions} />
@@ -119,6 +134,11 @@ export default function WalletScreen() {
       </View>
 
       {/* 交易列表 */}
+      {isLoading ? (
+        <View style={styles.empty}>
+          <ActivityIndicator size="small" color={Colors.primary.main} />
+        </View>
+      ) : (
       <FlatList
         data={transactions}
         renderItem={renderTransaction}
@@ -131,6 +151,7 @@ export default function WalletScreen() {
         }
         contentContainerStyle={styles.listContent}
       />
+      )}
       </View>
     </TabPageWrapper>
   );
@@ -143,22 +164,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#d8d8d8',
   },
   backBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.neutral.card,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
   },
-  pageTitle: { fontSize: 18, fontWeight: '600', color: Colors.neutral.textPrimary, letterSpacing: -0.3, flex: 1 },
+  pageTitle: { fontSize: 18, fontWeight: '600', color: iOSColors.fg, letterSpacing: -0.3, flex: 1 },
   pageHeaderActions: { flexDirection: 'row', gap: Spacing.xs },
   balanceHeader: {
     backgroundColor: Colors.neutral.card,

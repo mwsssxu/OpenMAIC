@@ -917,6 +917,12 @@ Before outputting JSON, verify:
 - ✓ [no-latex-in-text] No LaTeX syntax in TextElement content: scan all text `content` fields for `\frac`, `\lim`, `\int`, `\sum`, `\sqrt`, `\alpha`, `^{`, `_{` etc. Any math expression must be a separate LatexElement.
 - ✓ [line-stroke] LineElement `width` is stroke thickness (2-6), NOT line length. Check: no LineElement has `width` > 6. If width equals the distance between start and end, it is WRONG — you confused stroke thickness with line span.
 - ✓ [concise-text] **Slide text is concise and impersonal**: Every text element uses keywords, short phrases, or bullet points — no conversational sentences, no lecture-script-style paragraphs. No teacher name or identity appears on any slide (no "Teacher X's tips/wishes/comments"). If a text reads like spoken language or a personal message, rewrite it as a neutral bullet point.
+- ✓ [visual-shapes] **Every slide MUST contain at least 1 ShapeElement**: Slides with only text elements look bare and unprofessional. Always add decorative background shapes (colored rectangles, accent bars, highlight blocks) to create visual hierarchy. Common patterns:
+  - Title accent bar: a thin vertical rectangle (width 4-6px, height ~title height) to the left of the title, filled with an accent color
+  - Section background: a rounded-corner rectangle behind key points or content sections, filled with a light tint color
+  - Bottom divider: a horizontal rectangle (height 2-3px) separating title area from content area
+  - Highlight marker: a small colored rectangle marking important items
+  Never output a slide where all elements are type "text" only.
 
 **🟡 P1 — Serious (strongly recommended)**:
 

@@ -687,6 +687,7 @@ async def create_all_scenes_for_classroom(
         db=db,
         language=language,
         start_order_index=existing_count,
+        agents=agents,
     )
 
     total_elapsed = time.time() - start_time

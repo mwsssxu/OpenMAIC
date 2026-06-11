@@ -40,6 +40,7 @@ LatexElement: id,type,left,top,width,height,latex,color
 
 规则:文本宽度=(width-20)/font_size,对齐居中,间距30-50px,字号标题32-36px要点18-20px
 禁止:教师个性化内容,口语句子,估算高度(如70,80)
+必须:每个slide至少1个ShapeElement装饰(标题左侧色条、内容区背景色块、分隔线等),禁止只输出纯text
 
 只输出JSON:{"type":"slide","canvas":{"width":1000,"height":562.5,"background":{"color":"#ffffff"},"elements":[...]}}"""
 

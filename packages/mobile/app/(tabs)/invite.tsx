@@ -1,21 +1,38 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, RefreshControl, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, RefreshControl, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, showSuccess } from '@/lib/utils/error-toast';
 import { useFeedback } from '@/lib/hooks/use-feedback';
+import { useGoBack } from '@/lib/utils/navigation';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
+
+// iOS 风格颜色系统
+const iOSColors = {
+  bgSolid: '#f5f3f2',
+  surface: 'rgba(255, 255, 255, 0.55)',
+  surfaceSolid: '#FFFFFF',
+  fg: '#1a1a1a',
+  muted: '#666666',
+  border: 'rgba(230, 225, 220, 0.6)',
+  accent: '#c45a1a',
+  accentLight: '#fde8e0',
+  secondary: '#1a8a8a',
+  secondaryLight: '#e8f5f5',
+};
 
 export default function InviteScreen() {
   const { onSuccess, onError } = useFeedback();
   const router = useRouter();
+  const goBack = useGoBack();
   const [inviteCode, setInviteCode] = useState('');
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [inputCode, setInputCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -55,26 +72,32 @@ export default function InviteScreen() {
     setShowCodeModal(true);
   };
 
+  const canSubmit = inputCode.trim().length > 0 && !submitting;
+
   const submitCode = async () => {
-    if (!inputCode.trim()) return;
+    if (!canSubmit) return;
+    setSubmitting(true);
     setShowCodeModal(false);
     try {
       await apiClient.applyInviteCode(inputCode.trim());
-      showError('已获得邀请奖励！');
+      showSuccess('已获得邀请奖励！');
       loadData();
     } catch (error: any) {
       showError(error.response?.data?.detail || '邀请码无效');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.navBar}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => router.replace('/(tabs)' as any)} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={20} color={Colors.primary.main} />
+    <TabPageWrapper hasHeader>
+      <View style={styles.container}>
+      <View style={styles.pageHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack()} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>邀请奖励</Text>
-        <View style={styles.navRight} />
+        <Text style={styles.pageTitle}>邀请奖励</Text>
+        <View style={styles.pageHeaderActions} />
       </View>
 
       <ScrollView
@@ -84,7 +107,7 @@ export default function InviteScreen() {
         {/* 邀请码卡片 */}
         <View style={styles.codeCard}>
           <Text style={styles.cardTitle}>我的邀请码</Text>
-          <Text style={styles.inviteCode}>{inviteCode || '加载中...'}</Text>
+          <Text style={styles.inviteCode}>{isLoading ? '加载中...' : inviteCode || '暂无邀请码'}</Text>
           <TouchableOpacity style={styles.shareButton} onPress={shareInvite}>
             <Text style={styles.shareButtonText}>分享邀请码</Text>
           </TouchableOpacity>
@@ -146,7 +169,7 @@ export default function InviteScreen() {
 
       {/* 输入邀请码弹框 */}
       <Modal transparent visible={showCodeModal} animationType="fade" onRequestClose={() => setShowCodeModal(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>输入邀请码</Text>
             <Text style={styles.modalDesc}>输入朋友的邀请码获得奖励</Text>
@@ -161,39 +184,45 @@ export default function InviteScreen() {
               <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setShowCodeModal(false)} activeOpacity={0.6}>
                 <Text style={styles.modalBtnCancelText}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalBtnConfirm} onPress={submitCode} activeOpacity={0.6}>
-                <Text style={styles.modalBtnConfirmText}>确定</Text>
+              <TouchableOpacity 
+                style={[styles.modalBtnConfirm, !canSubmit && styles.modalBtnDisabled]} 
+                onPress={submitCode} 
+                activeOpacity={canSubmit ? 0.6 : 1}
+                disabled={!canSubmit}
+              >
+                <Text style={[styles.modalBtnConfirmText, !canSubmit && styles.modalBtnDisabledText]}>确定</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+      </View>
+    </TabPageWrapper>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.neutral.background },
-  navBar: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.xs,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
-  navBtn: {
+  backBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.neutral.card,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.neutral.border,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
   },
-  navTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary },
-  navRight: { width: 44 },
+  pageTitle: { fontSize: 18, fontWeight: '600', color: iOSColors.fg, letterSpacing: -0.3, flex: 1 },
+  pageHeaderActions: { flexDirection: 'row', gap: Spacing.xs },
   scrollView: { flex: 1, paddingHorizontal: Spacing.md },
   codeCard: {
     backgroundColor: Colors.neutral.card,
@@ -255,13 +284,15 @@ const styles = StyleSheet.create({
   },
   applyButtonText: { fontSize: 16, fontWeight: '600', color: Colors.neutral.white },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
-  modalCard: { width: 320, backgroundColor: '#fff', borderRadius: 16, padding: 24 },
-  modalTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a', textAlign: 'center', marginBottom: 8 },
-  modalDesc: { fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 16 },
-  modalInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 15, marginBottom: 20 },
+  modalCard: { width: '85%', maxWidth: 320, backgroundColor: Colors.neutral.card, borderRadius: 16, padding: 24 },
+  modalTitle: { fontSize: 17, fontWeight: '600', color: Colors.neutral.textPrimary, textAlign: 'center', marginBottom: 8 },
+  modalDesc: { fontSize: 14, color: Colors.neutral.textSecondary, textAlign: 'center', marginBottom: 16 },
+  modalInput: { borderWidth: 1, borderColor: Colors.neutral.border, borderRadius: 10, padding: 12, fontSize: 15, color: Colors.neutral.textPrimary, marginBottom: 20 },
   modalBtnRow: { flexDirection: 'row', gap: 10 },
-  modalBtnCancel: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: '#f5f5f5', alignItems: 'center' },
-  modalBtnCancelText: { fontSize: 15, color: '#666', fontWeight: '500' },
-  modalBtnConfirm: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: '#c45a1a', alignItems: 'center' },
-  modalBtnConfirmText: { fontSize: 15, color: '#fff', fontWeight: '600' },
+  modalBtnCancel: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.neutral.background, alignItems: 'center' },
+  modalBtnCancelText: { fontSize: 15, color: Colors.neutral.textSecondary, fontWeight: '500' },
+  modalBtnConfirm: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.primary.main, alignItems: 'center' },
+  modalBtnConfirmText: { fontSize: 15, color: Colors.neutral.white, fontWeight: '600' },
+  modalBtnDisabled: { backgroundColor: Colors.neutral.border },
+  modalBtnDisabledText: { color: Colors.neutral.textMuted },
 });

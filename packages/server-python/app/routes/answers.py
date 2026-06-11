@@ -31,7 +31,7 @@ def sanitize_content(content: str) -> str:
 
 # ==================== 回答 API ====================
 
-@router.post("/")
+@router.post("")
 async def create_answer(
     body: dict,
     current_user_id: str = Depends(get_current_user_id),
@@ -80,11 +80,19 @@ async def create_answer(
         q_uuid
     )
 
+    # 触发成长体系事件（自动打卡+回答问题任务+积分）
+    from app.services.gamification_events import record_learning_activity
+    gamification_result = await record_learning_activity(
+        db, user_uuid, "answer", value=1, user_id=current_user_id,
+        context={"answer_id": str(answer_id), "question_id": question_id}
+    )
+
     return {
         "id": str(answer_id),
         "question_id": str(q_uuid),
         "content": content,
         "message": "回答已提交",
+        "gamification": gamification_result,
     }
 
 

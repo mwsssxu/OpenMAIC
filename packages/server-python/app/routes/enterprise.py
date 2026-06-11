@@ -27,7 +27,7 @@ class EnterpriseCreate(BaseModel):
     name: str
     industry: Optional[str] = None
     size: Optional[str] = None  # small, medium, large
-    contact_email: EmailStr
+    contact_email: Optional[EmailStr] = None
     contact_phone: Optional[str] = None
     plan_type: str = "basic"  # basic, pro, enterprise
 
@@ -47,7 +47,7 @@ class EnterpriseCourseAssign(BaseModel):
 
 # ============ Enterprise Management ============
 
-@router.post("/")
+@router.post("")
 async def create_enterprise(
     request: EnterpriseCreate,
     user_id: str = Depends(get_current_user_id),
@@ -66,6 +66,17 @@ async def create_enterprise(
 
     if existing:
         raise HTTPException(status_code=400, detail="已拥有企业账户")
+
+    # 如果未传 contact_email，从用户信息获取
+    contact_email = request.contact_email
+    if not contact_email:
+        user_email = await db.fetchval(
+            "SELECT email FROM users WHERE id = $1",
+            user_uuid
+        )
+        contact_email = user_email
+    if not contact_email:
+        raise HTTPException(status_code=400, detail="需要提供联系邮箱")
 
     # 根据套餐设置限额
     limits = {
@@ -86,7 +97,7 @@ async def create_enterprise(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', $12)
         """,
         enterprise_id, request.name, user_uuid, request.industry, request.size,
-        request.contact_email, request.contact_phone, request.plan_type,
+        contact_email, request.contact_phone, request.plan_type,
         plan_limits["members"], plan_limits["courses"], plan_limits["storage"],
         utcnow()
     )

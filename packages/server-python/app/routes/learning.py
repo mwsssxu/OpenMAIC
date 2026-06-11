@@ -226,76 +226,14 @@ async def complete_learning(
             uuid.uuid4(), user_uuid, course_uuid, total_minutes, scenes_completed, total_scenes, now
         )
 
-    # 自动打卡
-    today = now.date()
-    existing_checkin = await db.fetchrow(
-        """
-        SELECT id FROM daily_checkins
-        WHERE user_id = $1 AND checkin_date = $2
-        """,
-        user_uuid, today
+    # 触发成长体系事件（自动打卡+任务进度+搭子默契+积分）
+    from app.services.gamification_events import record_learning_activity
+    gamification_result = await record_learning_activity(
+        db, user_uuid, "course_complete",
+        value=total_minutes, user_id=current_user_id,
+        context={"course_id": course_id}
     )
-
-    streak_bonus = 0
-    if not existing_checkin:
-        # 计算连续天数
-        yesterday = today - timedelta(days=1)
-        yesterday_checkin = await db.fetchrow(
-            """
-            SELECT streak_count FROM daily_checkins
-            WHERE user_id = $1 AND checkin_date = $2
-            """,
-            user_uuid, yesterday
-        )
-
-        new_streak = (yesterday_checkin["streak_count"] or 0) + 1 if yesterday_checkin else 1
-
-        # 创建打卡记录
-        await db.execute(
-            """
-            INSERT INTO daily_checkins (id, user_id, checkin_date, streak_count, created_at)
-            VALUES ($1, $2, $3, $4, $5)
-            """,
-            uuid.uuid4(), user_uuid, today, new_streak, now
-        )
-
-        # 更新用户连续天数
-        max_streak = await db.fetchval(
-            "SELECT MAX(streak_count) FROM daily_checkins WHERE user_id = $1",
-            user_uuid
-        )
-        await db.execute(
-            "UPDATE users SET current_streak = $1, max_streak = $2 WHERE id = $3",
-            new_streak, max_streak, user_uuid
-        )
-
-        # 打卡奖励积分
-        streak_bonus = 5 if new_streak < 7 else (10 if new_streak < 30 else 20)
-
-        # 添加积分
-        if streak_bonus > 0:
-            point_account = await db.fetchrow(
-                """
-                SELECT id, balance FROM point_accounts WHERE user_id = $1
-                """,
-                user_uuid
-            )
-            if point_account:
-                new_balance = point_account["balance"] + streak_bonus
-                await db.execute(
-                    """
-                    UPDATE point_accounts SET balance = $2, updated_at = $3 WHERE id = $1
-                    """,
-                    point_account["id"], new_balance, now
-                )
-                await db.execute(
-                    """
-                    INSERT INTO point_transactions
-                    (id, user_id, source, amount, balance_after, created_at)
-                    VALUES ($1, $2, 'daily', $3, $4, $5)
-                    """,
-                    uuid.uuid4(), user_uuid, streak_bonus, new_balance, now
-                )
+    streak_bonus = gamification_result.get("checkin", {}).get("reward_points", 0)
 
     # 返回结果
     return {
@@ -306,6 +244,7 @@ async def complete_learning(
         "total_scenes": total_scenes,
         "completion_rate": round(scenes_completed / total_scenes * 100, 1) if total_scenes > 0 else 0,
         "streak_bonus": streak_bonus,
+        "gamification": gamification_result,
         "quiz_score": quiz_score,
     }
 

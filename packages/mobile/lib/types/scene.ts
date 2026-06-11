@@ -252,8 +252,16 @@ export interface QuizContent {
 
 export interface InteractiveContent {
   type: 'interactive';
-  url: string;
+  /** 外部 URL（远程互动页面） */
+  url?: string;
+  /** 内嵌 HTML 内容（interactive-html/scientific-model 模板生成的完整 HTML 文档） */
   html?: string;
+  /** Widget 类型：simulation / game / diagram / code / visualization3d / html / scientific-model */
+  widgetType?: string;
+  /** 场景描述（fallback 时使用） */
+  description?: string;
+  /** 关键讨论点（fallback 时使用） */
+  key_points?: string[];
 }
 
 export interface PblContent {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { showError, showSuccess } from '@/lib/error-toast';
 
 interface Question {
   id: string;
@@ -47,8 +48,8 @@ export default function QuestionDetailPage() {
       ]);
       setQuestion(qData);
       setAnswers(aData.items || []);
-    } catch (error) {
-      console.error('Load error:', error);
+    } catch (err) {
+      console.error('Load error:', err);
     } finally {
       setLoading(false);
     }
@@ -63,9 +64,10 @@ export default function QuestionDetailPage() {
         content: answerContent,
       });
       setAnswerContent('');
+      showSuccess('回答已提交');
       loadData();
-    } catch (error) {
-      console.error('Submit error:', error);
+    } catch (err) {
+      showError(err);
     } finally {
       setSubmitting(false);
     }
@@ -75,17 +77,18 @@ export default function QuestionDetailPage() {
     try {
       await apiClient.voteAnswer(answerId, vote);
       loadData();
-    } catch (error) {
-      console.error('Vote error:', error);
+    } catch (err) {
+      showError(err);
     }
   }
 
   async function acceptAnswer(answerId: string) {
     try {
       await apiClient.acceptAnswer(answerId);
+      showSuccess('答案已采纳');
       loadData();
-    } catch (error) {
-      console.error('Accept error:', error);
+    } catch (err) {
+      showError(err);
     }
   }
 

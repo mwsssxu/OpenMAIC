@@ -77,6 +77,13 @@ async def share_classroom(
         # 授予分享成就
         await check_share_achievement(db, user_uuid)
 
+        # 触发成长体系事件（自动打卡+分享笔记任务+积分）
+        from app.services.gamification_events import record_learning_activity
+        await record_learning_activity(
+            db, user_uuid, "share", value=1, user_id=current_user_id,
+            context={"share_code": share_code, "classroom_id": classroom_id}
+        )
+
     return {
         "share_code": share_code,
         "share_url": f"/share/{share_code}",

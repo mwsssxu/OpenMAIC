@@ -22,7 +22,7 @@ MIN_AUTHOR_REWARD = 1  # 作者最低收益
 
 # ==================== 笔记发布 ====================
 
-@router.post("/")
+@router.post("")
 async def publish_note(
     body: dict,
     current_user_id: str = Depends(get_current_user_id),
@@ -68,7 +68,7 @@ async def publish_note(
     }
 
 
-@router.get("/")
+@router.get("")
 async def get_notes_list(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),

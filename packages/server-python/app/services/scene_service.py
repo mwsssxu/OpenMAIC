@@ -5,6 +5,7 @@
 import asyncio
 import uuid
 import json
+import hashlib
 import logging
 import time
 import re
@@ -13,7 +14,7 @@ from app.core.config import settings
 from app.core.time_utils import utcnow
 from app.core.redis import get_redis
 from app.services.tts_service import generate_tts, encode_audio_base64
-from app.services.generation.scene_generator import generate_scene_content, fix_element_format, generate_scene_actions
+from app.services.generation.scene_generator import generate_scene_content, fix_element_format, generate_scene_actions, _ensure_visual_shapes
 from app.services.generation.outline_generator import SceneOutline
 
 logger = logging.getLogger(__name__)
@@ -122,8 +123,8 @@ def build_slide_content(
     canvas_height: int = 562
 ) -> Dict[str, Any]:
     """
-    构建幻灯片内容结构
-
+    构建幻灯片内容结构（fallback用，包含基础装饰shape）
+    
     Args:
         scene_type: 场景类型
         scene_title: 场景标题
@@ -131,10 +132,15 @@ def build_slide_content(
         key_points: 要点列表
         canvas_width: 画布宽度
         canvas_height: 画布高度
-
+    
     Returns:
         内容字典
     """
+    # 根据标题hash选色，保持同一课程内一致
+    accent_colors = ["#4472C4", "#ED7D31", "#70AD47", "#FFC000", "#5B9BD5"]
+    color_idx = int(hashlib.md5(scene_title.encode()).hexdigest()[:8], 16) % len(accent_colors)
+    accent_color = accent_colors[color_idx]
+    
     content = {
         "type": scene_type,
         "canvas": {
@@ -142,19 +148,51 @@ def build_slide_content(
             "height": canvas_height,
             "background": "#ffffff",
             "elements": [
+                # 装饰色条（标题左侧）
+                {
+                    "id": "accent_bar",
+                    "type": "shape",
+                    "left": 30,
+                    "top": 30,
+                    "width": 5,
+                    "height": 60,
+                    "path": "M 0 0 L 1 0 L 1 1 L 0 1 Z",
+                    "viewBox": [1, 1],
+                    "fill": accent_color,
+                    "fixedRatio": False,
+                },
+                # 标题下方分隔线
+                {
+                    "id": "divider",
+                    "type": "shape",
+                    "left": 30,
+                    "top": 102,
+                    "width": canvas_width - 60,
+                    "height": 2,
+                    "path": "M 0 0 L 1 0 L 1 1 L 0 1 Z",
+                    "viewBox": [1, 1],
+                    "fill": accent_color,
+                    "fixedRatio": False,
+                },
                 {
                     "id": "title",
                     "type": "text",
-                    "content": scene_title,
-                    "position": {"left": 50, "top": 30, "width": 900, "height": 60},
-                    "style": {"fontSize": 36, "fontWeight": "bold", "color": "#333333"}
+                    "content": f'<p style="font-size: 36px; color: #333333;">{scene_title}</p>',
+                    "left": 50,
+                    "top": 30,
+                    "width": 900,
+                    "height": 60,
+                    "defaultColor": "#333333",
                 },
                 {
                     "id": "desc",
                     "type": "text",
-                    "content": scene_desc,
-                    "position": {"left": 50, "top": 100, "width": 900, "height": 80},
-                    "style": {"fontSize": 18, "color": "#666666"}
+                    "content": f'<p style="font-size: 18px; color: #666666;">{scene_desc}</p>',
+                    "left": 50,
+                    "top": 100,
+                    "width": 900,
+                    "height": 80,
+                    "defaultColor": "#666666",
                 }
             ]
         }
@@ -165,9 +203,12 @@ def build_slide_content(
         content["canvas"]["elements"].append({
             "id": f"point_{j}",
             "type": "text",
-            "content": f"• {point}",
-            "position": {"left": 50, "top": 200 + j * 50, "width": 900, "height": 40},
-            "style": {"fontSize": 16, "color": "#444444"}
+            "content": f'<p style="font-size: 16px; color: #444444;">• {point}</p>',
+            "left": 50,
+            "top": 200 + j * 50,
+            "width": 900,
+            "height": 40,
+            "defaultColor": "#444444",
         })
 
     return content
@@ -314,6 +355,8 @@ async def create_single_scene(
         description=scene_desc,
         key_points=key_points,
         order=order_index,
+        widget_type=outline.get("widgetType") or outline.get("widget_type"),
+        widget_outline=outline.get("widgetOutline") or outline.get("widget_outline"),
     )
 
     logger.info(f"[Scene] #{order_index}: 开始生成 - {scene_title}, agents={len(agents) if agents else 0}")
@@ -324,6 +367,7 @@ async def create_single_scene(
         generate_scene_content(
             outline_obj,
             language=language,
+            language_directive=getattr(outline_obj, 'language_directive', None),
             model=settings.DEFAULT_MODEL,
             agents=agents,
         )
@@ -371,11 +415,11 @@ async def create_single_scene(
     except asyncio.TimeoutError as e:
         logger.warning(f"[Scene] #{order_index}: 内容生成超时，使用fallback")
         fallback_content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
-        content = fix_element_format(fallback_content)
+        content = _ensure_visual_shapes(fix_element_format(fallback_content))
     except Exception as e:
         logger.warning(f"[Scene] #{order_index}: 内容生成失败 - {type(e).__name__}: {e}")
         fallback_content = build_slide_content(scene_type, scene_title, scene_desc, key_points)
-        content = fix_element_format(fallback_content)
+        content = _ensure_visual_shapes(fix_element_format(fallback_content))
 
     # 获取 fallback actions 结果（此时应该已完成或接近完成）
     fallback_actions = None
@@ -474,7 +518,27 @@ async def create_fallback_scene(
     scene_type = validate_scene_type(outline.get("type", "slide"))
     scene_title = outline.get("title", f"场景 {order_index}")
 
-    content_json = json.dumps({"type": "slide", "canvas": {"elements": []}})
+    # 根据场景类型生成适当的 fallback 内容
+    if scene_type == "interactive":
+        # 保留 interactive 类型，提供最小可用内容（含 widgetType 标记）
+        widget_type = outline.get("widgetType") or outline.get("widget_type") or "simulation"
+        content = {
+            "type": "interactive",
+            "widgetType": widget_type,
+            "html": f"<div style='padding:20px;text-align:center'><h3>{outline.get('title', '互动场景')}</h3><p>互动内容正在准备中</p></div>",
+            "description": outline.get("description", ""),
+            "key_points": outline.get("key_points", outline.get("keyPoints", [])),
+        }
+        content_json = json.dumps(content)
+    elif scene_type == "quiz":
+        content = {"type": "quiz", "questions": []}
+        content_json = json.dumps(content)
+    elif scene_type == "pbl":
+        content = {"type": "pbl", "description": outline.get("description", ""), "steps": []}
+        content_json = json.dumps(content)
+    else:
+        content = {"type": "slide", "canvas": {"elements": []}}
+        content_json = json.dumps(content)
     actions_json = json.dumps([])
 
     await db.execute(
@@ -498,7 +562,7 @@ async def create_fallback_scene(
         "type": scene_type,
         "title": scene_title,
         "order_index": order_index,
-        "content": {"type": "slide", "canvas": {"elements": []}},
+        "content": content,
         "actions": [],
     }
 
@@ -594,6 +658,7 @@ async def create_all_scenes(
     language: str = "zh-CN",
     max_concurrent: int = 4,
     start_order_index: int = 0,
+    agents: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     批量创建所有场景（并行执行，带并发控制）
@@ -606,6 +671,7 @@ async def create_all_scenes(
         language: 语言设置
         max_concurrent: 最大并发数（默认3，避免API限流）
         start_order_index: 已有场景数（追加场景时 order_index 从此值之后开始）
+        agents: 智能体信息列表（用于构建teacherContext和actions生成）
 
     Returns:
         场景列表
@@ -631,6 +697,7 @@ async def create_all_scenes(
                     order_index=start_order_index + index + 1,
                     db=db,
                     language=language,
+                    agents=agents,
                 )
                 logger.info(f"[Scene] #{index + 1}/{total} 创建成功")
                 # 推送场景创建进度到 Redis

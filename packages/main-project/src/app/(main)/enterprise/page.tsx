@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { showError, showSuccess } from '@/lib/error-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, BookOpen, BarChart3, Settings, UserPlus, Mail, Clock, Award, Building2 } from 'lucide-react';
 
@@ -92,15 +93,17 @@ export default function EnterprisePage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/enterprise/my`, {
         headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.json());
+      });
+      if (!res.ok) return setLoading(false);
+      const data = await res.json();
 
-      setEnterprise(res);
+      setEnterprise(data);
       setLoading(false);
 
-      if (res.has_enterprise) {
-        loadMembers(res.enterprise_id);
-        loadCourses(res.enterprise_id);
-        loadStats(res.enterprise_id);
+      if (data.has_enterprise) {
+        loadMembers(data.enterprise_id);
+        loadCourses(data.enterprise_id);
+        loadStats(data.enterprise_id);
       }
     } catch (err) {
       setLoading(false);
@@ -111,8 +114,10 @@ export default function EnterprisePage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/enterprise/${enterpriseId}/members`, {
         headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.json());
-      setMembers(res.members || []);
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMembers(data.members || []);
     } catch (err) {}
   }
 
@@ -120,8 +125,10 @@ export default function EnterprisePage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/enterprise/${enterpriseId}/courses`, {
         headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.json());
-      setCourses(res.courses || []);
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setCourses(data.courses || []);
     } catch (err) {}
   }
 
@@ -129,8 +136,10 @@ export default function EnterprisePage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/enterprise/${enterpriseId}/stats`, {
         headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.json());
-      setStats(res);
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setStats(data);
     } catch (err) {}
   }
 
@@ -146,21 +155,26 @@ export default function EnterprisePage() {
           ...createForm,
           contact_email: createForm.contact_email || user?.email
         })
-      }).then(r => r.json());
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw { response: { status: res.status, data: errData } };
+      }
+      const data = await res.json();
 
       setEnterprise({
         has_enterprise: true,
-        enterprise_id: res.enterprise_id,
-        name: res.name,
-        plan_type: res.plan_type,
+        enterprise_id: data.enterprise_id,
+        name: data.name,
+        plan_type: data.plan_type,
         role: 'admin'
       });
       setShowCreateForm(false);
-      loadMembers(res.enterprise_id);
-      loadCourses(res.enterprise_id);
-      loadStats(res.enterprise_id);
+      loadMembers(data.enterprise_id);
+      loadCourses(data.enterprise_id);
+      loadStats(data.enterprise_id);
     } catch (err: any) {
-      alert(err.message || '创建失败');
+      showError(err);
     }
   }
 
@@ -180,14 +194,19 @@ export default function EnterprisePage() {
           emails,
           role: inviteRole
         })
-      }).then(r => r.json());
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw { response: { status: res.status, data: errData } };
+      }
+      const data = await res.json();
 
-      alert(`成功邀请 ${res.total_invited} 人`);
+      showSuccess(`成功邀请 ${data.total_invited} 人`);
       setShowInviteForm(false);
       setInviteEmails('');
       loadMembers(enterprise.enterprise_id);
     } catch (err: any) {
-      alert(err.message || '邀请失败');
+      showError(err);
     }
   }
 

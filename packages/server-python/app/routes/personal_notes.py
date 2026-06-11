@@ -65,10 +65,11 @@ async def get_personal_notes(
     limit: int = 20,
     filter: str = "all",
     starred_only: bool = False,
+    include_shared: bool = False,
     current_user_id: str = Depends(get_current_user_id),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """获取用户的个人笔记列表（按时间分组）"""
+    """获取用户的笔记列表（按时间分组），include_shared=True 时包含共享笔记"""
     user_uuid = uuid.UUID(current_user_id)
     offset = (page - 1) * limit
 
@@ -77,7 +78,9 @@ async def get_personal_notes(
     week_start = today - timedelta(days=today.weekday())  # 本周一
 
     # 构建查询条件
-    conditions = ["user_id = $1", "is_personal = TRUE"]
+    conditions = ["user_id = $1"]
+    if not include_shared:
+        conditions.append("is_personal = TRUE")
     params = [user_uuid]
     param_idx = 2
 
@@ -235,7 +238,7 @@ async def get_personal_note_detail(
     }
 
 
-@router.post("/")
+@router.post("")
 async def create_personal_note(
     body: dict,
     current_user_id: str = Depends(get_current_user_id),

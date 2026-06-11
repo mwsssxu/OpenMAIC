@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
+import { showError, showSuccess } from '@/lib/error-toast';
 
 interface Classroom {
   id: string;
@@ -36,8 +37,8 @@ export default function ClassroomsPage() {
     try {
       const data = await apiClient.getClassrooms();
       setClassrooms(data);
-    } catch (error) {
-      console.error('Load classrooms error:', error);
+    } catch (err) {
+      console.error('Load classrooms error:', err);
     } finally {
       setLoading(false);
     }
@@ -48,9 +49,10 @@ export default function ClassroomsPage() {
 
     try {
       await apiClient.deleteClassroom(id);
+      showSuccess('课程已删除');
       setClassrooms(classrooms.filter(c => c.id !== id));
-    } catch (error) {
-      console.error('Delete error:', error);
+    } catch (err) {
+      showError(err);
     }
   }
 

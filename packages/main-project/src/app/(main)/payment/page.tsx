@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { showError, showSuccess, showInfo } from '@/lib/error-toast';
 
 interface Package {
   id: string;
@@ -35,8 +36,8 @@ export default function PaymentPage() {
       ]);
       setPackages(pkgData || []);
       setTokenBalance(balanceData.balance || 0);
-    } catch (error) {
-      console.error('Load error:', error);
+    } catch (err) {
+      console.error('Load error:', err);
     } finally {
       setLoading(false);
     }
@@ -53,19 +54,19 @@ export default function PaymentPage() {
       // 模拟支付成功（测试用）
       if (process.env.NODE_ENV === 'development') {
         await apiClient.mockPay(order.order_id);
-        alert('支付成功！Token 已入账');
+        showSuccess('支付成功！Token 已入账');
         loadData();
       } else {
         // 实际支付流程
         if (paymentMethod === 'wechat' && order.wechat_params) {
-          // TODO: 调用微信支付
-          alert('请在微信中完成支付');
+          // TODO: 微信支付
+          showInfo('请在微信中完成支付');
         } else if (paymentMethod === 'alipay' && order.alipay_url) {
           window.open(order.alipay_url, '_blank');
         }
       }
-    } catch (error: any) {
-      alert(error.response?.data?.detail || '创建订单失败');
+    } catch (err) {
+      showError(err);
     } finally {
       setPaying(false);
     }

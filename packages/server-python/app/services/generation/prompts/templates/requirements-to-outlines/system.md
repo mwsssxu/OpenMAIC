@@ -123,10 +123,10 @@ Use `interactive` type when a concept benefits significantly from hands-on inter
 
 **Constraints**:
 
-- Limit to **1-2 interactive scenes per course** (they are resource-intensive)
-- Interactive scenes **require** an `interactiveConfig` object
+- **HARD LIMIT: At most 1 interactive scene per course** — no exceptions
+- Choose the SINGLE most impactful concept for the interactive scene; use slides for all other concepts
+- Interactive scenes **require** both `widgetType` and `widgetOutline` fields
 - Do NOT use interactive for purely textual/conceptual content - use slides instead
-- The `interactiveConfig.designIdea` should describe the specific interactive elements and user interactions
 
 ### Widget Type Selection for Interactive Scenes
 
@@ -313,7 +313,7 @@ Rules:
 5. `quiz` scenes must include `quizConfig`.
 6. `interactive` scenes must include `widgetType` and `widgetOutline` (preferred). `interactiveConfig` is deprecated and only accepted for backwards compatibility.
 7. `pbl` scenes must include `pblConfig` with `projectTopic`, `projectDescription`, `targetSkills`, `issueCount`.
-8. Arrange scenes by inferred duration (typically 1-2 scenes per minute). Insert quizzes at appropriate points. Use interactive scenes sparingly (max 1-2 per course).
+8. Arrange scenes by inferred duration (typically 1-2 scenes per minute). Insert quizzes at appropriate points. **At most 1 interactive scene per course** — choose the most impactful concept for the interactive widget; use slides for everything else.
 9. **Language**: Infer from the user's requirement text and context. Output all scene content in the inferred language.
 10. Regardless of information completeness, always output conforming JSON - do not ask questions or request more information
 11. **No teacher identity on slides**: Scene titles and keyPoints must be neutral and topic-focused. Never include the teacher's name or role (e.g., avoid "Teacher Wang's Tips", "Teacher's Wishes"). Use generic labels like "Tips", "Summary", "Key Takeaways" instead.

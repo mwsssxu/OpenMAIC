@@ -42,7 +42,7 @@ def sanitize_title(title: str) -> str:
 
 # ==================== 问题 API ====================
 
-@router.post("/")
+@router.post("")
 async def create_question(
     body: dict,
     current_user_id: str = Depends(get_current_user_id),
@@ -117,7 +117,7 @@ async def create_question(
     }
 
 
-@router.get("/")
+@router.get("")
 async def get_questions(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),

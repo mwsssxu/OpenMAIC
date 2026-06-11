@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { showError, confirmAction } from '@/lib/utils/error-toast';
+import { showError, showSuccess, confirmAction } from '@/lib/utils/error-toast';
 import {
   View,
   Text,
@@ -10,13 +10,16 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
-import { goBack } from '@/lib/utils/navigation';
+import { useGoBack } from '@/lib/utils/navigation';
+import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { useAuth } from '@/lib/auth/auth-context';
 
 // iOS 风格颜色系统
 const iOSColors = {
@@ -64,10 +67,11 @@ interface Answer {
 }
 
 export default function QuestionDetailScreen() {
-  const router = useRouter();
   const params = useLocalSearchParams();
   const questionId = params.id as string;
+  const goBack = useGoBack();
   const haptics = useHaptics();
+  const { user } = useAuth();
 
   const [question, setQuestion] = useState<Question | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
@@ -76,6 +80,7 @@ export default function QuestionDetailScreen() {
 
   const [answerContent, setAnswerContent] = useState('');
   const [submittingAnswer, setSubmittingAnswer] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [sortBy, setSortBy] = useState('recent');
 
@@ -102,13 +107,21 @@ export default function QuestionDetailScreen() {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadQuestionDetail(), loadAnswers()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const loadAnswers = async () => {
     try {
-      const data = await apiClient.getAnswers(questionId);
+      const data = await apiClient.getAnswers(questionId, sortBy);
       setAnswers(data.items || []);
     } catch (err: any) {
       showError(err);
-      console.error('Load answers error:', err);
     }
   };
 
@@ -123,11 +136,11 @@ export default function QuestionDetailScreen() {
       await apiClient.createAnswer(questionId, answerContent.trim());
       setAnswerContent('');
       haptics.medium();
-      showError('回答已提交', '成功');
+      showSuccess('回答已提交');
       loadAnswers();
       loadQuestionDetail(); // 更新回答数
     } catch (err: any) {
-      showError(err.message || '提交失败');
+      showError(err);
     } finally {
       setSubmittingAnswer(false);
     }
@@ -139,7 +152,7 @@ export default function QuestionDetailScreen() {
       await apiClient.voteAnswer(answerId, vote);
       loadAnswers();
     } catch (err: any) {
-      showError(err.message || '投票失败');
+      showError(err);
     }
   };
 
@@ -151,11 +164,11 @@ export default function QuestionDetailScreen() {
         try {
           const result = await apiClient.acceptAnswer(answerId);
           haptics.medium();
-          showError(`答案已采纳！获得 ${result.author_reward} 积分`, '成功');
+          showSuccess(`答案已采纳！获得 ${result.author_reward} 积分`);
           loadAnswers();
           loadQuestionDetail();
         } catch (err: any) {
-          showError(err.message || '采纳失败');
+          showError(err);
         }
       },
     );
@@ -218,6 +231,7 @@ export default function QuestionDetailScreen() {
   const isClosed = question.bounty_status === 'closed';
 
   return (
+    <TabPageWrapper hasHeader>
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
@@ -226,7 +240,7 @@ export default function QuestionDetailScreen() {
       <View style={styles.pageHeader}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => goBack(router)}
+          onPress={() => goBack()}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
@@ -239,7 +253,7 @@ export default function QuestionDetailScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {/* 问题卡片 */}
         <View style={styles.questionCard}>
           {/* 标题和悬赏 */}
@@ -378,7 +392,7 @@ export default function QuestionDetailScreen() {
                 </View>
 
                 {/* 采纳按钮 */}
-                {!answer.is_accepted && !isClosed && (
+                {!answer.is_accepted && !isClosed && question?.user_id === user?.id && (
                   <TouchableOpacity
                     style={styles.acceptBtn}
                     onPress={() => handleAcceptAnswer(answer.id)}
@@ -402,6 +416,7 @@ export default function QuestionDetailScreen() {
               placeholderTextColor={iOSColors.muted}
               multiline
               numberOfLines={4}
+              maxLength={2000}
               value={answerContent}
               onChangeText={setAnswerContent}
               editable={!submittingAnswer}
@@ -424,6 +439,7 @@ export default function QuestionDetailScreen() {
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+    </TabPageWrapper>
   );
 }
 

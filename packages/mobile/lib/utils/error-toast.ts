@@ -1,8 +1,9 @@
 /**
  * 全局弹框工具 — 页面居中 Modal 展示
  *
- * showError('操作失败') — 提示弹框
- * confirmAction('标题', '内容', onConfirm) — 确认弹框（居中展示）
+ * showError('操作失败')   — 错误弹框
+ * showSuccess('操作成功')  — 成功弹框（自动关闭）
+ * confirmAction(...)       — 确认弹框
  *
  * 原理：队列管理 + 回调订阅，GlobalDialog 组件在 _layout.tsx 中渲染一次。
  */
@@ -38,18 +39,17 @@ export function getErrorMessage(err: unknown, fallback = '操作失败，请重�
 
 // ============ 全局弹框队列 ============
 
-interface DialogItem {
+export interface DialogItem {
   id: number;
-  type: 'alert' | 'confirm';
+  type: 'alert' | 'confirm' | 'success';
   title: string;
   message: string;
   confirmText: string;
   cancelText: string;
   destructive: boolean;
+  autoClose?: number; // ms 后自动关闭
   resolve: (value: boolean) => void;
 }
-
-export type { DialogItem };
 
 let dialogQueue: DialogItem[] = [];
 let dialogId = 0;
@@ -59,12 +59,19 @@ function notifyUpdate() {
   updateCallback?.(dialogQueue);
 }
 
-function pushDialog(item: Omit<DialogItem, 'id'>): Promise<boolean> {
-  const id = ++dialogId;
-  return new Promise((resolve) => {
+function pushDialog(item: Omit<DialogItem, 'id' | 'resolve'>): Promise<boolean> {
+  return new Promise(resolve => {
+    const id = ++dialogId;
     const dialog: DialogItem = { ...item, id, resolve };
     dialogQueue = [...dialogQueue, dialog];
     notifyUpdate();
+
+    // 自动关闭
+    if (item.autoClose) {
+      setTimeout(() => {
+        dismissDialog(id, true);
+      }, item.autoClose);
+    }
   });
 }
 
@@ -94,6 +101,18 @@ export function showError(err: unknown, title = '提示'): void {
     confirmText: '知道了',
     cancelText: '',
     destructive: false,
+  });
+}
+
+export function showSuccess(message: string, title = '成功'): void {
+  pushDialog({
+    type: 'success',
+    title,
+    message,
+    confirmText: '好的',
+    cancelText: '',
+    destructive: false,
+    autoClose: 1800, // 1.8秒自动关闭
   });
 }
 

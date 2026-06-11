@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { useFeedback } from '@/lib/hooks/use-feedback';
 import { useI18n } from '@/lib/i18n';
 import IOSTabBar from '@/lib/components/IOSTabBar';
+import { QuoteHeader } from '@/lib/components/QuoteHeader';
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -41,7 +42,7 @@ export default function TabLayout() {
           name="courses"
           options={{
             title: t('tabs.courses'),
-            headerShown: true,
+            header: () => <QuoteHeader />,
           }}
           listeners={{
             tabPress: () => onPress(),
@@ -51,7 +52,7 @@ export default function TabLayout() {
           name="notes"
           options={{
             title: t('tabs.questions'),
-            headerShown: true,
+            header: () => <QuoteHeader />,
           }}
           listeners={{
             tabPress: () => onPress(),
@@ -70,12 +71,13 @@ export default function TabLayout() {
         {/* 隐藏其他页面 */}
         <Tabs.Screen name="discover" options={{ href: null }} />
         <Tabs.Screen name="knowledge" options={{ href: null }} />
-        <Tabs.Screen name="questions" options={{ href: null }} />
-        <Tabs.Screen name="buddy" options={{ href: null }} />
-        <Tabs.Screen name="matching" options={{ href: null }} />
-        <Tabs.Screen name="gamification" options={{ href: null }} />
-        <Tabs.Screen name="invite" options={{ href: null }} />
-        <Tabs.Screen name="payment" options={{ href: null }} />
+        <Tabs.Screen name="questions" options={{ href: null, header: () => <QuoteHeader /> }} />
+        <Tabs.Screen name="buddy" options={{ href: null, header: () => <QuoteHeader /> }} />
+        <Tabs.Screen name="matching" options={{ href: null, header: () => <QuoteHeader /> }} />
+        <Tabs.Screen name="gamification" options={{ href: null, header: () => <QuoteHeader /> }} />
+        <Tabs.Screen name="invite" options={{ href: null, header: () => <QuoteHeader /> }} />
+        <Tabs.Screen name="payment" options={{ href: null, header: () => <QuoteHeader /> }} />
+        <Tabs.Screen name="shared-notes" options={{ href: null, header: () => <QuoteHeader /> }} />
       </Tabs>
       {/* 单一持久化的 TabBar */}
       <IOSTabBar />

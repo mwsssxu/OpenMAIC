@@ -14,11 +14,13 @@ import httpx
 import json
 import logging
 import time
+import uuid
 
 import os
 
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
+from app.core.time_utils import utcnow
 from app.services.model_router import (
     get_model_router,
     SceneType,
@@ -26,6 +28,14 @@ from app.services.model_router import (
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+def _safe_uuid(user_id: Optional[str]) -> Optional[uuid.UUID]:
+    """Safely convert user_id string to UUID, returning None on failure."""
+    try:
+        return uuid.UUID(user_id) if user_id else None
+    except (ValueError, AttributeError):
+        return None
 
 
 # ============================================================================
@@ -140,9 +150,19 @@ async def _call_llm_internal(
     max_retries: int = 3,
     thinking_config: Optional[Dict[str, Any]] = None,
     scene_type: Optional[SceneType] = None,
+    user_id: Optional[str] = None,
+    db: Optional[Any] = None,
+    usage_callback: Optional[Any] = None,
 ) -> str:
-    """内部 LLM 调用（不含限流）"""
+    """内部 LLM 调用（不含限流）
+
+    Args:
+        usage_callback: 可选的异步回调，签名为 async callback(usage_data: dict) -> None
+                        用于记录 LLM 使用量，替代直接传入 db 参数。
+                        当 usage_callback 存在时优先使用，db 参数保留向后兼容。
+    """
     start_time = time.time()
+    call_start = time.time()
 
     if scene_type and not model:
         router = get_model_router()
@@ -224,6 +244,63 @@ async def _call_llm_internal(
             total_elapsed = time.time() - start_time
             logger.info(f"[LLM] 调用成功 (耗时: {elapsed:.1f}s, 总耗时: {total_elapsed:.1f}s)")
 
+            # 记录 LLM 使用量和成本（非阻塞，失败不影响主流程）
+            try:
+                usage = result.get("usage", {})
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+                total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
+                duration_ms = int((time.time() - call_start) * 1000)
+
+                # 构建使用量数据
+                usage_data = {
+                    "user_id": user_id,
+                    "provider": provider_id,
+                    "model": model_id,
+                    "scene_type": scene_type.value if scene_type else None,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                    "duration_ms": duration_ms,
+                    "status": "success",
+                }
+
+                # 优先使用回调模式
+                if usage_callback:
+                    await usage_callback(usage_data)
+                elif db:
+                    # 向后兼容：直接写数据库
+                    cost_yuan = 0.0
+                    input_price = 0.0
+                    output_price = 0.0
+                    price_row = await db.fetchrow(
+                        "SELECT input_price_per_1k, output_price_per_1k FROM llm_configs WHERE provider = $1 AND model = $2 LIMIT 1",
+                        provider_id, model_id
+                    )
+                    if price_row:
+                        input_price = price_row["input_price_per_1k"] or 0
+                        output_price = price_row["output_price_per_1k"] or 0
+                        cost_yuan = (prompt_tokens / 1000) * input_price + (completion_tokens / 1000) * output_price
+
+                    await db.execute(
+                        """
+                        INSERT INTO llm_usage_logs
+                            (user_id, provider, model, scene_type,
+                             prompt_tokens, completion_tokens, total_tokens,
+                             cost_yuan, input_price_per_1k, output_price_per_1k,
+                             status, duration_ms, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                        """,
+                        _safe_uuid(user_id),
+                        provider_id, model_id,
+                        scene_type.value if scene_type else None,
+                        prompt_tokens, completion_tokens, total_tokens,
+                        round(cost_yuan, 6), input_price, output_price,
+                        "success", duration_ms, utcnow()
+                    )
+            except Exception as e:
+                logger.warning(f"[LLM] 使用量记录失败: {e}")
+
             return content
 
         except httpx.TimeoutException as e:
@@ -260,6 +337,35 @@ async def _call_llm_internal(
             if attempt < effective_max_retries - 1:
                 await asyncio.sleep(2)
             else:
+                # 记录失败的 LLM 调用
+                try:
+                    duration_ms = int((time.time() - call_start) * 1000)
+                    if usage_callback:
+                        await usage_callback({
+                            "user_id": user_id,
+                            "provider": provider_id,
+                            "model": model_id,
+                            "scene_type": scene_type.value if scene_type else None,
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0,
+                            "duration_ms": duration_ms,
+                            "status": "error",
+                        })
+                    elif db:
+                        await db.execute(
+                            """
+                            INSERT INTO llm_usage_logs
+                                (user_id, provider, model, scene_type, cost_yuan, status, error_message, duration_ms, created_at)
+                            VALUES ($1, $2, $3, $4, 0, 'error', $5, $6, $7)
+                            """,
+                            _safe_uuid(user_id),
+                            provider_id, model_id,
+                            scene_type.value if scene_type else None,
+                            str(e)[:500], duration_ms, utcnow()
+                        )
+                except Exception:
+                    pass
                 raise
 
 
@@ -273,6 +379,9 @@ async def call_llm(
     max_retries: int = 3,
     thinking_config: Optional[Dict[str, Any]] = None,
     scene_type: Optional[SceneType] = None,
+    user_id: Optional[str] = None,
+    db: Optional[Any] = None,
+    usage_callback: Optional[Any] = None,
 ) -> str:
     """调用 LLM（带全局限流）"""
     acquired = await _rate_limiter.acquire(timeout=30.0)
@@ -281,7 +390,7 @@ async def call_llm(
 
     try:
         return await _call_llm_internal(
-            prompt, system_prompt, model, temperature, max_tokens, max_retries, thinking_config, scene_type
+            prompt, system_prompt, model, temperature, max_tokens, max_retries, thinking_config, scene_type, user_id, db, usage_callback
         )
     finally:
         _rate_limiter.release()

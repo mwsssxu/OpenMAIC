@@ -225,7 +225,8 @@ function NoteCard({ note, t }: { note: typeof notesCategories[0]; t: (key: strin
         if (note.key === 'new') {
           router.push('/notes/new' as any);
         } else {
-          router.push('/notes' as any);
+          // 切换到笔记 tab 而不是 push 独立页面
+          router.navigate('/(tabs)/notes' as any);
         }
       }}
       onPressIn={handlePressIn}
@@ -289,6 +290,9 @@ export default function HomeScreen() {
   const [ratingShareCode, setRatingShareCode] = useState<string | null>(null);
   const [userRating, setUserRating] = useState(0);
 
+  // 我的笔记统计
+  const [recentNotes, setRecentNotes] = useState<{ total: number; todayCount: number; weekCount: number }>({ total: 0, todayCount: 0, weekCount: 0 });
+
   // Fetch dashboard stats and recent courses on mount
   useEffect(() => {
     const fetchData = async () => {
@@ -323,6 +327,19 @@ export default function HomeScreen() {
         setRecentCourses([]);
       } finally {
         setCoursesLoading(false);
+      }
+
+      // Fetch recent notes stats
+      try {
+        const notesData = await apiClient.getPersonalNotes(1, 5);
+        const allItems = [...(notesData.today || []), ...(notesData.this_week || [])];
+        setRecentNotes({
+          total: notesData.total || allItems.length,
+          todayCount: notesData.today?.length || 0,
+          weekCount: notesData.this_week?.length || 0,
+        });
+      } catch (error) {
+        console.warn('Failed to fetch notes:', error);
       }
 
       // Fetch shared courses (推荐)
@@ -562,14 +579,46 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>我的笔记</Text>
-            <TouchableOpacity onPress={() => router.push('/notes')}>
-              <Text style={styles.sectionLink}>全部</Text>
+            <TouchableOpacity onPress={() => router.navigate('/(tabs)/notes' as any)}>
+              <Text style={styles.sectionLink}>全部 ({recentNotes.total})</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.notesGrid}>
-            {notesCategories.map(note => (
-              <NoteCard key={note.key} note={note} t={t} />
-            ))}
+            <TouchableOpacity
+              style={styles.noteCard}
+              onPress={() => router.navigate('/(tabs)/notes' as any)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.noteIcon}>📝</Text>
+              <Text style={styles.noteLabel}>{t('home.allNotes')}</Text>
+              <Text style={styles.noteCount}>{recentNotes.total} 条</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.noteCard}
+              onPress={() => router.push('/notes/new' as any)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.noteIcon}>✏️</Text>
+              <Text style={styles.noteLabel}>{t('home.writeNote')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.noteCard}
+              onPress={() => router.navigate('/(tabs)/notes' as any)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.noteIcon}>📅</Text>
+              <Text style={styles.noteLabel}>{t('home.todayNotes')}</Text>
+              <Text style={styles.noteCount}>{recentNotes.todayCount} 条</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.noteCard}
+              onPress={() => router.navigate('/(tabs)/notes' as any)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.noteIcon}>📆</Text>
+              <Text style={styles.noteLabel}>{t('home.weekNotes')}</Text>
+              <Text style={styles.noteCount}>{recentNotes.weekCount} 条</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>

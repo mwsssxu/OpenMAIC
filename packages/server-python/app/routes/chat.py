@@ -959,3 +959,23 @@ async def stream_single_agent(
             "Connection": "keep-alive",
         }
     )
+
+
+@router.post("/track-chat")
+async def track_chat_interaction(
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """跟踪AI对话互动（用于成长体系任务进度）"""
+    user_uuid = uuid.UUID(current_user_id)
+    from app.services.gamification_events import record_learning_activity
+    
+    result = await record_learning_activity(
+        db, user_uuid, "chat", value=1, user_id=current_user_id,
+        context={"type": "agent_chat"}
+    )
+    
+    return {
+        "message": "互动已记录",
+        "gamification": result,
+    }

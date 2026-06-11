@@ -314,6 +314,7 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
     }
 
     // 非白板模式：使用绝对定位
+    // 不设 maxHeight，允许文本自适应内容高度避免溢出裁剪
     const minH = position.height > 0 ? position.height * scaleY : 40;
     return {
       position: 'absolute' as const,
@@ -321,7 +322,6 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
       top: position.top * scaleY,
       width: effectiveWidth,
       minHeight: minH,
-      maxHeight: position.height > 0 ? position.height * scaleY : undefined,
       transform: [{ rotate: `${element.rotate || 0}deg` }],
       zIndex: 1,
       opacity: fadeAnim,
@@ -333,7 +333,7 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
     padding: isWhiteboard ? Math.max(8, 12 * effectiveScale) : Math.max(4, 8 * effectiveScale),
     justifyContent: 'flex-start' as const,
     backgroundColor: bgColor,
-    overflow: 'hidden' as const,
+    overflow: 'visible' as const,
     opacity: element.opacity || 1,
     // 白板模式下添加圆角和阴影
     ...(isWhiteboard && {

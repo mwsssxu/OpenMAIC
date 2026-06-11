@@ -32,8 +32,8 @@ export default function QuestionsPage() {
     try {
       const data = await apiClient.getQuestions({ sort, limit: 20 });
       setQuestions(data.items || []);
-    } catch (error) {
-      console.error('Load questions error:', error);
+    } catch (err) {
+      console.error('Load questions error:', err);
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { showSuccess } from '@/lib/error-toast';
 
 export default function InvitePage() {
   const [inviteCode, setInviteCode] = useState('');
@@ -21,8 +22,8 @@ export default function InvitePage() {
       ]);
       setInviteCode(codeData.invite_code || '');
       setStats(codeData);
-    } catch (error) {
-      console.error('Load error:', error);
+    } catch (err) {
+      console.error('Load error:', err);
     } finally {
       setLoading(false);
     }
@@ -30,7 +31,7 @@ export default function InvitePage() {
 
   function copyCode() {
     navigator.clipboard.writeText(inviteCode);
-    alert('邀请码已复制');
+    showSuccess('邀请码已复制');
   }
 
   if (loading) {

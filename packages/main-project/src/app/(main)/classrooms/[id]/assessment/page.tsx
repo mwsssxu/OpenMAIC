@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Clock, Sparkles } from 'lucide-react';
+import { showError, showSuccess } from '@/lib/error-toast';
 
 interface Question {
   id: string;
@@ -92,13 +93,17 @@ export default function AssessmentPage() {
 
   async function loadAssessmentTypes() {
     try {
-      const types = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/assessments/types`, {
+      const typesRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/assessments/types`, {
         headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.json());
+      });
+      if (!typesRes.ok) { setLoading(false); return; }
+      const types = await typesRes.json();
 
-      const results = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/assessments/results/${courseId}`, {
+      const resultsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/assessments/results/${courseId}`, {
         headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.json());
+      });
+      if (!resultsRes.ok) { setLoading(false); return; }
+      const results = await resultsRes.json();
 
       setAssessments(types.types || []);
       setLoading(false);
@@ -117,16 +122,21 @@ export default function AssessmentPage() {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ course_id: courseId, assessment_type: type })
-      }).then(r => r.json());
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw { response: { status: res.status, data: errData } };
+      }
+      const data = await res.json();
 
-      setCurrentAssessment(res);
-      setTimeLeft(res.config.duration_minutes);
+      setCurrentAssessment(data);
+      setTimeLeft(data.config.duration_minutes);
       setAnswers({});
       setShowTypes(false);
       setShowQuiz(true);
       setSubmitting(false);
     } catch (err: any) {
-      alert(err.message || '创建测评失败');
+      showError(err);
       setSubmitting(false);
     }
   }
@@ -151,13 +161,18 @@ export default function AssessmentPage() {
           assessment_id: currentAssessment.assessment_id,
           answers: answerList
         })
-      }).then(r => r.json());
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw { response: { status: res.status, data: errData } };
+      }
+      const data = await res.json();
 
-      setResult(res);
+      setResult(data);
       setShowQuiz(false);
       setShowResult(true);
     } catch (err: any) {
-      alert(err.message || '提交失败');
+      showError(err);
     } finally {
       setSubmitting(false);
     }
