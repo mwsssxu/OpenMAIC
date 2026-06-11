@@ -319,7 +319,7 @@ async def generate_outlines_stream_endpoint(
     """生成大纲（SSE 流式，带 heartbeat 和自动重试）"""
     # 参数验证
     requirement = body.get("requirement", "")
-    if not requirement.strip():
+    if not requirement.strip() and not body.get("pdf_content"):
         raise HTTPException(status_code=400, detail="课程需求不能为空")
 
     total_count = body.get("total_count", 5)
@@ -333,6 +333,7 @@ async def generate_outlines_stream_endpoint(
     agents = body.get("agents", [])  # 完整agent信息（与Web端一致）
     web_search = body.get("web_search", False)
     web_search_context = body.get("web_search_context")
+    pdf_content = body.get("pdf_content")
 
     logger.info(f"[SSE] 开始生成大纲 - 用户: {current_user_id}, 数量: {total_count}")
     logger.info(f"[SSE] 参数: agents={len(agents)}, web_search={web_search}")
@@ -367,7 +368,7 @@ async def generate_outlines_stream_endpoint(
                         outline_count = 0
                         async for outline in stream_generate_outlines(
                             requirement=requirement,
-                            pdf_content=None,
+                            pdf_content=pdf_content,
                             language=language,
                             model=model,
                             agent_ids=agent_ids,

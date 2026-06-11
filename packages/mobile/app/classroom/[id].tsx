@@ -1421,16 +1421,18 @@ export default function ClassroomScreen() {
           } else if (event.type === 'agent_end') {
             const agentId = event.agentId || '';
             setSpeakingAgentId(null);
-            // TTS播放Agent发言
+            // TTS播放Agent发言 — 统一使用课程音色
             const textToSpeak = currentAgentTextRef.current.trim();
             if (textToSpeak) {
               console.log('[TTS] Speaking agent text:', textToSpeak.slice(0, 50));
-              // 使用配置的语音速度
-              Speech.speak(textToSpeak, {
-                language: 'zh-CN',
-                rate: ttsConfig.speed,
-                pitch: 1.0,
-              });
+              const agentVC = agentInfoMap[agentId]?.voiceConfig;
+              if (agentVC?.voiceId) {
+                // Agent 有独立 voiceConfig — 使用其音色
+                playDiscussionTTS(textToSpeak, agentVC);
+              } else {
+                // 使用课程统一音色（PlaybackEngine 同款）
+                playDiscussionTTS(textToSpeak, { providerId: ttsConfig.provider, voiceId: ttsConfig.voice });
+              }
             }
             // 保存聊天记录
             if (currentScene && textToSpeak) {
@@ -1620,9 +1622,11 @@ export default function ClassroomScreen() {
                 const text = cleanJsonFromText(currentAgentTextRef.current.trim());
                 if (text) {
                   allResponses.push({ agent: agentInfo?.name || agentRole, agentId: agentRole, content: text });
-                  // TTS
+                  // TTS — 统一使用课程音色
                   if (agentInfo?.voiceConfig?.voiceId) {
                     playDiscussionTTS(text, agentInfo.voiceConfig);
+                  } else {
+                    playDiscussionTTS(text, { providerId: ttsConfig.provider, voiceId: ttsConfig.voice });
                   }
                   // 保存历史
                   if (currentScene) {
@@ -1674,12 +1678,12 @@ export default function ClassroomScreen() {
     handleWhiteboardAction(actionName, params, 'Discussion');
   }
 
-  // 播放讨论 TTS
+  // 播放讨论 TTS — 统一使用课程音色和语速
   function playDiscussionTTS(text: string, voiceConfig: { providerId: string; voiceId: string }) {
     if (!discussionAudioPlayerRef.current) {
       discussionAudioPlayerRef.current = new AudioPlayer({ onPlayEnd: () => {}, onError: () => {} });
     }
-    apiClient.generateTTS(text.slice(0, 200), `disc_${Date.now()}`, voiceConfig.providerId || 'qwen', voiceConfig.voiceId, 1.0)
+    apiClient.generateTTS(text, `disc_${Date.now()}`, voiceConfig.providerId || ttsConfig.provider, voiceConfig.voiceId, ttsConfig.speed)
       .then(res => {
         if (res.success && res.base64) {
           Platform.OS === 'web'
@@ -2462,12 +2466,15 @@ export default function ClassroomScreen() {
       </Animated.View>
     </ScrollView>
 
-    {/* 白板区域 - 使用 absolute 定位，与聊天同时显示 */}
+    {/* 白板区域 - 全屏覆盖，白板优先；聊天面板可展开/收起 */}
       <WhiteboardOverlay
         visible={showWhiteboard}
         textContent={whiteboardTextContent}
         onClose={() => setShowWhiteboard(false)}
-        useAbsolute={showChatModal}
+        chatVisible={showChatModal}
+        onToggleChat={() => setShowChatModal(!showChatModal)}
+        playbackMode={playbackMode}
+        isLandscape={isLandscape}
       />
 
       {/* 场景缩略图导航（可展开） */}
@@ -2638,9 +2645,9 @@ export default function ClassroomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 智能体聊天面板 - 白板打开时使用固定底部布局 */}
+      {/* 智能体聊天面板 - 白板打开时覆盖在白板底部 */}
       {showChatModal && showWhiteboard ? (
-        <View style={styles.chatPanelFixed}>
+        <View style={styles.chatPanelOverWhiteboard}>
           {/* 头部 */}
           <View style={styles.chatPanelHeader}>
             {selectedAgent && (
@@ -2656,7 +2663,6 @@ export default function ClassroomScreen() {
             <Text style={styles.chatPanelTitle}>{selectedAgent?.name || (discussionMode ? '多Agent讨论' : '对话')}</Text>
             <TouchableOpacity onPress={() => {
               setShowChatModal(false);
-              // 不停止讨论，让讨论在后台继续进行
               if (!discussionMode) {
                 Speech.stop();
               }
@@ -2685,7 +2691,7 @@ export default function ClassroomScreen() {
           )}
 
           {/* 聊天历史 */}
-          <ScrollView style={styles.chatHistoryCompact}>
+          <ScrollView style={styles.chatHistoryCompact} keyboardShouldPersistTaps="handled">
             {chatHistory.map((item, index) => {
               const isSpeaking = discussionRunning && item.agentId && item.agentId === speakingAgentId;
               const stableKey = `${item.agentId || item.agent}-${index}`;
@@ -3751,22 +3757,22 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: '#ccc' },
 
-  // 固定底部聊天面板样式（白板打开时使用）
-  chatPanelFixed: {
+  // 聊天面板覆盖在白板底部（白板打开时使用）
+  chatPanelOverWhiteboard: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '33%', // 占屏幕 1/3
+    height: '45%',
     backgroundColor: 'white',
     borderTopLeftRadius: Rounded.lg,
     borderTopRightRadius: Rounded.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 20,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 10,
+    zIndex: 110, // 在白板之上
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
   },
@@ -3791,7 +3797,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   chatHistoryCompact: {
-    maxHeight: 150, // 固定最大高度，防止溢出
+    maxHeight: 200,
     minHeight: 80,
     marginBottom: Spacing.sm,
   },

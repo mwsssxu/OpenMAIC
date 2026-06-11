@@ -5,12 +5,21 @@
  * Used during teaching and interactive scenes to display formulas and key points.
  */
 
-import React, { memo, useMemo, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import React, { memo, useMemo, useState, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { ScreenCanvas } from '@/components/slide/ScreenCanvas';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
+import { useResponsiveDimensions } from '@/lib/utils/responsive';
 
 // 真正的数学符号（排除基本运算符 = + -，它们在普通文本中很常见）
 const MATH_SYMBOLS = ['∑', '∫', '∂', '√', '∞', 'π', 'α', 'β', 'γ', 'δ', 'θ', 'λ', 'μ', 'σ', 'ω', 'φ', 'ψ', 'Ω', 'Δ', '∇', '±', '≠', '≤', '≥', '×', '÷', '∈', '∉', '⊂', '⊃', '∪', '∩', '∀', '∃', '→', '↔', '⟹', '∝', '∘', '⊥', '∥', '∠', '°', '′', '″', '²', '³', '⁴', '⁵', 'ⁿ', '₀', '₁', '₂', '₃', '₄', '₅', 'ₙ', '‰', '‱'];
@@ -412,128 +421,249 @@ interface WhiteboardOverlayProps {
   /** 纯文本图表内容（legacy fallback） */
   textContent?: string | null;
   onClose: () => void;
-  /** 使用 absolute 定位而非 Modal（用于与聊天同时显示） */
-  useAbsolute?: boolean;
+  /** 聊天面板是否打开 — 白板全屏覆盖，底部留聊天切换按钮 */
+  chatVisible?: boolean;
+  /** 点击聊天切换按钮的回调 */
+  onToggleChat?: () => void;
+  /** 语音播放状态 */
+  playbackMode?: 'idle' | 'playing' | 'paused';
+  /** 横屏模式 */
+  isLandscape?: boolean;
 }
 
-export function WhiteboardOverlay({ visible, textContent, onClose, useAbsolute = false }: WhiteboardOverlayProps) {
+export function WhiteboardOverlay({
+  visible,
+  textContent,
+  onClose,
+  chatVisible = false,
+  onToggleChat,
+  playbackMode = 'idle',
+  isLandscape = false,
+}: WhiteboardOverlayProps) {
   const elements = whiteboardStore.useElements();
   const hasElements = elements.length > 0;
   const hasTextContent = !!textContent;
+  const { isPhone, isCompact } = useResponsiveDimensions();
+  const windowDims = useWindowDimensions();
 
-  // 计算白板画布尺寸 — 使用屏幕宽度的 88% 作为画布宽度（减去边距）
-  // ScreenCanvas 内部会根据 scrollable 模式使用屏幕宽度计算 scale
+  // 拖拽调整白板/聊天分割比例
+  const chatSheetPercent = useSharedValue(chatVisible ? 0.45 : 0);
+  const savedChatSheetPercent = useSharedValue(chatVisible ? 0.45 : 0);
 
-  const content = (
-    <View style={[styles.whiteboard, useAbsolute && styles.whiteboardAbsolute]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Ionicons name="pencil" size={16} color="#5b9bd5" />
-        <Text style={styles.title}>白板</Text>
-        <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-          <Ionicons name="close" size={16} color="#666" />
-        </TouchableOpacity>
-      </View>
+  // 当 chatVisible 变化时，动画切换
+  React.useEffect(() => {
+    if (chatVisible) {
+      chatSheetPercent.value = withSpring(0.45, { damping: 20 });
+      savedChatSheetPercent.value = 0.45;
+    } else {
+      chatSheetPercent.value = withSpring(0, { damping: 20 });
+      savedChatSheetPercent.value = 0;
+    }
+  }, [chatVisible]);
 
-      {/* Whiteboard content area */}
-      <View style={styles.contentArea}>
-        {!hasElements && !hasTextContent ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={32} color="#ccc" />
-            <Text style={styles.emptyText}>暂无白板内容</Text>
+  // 拖拽手势调整聊天面板高度
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      // 从底部往上拖 → percent 增大
+      const screenHeight = windowDims.height;
+      const delta = -e.translationY / screenHeight;
+      const newPercent = Math.min(0.7, Math.max(0.2, savedChatSheetPercent.value + delta));
+      chatSheetPercent.value = newPercent;
+    })
+    .onEnd(() => {
+      savedChatSheetPercent.value = chatSheetPercent.value;
+      // 如果拖到很小，自动收起
+      if (chatSheetPercent.value < 0.15 && onToggleChat) {
+        runOnJS(onToggleChat)();
+      }
+    });
+
+  // 白板区域动画样式（聊天展开时缩小）
+  const whiteboardStyle = useAnimatedStyle(() => ({
+    flex: 1 - chatSheetPercent.value,
+  }));
+
+  // 聊天面板动画样式
+  const chatSheetStyle = useAnimatedStyle(() => ({
+    height: `${chatSheetPercent.value * 100}%` as any,
+  }));
+
+  if (!visible) return null;
+
+  const isCompactPhone = isPhone || isCompact;
+  const headerPadding = isCompactPhone ? 6 : Spacing.sm;
+
+  return (
+    <View style={[
+      styles.overlayContainer,
+      isLandscape && styles.overlayContainerLandscape,
+    ]}>
+      {/* 白板内容区域 */}
+      <Animated.View style={[styles.whiteboardAnimatedArea, whiteboardStyle]}>
+        <View style={styles.whiteboard}>
+          {/* Header */}
+          <View style={[styles.header, { padding: headerPadding }]}>
+            <Ionicons name="pencil" size={16} color="#5b9bd5" />
+            <Text style={styles.title}>白板</Text>
+
+            {/* 语音播放指示器 */}
+            {playbackMode === 'playing' && (
+              <View style={styles.playbackBadge}>
+                <Ionicons name="volume-high" size={12} color="white" />
+                <Text style={styles.playbackBadgeText}>播放中</Text>
+              </View>
+            )}
+            {playbackMode === 'paused' && (
+              <View style={[styles.playbackBadge, styles.playbackBadgePaused]}>
+                <Ionicons name="pause" size={12} color="#f59e0b" />
+                <Text style={[styles.playbackBadgeText, { color: '#f59e0b' }]}>已暂停</Text>
+              </View>
+            )}
+
+            {/* 聊天切换按钮（聊天关闭时显示） */}
+            {onToggleChat && !chatVisible && (
+              <TouchableOpacity
+                style={styles.chatToggleBtn}
+                onPress={onToggleChat}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="chatbubble-ellipses" size={16} color="#5b9bd5" />
+                <Text style={styles.chatToggleText}>对话</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={18} color="#666" />
+            </TouchableOpacity>
           </View>
-        ) : hasElements ? (
-          /* Element-based rendering via ScreenCanvas (matches web端) */
-          <ScreenCanvas
-            elements={elements}
-            background={{ type: 'solid', color: '#f8f9fa' }}
-            scrollable
-            isWhiteboard
-          />
-        ) : (
-          /* Legacy text fallback */
-          <ScrollView style={styles.textScrollView} contentContainerStyle={styles.textScrollContent}>
-            <StructuredContent content={textContent!.replace(/```[\w]*\n?/g, '').replace(/```$/g, '')} />
-          </ScrollView>
-        )}
-      </View>
+
+          {/* Whiteboard content area */}
+          <View style={styles.contentArea}>
+            {!hasElements && !hasTextContent ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-text-outline" size={32} color="#ccc" />
+                <Text style={styles.emptyText}>暂无白板内容</Text>
+              </View>
+            ) : hasElements ? (
+              <ScreenCanvas
+                elements={elements}
+                background={{ type: 'solid', color: '#f8f9fa' }}
+                scrollable
+                isWhiteboard
+              />
+            ) : (
+              <ScrollView style={styles.textScrollView} contentContainerStyle={styles.textScrollContent}>
+                <StructuredContent content={textContent!.replace(/```[\w]*\n?/g, '').replace(/```$/g, '')} />
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+
+      {/* 聊天面板拖拽区域 + 聊天面板（动画展开/收起） */}
+      {onToggleChat && (
+        <Animated.View style={[styles.chatSheetContainer, chatSheetStyle]}>
+          {/* 拖拽手柄 */}
+          <GestureDetector gesture={panGesture}>
+            <View style={styles.dragHandleArea}>
+              <View style={styles.dragHandle} />
+            </View>
+          </GestureDetector>
+
+          {/* 聊天面板内容 — 由外部通过 children 或 renderChat 传入 */}
+          {/* 此处仅提供容器框架，具体聊天内容由 classroom screen 渲染 */}
+          <TouchableOpacity
+            style={styles.chatExpandHint}
+            onPress={onToggleChat}
+            activeOpacity={0.5}
+          >
+            <Ionicons name="chevron-down" size={16} color="#999" />
+            <Text style={styles.chatExpandHintText}>收起对话</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
     </View>
   );
-
-  // absolute 模式：直接渲染 View（讨论框打开时留出底部空间）
-  if (useAbsolute) {
-    if (!visible) return null;
-    return (
-      <View style={[styles.absoluteContainer, styles.absoluteContainerWithChat]}>
-        {content}
-      </View>
-    );
-  }
-
-  // 非 absolute 模式（讨论框关闭）：满屏显示白板
-  if (visible) {
-    return (
-      <View style={styles.absoluteContainer}>
-        {content}
-      </View>
-    );
-  }
-
-  return null;
 }
 
 const styles = StyleSheet.create({
-  // absolute 模式容器 - 白板满屏或占上方 2/3
-  absoluteContainer: {
+  // 全屏覆盖容器
+  overlayContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0, // 默认满屏
-    zIndex: 100, // 提高 zIndex 确保覆盖其他元素
-    padding: Spacing.sm, // 使用 padding 让子元素测量正确宽度
+    bottom: 0,
+    zIndex: 100,
+    backgroundColor: 'white',
   },
-  absoluteContainerWithChat: {
-    bottom: '33%', // 为底部对话框留出 1/3 空间
+  overlayContainerLandscape: {
+    // 横屏时保持全屏，白板获得更多水平空间
   },
-  whiteboardAbsolute: {
-    flex: 1,
-    borderRadius: Rounded.lg,
+  // 白板动画区域（flex 分配空间）
+  whiteboardAnimatedArea: {
+    overflow: 'hidden',
   },
   whiteboard: {
+    flex: 1,
     backgroundColor: Colors.neutral.white,
-    borderRadius: Rounded.lg,
-    width: '100%',
-    maxWidth: undefined,
-    minHeight: 280,
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 5,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.sm, // 减小 padding
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutral.border,
   },
   title: {
     flex: 1,
-    fontSize: 14, // 减小字体
+    fontSize: 14,
     fontWeight: '600',
-    marginLeft: Spacing.xs, // 减小边距
+    marginLeft: Spacing.xs,
     color: Colors.neutral.textPrimary,
   },
+  // 语音播放状态指示器
+  playbackBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10b981',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Rounded.full,
+    marginRight: Spacing.sm,
+  },
+  playbackBadgePaused: {
+    backgroundColor: '#fef3c7',
+  },
+  playbackBadgeText: {
+    fontSize: 11,
+    color: 'white',
+    fontWeight: '500',
+    marginLeft: 3,
+  },
+  // 聊天切换按钮
+  chatToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Rounded.full,
+    marginRight: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  chatToggleText: {
+    fontSize: 12,
+    color: '#5b9bd5',
+    fontWeight: '500',
+    marginLeft: 3,
+  },
   closeBtn: {
-    padding: Spacing.xs, // 减小 padding
+    padding: Spacing.xs,
   },
   contentArea: {
     flex: 1,
     backgroundColor: '#f8f9fa',
-    minHeight: 200,
   },
   emptyState: {
     flex: 1,
@@ -808,5 +938,44 @@ const styles = StyleSheet.create({
     color: '#333',
     padding: 10,
     lineHeight: 18,
+  },
+  // 聊天面板容器（覆盖在白板底部）
+  chatSheetContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: Rounded.lg,
+    borderTopRightRadius: Rounded.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  // 拖拽手柄区域
+  dragHandleArea: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#fafafa',
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#ddd',
+    borderRadius: 2,
+  },
+  // 收起对话提示
+  chatExpandHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    backgroundColor: '#fafafa',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  chatExpandHintText: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 4,
   },
 });
