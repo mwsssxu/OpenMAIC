@@ -57,10 +57,20 @@ async def list_classrooms(
 
     rows = await db.fetch(
         """
-        SELECT id, name, description, language_directive, created_at, updated_at
-        FROM stages
-        WHERE user_id = $1
-        ORDER BY updated_at DESC
+        SELECT 
+            s.id, s.name, s.description, s.language_directive, s.created_at, s.updated_at,
+            COALESCE(cc.scenes_completed, 0) AS scenes_completed,
+            COALESCE(sc.total_scenes, 0) AS total_scenes,
+            cc.completion_status
+        FROM stages s
+        LEFT JOIN course_completions cc ON cc.course_id = s.id AND cc.user_id = $1
+        LEFT JOIN (
+            SELECT stage_id, COUNT(*) AS total_scenes
+            FROM scenes
+            GROUP BY stage_id
+        ) sc ON sc.stage_id = s.id
+        WHERE s.user_id = $1
+        ORDER BY s.updated_at DESC
         """,
         user_uuid
     )
@@ -72,7 +82,13 @@ async def list_classrooms(
             "language_directive": row["language_directive"],
             "tags": [],
             "created_at": row["created_at"].isoformat(),
-            "updated_at": row["updated_at"].isoformat()
+            "updated_at": row["updated_at"].isoformat(),
+            "progress": {
+                "scenes_completed": row["scenes_completed"],
+                "total_scenes": row["total_scenes"],
+                "percentage": round(row["scenes_completed"] / row["total_scenes"] * 100) if row["total_scenes"] > 0 else 0,
+                "status": row["completion_status"] if row["completion_status"] and row["completion_status"] == "completed" else ("in-progress" if row["scenes_completed"] > 0 else "not-started"),
+            },
         }
         for row in rows
     ]
@@ -548,6 +564,99 @@ async def create_scene_for_classroom(
         "order_index": scene["order_index"],
         "elapsed_seconds": round(total_elapsed, 2)
     }
+
+
+@router.post("/{classroom_id}/scenes/{scene_id}/regenerate-quiz")
+async def regenerate_quiz_questions(
+    classroom_id: str,
+    scene_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    为缺少 questions 的 quiz 场景补充生成题目。
+    前端检测到 quiz 场景无 questions 时调用此 API。
+    """
+    classroom_uuid = validate_uuid(classroom_id, "课程ID")
+    scene_uuid = validate_uuid(scene_id, "场景ID")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+
+    # 验证场景所有权
+    scene = await db.fetchrow(
+        "SELECT id, type, title, content, stage_id FROM scenes WHERE id = $1 AND stage_id = $2",
+        scene_uuid, classroom_uuid
+    )
+    if not scene:
+        raise HTTPException(status_code=404, detail="场景不存在")
+
+    if scene["type"] != "quiz":
+        raise HTTPException(status_code=400, detail="仅 quiz 类型场景支持补充生成")
+
+    # 解析现有 content
+    content = json.loads(scene["content"]) if isinstance(scene["content"], str) else scene["content"]
+    if content.get("questions"):
+        return {"success": True, "message": "题目已存在，无需补充", "questions": content["questions"]}
+
+    # 获取课程信息
+    stage = await db.fetchrow(
+        "SELECT name, description, language_directive FROM stages WHERE id = $1",
+        classroom_uuid
+    )
+    language = validate_language(stage["language_directive"] or "zh-CN") if stage else "zh-CN"
+
+    # 从前一个 slide 场景获取知识上下文
+    prev_slides = await db.fetch(
+        """SELECT title, content FROM scenes
+           WHERE stage_id = $1 AND type = 'slide' AND order_index < (
+               SELECT order_index FROM scenes WHERE id = $2
+           )
+           ORDER BY order_index DESC LIMIT 3""",
+        classroom_uuid, scene_uuid
+    )
+    context_points = []
+    for ps in prev_slides:
+        ps_content = json.loads(ps["content"]) if isinstance(ps["content"], str) else ps["content"]
+        elements = ps_content.get("canvas", {}).get("elements", [])
+        for el in elements[:3]:
+            if el.get("content"):
+                context_points.append(el["content"])
+
+    # 生成 quiz 题目
+    from app.services.generation.scene_generator import generate_scene_content, SceneOutline
+    outline = SceneOutline(
+        id=str(scene_uuid),
+        type="quiz",
+        title=scene["title"] or "知识检测",
+        description=stage["description"] if stage else "",
+        order=0,
+        key_points=context_points[:5],
+    )
+
+    try:
+        new_content = await generate_scene_content(outline, language=language)
+        questions = new_content.get("questions", [])
+        if not questions:
+            raise HTTPException(status_code=500, detail="题目生成失败，请稍后重试")
+
+        # 合并到现有 content（保留 canvas）
+        if "canvas" in content:
+            new_content["canvas"] = content["canvas"]
+
+        # 更新数据库
+        await db.execute(
+            "UPDATE scenes SET content = $1 WHERE id = $2",
+            json.dumps(new_content, ensure_ascii=False),
+            scene_uuid
+        )
+
+        logger.info(f"[QuizRegen] Scene {scene_id}: generated {len(questions)} questions")
+        return {"success": True, "questions": questions}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[QuizRegen] Failed for scene {scene_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"题目生成失败: {str(e)}")
 
 
 @router.get("/{classroom_id}/scenes/progress")

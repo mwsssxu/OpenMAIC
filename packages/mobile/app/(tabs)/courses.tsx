@@ -40,19 +40,16 @@ interface Classroom {
   name: string;
   description?: string;
   language_directive?: string;
-  tags?: string[];  // 课程标签
+  tags?: string[];
   created_at: string;
   updated_at?: string;
+  progress?: {
+    scenes_completed: number;
+    total_scenes: number;
+    percentage: number;
+    status: 'completed' | 'in-progress' | 'not-started';
+  };
 }
-
-// 模拟课程进度和状态数据（后续可接入真实数据）
-const mockCourseData = {
-  progress: Math.floor(Math.random() * 100),
-  status: ['in-progress', 'completed', 'not-started'][Math.floor(Math.random() * 3)],
-  category: ['数据科学', '编程基础', '设计基础', '人工智能', '商业分析', '人文素养', '思维方式', '语言学习', '数学基础', '产品设计', '前端框架'][Math.floor(Math.random() * 11)],
-  totalSections: Math.floor(Math.random() * 30) + 10,
-  completedSections: Math.floor(Math.random() * 20),
-};
 
 // 状态标签配置 - label will be resolved at render time via t()
 const statusConfig = {
@@ -85,13 +82,11 @@ export default function CoursesScreen() {
     loadClassrooms();
   }, []);
 
-  // 筛选课程
+  // 筛选课程（基于真实进度数据）
   const filteredClassrooms = useMemo(() => {
     if (activeFilter === 'all') return classrooms;
-
-    // 根据模拟状态筛选（后续替换为真实数据）
-    return classrooms.filter(() => {
-      const status = mockCourseData.status;
+    return classrooms.filter(c => {
+      const status = c.progress?.status || 'not-started';
       if (activeFilter === 'progress') return status === 'in-progress';
       if (activeFilter === 'completed') return status === 'completed';
       if (activeFilter === 'notstarted') return status === 'not-started';
@@ -99,13 +94,12 @@ export default function CoursesScreen() {
     });
   }, [classrooms, activeFilter]);
 
-  // 统计各状态数量（模拟数据）
+  // 统计各状态数量（基于真实数据）
   const courseStats = useMemo(() => {
-    const total = classrooms.length;
-    const inProgress = Math.floor(total * 0.4);
-    const completed = Math.floor(total * 0.35);
-    const notStarted = total - inProgress - completed;
-    return { total, inProgress, completed, notStarted };
+    const inProgress = classrooms.filter(c => (c.progress?.status || 'not-started') === 'in-progress').length;
+    const completed = classrooms.filter(c => c.progress?.status === 'completed').length;
+    const notStarted = classrooms.filter(c => (c.progress?.status || 'not-started') === 'not-started').length;
+    return { total: classrooms.length, inProgress, completed, notStarted };
   }, [classrooms]);
 
   const loadClassrooms = async () => {
@@ -133,35 +127,17 @@ export default function CoursesScreen() {
     return colors[index % colors.length];
   };
 
-  // 课程进度缓存（使用 useRef 防止组件重新渲染时丢失）
-  const courseProgressCacheRef = useRef<Record<string, { progress: number; status: string }>>({});
-
-  // 获取或生成课程进度（后续接入真实数据）
-  function getCourseProgress(classroom: Classroom) {
-    if (!courseProgressCacheRef.current[classroom.id]) {
-      // 模拟进度数据（后续替换为从后端获取）
-      courseProgressCacheRef.current[classroom.id] = {
-        progress: Math.floor(Math.random() * 100),
-        status: ['in-progress', 'completed', 'not-started'][Math.floor(Math.random() * 3)],
-      };
-    }
-    return courseProgressCacheRef.current[classroom.id];
-  }
-
-  // 课程卡片组件
+  // 获取缩略图颜色（根据索引循环）
   function CourseCard({ classroom, index, mode }: { classroom: Classroom; index: number; mode: 'list' | 'grid' }) {
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const thumbColor = getThumbColor(index);
 
-    // 获取课程进度（模拟数据，后续接入真实数据）
-    const progressData = getCourseProgress(classroom);
-    const progress = progressData.progress;
-    const status = progressData.status;
+    // 使用真实进度数据
+    const progress = classroom.progress?.percentage ?? 0;
+    const status = classroom.progress?.status ?? 'not-started';
 
-    // 模拟分类和章节数（后续接入真实数据）
-    const category = ['数据科学', '编程基础', '设计基础', '人工智能', '商业分析', '人文素养'][Math.floor(Math.random() * 6)];
-    const totalSections = Math.floor(Math.random() * 30) + 10;
-    const completedSections = Math.floor(totalSections * progress / 100);
+    const totalSections = classroom.progress?.total_scenes ?? 0;
+    const completedSections = classroom.progress?.scenes_completed ?? 0;
 
     const statusInfo = statusConfig[status as keyof typeof statusConfig];
 
@@ -201,7 +177,7 @@ export default function CoursesScreen() {
             </View>
             {/* 课程信息 */}
             <Text style={styles.gridName} numberOfLines={2}>{classroom.name}</Text>
-            <Text style={styles.gridCat}>{category}</Text>
+            <Text style={styles.gridCat}>{classroom.description ? classroom.description.slice(0, 20) : `${totalSections} ${t('courses.sectionsCount', { count: totalSections })}`}</Text>
             <View style={styles.gridProgress}>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${progress}%` }]} />
@@ -249,7 +225,7 @@ export default function CoursesScreen() {
           <View style={styles.courseBody}>
             <View style={styles.courseTop}>
               <Text style={styles.courseName} numberOfLines={1}>{classroom.name}</Text>
-              <Text style={styles.courseCat}>{category} · {t('courses.sectionsCount', { count: totalSections })}</Text>
+              <Text style={styles.courseCat}>{t('courses.sectionsCount', { count: totalSections })}</Text>
             </View>
             <View style={styles.courseBottom}>
               <Text style={styles.courseTime}>{formatDate(classroom.created_at)}</Text>

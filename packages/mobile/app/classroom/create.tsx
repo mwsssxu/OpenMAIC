@@ -420,17 +420,44 @@ export default function CreateClassroomScreen() {
   const handleUseCache = async () => {
     if (!cacheMatch) return;
     setLoading(true);
-    setLoadingMessage('正在加载缓存课程...');
+    setLoadingMessage('正在创建课程...');
+    setError(null);
+
     try {
-      // 从源课程加载完整 scenes
-      const result = await apiClient.loadCacheScenes(cacheMatch.source_stage_id);
-      if (result.scenes && result.scenes.length > 0) {
-        setCacheMatch(null);
-        // 直接跳到创建结果
-        // TODO: 用缓存的 scenes 创建新课程
+      const effectiveRequirement = requirement.trim() || (pdfFile ? `基于文档「${pdfFile.name}」创建课程` : '');
+
+      // 1. 用缓存的大纲创建课程
+      const result = await apiClient.createFullClassroom(
+        effectiveRequirement.slice(0, 50),
+        effectiveRequirement,
+        outlines,
+        [],
+        language,
+      );
+
+      setLoadingMessage('正在加载缓存场景...');
+
+      // 2. 从源课程加载 scenes 并复制到新课程
+      const cacheScenesResult = await apiClient.loadCacheScenes(cacheMatch.source_stage_id);
+      if (cacheScenesResult.scenes && cacheScenesResult.scenes.length > 0) {
+        // 逐个复制 scene 到新课程
+        for (let i = 0; i < cacheScenesResult.scenes.length; i++) {
+          const scene = cacheScenesResult.scenes[i];
+          await apiClient.createScene(result.id, {
+            type: scene.type || 'slide',
+            title: scene.title || scene.name || `场景 ${i + 1}`,
+            description: scene.description || scene.content || '',
+          }, i, language);
+        }
       }
+
+      setLoadingMessage(null);
+      setCacheMatch(null);
+      setCreatedClassroomId(result.id);
+      onSuccess();
+      router.replace(`/classroom/${result.id}?totalScenes=${cacheScenesResult.scenes?.length || outlines.length}`);
     } catch (err: any) {
-      setError('加载缓存课程失败：' + (err.message || '未知错误'));
+      setError(err.response?.data?.detail || err.message || '加载缓存课程失败');
     } finally {
       setLoading(false);
       setLoadingMessage(null);

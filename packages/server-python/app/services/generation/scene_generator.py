@@ -282,31 +282,20 @@ async def generate_scene_content(
             )
 
     elif outline.type == "interactive":
-        # Interactive场景 - 使用widget模板
-        widget_type = getattr(outline, 'widget_type', None) or 'simulation'
-        widget_outline = getattr(outline, 'widget_outline', {}) or {}
-        widget_prompt_id = _resolve_widget_prompt_id(widget_type)
-
-        # 构建模板参数，确保 language 参数存在
-        template_vars = {
-            "title": outline.title,
-            "description": outline.description,
-            "keyPoints": ", ".join(outline.key_points or []),
-            "languageDirective": lang_directive,
-            "language": language,  # 为 interactive-html 模板提供 language 参数
-            "teacherContext": teacher_context,
-            # Widget特定参数
-            **widget_outline,
-        }
-
+        # Interactive 场景已弃用，降级为 slide 类型
+        # 原因：LLM 生成交互代码成功率极低（85%空白/无法操作）
+        logger.info(f"[SceneGenerator] interactive scene '{outline.title}' downgraded to slide")
+        # 复用 slide 的 prompt 生成逻辑
         system_prompt, user_prompt = build_prompt(
-            widget_prompt_id,
-            template_vars
+            PROMPT_IDS.get("SCENE_CONTENT_SLIDE", "scene-content-slide"),
+            {
+                "title": outline.title,
+                "description": outline.description,
+                "keyPoints": ", ".join(outline.key_points or []),
+                "languageDirective": lang_directive,
+            },
         )
-
-        if not system_prompt or not user_prompt:
-            logger.warning(f"[SceneGenerator] {widget_prompt_id} template not found for widget_type={widget_type}, using default")
-            return {"type": "interactive", "widgetType": widget_type, "html": f"<div style='padding:20px;text-align:center'><h3>互动场景</h3><p>模板未找到，内容暂不可用</p></div>"}
+        outline_type_for_prompt = "slide"
 
     else:
         # pbl等其他类型暂时返回默认结构
@@ -352,42 +341,132 @@ async def generate_scene_content(
         )
 
     # 解析响应内容
-    # 所有 interactive 场景的内容模板（simulation/game/diagram/code/visualization3d/html/scientific-model）
-    # 都输出自包含的 HTML 文档，而非 JSON。统一走 HTML 直存路径。
+    # interactive 场景已降级为 slide，走 slide 解析路径
     if outline.type == "interactive":
-        widget_type = getattr(outline, 'widget_type', None) or 'simulation'
-        # 检测 LLM 返回的是 HTML 还是 JSON
-        stripped = response.strip()
-        if re.match(r'^\s*<!DOCTYPE|^\s*<html|^\s*```html', stripped, re.I):
-            # HTML 输出：直接存储为 html 字段
-            html_content = stripped
-            # 去除可能的 markdown 代码块包装（严格锚定首尾，避免误删内部反引号块）
-            html_content = re.sub(r"^```(?:html)?\s*\n", "", html_content)
-            if html_content.rstrip().endswith("```"):
-                html_content = html_content.rstrip()[:-3].rstrip()
-            content = {
-                "type": "interactive",
-                "widgetType": widget_type,
-                "html": html_content,
-            }
-        else:
-            # JSON 输出（罕见情况，仅当 LLM 不遵循模板时）
-            content = parse_json_response(response, outline.type)
-            content["widgetType"] = widget_type
+        # interactive 降级为 slide，用 slide 的解析逻辑
+        content = parse_json_response(response, "slide")
+        # 确保 canvas 结构存在
+        if not content.get("canvas"):
+            content = {"type": "slide", "canvas": {"elements": []}}
+        content["type"] = "slide"  # 强制标记为 slide 类型
     else:
         content = parse_json_response(response, outline.type)
 
     # 后处理
-    if outline.type == "slide" and content.get("canvas"):
+    if (outline.type == "slide" or outline.type == "interactive") and content.get("canvas"):
         content = fix_element_format(content)
         # 安全网：如果LLM没有生成ShapeElement，自动注入装饰色条
         content = _ensure_visual_shapes(content)
 
-    # Interactive场景确保widgetType标记存在
-    if outline.type == "interactive" and not content.get("widgetType"):
-        content["widgetType"] = getattr(outline, 'widget_type', 'simulation')
+    # Interactive场景确保返回 slide 类型
+    if outline.type == "interactive":
+        content["type"] = "slide"
 
     return content
+
+
+def _parse_interactive_json(response: str, widget_type: str) -> Dict[str, Any]:
+    """
+    专门解析 diagram/simulation 的 LLM JSON 输出。
+    mermaid 字段含换行符，普通 JSON 解析容易失败。
+    策略：先尝试标准解析，失败则用正则提取关键字段。
+    """
+    # 1. 直接解析原始响应
+    try:
+        return json.loads(response.strip())
+    except Exception:
+        pass
+
+    # 2. 通过 parse_json_response 解析（处理 markdown 围栏等）
+    try:
+        return parse_json_response(response, "interactive")
+    except Exception:
+        pass
+
+    # 2. 清理 markdown 围栏后再试
+    cleaned = response.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```\s*$", "", cleaned, flags=re.S).strip()
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    # 3. 正则提取关键字段
+    result: Dict[str, Any] = {"type": "interactive", "widgetType": widget_type}
+
+    if widget_type == "diagram":
+        # 提取 mermaid 内容（可能在 JSON 值中，也可能独立出现）
+        # 尝试匹配 "mermaid": "..." 中的值
+        mermaid_match = re.search(r'"mermaid"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned, re.S)
+        if mermaid_match:
+            result["mermaid"] = mermaid_match.group(1).replace('\\n', '\n')
+        else:
+            # 尝试匹配独立的 mermaid 代码块
+            mermaid_block = re.search(r'```mermaid\s*\n(.*?)```', response, re.S)
+            if mermaid_block:
+                result["mermaid"] = mermaid_block.group(1).strip()
+            else:
+                # 最后手段：找 graph TD/LR 或 mindmap 开头的行
+                lines = cleaned.split('\n')
+                mermaid_lines = []
+                started = False
+                for line in lines:
+                    if re.match(r'^(graph |flowchart |mindmap|sequenceDiagram|classDiagram|stateDiagram)', line.strip()):
+                        started = True
+                    if started:
+                        mermaid_lines.append(line)
+                if mermaid_lines:
+                    result["mermaid"] = '\n'.join(mermaid_lines)
+
+        # 提取 chartType
+        ct_match = re.search(r'"chartType"\s*:\s*"([^"]*)"', cleaned)
+        if ct_match:
+            result["chartType"] = ct_match.group(1)
+
+        # 提取 title
+        t_match = re.search(r'"title"\s*:\s*"([^"]*)"', cleaned)
+        if t_match:
+            result["title"] = t_match.group(1)
+
+        # 提取 description
+        d_match = re.search(r'"description"\s*:\s*"([^"]*)"', cleaned)
+        if d_match:
+            result["description"] = d_match.group(1)
+
+        # 提取 keyPoints
+        kp_match = re.search(r'"keyPoints"\s*:\s*\[(.*?)\]', cleaned, re.S)
+        if kp_match:
+            try:
+                result["keyPoints"] = json.loads('[' + kp_match.group(1) + ']')
+            except Exception:
+                pass
+
+    elif widget_type == "simulation":
+        # 提取 parameters
+        p_match = re.search(r'"parameters"\s*:\s*(\[.*?\])', cleaned, re.S)
+        if p_match:
+            try:
+                result["parameters"] = json.loads(p_match.group(1))
+            except Exception:
+                result["parameters"] = [
+                    {"id": "p1", "name": "参数1", "min": 0, "max": 100, "step": 1, "default": 50, "unit": ""}
+                ]
+
+        # 提取 formulas
+        f_match = re.search(r'"formulas"\s*:\s*(\[.*?\])', cleaned, re.S)
+        if f_match:
+            try:
+                result["formulas"] = json.loads(f_match.group(1))
+            except Exception:
+                pass
+
+        # 提取 title/description
+        for field in ("title", "description", "initialResult", "calculationLogic"):
+            m = re.search(rf'"{field}"\s*:\s*"([^"]*)"', cleaned)
+            if m:
+                result[field] = m.group(1)
+
+    return result
 
 
 def parse_json_response(response: str, content_type: str) -> Dict[str, Any]:

@@ -405,6 +405,14 @@ class ApiClient {
     return data;
   }
 
+  // 为缺少 questions 的 quiz 场景补充生成题目
+  async regenerateQuizQuestions(classroomId: string, sceneId: string): Promise<{ success: boolean; questions?: any[]; message?: string }> {
+    const { data } = await this.client.post(`/classrooms/${classroomId}/scenes/${sceneId}/regenerate-quiz`, {}, {
+      timeout: 120000,
+    });
+    return data;
+  }
+
   async createAllScenes(classroomId: string, outlines: any[], language?: string, agents?: any[]) {
     const config = {
       outlines,

@@ -25,14 +25,17 @@ PROMPTS: Dict[str, Dict[str, str]] = {
 输出要求：
 1. 生成 5-15 个场景大纲
 2. 每个场景包含：id, title, type, description, order
-3. 场景类型：slide（幻灯片）、quiz（测验）、interactive（互动）、pbl（项目学习）
+3. 场景类型：slide（幻灯片）、quiz（测验）
 4. 只输出 JSON 数组，不要其他内容
 
 场景类型分布建议：
-- slide: 70%（主要内容讲解）
-- quiz: 15%（知识检验）
-- interactive: 10%（互动讨论）
-- pbl: 5%（项目实践）""",
+- slide: 80%（主要内容讲解，含最后一个场景为课程总结回顾）
+- quiz: 20%（知识检验，穿插在讲解之间）
+
+重要规则：
+- 最后一个场景必须是 slide 类型，标题为"课程总结"或"总结回顾"，用于汇总全课要点
+- quiz 场景应有 3-5 道题，检验前面 slide 讲解的知识
+- 不再使用 interactive 类型，所有讲解内容统一用 slide 呈现""",
         "user": """请根据以下需求生成教学大纲：
 
 ## 用户需求
@@ -61,7 +64,7 @@ PROMPTS: Dict[str, Dict[str, str]] = {
   {
     "id": "场景ID",
     "title": "场景标题",
-    "type": "slide|quiz|interactive|pbl",
+    "type": "slide|quiz",
     "description": "场景描述",
     "order": 场景顺序数字,
     "key_points": ["要点1", "要点2", "要点3"],

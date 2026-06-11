@@ -70,7 +70,7 @@ export default function TabLayout() {
         />
         {/* 隐藏其他页面 */}
         <Tabs.Screen name="discover" options={{ href: null }} />
-        <Tabs.Screen name="knowledge" options={{ href: null }} />
+        <Tabs.Screen name="knowledge" options={{ href: null, header: () => <QuoteHeader /> }} />
         <Tabs.Screen name="questions" options={{ href: null, header: () => <QuoteHeader /> }} />
         <Tabs.Screen name="buddy" options={{ href: null, header: () => <QuoteHeader /> }} />
         <Tabs.Screen name="matching" options={{ href: null, header: () => <QuoteHeader /> }} />

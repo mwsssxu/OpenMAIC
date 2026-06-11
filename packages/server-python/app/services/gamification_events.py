@@ -199,43 +199,10 @@ async def check_buddy_synergy(
     db: asyncpg.Connection,
     user_uuid: uuid.UUID,
 ) -> dict:
-    """检查搭子默契度"""
-    buddy_config = await db.fetchrow(
-        """SELECT buddy_user_id FROM buddy_configs 
-           WHERE user_id = $1 AND active = TRUE""",
-        user_uuid
-    )
-    if not buddy_config:
-        return {"has_buddy": False}
-    
-    buddy_uuid = buddy_config["buddy_user_id"]
-    today = utcnow().date()
-    
-    buddy_today = await db.fetchrow(
-        "SELECT id FROM daily_checkins WHERE user_id = $1 AND checkin_date = $2",
-        buddy_uuid, today
-    )
-    
-    if buddy_today:
-        synergy_points = 2
-        
-        both_streak = await calculate_buddy_synergy_streak(
-            db, user_uuid, buddy_uuid
-        )
-        
-        if both_streak >= 7:
-            synergy_points = 15
-        
-        await grant_points(db, user_uuid, synergy_points, "buddy_synergy", both_streak)
-        
-        return {
-            "has_buddy": True,
-            "buddy_also_learning": True,
-            "synergy_points": synergy_points,
-            "both_streak": both_streak,
-        }
-    
-    return {"has_buddy": True, "buddy_also_learning": False}
+    """检查搭子默契度（当前无真实用户配对，安全返回）"""
+    # buddy_configs 表存储的是 AI 搭子配置，没有 buddy_user_id 列
+    # 未来如需用户间配对功能，需新建 buddy_pairs 表
+    return {"has_buddy": False}
 
 
 async def calculate_buddy_synergy_streak(

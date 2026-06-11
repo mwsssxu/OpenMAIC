@@ -37,6 +37,7 @@ import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { BottomSheetModal } from '@/components/common/BottomSheetModal';
 import { HintToast } from '@/components/common/HintToast';
 import { InteractiveWebView, InteractiveWebViewRef } from '@/components/playback/InteractiveWebView';
+import { DiagramView, SimulationView } from '@/components/playback/DiagramView';
 import { ClassroomCompletePage } from '@/components/classroom/ClassroomCompletePage';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
 import { useLearningTracker } from '@/lib/hooks/use-learning-tracker';
@@ -476,7 +477,26 @@ export default function ClassroomScreen() {
     const scene = data?.scenes?.[currentSceneIndex];
     if (scene?.type === 'quiz' && scene?.id) {
       const questions = (scene.content as QuizContent)?.questions;
-      if (!questions) return;
+
+      // Quiz 场景缺少 questions：自动补充生成
+      if (!questions || questions.length === 0) {
+        const regenerateQuiz = async () => {
+          try {
+            const result = await apiClient.regenerateQuizQuestions(id, scene.id);
+            if (result.success && result.questions && result.questions.length > 0) {
+              // 更新本地 scene 数据
+              const updatedContent = { ...(scene.content as any), questions: result.questions };
+              scene.content = updatedContent as any;
+              // 触发重渲染
+              setData(prev => prev ? { ...prev } : prev);
+            }
+          } catch (err) {
+            console.warn('[Quiz] Failed to regenerate questions:', err);
+          }
+        };
+        regenerateQuiz();
+        return;
+      }
 
       const loadQuizState = async () => {
         const submittedState = await readSubmittedState(scene.id);
@@ -546,18 +566,20 @@ export default function ClassroomScreen() {
 
   // 课程完成时记录学习数据
   useEffect(() => {
-    const currentScene = data?.scenes?.[currentSceneIndex];
-    const isCompleteScene = currentScene?.type === 'slide' &&
-      (currentScene?.title === '课程完成' || currentScene?.title === 'Course Complete');
+    if (!data?.scenes || data.scenes.length === 0) return;
+    
+    const currentScene = data.scenes[currentSceneIndex];
+    // 到达最后一个场景即视为课程完成（不再依赖标题匹配）
+    const isLastScene = currentSceneIndex === data.scenes.length - 1;
 
-    if (isCompleteScene && data?.scenes && data.scenes.length > 0) {
+    if (isLastScene) {
       // 计算测验分数（quizFlow.questions 在此时读取最新值）
       const quizScore = calculateQuizScore(data.scenes, quizFlow.questions);
 
       // 调用完成学习API
       completeLearning(quizScore);
     }
-  }, [data, currentSceneIndex, completeLearning]); // quizFlow.questions 不需要作为依赖，只在到达完成场景时读取
+  }, [data, currentSceneIndex, completeLearning]);
 
   // 场景切换函数 - 添加触觉反馈
   const goToNextScene = useCallback(() => {
@@ -1863,8 +1885,23 @@ export default function ClassroomScreen() {
                 laserOptions={laserOptions}
                 scrollable={true}  // 启用滚动模式，计算完整内容高度
               />
+            ) : /* Quiz/Interactive 类型但有 canvas 内容：使用 ScreenCanvas 渲染 */ 
+            currentScene?.type !== 'slide' && (currentScene?.content as any)?.canvas?.elements?.length > 0 && !((currentScene?.content as QuizContent)?.questions) ? (
+              <View>
+                <ScreenCanvas
+                  elements={(currentScene?.content as any)?.canvas?.elements || []}
+                  background={convertToSlideBackground((currentScene?.content as any)?.canvas?.background)}
+                  theme={undefined}
+                  spotlightElementId={spotlightElementId}
+                  laserElementId={laserElementId}
+                  laserOptions={laserOptions}
+                  scrollable={true}
+                />
+                <View style={{ padding: 16, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#9ca3af' }}>题目内容生成中，暂时展示幻灯片视图</Text>
+                </View>
+              </View>
             ) : (
-          /* 没有 canvas 内容时的降级显示 */
           <View style={styles.emptySceneContainer}>
             <View style={styles.emptySceneCard}>
               <Ionicons
@@ -1892,7 +1929,7 @@ export default function ClassroomScreen() {
 
         {/* Quiz 类型：Duolingo 逐题模式 */}
         {currentScene?.type === 'quiz' && (currentScene.content as QuizContent)?.questions && (() => {
-          const quizQuestions = (currentScene.content as QuizContent).questions as QuizQuestion[];
+          const quizQuestions = (currentScene?.content as QuizContent)?.questions as QuizQuestion[];
           const totalQuestions = quizQuestions.length;
 
           // 计算总分
@@ -2267,125 +2304,42 @@ export default function ClassroomScreen() {
           );
         })()}
 
-        {/* Interactive 类型：互动场景（含 WebView 交互页面 + 讨论界面） */}
+        {/* Interactive 类型：已弃用，降级为 slide 渲染 */}
         {currentScene?.type === 'interactive' && (() => {
-          const content = currentScene.content as InteractiveContent;
-          // 如果有 HTML 内容（interactive-html/scientific-model 模板生成的交互页面）
-          // 或有外部 URL，渲染 WebView
-          const htmlContent = content?.html;
-          const url = content?.url;
-          if (htmlContent || url) {
-            // 注入移动端适配脚本：确保 viewport、触摸交互、安全区域
-            const mobileAdaptedHtml = htmlContent
-              ? injectMobileAdaptation(htmlContent, content?.widgetType)
-              : undefined;
+          const content = currentScene?.content as any;
+          // 新生成的 interactive 场景 content.type 已经是 slide
+          // 旧数据的 interactive 场景尝试用 canvas 渲染，无 canvas 则显示占位
+          if (content?.canvas?.elements?.length > 0) {
             return (
-              <View style={styles.webviewContainer}>
-                <InteractiveWebView
-                  ref={interactiveWebViewRef}
-                  sceneId={currentScene.id}
-                  url={url}
-                  htmlContent={mobileAdaptedHtml}
-                  baseUrl="about:blank"
-                  onComplete={handleInteractiveComplete}
-                  onMessage={handleInteractiveMessage}
-                  onLoad={() => {
-                    // WebView 加载完成后，通知播放引擎（interactive 场景不再被跳过）
-                    playbackEngineRef.current?.notifyInteractiveLoaded?.();
-                  }}
-                  style={styles.webview}
+              <View style={{ flex: 1 }}>
+                <ScreenCanvas
+                  elements={content.canvas.elements || []}
+                  background={convertToSlideBackground(content.canvas?.background)}
+                  theme={undefined}
+                  spotlightElementId={spotlightElementId}
+                  laserElementId={laserElementId}
+                  laserOptions={laserOptions}
+                  scrollable={true}
                 />
-                {/* Widget 类型标识 */}
-                {content?.widgetType && (
-                  <View style={styles.widgetBadge}>
-                    <Ionicons
-                      name={(WIDGET_ICON_MAP[content.widgetType] || 'code-working') as any}
-                      size={14}
-                      color="#10b981"
-                    />
-                    <Text style={styles.widgetBadgeText}>
-                      {WIDGET_LABEL_MAP[content.widgetType] || content.widgetType}
-                    </Text>
-                  </View>
-                )}
               </View>
             );
           }
-          // 否则显示讨论界面
+          // 无 canvas 内容：显示简洁占位 + 完成/跳过按钮
           return (
-          <View style={styles.interactiveOverlay}>
-            <View style={styles.interactiveCard}>
-              <View style={styles.interactiveHeader}>
-                <Ionicons name="people" size={24} color="#10b981" />
-                <Text style={styles.interactiveTitle}>互动讨论</Text>
-              </View>
-              <Text style={styles.interactiveTopic}>{currentScene?.title}</Text>
-              <Text style={styles.interactiveDesc}>{content?.description || '互动讨论场景，点击下方按钮开始与Agent互动'}</Text>
-
-              {/* 关键讨论点 */}
-              {content?.key_points && content.key_points.length > 0 && (
-                <View style={styles.discussionPoints}>
-                  <Text style={styles.discussionLabel}>讨论要点：</Text>
-                  {content.key_points.map((point: string, idx: number) => (
-                    <View key={idx} style={styles.discussionItem}>
-                      <Ionicons name="chatbubble-outline" size={16} color="#10b981" />
-                      <Text style={styles.discussionText}>{point}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* 多 Agent 讨论按钮 */}
-              <TouchableOpacity
-                style={styles.startDiscussionBtn}
-                onPress={() => startMultiAgentDiscussion(buildDiscussionTopic(currentScene))}
-                disabled={discussionRunning}
-              >
-                {discussionRunning ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Ionicons name="chatbubbles" size={20} color="white" />
-                )}
-                <Text style={styles.startDiscussionText}>
-                  {discussionRunning ? '讨论进行中...' : '开始多Agent讨论'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* 查看讨论历史按钮 */}
-              {hasDiscussionHistory && !discussionRunning && (
-                <TouchableOpacity
-                  style={styles.viewHistoryBtn}
-                  onPress={loadDiscussionHistory}
-                >
-                  <Ionicons name="time-outline" size={20} color="#10b981" />
-                  <Text style={styles.viewHistoryText}>查看讨论历史</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* 单 Agent 对话按钮 */}
-              <TouchableOpacity
-                style={styles.startSingleChatBtn}
-                onPress={() => {
-                  if (agents.length > 0) {
-                    const teacherAgent = agents.find(a => a.role === 'teacher') || agents[0];
-                    setSelectedAgent(teacherAgent);
-                    setChatHistory([]);
-                    setDiscussionMode(false);
-                    setShowChatModal(true);
-                  }
-                }}
-              >
-                <Ionicons name="chatbubble-outline" size={20} color="#10b981" />
-                <Text style={styles.startSingleChatText}>单Agent对话</Text>
+            <View style={styles.center}>
+              <Ionicons name="document-text-outline" size={48} color="#ccc" />
+              <Text style={styles.emptySceneTitle}>{currentScene?.title || '互动场景'}</Text>
+              <Text style={styles.emptySceneHint}>此场景内容正在准备中</Text>
+              <TouchableOpacity style={styles.continueButton} onPress={() => goToNextScene()}>
+                <Text style={styles.continueButtonText}>继续</Text>
               </TouchableOpacity>
             </View>
-          </View>
           );
         })()}
 
         {/* PBL 类型：项目学习场景 */}
         {currentScene?.type === 'pbl' && (() => {
-          const content = currentScene.content as any;
+          const content = currentScene?.content as any;
           // 如果有 URL 或 HTML，渲染 WebView
           if (content?.url || content?.html) {
             return (

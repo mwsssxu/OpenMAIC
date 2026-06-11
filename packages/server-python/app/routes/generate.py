@@ -251,10 +251,19 @@ async def load_cache_scenes(
 ):
     """
     从缓存的源课程加载完整 scenes 数据（用于复用）
+    仅允许加载已缓存（公开可复用）的课程 scenes
     """
     stage_id = body.get("stage_id")
     if not stage_id:
         raise HTTPException(status_code=400, detail="stage_id is required")
+
+    # 验证 stage_id 在缓存表中存在（仅允许加载已缓存的公开课程）
+    cache_row = await db.fetchrow(
+        "SELECT id FROM course_cache WHERE source_stage_id = $1",
+        uuid.UUID(stage_id),
+    )
+    if not cache_row:
+        raise HTTPException(status_code=403, detail="该课程不在缓存中，无法加载")
 
     from app.services.course_cache import load_cached_course_scenes
 

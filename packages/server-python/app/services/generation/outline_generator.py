@@ -274,7 +274,8 @@ Design the course content and teaching style to match this teacher's persona."""
         # Fallback到简化prompt
         system_prompt = """你是课程设计专家。根据需求生成教学大纲JSON数组。
 输出格式：JSON数组，每个场景包含：id, title, type, description, order, key_points
-type可选：slide/quiz/interactive/pbl
+type可选：slide/quiz
+最后一个场景必须是slide类型的课程总结
 只输出JSON，无其他内容"""
         user_prompt = f"""需求：{requirement}
 语言：{language}
@@ -540,7 +541,7 @@ async def generate_outline_titles(
     system_prompt = """你是课程设计专家。根据需求快速生成课程大纲的标题列表。
 
 输出格式：JSON数组，每个元素包含 title, type, description
-- type: slide/quiz/interactive/pbl
+- type: slide/quiz
 - description: 简短的一句话描述
 - 只输出JSON，无其他内容"""
 
@@ -550,9 +551,9 @@ async def generate_outline_titles(
 
 注意：
 - 第一个场景是课程简介
-- 最后一个场景是总结回顾
+- 最后一个场景是slide类型的"课程总结"或"总结回顾"
 - 中间穿插quiz场景检验学习效果
-- 可包含1个interactive场景用于互动演示"""
+- 只使用slide和quiz两种类型"""
 
     try:
         response = await call_llm(

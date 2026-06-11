@@ -19,6 +19,7 @@ import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { useGoBack } from '@/lib/utils/navigation';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { QuoteHeader } from '@/lib/components/QuoteHeader';
 import { useAuth } from '@/lib/auth/auth-context';
 
 // iOS 风格颜色系统
@@ -232,12 +233,13 @@ export default function QuestionDetailScreen() {
 
   return (
     <TabPageWrapper hasHeader>
+    <QuoteHeader />
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      {/* 页面头部 */}
-      <View style={styles.pageHeader}>
+      {/* 导航栏 */}
+      <View style={styles.navBar}>
         <TouchableOpacity
           style={styles.backBtn}
           onPress={() => goBack()}
@@ -246,8 +248,8 @@ export default function QuestionDetailScreen() {
           <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
         </TouchableOpacity>
         <Text style={styles.pageTitle} numberOfLines={1}>问题详情</Text>
-        <View style={styles.pageHeaderActions}>
-          <TouchableOpacity style={styles.headerAction} activeOpacity={0.7}>
+        <View style={styles.navActions}>
+          <TouchableOpacity style={styles.navAction} activeOpacity={0.7}>
             <Ionicons name="share-outline" size={18} color={iOSColors.muted} />
           </TouchableOpacity>
         </View>
@@ -449,20 +451,19 @@ const styles = StyleSheet.create({
     backgroundColor: iOSColors.bgSolid,
   },
 
-  // 页面头部
-  pageHeader: {
+  // 导航栏
+  navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
+    paddingVertical: Spacing.sm,
     backgroundColor: iOSColors.bgSolid,
   },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -470,20 +471,20 @@ const styles = StyleSheet.create({
     borderColor: iOSColors.border,
   },
   pageTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: iOSColors.fg,
     letterSpacing: -0.3,
     flex: 1,
   },
-  pageHeaderActions: {
+  navActions: {
     flexDirection: 'row',
     gap: Spacing.xs,
   },
-  headerAction: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  navAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',

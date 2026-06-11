@@ -46,6 +46,87 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+async def _validate_source_completeness(
+    stage_id: uuid.UUID,
+    db: asyncpg.Connection,
+) -> tuple[bool, str]:
+    """
+    校验源课程完整性：
+    1. 必须有 scenes
+    2. quiz 场景必须有 questions（非空数组）
+    3. slide 场景必须有 canvas.elements
+
+    Returns:
+        (is_complete, detail_message)
+    """
+    rows = await db.fetch(
+        "SELECT id, type, content FROM scenes WHERE stage_id = $1 ORDER BY order_index",
+        stage_id,
+    )
+    if not rows:
+        return False, "no scenes"
+
+    issues = []
+    quiz_missing_questions = 0
+    empty_slide_count = 0
+    total_slide_count = 0
+
+    for row in rows:
+        content = row["content"]
+        if isinstance(content, str):
+            content = json.loads(content)
+        if not content:
+            continue
+
+        scene_type = row["type"]
+        if scene_type == "quiz":
+            questions = content.get("questions")
+            if not questions or not isinstance(questions, list) or len(questions) == 0:
+                quiz_missing_questions += 1
+        elif scene_type == "slide":
+            total_slide_count += 1
+            canvas = content.get("canvas", {})
+            elements = canvas.get("elements", []) if isinstance(canvas, dict) else []
+            if not elements:
+                empty_slide_count += 1
+
+    # quiz 缺 questions 是硬性不完整
+    if quiz_missing_questions > 0:
+        issues.append(f"{quiz_missing_questions} quiz scene(s) missing questions")
+
+    # 所有 slide 都空才标记不完整（个别空 slide 可以接受）
+    if total_slide_count > 0 and empty_slide_count == total_slide_count:
+        issues.append("all slide scenes have empty canvas")
+
+    if issues:
+        return False, "; ".join(issues[:5])
+    return True, "ok"
+
+
+async def _find_next_best(
+    rows: list,
+    query_embedding: List[float],
+    skipped_ids: set,
+    language: str,
+) -> tuple[Optional[Any], float]:
+    """在跳过某些条目后找次优匹配"""
+    best_match = None
+    best_similarity = 0.0
+    for row in rows:
+        if row["id"] in skipped_ids:
+            continue
+        cached_emb = row["embedding"]
+        if not cached_emb:
+            continue
+        if isinstance(cached_emb, str):
+            cached_emb = json.loads(cached_emb)
+        similarity = _cosine_similarity(query_embedding, cached_emb)
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_match = row
+    return best_match, best_similarity
+
+
 async def get_embedding(text: str) -> List[float]:
     """调用 dashscope text-embedding-v3 生成向量"""
     if not dashscope.api_key:
@@ -78,11 +159,11 @@ async def find_matching_course(
         # 1. 生成需求 embedding
         query_embedding = await get_embedding(requirement)
 
-        # 2. 从数据库加载所有缓存条目的 embedding
+        # 2. 从数据库加载所有缓存条目的 embedding（仅查完整课程）
         rows = await db.fetch(
             """SELECT id, source_stage_id, requirement_text, embedding, outlines, scenes_summary, language
                FROM course_cache
-               WHERE language = $1
+               WHERE language = $1 AND (is_complete IS NULL OR is_complete = true)
                ORDER BY created_at DESC
                LIMIT $2""",
             language, MAX_CACHE_ENTRIES,
@@ -110,6 +191,23 @@ async def find_matching_course(
 
         # 4. 检查是否达到阈值
         if best_match and best_similarity >= SIMILARITY_THRESHOLD:
+            # 5. 校验源课程完整性（quiz 场景必须有 questions，scenes 不能全空）
+            is_complete, completeness_detail = await _validate_source_completeness(
+                best_match["source_stage_id"], db
+            )
+            if not is_complete:
+                logger.warning(
+                    f"[CourseCache] Match found (sim={best_similarity:.4f}) but source course incomplete: "
+                    f"{completeness_detail}. Skipping."
+                )
+                # 从候选中移除此条目，尝试次优匹配
+                skipped_ids = {best_match["id"]}
+                best_match, best_similarity = await _find_next_best(
+                    rows, query_embedding, skipped_ids, language
+                )
+                if not (best_match and best_similarity >= SIMILARITY_THRESHOLD):
+                    return None
+
             logger.info(
                 f"[CourseCache] Match found: similarity={best_similarity:.4f}, "
                 f"requirement='{best_match['requirement_text'][:50]}'"
@@ -169,6 +267,14 @@ async def cache_course(
                 "title": s.get("title", ""),
             })
 
+        # 3. 校验课程完整性
+        is_complete, detail = await _validate_source_completeness(stage_id, db)
+        if not is_complete:
+            logger.warning(
+                f"[CourseCache] Course stage {stage_id} incomplete: {detail}. "
+                f"Still caching but marking as incomplete."
+            )
+
         # 3. 检查是否已有相似缓存（避免重复）
         existing = await db.fetchrow(
             "SELECT id FROM course_cache WHERE source_stage_id = $1",
@@ -179,10 +285,10 @@ async def cache_course(
             await db.execute(
                 """UPDATE course_cache 
                    SET requirement_text = $1, embedding = $2, outlines = $3, 
-                       scenes_summary = $4, updated_at = $5
-                   WHERE id = $6""",
+                       scenes_summary = $4, is_complete = $5, updated_at = $6
+                   WHERE id = $7""",
                 requirement, json.dumps(embedding), json.dumps(outlines),
-                json.dumps(scenes_summary), datetime.utcnow(), existing["id"],
+                json.dumps(scenes_summary), is_complete, datetime.utcnow(), existing["id"],
             )
             logger.info(f"[CourseCache] Updated cache for stage {stage_id}")
             return str(existing["id"])
@@ -191,11 +297,11 @@ async def cache_course(
         cache_id = uuid.uuid4()
         await db.execute(
             """INSERT INTO course_cache 
-               (id, source_stage_id, requirement_text, embedding, outlines, scenes_summary, language, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+               (id, source_stage_id, requirement_text, embedding, outlines, scenes_summary, language, is_complete, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
             cache_id, stage_id, requirement, json.dumps(embedding),
             json.dumps(outlines), json.dumps(scenes_summary), language,
-            datetime.utcnow(),
+            is_complete, datetime.utcnow(),
         )
         logger.info(f"[CourseCache] Cached course for stage {stage_id}, cache_id={cache_id}")
         return str(cache_id)

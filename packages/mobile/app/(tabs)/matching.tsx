@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { showError, showSuccess } from '@/lib/utils/error-toast';
 import { useGoBack } from '@/lib/utils/navigation';
+import { useRouter } from 'expo-router';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 
 // iOS 风格颜色系统
@@ -23,6 +24,7 @@ const iOSColors = {
 
 export default function MatchingScreen() {
   const goBack = useGoBack();
+  const router = useRouter();
   const [partners, setPartners] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -51,7 +53,10 @@ export default function MatchingScreen() {
           <Ionicons name="chevron-back" size={20} color={iOSColors.fg} />
         </TouchableOpacity>
         <Text style={styles.pageTitle}>学习匹配</Text>
-        <View style={styles.pageHeaderActions} />
+        <TouchableOpacity style={styles.buddyBtn} onPress={() => router.navigate('/buddy')} activeOpacity={0.7}>
+          <Ionicons name="happy" size={18} color={iOSColors.accent} />
+          <Text style={styles.buddyBtnText}>学习搭子</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -129,7 +134,18 @@ const styles = StyleSheet.create({
     borderColor: iOSColors.border,
   },
   pageTitle: { fontSize: 18, fontWeight: '600', color: iOSColors.fg, letterSpacing: -0.3, flex: 1 },
-  pageHeaderActions: { flexDirection: 'row', gap: Spacing.xs },
+  buddyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: iOSColors.accentLight,
+    borderRadius: Rounded.full,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 0.5,
+    borderColor: 'rgba(196, 90, 26, 0.2)',
+  },
+  buddyBtnText: { fontSize: 13, fontWeight: '600', color: iOSColors.accent },
   scrollView: { flex: 1, paddingHorizontal: Spacing.md },
   section: {
     backgroundColor: Colors.neutral.card,

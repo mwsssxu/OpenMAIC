@@ -4,7 +4,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, confirmAction } from '@/lib/utils/error-toast';
+import { useGoBack } from '@/lib/utils/navigation';
 
 interface KnowledgeCardDetail {
   id: string;

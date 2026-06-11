@@ -196,6 +196,27 @@ export default function KnowledgeScreen() {
 
   const renderHeader = () => (
     <>
+      {/* 页面头部 */}
+      <View style={styles.pageHeader}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.push('/(tabs)' as any)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={20} color={Colors.neutral.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.pageTitle}>知识卡片</Text>
+        <View style={styles.pageHeaderActions}>
+          <TouchableOpacity
+            style={styles.headerAction}
+            onPress={() => setShowSearch(true)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="search-outline" size={18} color={Colors.neutral.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* 统计卡片 */}
       {stats && (
         <View style={styles.statsCard}>
@@ -237,8 +258,13 @@ export default function KnowledgeScreen() {
         </View>
       )}
 
-      {/* 分类筛选 */}
-      <View style={styles.categoryFilter}>
+      {/* 分类筛选 - 可滑动 */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryFilterScroll}
+        contentContainerStyle={styles.categoryFilterContent}
+      >
         {SKILL_CATEGORIES.map((cat) => (
           <TouchableOpacity
             key={cat.id}
@@ -258,7 +284,7 @@ export default function KnowledgeScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {/* 搜索和创建 */}
       <View style={styles.actionRow}>
@@ -416,6 +442,47 @@ export default function KnowledgeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 页面头部
+  pageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: Colors.neutral.border,
+  },
+  pageTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.neutral.textPrimary,
+    letterSpacing: -0.3,
+    flex: 1,
+  },
+  pageHeaderActions: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  headerAction: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: Colors.neutral.border,
+  },
+
   container: { flex: 1, backgroundColor: Colors.neutral.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
@@ -441,15 +508,18 @@ const styles = StyleSheet.create({
   categoryCount: { fontSize: 12, color: Colors.neutral.textSecondary, marginLeft: Spacing.sm, width: 40 },
 
   // 分类筛选
-  categoryFilter: {
-    flexDirection: 'row',
-    padding: Spacing.sm,
+  // 分类筛选（可滑动）
+  categoryFilterScroll: {
     marginHorizontal: Spacing.sm,
     marginBottom: Spacing.sm,
+  },
+  categoryFilterContent: {
+    padding: Spacing.sm,
     backgroundColor: Colors.neutral.card,
     borderRadius: Rounded.md,
     borderWidth: 1,
     borderColor: Colors.neutral.border,
+    gap: Spacing.sm,
   },
   categoryBtn: {
     paddingHorizontal: Spacing.sm,
