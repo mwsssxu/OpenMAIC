@@ -168,6 +168,100 @@ async def parse_pdf_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== 课程缓存匹配 ====================
+
+@router.post("/match-cache")
+async def match_course_cache(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    语义匹配已有课程缓存
+    - 命中时返回大纲和场景摘要，供用户选择复用或微调
+    - 未命中时返回 null，前端继续正常生成流程
+    """
+    requirement = body.get("requirement", "").strip()
+    language = body.get("language", "zh-CN")
+
+    if not requirement:
+        raise HTTPException(status_code=400, detail="requirement is required")
+
+    from app.services.course_cache import find_matching_course
+
+    match = await find_matching_course(requirement, db, language)
+
+    if match:
+        # 更新使用计数
+        await db.execute(
+            "UPDATE course_cache SET use_count = use_count + 1 WHERE id = $1",
+            uuid.UUID(match["cache_id"]),
+        )
+        return {
+            "matched": True,
+            "data": match,
+        }
+    else:
+        return {
+            "matched": False,
+            "data": None,
+        }
+
+
+@router.post("/cache-course")
+async def cache_course_endpoint(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    将已生成的课程写入缓存（供后续语义匹配复用）
+    """
+    stage_id = body.get("stage_id")
+    requirement = body.get("requirement", "").strip()
+    outlines = body.get("outlines", [])
+    scenes = body.get("scenes", [])
+    language = body.get("language", "zh-CN")
+
+    if not stage_id or not requirement:
+        raise HTTPException(status_code=400, detail="stage_id and requirement are required")
+
+    from app.services.course_cache import cache_course
+
+    cache_id = await cache_course(
+        requirement=requirement,
+        stage_id=uuid.UUID(stage_id),
+        outlines=outlines,
+        scenes=scenes,
+        db=db,
+        language=language,
+    )
+
+    if cache_id:
+        return {"success": True, "cache_id": cache_id}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to cache course")
+
+
+@router.post("/load-cache-scenes")
+async def load_cache_scenes(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    从缓存的源课程加载完整 scenes 数据（用于复用）
+    """
+    stage_id = body.get("stage_id")
+    if not stage_id:
+        raise HTTPException(status_code=400, detail="stage_id is required")
+
+    from app.services.course_cache import load_cached_course_scenes
+
+    scenes = await load_cached_course_scenes(uuid.UUID(stage_id), db)
+    return {"scenes": scenes}
+
+
 # ==================== 网络搜索 ====================
 
 def _extract_rewritten_query(raw: str) -> Optional[str]:

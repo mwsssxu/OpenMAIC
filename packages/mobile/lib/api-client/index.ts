@@ -499,6 +499,7 @@ class ApiClient {
       let outlineCount = 0;
       let lastProcessedLength = 0;
       let currentEvent = '';
+      let resolved = false;
 
       xhr.onreadystatechange = () => {
         if (xhr.readyState >= 3) {
@@ -561,6 +562,7 @@ class ApiClient {
                   if (onComplete) {
                     onComplete(data.count || outlineCount);
                   }
+                  resolved = true;
                   resolve();
                 } else if (currentEvent === 'error') {
                   if (onError) {
@@ -573,6 +575,46 @@ class ApiClient {
               }
             }
           }
+        }
+      };
+
+      xhr.onload = () => {
+        if (resolved) return; // 已经通过 onreadystatechange 处理完毕
+        // XHR 完成时，确保处理完所有剩余数据
+        // 某些情况下 onreadystatechange 不会在 readyState=4 时再次触发
+        const fullText = xhr.responseText;
+        const newText = fullText.slice(lastProcessedLength);
+        if (newText.trim()) {
+          const lines = newText.split('\n');
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith('event:')) {
+              currentEvent = trimmedLine.slice(6).trim();
+            } else if (trimmedLine.startsWith('data:')) {
+              const dataStr = trimmedLine.slice(5).trim();
+              if (!dataStr) continue;
+              try {
+                const data = JSON.parse(dataStr);
+                if (currentEvent === 'done' && onComplete) {
+                  onComplete(data.count || outlineCount);
+                  resolve();
+                } else if (currentEvent === 'error' && onError) {
+                  onError(data.error || '生成失败');
+                  reject(new Error(data.error));
+                }
+              } catch (e) {
+                // JSON 解析失败，跳过
+              }
+            }
+          }
+        }
+        // 如果从未收到 done 事件但有 outlines，手动完成
+        if (outlineCount > 0 && !resolved) {
+          resolved = true;
+          if (onComplete) {
+            onComplete(outlineCount);
+          }
+          resolve();
         }
       };
 
@@ -2300,25 +2342,137 @@ class ApiClient {
   }
 
   // 解析 PDF 文件为文本内容（用于课程创建时的大纲生成）
+  // React Native 原生端：FormData + { uri } 写法 + fetch
+  // Web 端：fetch blob URL → Blob → FormData.append(Blob)
   async parsePdf(
     fileUri: string,
     fileName: string,
     providerId?: string,
-  ): Promise<{ success: boolean; text?: string; images?: string[]; metadata?: any }> {
-    const formData = new FormData();
-    // React Native FormData: 使用 uri + name + type
-    formData.append('pdf', {
-      uri: fileUri,
-      name: fileName || 'document.pdf',
-      type: 'application/pdf',
-    } as any);
-    if (providerId) {
-      formData.append('providerId', providerId);
+  ): Promise<{ success: boolean; text?: string; images?: string[]; metadata?: any; data?: { text?: string; images?: string[]; metadata?: any } }> {
+    const baseURL = this.client.defaults.baseURL || '';
+    const url = `${baseURL}/generate/parse-pdf`;
+
+    // 确保 token 有效（触发 refresh 如果过期）
+    let token = this.token;
+    if (!token) {
+      token = await this.ensureValidToken();
     }
 
-    const { data } = await this.client.post('/generate/parse-pdf', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 60000, // PDF 解析可能较慢
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const isWeb = typeof window !== 'undefined' && typeof window.fetch === 'function'
+      && fileUri.startsWith('blob:');
+
+    if (isWeb) {
+      // Web: blob URL → fetch as Blob → append to FormData
+      const blobResp = await fetch(fileUri);
+      const blob = await blobResp.blob();
+      const formData = new FormData();
+      formData.append('pdf', blob, fileName || 'document.pdf');
+      if (providerId) {
+        formData.append('providerId', providerId);
+      }
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      // 401 时刷新 token 重试一次
+      if (response.status === 401 && token) {
+        const newToken = await this.ensureValidToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          const retryResp = await fetch(url, { method: 'POST', headers, body: formData });
+          if (!retryResp.ok) {
+            const errorData = await retryResp.json().catch(() => ({ detail: 'PDF解析失败' }));
+            throw new Error(errorData.detail || `HTTP ${retryResp.status}`);
+          }
+          return retryResp.json();
+        }
+      }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'PDF解析失败' }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+      return response.json();
+    } else {
+      // React Native 原生：FormData + { uri } 对象
+      const formData = new FormData();
+      formData.append('pdf', {
+        uri: fileUri,
+        name: fileName || 'document.pdf',
+        type: 'application/pdf',
+      } as any);
+      if (providerId) {
+        formData.append('providerId', providerId);
+      }
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      // 401 时刷新 token 重试一次
+      if (response.status === 401 && token) {
+        const newToken = await this.ensureValidToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          const retryResp = await fetch(url, { method: 'POST', headers, body: formData });
+          if (!retryResp.ok) {
+            const errorData = await retryResp.json().catch(() => ({ detail: 'PDF解析失败' }));
+            throw new Error(errorData.detail || `HTTP ${retryResp.status}`);
+          }
+          return retryResp.json();
+        }
+      }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'PDF解析失败' }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+  }
+
+  // ==================== 课程缓存匹配 ====================
+
+  // 语义匹配已有课程缓存
+  async matchCourseCache(
+    requirement: string,
+    language: string = 'zh-CN',
+  ): Promise<{ matched: boolean; data?: any }> {
+    const { data } = await this.client.post('/generate/match-cache', {
+      requirement,
+      language,
+    });
+    return data;
+  }
+
+  // 将已生成课程写入缓存
+  async cacheCourse(
+    stageId: string,
+    requirement: string,
+    outlines: any[],
+    scenes: any[],
+    language: string = 'zh-CN',
+  ): Promise<{ success: boolean; cache_id?: string }> {
+    const { data } = await this.client.post('/generate/cache-course', {
+      stage_id: stageId,
+      requirement,
+      outlines,
+      scenes,
+      language,
+    });
+    return data;
+  }
+
+  // 从缓存加载源课程的完整 scenes
+  async loadCacheScenes(
+    stageId: string,
+  ): Promise<{ scenes: any[] }> {
+    const { data } = await this.client.post('/generate/load-cache-scenes', {
+      stage_id: stageId,
     });
     return data;
   }

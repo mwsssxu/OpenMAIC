@@ -5,7 +5,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装依赖
+# 安装系统依赖（jbig2dec: PDF JBIG2图像解码）
+RUN apt-get update -qq && apt-get install -y -qq jbig2dec && rm -rf /var/lib/apt/lists/*
+
+# 安装 Python 依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout=120 -r requirements.txt
 

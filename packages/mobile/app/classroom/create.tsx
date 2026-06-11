@@ -304,6 +304,10 @@ export default function CreateClassroomScreen() {
   // 步骤4: 创建结果
   const [createdClassroomId, setCreatedClassroomId] = useState<string | null>(null);
 
+  // 课程缓存匹配
+  const [cacheMatch, setCacheMatch] = useState<any>(null);
+  const [checkingCache, setCheckingCache] = useState(false);
+
   // 检查认证
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -351,8 +355,9 @@ export default function CreateClassroomScreen() {
     setError(null);
     try {
       const result = await apiClient.parsePdf(pdfFile.uri, pdfFile.name);
-      if (result.success && result.text) {
-        setPdfContent(result.text);
+      const text = result.text || result.data?.text;
+      if (result.success && text) {
+        setPdfContent(text);
         onSuccess();
       } else {
         setError('PDF 解析失败，请重试或直接输入课程需求');
@@ -372,13 +377,71 @@ export default function CreateClassroomScreen() {
   };
 
   // 步骤1: 提交需求
-  const handleStep1Next = () => {
+  const handleStep1Next = async () => {
     if (!requirement.trim() && !pdfContent) {
       setError('请输入课程需求或上传 PDF 文件');
       return;
     }
     setError(null);
+    setCacheMatch(null);
+
+    // 先查缓存匹配
+    const effectiveRequirement = requirement.trim() || (pdfFile ? `基于文档「${pdfFile.name}」创建课程` : '');
+    try {
+      setCheckingCache(true);
+      const result = await apiClient.matchCourseCache(effectiveRequirement, language);
+      setCheckingCache(false);
+      if (result.matched && result.data) {
+        setCacheMatch(result.data);
+        setCurrentStep(1);
+        // 将缓存的大纲加载到 outlines
+        if (result.data.outlines) {
+          const cachedOutlines = result.data.outlines.map((o: any, i: number) => ({
+            type: o.type || 'slide',
+            title: o.title || `场景 ${i + 1}`,
+            description: o.description || '',
+          }));
+          outlinesRef.current = cachedOutlines;
+          setOutlines(cachedOutlines);
+        }
+        return; // 命中缓存，不继续生成
+      }
+    } catch (err) {
+      console.warn('[Cache] Match failed, proceeding with normal generation:', err);
+      setCheckingCache(false);
+    }
+
+    // 未命中缓存，正常生成
     setCurrentStep(1);
+    generateOutlines();
+  };
+
+  // 使用缓存课程（跳过生成）
+  const handleUseCache = async () => {
+    if (!cacheMatch) return;
+    setLoading(true);
+    setLoadingMessage('正在加载缓存课程...');
+    try {
+      // 从源课程加载完整 scenes
+      const result = await apiClient.loadCacheScenes(cacheMatch.source_stage_id);
+      if (result.scenes && result.scenes.length > 0) {
+        setCacheMatch(null);
+        // 直接跳到创建结果
+        // TODO: 用缓存的 scenes 创建新课程
+      }
+    } catch (err: any) {
+      setError('加载缓存课程失败：' + (err.message || '未知错误'));
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
+    }
+  };
+
+  // 忽略缓存，重新生成
+  const handleIgnoreCache = () => {
+    setCacheMatch(null);
+    setOutlines([]);
+    outlinesRef.current = [];
     generateOutlines();
   };
 
@@ -607,8 +670,15 @@ export default function CreateClassroomScreen() {
 
       {error && <Text style={styles.errorText}>{error}</Text>}
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleStep1Next} activeOpacity={0.85}>
-        <Text style={styles.primaryBtnText}>✨ 开始生成课程大纲</Text>
+      <TouchableOpacity style={styles.primaryBtn} onPress={handleStep1Next} activeOpacity={0.85} disabled={checkingCache}>
+        {checkingCache ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={[styles.primaryBtnText, { marginLeft: 8 }]}>正在匹配缓存...</Text>
+          </View>
+        ) : (
+          <Text style={styles.primaryBtnText}>✨ 开始生成课程大纲</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -617,9 +687,43 @@ export default function CreateClassroomScreen() {
   const renderStep2 = () => (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>课程大纲</Text>
+      {cacheMatch ? (
+        // 缓存命中提示
+        <View style={{ backgroundColor: '#f0fdf4', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#86efac' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Ionicons name="flash" size={20} color="#16a34a" />
+            <Text style={{ fontSize: 16, fontWeight: '600', color: '#16a34a', marginLeft: 6 }}>
+              发现相似课程
+            </Text>
+          </View>
+          <Text style={{ fontSize: 14, color: '#374151', marginBottom: 4 }}>
+            已有课程「{cacheMatch.requirement?.slice(0, 30)}」与您的需求匹配度 {(cacheMatch.similarity * 100).toFixed(0)}%
+          </Text>
+          <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+            复用已有课程可节省约 80% 的 Token 消耗
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: '#16a34a', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, flex: 1, alignItems: 'center' }}
+              onPress={handleUseCache}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>使用缓存</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, flex: 1, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' }}
+              onPress={handleIgnoreCache}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14 }}>重新生成</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
       <Text style={styles.stepHint}>
         {generatingOutlines ? 'AI 正在智能规划课程结构...' : 'AI 已为您生成以下课程大纲'}
       </Text>
+      )}
 
       {generatingOutlines && outlines.length === 0 ? (
         <View style={styles.centerContent}>
