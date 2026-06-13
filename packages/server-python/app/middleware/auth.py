@@ -5,6 +5,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import verify_token
+from app.core.request_context import set_current_user_id
 from app.db.database import get_db
 from app.models.user import UserResponse
 import asyncpg
@@ -44,6 +45,9 @@ async def get_current_user(
             detail="User is inactive"
         )
 
+    # 写入请求上下文 — llm.py 等深层服务可零侵入读取归因
+    set_current_user_id(str(row["id"]) if row["id"] else None)
+
     return UserResponse(
         id=str(row["id"]),
         email=row["email"],
@@ -79,10 +83,13 @@ async def get_optional_user_id(
     )
     if row is None or not row["is_active"]:
         return None
+    set_current_user_id(user_id)
     return user_id
 
 
 async def verify_token_from_ws(token: str) -> str | None:
     """WebSocket token 验证（无数据库依赖）"""
     user_id = verify_token(token, expected_type="access")
+    if user_id:
+        set_current_user_id(user_id)
     return user_id

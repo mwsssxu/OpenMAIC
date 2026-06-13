@@ -275,6 +275,14 @@ async def _call_llm_internal(
     start_time = time.time()
     call_start = time.time()
 
+    # 若调用方未传 user_id，回退到请求上下文（auth 中间件设置）。
+    if user_id is None:
+        try:
+            from app.core.request_context import get_current_user_id_from_ctx
+            user_id = get_current_user_id_from_ctx()
+        except Exception:
+            user_id = None
+
     if scene_type and not model:
         router = get_model_router()
         model = router.get_model_for_scene(scene_type)
@@ -612,8 +620,14 @@ async def _stream_llm_internal(
                     if captured_usage:
                         try:
                             duration_ms = int((time.time() - stream_start) * 1000)
+                            # 从请求上下文读取 user_id（auth 中间件设置），用于成本归因
+                            try:
+                                from app.core.request_context import get_current_user_id_from_ctx
+                                ctx_user_id = get_current_user_id_from_ctx()
+                            except Exception:
+                                ctx_user_id = None
                             await _record_usage_fallback({
-                                "user_id": None,
+                                "user_id": ctx_user_id,
                                 "provider": provider_id,
                                 "model": model_id,
                                 "scene_type": scene_type.value if scene_type else None,
