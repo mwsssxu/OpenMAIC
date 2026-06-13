@@ -28,6 +28,7 @@ const navItems = [
     { name: '用户统计', path: '/statistics/users' },
     { name: '课程统计', path: '/statistics/classrooms' },
     { name: '经济统计', path: '/statistics/economy' },
+    { name: '盈利分析', path: '/statistics/profitability' },
   ]},
   { name: '系统配置', path: '/settings', icon: Settings, children: [
     { name: 'LLM配置', path: '/settings/llm' },
