@@ -313,20 +313,20 @@ async def list_users(
     param_idx = 1
 
     if search:
-        conditions.append(f"(email ILIKE ${param_idx} OR nickname ILIKE ${param_idx})")
+        conditions.append(f"(u.email ILIKE ${param_idx} OR u.nickname ILIKE ${param_idx})")
         params.append(f"%{search}%")
         param_idx += 1
 
     if tier:
-        conditions.append(f"subscription_tier = ${param_idx}")
+        conditions.append(f"u.subscription_tier = ${param_idx}")
         params.append(tier)
         param_idx += 1
 
     if status:
         if status == "active":
-            conditions.append("is_active = true")
+            conditions.append("u.is_active = true")
         elif status == "inactive":
-            conditions.append("is_active = false")
+            conditions.append("u.is_active = false")
 
     params.extend([limit, offset])
 
@@ -334,17 +334,24 @@ async def list_users(
 
     users = await db.fetch(
         f"""
-        SELECT id, email, nickname, avatar_url, token_balance, point_balance,
-               subscription_tier, created_at, is_active
-        FROM users
+        SELECT u.id, u.email, u.nickname, u.avatar_url,
+               COALESCE(ta.balance, 0) as token_balance,
+               COALESCE(pa.balance, 0) as point_balance,
+               u.subscription_tier, u.created_at, u.is_active
+        FROM users u
+        LEFT JOIN token_accounts ta ON ta.user_id = u.id
+        LEFT JOIN point_accounts pa ON pa.user_id = u.id
         WHERE {where_clause}
-        ORDER BY created_at DESC
+        ORDER BY u.created_at DESC
         LIMIT ${param_idx} OFFSET ${param_idx + 1}
         """,
         *params
     )
 
-    total = await db.fetchval(f"SELECT COUNT(*) FROM users WHERE {where_clause}", *params[:-2])
+    total = await db.fetchval(
+        f"SELECT COUNT(*) FROM users u WHERE {where_clause}",
+        *params[:-2]
+    )
 
     return {"users": [dict(u) for u in users], "total": total}
 
@@ -357,27 +364,34 @@ async def get_user_detail(
 ):
     """Get detailed user info. Requires users.view permission."""
     # Note: league_tier field removed as it doesn't exist in users table
+    # Token/point balances live in token_accounts/point_accounts (see token-ledger-schema.md)
     user = await db.fetchrow(
         """
-        SELECT u.id, u.email, u.nickname, u.avatar_url, u.token_balance, u.point_balance,
+        SELECT u.id, u.email, u.nickname, u.avatar_url,
+               COALESCE(ta.balance, 0) as token_balance,
+               COALESCE(pa.balance, 0) as point_balance,
                u.subscription_tier, u.created_at, u.is_active,
                (SELECT COUNT(*) FROM stages WHERE user_id = u.id) as courses_count,
                (SELECT COUNT(*) FROM daily_checkins WHERE user_id = u.id) as checkins_count
-        FROM users u WHERE u.id = $1
+        FROM users u
+        LEFT JOIN token_accounts ta ON ta.user_id = u.id
+        LEFT JOIN point_accounts pa ON pa.user_id = u.id
+        WHERE u.id = $1
         """,
-        user_id
+        uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     )
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Get recent activity - fix: field name is 'type' not 'transaction_type'
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     recent_transactions = await db.fetch(
         """
         SELECT type, amount, created_at FROM token_transactions
         WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10
         """,
-        user_id
+        user_uuid
     )
 
     return {
@@ -492,26 +506,42 @@ async def gift_points_to_user(
     admin: dict = Depends(require_users_gift),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """Gift points to user. Requires users.gift permission."""
+    """Gift points to user. Requires users.gift permission.
+
+    Points balance lives in point_accounts (not users). Same shape as
+    gift_tokens_to_user — UPSERT to handle first-time gifts where the
+    point_accounts row doesn't exist yet.
+
+    Note: point_transactions uses `source` (not `type`) and has no
+    `description` column — reason goes into admin_logs.details only.
+    """
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    async with db.transaction():
-        await db.execute(
-            "UPDATE users SET point_balance = point_balance + $1 WHERE id = $2",
-            amount, user_id
-        )
+    user_exists = await db.fetchval("SELECT 1 FROM users WHERE id = $1", uuid.UUID(user_id))
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="User not found")
 
-        new_point_balance = await db.fetchval(
-            "SELECT point_balance FROM users WHERE id = $1", user_id
+    async with db.transaction():
+        # UPSERT point_accounts; id has no DB default, generate in app code
+        new_balance = await db.fetchval(
+            """
+            INSERT INTO point_accounts (id, user_id, balance, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $4)
+            ON CONFLICT (user_id) DO UPDATE SET
+                balance = COALESCE(point_accounts.balance, 0) + EXCLUDED.balance,
+                updated_at = EXCLUDED.updated_at
+            RETURNING balance
+            """,
+            uuid.uuid4(), uuid.UUID(user_id), amount, utcnow()
         )
 
         await db.execute(
             """
-            INSERT INTO point_transactions (user_id, source, amount, balance_after, created_at)
-            VALUES ($1, 'gift', $2, $3, $4)
+            INSERT INTO point_transactions (id, user_id, source, amount, balance_after, created_at)
+            VALUES ($1, $2, 'gift', $3, $4, $5)
             """,
-            user_id, amount, new_point_balance, utcnow()
+            uuid.uuid4(), uuid.UUID(user_id), amount, new_balance, utcnow()
         )
 
         await db.execute(
@@ -519,10 +549,11 @@ async def gift_points_to_user(
             INSERT INTO admin_logs (admin_id, action, target, details, created_at)
             VALUES ($1, 'gift_points', $2, $3, $4)
             """,
-            admin["id"], user_id, f"赠送{amount}积分: {reason}", utcnow()
+            uuid.UUID(admin["id"]) if isinstance(admin["id"], str) else admin["id"],
+            user_id, f"赠送{amount}积分: {reason}", utcnow()
         )
 
-    return {"success": True, "points_added": amount}
+    return {"success": True, "points_added": amount, "new_balance": new_balance}
 
 
 # ============ Course Management ============

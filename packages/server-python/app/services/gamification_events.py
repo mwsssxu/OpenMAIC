@@ -238,21 +238,28 @@ async def grant_points(
     amount: int,
     source: str,
     context: Optional[dict] = None,
-):
-    """发放积分"""
-    point_account = await db.fetchrow(
-        "SELECT balance FROM point_accounts WHERE user_id = $1 FOR UPDATE", user_uuid
+) -> int:
+    """发放积分。返回发放后的新余额。
+
+    若用户首次获得积分（point_accounts 无行），自动创建。
+    point_accounts.id / point_transactions.id 没有 DB 默认值，应用侧生成。
+    """
+    new_balance = await db.fetchval(
+        """
+        INSERT INTO point_accounts (id, user_id, balance, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $4)
+        ON CONFLICT (user_id) DO UPDATE SET
+            balance = COALESCE(point_accounts.balance, 0) + EXCLUDED.balance,
+            updated_at = EXCLUDED.updated_at
+        RETURNING balance
+        """,
+        uuid.uuid4(), user_uuid, amount, utcnow()
     )
-    
-    if point_account:
-        new_balance = point_account["balance"] + amount
-        await db.execute(
-            "UPDATE point_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
-            new_balance, utcnow(), user_uuid
-        )
-        await db.execute(
-            """INSERT INTO point_transactions 
-               (id, user_id, source, amount, balance_after, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6)""",
-            uuid.uuid4(), user_uuid, source, amount, new_balance, utcnow()
-        )
+    assert new_balance is not None  # UPSERT with RETURNING always yields a row
+    await db.execute(
+        """INSERT INTO point_transactions
+           (id, user_id, source, amount, balance_after, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)""",
+        uuid.uuid4(), user_uuid, source, amount, new_balance, utcnow()
+    )
+    return int(new_balance)

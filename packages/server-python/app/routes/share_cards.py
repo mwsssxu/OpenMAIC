@@ -488,12 +488,12 @@ async def track_share_event(
         utcnow()
     )
 
-    # Give share reward points
-    await db.execute(
-        """
-        UPDATE users SET point_balance = point_balance + 5 WHERE id = $1
-        """,
-        uuid.UUID(user_id)
+    # Give share reward points (via point_accounts ledger)
+    from app.services.gamification_events import grant_points
+    await grant_points(
+        db, uuid.UUID(user_id), 5,
+        source="share_card",
+        context={},
     )
 
     return {"success": True, "reward": 5}

@@ -346,17 +346,16 @@ async def submit_assessment(
         assessment["id"]
     )
 
-    # Award points based on score
+    # Award points (uses gamification_events.grant_points which writes to
+    # point_accounts — the correct ledger location, see token-ledger-schema.md)
+    from app.services.gamification_events import grant_points
     base_points = 10
     bonus = int(result["score"] / 10)  # 1 point per 10% score
     total_points = base_points + bonus
-
-    await db.execute(
-        """
-        UPDATE users SET point_balance = point_balance + $2 WHERE id = $1
-        """,
-        uuid.UUID(user_id),
-        total_points
+    await grant_points(
+        db, uuid.UUID(user_id), total_points,
+        source="assessment",
+        context={"assessment_id": request.assessment_id, "score": result["score"]},
     )
 
     # Update course completion mastery level

@@ -320,14 +320,13 @@ async def submit_code(
         utcnow()
     )
 
-    # Give points based on score
+    # Give points based on score (writes to point_accounts via grant_points)
+    from app.services.gamification_events import grant_points
     points = result["score"]
-    await db.execute(
-        """
-        UPDATE users SET point_balance = point_balance + $2 WHERE id = $1
-        """,
-        uuid.UUID(user_id),
-        points
+    await grant_points(
+        db, uuid.UUID(user_id), points,
+        source="programming",
+        context={"submission_id": str(submission_id), "score": result["score"]},
     )
 
     return {

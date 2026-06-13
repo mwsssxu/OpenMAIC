@@ -552,16 +552,16 @@ async def rate_persona_session(
         uuid.UUID(user_id)
     )
 
-    # Give points for feedback (if point system exists)
+    # Give points for feedback (via point_accounts ledger)
     try:
-        await db.execute(
-            """
-            UPDATE users SET point_balance = COALESCE(point_balance, 0) + 3 WHERE id = $1
-            """,
-            uuid.UUID(user_id)
+        from app.services.gamification_events import grant_points
+        await grant_points(
+            db, uuid.UUID(user_id), 3,
+            source="persona_feedback",
+            context={},
         )
     except Exception as e:
-        logger.warning(f"[Persona] Failed to update points: {e}")
+        logger.warning(f"[Persona] Failed to grant points: {e}")
 
     return {"success": True, "reward": 3}
 

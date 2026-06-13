@@ -210,18 +210,18 @@ async def recommend_depth_level(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Recommend optimal depth level based on user's league tier."""
-    # Get user's league tier
-    user = await db.fetchrow(
-        """
-        SELECT league_tier, point_balance FROM users WHERE id = $1
-        """,
-        uuid.UUID(user_id)
+    # Note: users.league_tier doesn't exist (legacy field never created in schema).
+    # Falling back to "bronze" default which the original code did anyway via
+    # `user["league_tier"] or "bronze"`. point_balance was queried but never
+    # used — both fields removed. If a real league system is added later, route
+    # through point_accounts.balance threshold.
+    user_exists = await db.fetchval(
+        "SELECT 1 FROM users WHERE id = $1", uuid.UUID(user_id)
     )
-
-    if not user:
+    if not user_exists:
         raise HTTPException(status_code=404, detail="User not found")
 
-    league = user["league_tier"] or "bronze"
+    league = "bronze"
 
     # Get course difficulty (if exists)
     course_difficulty = await db.fetchval(
@@ -352,17 +352,15 @@ async def complete_scene_at_depth(
         utcnow()
     )
 
-    # Give points with multiplier
+    # Give points with multiplier (via grant_points → point_accounts)
+    from app.services.gamification_events import grant_points
     depth_config = DEPTH_CONFIGS.get(progress["depth"], DEPTH_CONFIGS["understand"])
     base_points = 5  # Base points per scene
     earned_points = int(base_points * depth_config["points_multiplier"])
-
-    await db.execute(
-        """
-        UPDATE users SET point_balance = point_balance + $2 WHERE id = $1
-        """,
-        uuid.UUID(user_id),
-        earned_points
+    await grant_points(
+        db, uuid.UUID(user_id), earned_points,
+        source="depth_progress",
+        context={"course_id": course_id, "depth": progress["depth"]},
     )
 
     # Check if course is complete at this depth

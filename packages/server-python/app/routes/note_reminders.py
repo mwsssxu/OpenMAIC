@@ -307,29 +307,20 @@ async def submit_note_from_reminder(
         utcnow()
     )
 
-    # Calculate and award points
+    # Calculate and award points (via gamification_events.grant_points which
+    # writes to point_accounts + point_transactions atomically — replaces two
+    # broken legacy queries that wrote to non-existent columns)
+    from app.services.gamification_events import grant_points
     base_points = reminder["reward_points"]
     earned_points = int(base_points * bonus_multiplier)
-
-    await db.execute(
-        """
-        UPDATE users SET point_balance = point_balance + $2 WHERE id = $1
-        """,
-        uuid.UUID(user_id),
-        earned_points
-    )
-
-    # Log point transaction
-    await db.execute(
-        """
-        INSERT INTO point_transactions
-        (user_id, points, transaction_type, description, created_at)
-        VALUES ($1, $2, 'earn', $3, $4)
-        """,
-        uuid.UUID(user_id),
-        earned_points,
-        f"完成课程笔记{'(提前奖励)' if is_before_deadline else ''}",
-        utcnow()
+    await grant_points(
+        db, uuid.UUID(user_id), earned_points,
+        source="note_reminder",
+        context={
+            "reminder_id": str(reminder["id"]),
+            "is_before_deadline": is_before_deadline,
+            "note": f"完成课程笔记{'(提前奖励)' if is_before_deadline else ''}",
+        },
     )
 
     # Mark reminder as completed
