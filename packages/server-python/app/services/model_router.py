@@ -209,7 +209,7 @@ class ModelRouter:
         tts_api_base: Optional[str] = None,
     ):
         # 从settings读取配置，支持环境变量覆盖
-        self.default_text_model = default_text_model or settings.DEFAULT_MODEL or "qwen3.6-plus"
+        self.default_text_model = default_text_model or settings.DEFAULT_MODEL or "qwen/qwen3.6-plus"
         self.default_vision_model = default_vision_model or settings.VISION_MODEL_ID or "qwen-vl-max"
         self.default_tts_model = default_tts_model or settings.TTS_MODEL_ID or "qwen3-tts-flash"
 

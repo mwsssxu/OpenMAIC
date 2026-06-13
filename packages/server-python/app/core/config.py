@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
     MINIMAX_API_KEY: str = ""
-    DEFAULT_MODEL: str = "qwen3.6-plus"  # 默认使用阿里云 DashScope Qwen3.6-Plus
+    DEFAULT_MODEL: str = "qwen/qwen3.6-plus"  # 默认使用阿里云 DashScope Qwen3.6-Plus（带 provider 前缀以便成本归因）
 
     # 阿里云 OSS
     OSS_ACCESS_KEY_ID: str = ""

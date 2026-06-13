@@ -104,6 +104,38 @@ async def _record_usage_fallback(usage_data: Dict[str, Any]) -> None:
         logger.warning(f"[LLM] usage fallback failed: {e}")
 
 
+async def _record_stream_error(
+    provider_id: Optional[str],
+    model_id: Optional[str],
+    scene_type: Optional[SceneType],
+    stream_start: float,
+    err_msg: str,
+) -> None:
+    """Record a failed stream call to llm_usage_logs.
+
+    Pulls user_id from the request contextvar so error rows are also
+    correctly attributed for ops dashboards.
+    """
+    try:
+        from app.core.request_context import get_current_user_id_from_ctx
+        ctx_user_id = get_current_user_id_from_ctx()
+    except Exception:
+        ctx_user_id = None
+    duration_ms = int((time.time() - stream_start) * 1000)
+    await _record_usage_fallback({
+        "user_id": ctx_user_id,
+        "provider": provider_id,
+        "model": model_id,
+        "scene_type": scene_type.value if scene_type else None,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "duration_ms": duration_ms,
+        "status": "error",
+        "error_message": err_msg,
+    })
+
+
 # ============================================================================
 # Pricing table (¥/1k tokens) — single source of truth for cost recording.
 #
@@ -249,6 +281,12 @@ def parse_model_string(model_str: str) -> tuple:
         model_id = parts[1]
     else:
         model_id = model_str
+        # 调用方写了不带前缀的裸 model 名（如 "qwen3.6-plus"）。
+        # 用 MODEL_PRICING 反查恢复 provider，避免成本/统计归到 "openai"。
+        for k in MODEL_PRICING:
+            if "/" in k and k.endswith("/" + model_id):
+                provider_id = k.split("/", 1)[0]
+                break
     return provider_id, model_id
 
 
@@ -646,6 +684,7 @@ async def _stream_llm_internal(
             if attempt < max_retries - 1:
                 await asyncio.sleep(2)
             else:
+                await _record_stream_error(provider_id, model_id, scene_type, stream_start, f"timeout: {e}")
                 raise Exception(f"LLM stream timeout after {max_retries} retries: {e}")
 
         except httpx.RemoteProtocolError as e:
@@ -653,6 +692,7 @@ async def _stream_llm_internal(
             if attempt < max_retries - 1:
                 await asyncio.sleep(3)
             else:
+                await _record_stream_error(provider_id, model_id, scene_type, stream_start, f"protocol: {e}")
                 raise Exception(f"LLM stream connection closed after {max_retries} retries: {e}")
 
         except Exception as e:
@@ -660,6 +700,8 @@ async def _stream_llm_internal(
             if attempt < max_retries - 1:
                 await asyncio.sleep(2)
             else:
+                # Falling back to non-stream — _call_llm_internal will record
+                # its own usage row, so don't double-record an error here.
                 logger.warning("Stream failed, falling back to non-stream")
                 result = await _call_llm_internal(prompt, system_prompt, model, temperature, max_tokens, max_retries=1)
                 yield result
