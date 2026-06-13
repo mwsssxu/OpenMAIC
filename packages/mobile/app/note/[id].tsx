@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -166,6 +168,13 @@ export default function NoteDetailScreen() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [userRating, setUserRating] = useState(0);
 
+  // AI 优化相关状态
+  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
+  const [optimizeRequirement, setOptimizeRequirement] = useState('');
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizedContent, setOptimizedContent] = useState<string | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
+
   const isShared = source === 'shared';
   const isPaid = isShared && note?.visibility === 'paid' && (note?.price ?? 0) > 0;
   const canViewFull = !isShared || !isPaid || note?.is_author || note?.is_purchased;
@@ -282,6 +291,43 @@ export default function NoteDetailScreen() {
     }
   }
 
+  // AI 优化笔记
+  async function handleAiOptimize() {
+    if (!note || isShared) return;
+    setIsOptimizing(true);
+    try {
+      const result = await apiClient.aiOptimizeNote(noteId, optimizeRequirement);
+      setOptimizedContent(result.optimized_content);
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || 'AI优化失败');
+    } finally {
+      setIsOptimizing(false);
+    }
+  }
+
+  // 应用优化结果
+  async function handleApplyOptimized() {
+    if (!note || !optimizedContent) return;
+    setIsApplying(true);
+    try {
+      await apiClient.updatePersonalNote(noteId, { content: optimizedContent });
+      setOptimizedContent(null);
+      setShowOptimizeModal(false);
+      setOptimizeRequirement('');
+      showSuccess('笔记已更新');
+      await loadNote();
+    } catch (err) {
+      showError(err);
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
+  // 放弃优化结果
+  function handleDiscardOptimized() {
+    setOptimizedContent(null);
+  }
+
   // ---- 渲染 ----
 
   // 加载状态
@@ -328,9 +374,10 @@ export default function NoteDetailScreen() {
             <NavButton icon="chevron-back" onPress={() => goBack()} />
           </View>
           <View style={styles.navRight}>
-            {/* 个人笔记：编辑+分享 */}
+            {/* 个人笔记：AI优化+编辑+分享 */}
             {!isShared && (
               <>
+                <NavButton icon="sparkles" onPress={() => { haptics.light(); setShowOptimizeModal(true); }} />
                 <NavButton icon="share-outline" onPress={() => router.push(`/shared-notes/new?noteId=${noteId}` as any)} />
                 <NavButton icon="pencil" accent onPress={() => router.push(`/notes/new?edit=${noteId}` as any)} />
               </>
@@ -530,6 +577,111 @@ export default function NoteDetailScreen() {
           <View style={{ height: 60 }} />
         </ScrollView>
       </View>
+
+      {/* AI 优化 Modal */}
+      <Modal
+        visible={showOptimizeModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setShowOptimizeModal(false); setOptimizedContent(null); setOptimizeRequirement(''); }}
+      >
+        <View style={optStyles.modalContainer}>
+          {/* 头部 */}
+          <View style={optStyles.modalHeader}>
+            <TouchableOpacity onPress={() => { setShowOptimizeModal(false); setOptimizedContent(null); setOptimizeRequirement(''); }} activeOpacity={0.7}>
+              <Text style={optStyles.modalCancel}>取消</Text>
+            </TouchableOpacity>
+            <Text style={optStyles.modalTitle}>AI 优化笔记</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          {!optimizedContent ? (
+            /* 输入要求 + 优化按钮 */
+            <View style={optStyles.modalBody}>
+              <View style={optStyles.inputSection}>
+                <Text style={optStyles.inputLabel}>优化要求（可选）</Text>
+                <TextInput
+                  style={optStyles.requirementInput}
+                  placeholder="例如：整理结构、补充要点、润色语言..."
+                  placeholderTextColor={iOSColors.muted}
+                  value={optimizeRequirement}
+                  onChangeText={setOptimizeRequirement}
+                  multiline
+                  maxLength={500}
+                />
+              </View>
+
+              <View style={optStyles.tipsSection}>
+                <Text style={optStyles.tipsTitle}>快捷指令</Text>
+                <View style={optStyles.tipsRow}>
+                  {['整理结构', '补充要点', '润色语言', '添加示例'].map(tip => (
+                    <TouchableOpacity
+                      key={tip}
+                      style={optStyles.tipChip}
+                      onPress={() => setOptimizeRequirement(prev => prev ? `${prev}、${tip}` : tip)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={optStyles.tipChipText}>{tip}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[optStyles.optimizeBtn, isOptimizing && optStyles.optimizeBtnDisabled]}
+                onPress={handleAiOptimize}
+                disabled={isOptimizing}
+                activeOpacity={0.8}
+              >
+                {isOptimizing ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="sparkles" size={20} color="#fff" />
+                    <Text style={optStyles.optimizeBtnText}>开始优化</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* 优化结果预览 */
+            <View style={optStyles.modalBody}>
+              <View style={optStyles.resultHeader}>
+                <Ionicons name="sparkles" size={18} color={iOSColors.accent} />
+                <Text style={optStyles.resultTitle}>优化结果</Text>
+              </View>
+              <ScrollView style={optStyles.resultScroll} showsVerticalScrollIndicator={false}>
+                <Text style={optStyles.resultContent} selectable>{optimizedContent}</Text>
+              </ScrollView>
+              <View style={optStyles.resultActions}>
+                <TouchableOpacity
+                  style={optStyles.discardBtn}
+                  onPress={handleDiscardOptimized}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle-outline" size={18} color={iOSColors.muted} />
+                  <Text style={optStyles.discardBtnText}>放弃</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[optStyles.applyBtn, isApplying && optStyles.applyBtnDisabled]}
+                  onPress={handleApplyOptimized}
+                  disabled={isApplying}
+                  activeOpacity={0.8}
+                >
+                  {isApplying ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                      <Text style={optStyles.applyBtnText}>采用</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </TabPageWrapper>
   );
 }
@@ -662,4 +814,171 @@ const styles = StyleSheet.create({
   relatedText: { flex: 1 },
   relatedTitle: { fontSize: 13, fontWeight: '600', color: iOSColors.fg },
   relatedMeta: { fontSize: 11, color: iOSColors.muted },
+});
+
+// AI 优化 Modal 样式
+const optStyles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    backgroundColor: iOSColors.bgSolid,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: iOSColors.border,
+  },
+  modalCancel: {
+    fontSize: 16,
+    color: iOSColors.muted,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: iOSColors.fg,
+  },
+  modalBody: {
+    flex: 1,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  inputSection: {
+    marginBottom: Spacing.md,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: iOSColors.muted,
+    marginBottom: 8,
+  },
+  requirementInput: {
+    backgroundColor: iOSColors.surfaceSolid,
+    borderRadius: Rounded.md,
+    padding: Spacing.md,
+    fontSize: 15,
+    color: iOSColors.fg,
+    minHeight: 100,
+    maxHeight: 200,
+    textAlignVertical: 'top',
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    lineHeight: 22,
+  },
+  tipsSection: {
+    marginBottom: Spacing.lg,
+  },
+  tipsTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: iOSColors.muted,
+    marginBottom: 8,
+  },
+  tipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tipChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: Rounded.full,
+    backgroundColor: iOSColors.accentLight,
+    borderWidth: 0.5,
+    borderColor: 'rgba(196, 90, 26, 0.2)',
+  },
+  tipChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: iOSColors.accent,
+  },
+  optimizeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: iOSColors.accent,
+    borderRadius: Rounded.md,
+    paddingVertical: Spacing.md,
+    minHeight: 50,
+  },
+  optimizeBtnDisabled: {
+    opacity: 0.6,
+  },
+  optimizeBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // 优化结果
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: Spacing.md,
+  },
+  resultTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: iOSColors.fg,
+  },
+  resultScroll: {
+    flex: 1,
+    backgroundColor: iOSColors.surfaceSolid,
+    borderRadius: Rounded.md,
+    padding: Spacing.md,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    marginBottom: Spacing.md,
+  },
+  resultContent: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: iOSColors.fg,
+  },
+  resultActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingBottom: Spacing.lg,
+  },
+  discardBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: Spacing.md,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.surface,
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+    minHeight: 50,
+  },
+  discardBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: iOSColors.muted,
+  },
+  applyBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: Spacing.md,
+    borderRadius: Rounded.md,
+    backgroundColor: iOSColors.accent,
+    minHeight: 50,
+  },
+  applyBtnDisabled: {
+    opacity: 0.6,
+  },
+  applyBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
 });

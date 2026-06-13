@@ -2149,6 +2149,14 @@ class ApiClient {
     return data;
   }
 
+  // AI 优化笔记内容（返回优化结果，不直接修改）
+  async aiOptimizeNote(noteId: string, requirement?: string) {
+    const { data } = await this.client.post(`/personal-notes/${noteId}/ai-optimize`, {
+      requirement: requirement || '',
+    });
+    return data;
+  }
+
   async deletePersonalNote(noteId: string) {
     const { data } = await this.client.delete(`/personal-notes/${noteId}`);
     return data;

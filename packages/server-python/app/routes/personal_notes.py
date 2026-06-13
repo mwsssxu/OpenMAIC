@@ -434,3 +434,86 @@ async def delete_personal_note(
         "note_id": str(n_uuid),
         "message": "笔记删除成功",
     }
+
+
+# ==================== AI 优化笔记 ====================
+
+@router.post("/{note_id}/ai-optimize")
+async def ai_optimize_note(
+    note_id: str,
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """AI 优化笔记内容，返回优化结果（不直接修改笔记）"""
+    from app.services.llm import call_llm
+
+    user_uuid = uuid.UUID(current_user_id)
+    n_uuid = uuid.UUID(note_id)
+
+    # 获取笔记
+    note = await db.fetchrow(
+        """
+        SELECT id, title, content, category FROM shared_notes
+        WHERE id = $1 AND user_id = $2 AND is_personal = TRUE
+        """,
+        n_uuid, user_uuid
+    )
+
+    if not note:
+        raise HTTPException(status_code=404, detail="笔记不存在")
+
+    content = note["content"] or ""
+    title = note["title"] or ""
+    requirement = body.get("requirement", "").strip()
+
+    if not content:
+        raise HTTPException(status_code=400, detail="笔记内容为空，无法优化")
+
+    # 构建 prompt
+    system_prompt = """你是一位专业的学习笔记优化助手。你的任务是根据用户的要求优化学习笔记内容。
+
+优化原则：
+1. 保留原始笔记的核心信息和知识点，不丢失任何重要内容
+2. 改善逻辑结构和表达清晰度
+3. 适当添加结构标记（如标题、列表、重点标记）让笔记更易读
+4. 使用 Markdown 格式输出优化后的笔记
+5. 只输出优化后的笔记内容，不要添加额外说明
+
+输出格式：直接输出优化后的笔记内容，不要包含"优化后的笔记"等前缀说明。"""
+
+    if requirement:
+        user_prompt = f"""请根据以下要求优化这篇笔记：
+
+【优化要求】
+{requirement}
+
+【笔记标题】
+{title}
+
+【笔记内容】
+{content}"""
+    else:
+        user_prompt = f"""请优化这篇笔记，改善结构、逻辑和表达，保留所有核心知识点：
+
+【笔记标题】
+{title}
+
+【笔记内容】
+{content}"""
+
+    try:
+        optimized = await call_llm(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.5,
+        )
+
+        return {
+            "note_id": str(n_uuid),
+            "optimized_content": optimized.strip(),
+            "original_content": content,
+            "message": "优化完成",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI优化失败: {str(e)}")

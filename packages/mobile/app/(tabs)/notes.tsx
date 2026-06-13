@@ -16,7 +16,7 @@ import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { apiClient } from '@/lib/api-client';
 import { useHaptics } from '@/lib/hooks/use-haptics';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, showSuccess } from '@/lib/utils/error-toast';
 import { useI18n } from '@/lib/i18n';
 
 // iOS 风格颜色系统
@@ -50,7 +50,7 @@ const colorMap: Record<string, { bg: string; text: string; stroke: string }> = {
   purple: { bg: '#ede9fe', text: '#7c3aed', stroke: iOSColors.purple },
 };
 
-// 笔记项接口（个人笔记+共享笔记统一）
+// 个人笔记接口
 interface MyNoteItem {
   id: string;
   title: string;
@@ -70,6 +70,31 @@ interface MyNoteItem {
   created_at: string;
 }
 
+// 共享笔记接口
+interface SharedNoteItem {
+  id: string;
+  user_id: string;
+  title: string;
+  visibility: string;
+  price: number;
+  tags: string;
+  rating: number;
+  rating_count: number;
+  purchase_count: number;
+  is_purchased: boolean;
+  created_at: string;
+}
+
+// 我共享出去的笔记接口
+interface MyShareItem {
+  share_code: string;
+  title: string;
+  original_name: string;
+  is_public: boolean;
+  view_count: number;
+  like_count: number;
+  created_at: string;
+}
 // 格式化时间显示
 function formatTime(dateStr: string): string {
   if (!dateStr) return '';
@@ -84,7 +109,6 @@ function formatTime(dateStr: string): string {
     if (diffHours < 24) return `${diffHours}小时前`;
     if (diffDays === 1) return '昨天';
     if (diffDays < 7) return `${diffDays}天前`;
-    if (diffDays === 7) return '一周前';
 
     const month = date.getMonth() + 1;
     const day = date.getDate();
@@ -94,89 +118,93 @@ function formatTime(dateStr: string): string {
   }
 }
 
-// 格式化日期显示
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  try {
-    const date = new Date(dateStr);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hour = String(date.getHours()).padStart(2, '0');
-    const minute = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hour}:${minute}`;
-  } catch {
-    return dateStr;
-  }
-}
+const getColorKey = (index: number) => {
+  const keys = ['coral', 'mint', 'gold', 'blue', 'purple'];
+  return keys[index % keys.length];
+};
 
 export default function NotesPage() {
   const router = useRouter();
   const haptics = useHaptics();
   const { t } = useI18n();
 
-  const [notes, setNotes] = useState<MyNoteItem[]>([]);
+  const [myNotes, setMyNotes] = useState<MyNoteItem[]>([]);
+  const [sharedNotes, setSharedNotes] = useState<SharedNoteItem[]>([]);
+  const [mySharedNotes, setMySharedNotes] = useState<MyShareItem[]>([]);
+  const [totalNotesCount, setTotalNotesCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState<'my' | 'market'>('my');
 
-  // 加载笔记（用户所有笔记：个人+共享）
+  // 加载数据
   const loadNotes = useCallback(async () => {
     try {
       setIsLoading(true);
-      setError(null);
-      const data = await apiClient.getPersonalNotes(1, 100, undefined, undefined, true);
-      setNotes(data?.notes || []);
+      // 我的笔记：只用个人笔记（不含共享）
+      // 共享市场：市场笔记 + 我共享出去的笔记
+      const [personalData, sharedMarketData, mySharedData] = await Promise.all([
+        apiClient.getPersonalNotes(1, 100, undefined, undefined, false).catch(() => ({ today: [], this_week: [] })),
+        apiClient.getSharedNotes({ page: 1, limit: 20 }).catch(() => ({ items: [] })),
+        apiClient.getMySharedNotes().catch(() => ({ shares: [] })),
+      ]);
+      // 后端返回 today + this_week 两个数组，合并为完整列表
+      const todayArr = personalData?.today || [];
+      const weekArr = personalData?.this_week || [];
+      setMyNotes([...todayArr, ...weekArr]);
+      setTotalNotesCount(personalData?.total || 0);
+      setSharedNotes(sharedMarketData?.items || []);
+      setMySharedNotes(mySharedData?.shares || []);
     } catch (err: any) {
-      setError(err.message || '加载失败');
       console.error('Load notes error:', err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // 页面聚焦时加载
   useFocusEffect(
     useCallback(() => {
       loadNotes();
     }, [loadNotes])
   );
 
-  // 刷新
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await loadNotes();
     setIsRefreshing(false);
   };
 
-  // 搜索过滤
-  const filteredNotes = notes.filter(note => {
+  // 搜索过滤 - 我的笔记
+  const filteredMyNotes = myNotes.filter(note => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return note.title.toLowerCase().includes(query) ||
            (note.preview || note.content || '').toLowerCase().includes(query);
   });
 
-  // 按时间分组
-  const todayNotes = filteredNotes.filter(note => {
-    const date = new Date(note.created_at);
-    const now = new Date();
-    return date.toDateString() === now.toDateString();
+  // 搜索过滤 - 共享笔记
+  const filteredSharedNotes = sharedNotes.filter(note => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return note.title.toLowerCase().includes(query);
   });
 
-  const weekNotes = filteredNotes.filter(note => {
+  // 我的笔记按时间分组
+  const todayNotes = filteredMyNotes.filter(note => {
+    const date = new Date(note.created_at);
+    return date.toDateString() === new Date().toDateString();
+  });
+
+  const weekNotes = filteredMyNotes.filter(note => {
     const date = new Date(note.created_at);
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     return date >= weekAgo && date.toDateString() !== now.toDateString();
   });
 
-  // 笔记卡片组件
-  const NoteCard = ({ note, colorKey = 'coral' }: { note: MyNoteItem; colorKey?: string }) => {
+  // 我的笔记卡片组件
+  const MyNoteCard = ({ note, colorKey = 'coral' }: { note: MyNoteItem; colorKey?: string }) => {
     const colors = colorMap[colorKey] || colorMap.coral;
-
     return (
       <TouchableOpacity
         style={styles.noteItem}
@@ -204,17 +232,57 @@ export default function NotesPage() {
             <Text style={styles.noteTime}>{formatTime(note.created_at)}</Text>
           </View>
         </View>
-        <TouchableOpacity
-          style={styles.noteStar}
-          onPress={() => haptics.light()}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={styles.noteStar} onPress={() => haptics.light()} activeOpacity={0.7}>
           <Ionicons
             name={(note.rating ?? 0) > 0 ? 'star' : 'star-outline'}
             size={14}
             color={(note.rating ?? 0) > 0 ? iOSColors.gold : iOSColors.muted}
           />
         </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  // 共享笔记卡片
+  const SharedNoteCard = ({ note, index }: { note: SharedNoteItem; index: number }) => {
+    const isPaid = note.visibility === 'paid' && note.price > 0;
+    const colors = colorMap[getColorKey(index)] || colorMap.coral;
+    return (
+      <TouchableOpacity
+        style={styles.noteItem}
+        onPress={() => {
+          haptics.light();
+          router.push(`/note/${note.id}?source=shared` as any);
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.noteThumb, { backgroundColor: isPaid ? iOSColors.goldLight : colors.bg }]}>
+          <Ionicons name={isPaid ? 'diamond' : 'document-text'} size={24} color={isPaid ? iOSColors.gold : colors.stroke} />
+        </View>
+        <View style={styles.noteBody}>
+          <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
+          <View style={styles.noteMeta}>
+            <View style={[styles.noteTag, { backgroundColor: isPaid ? iOSColors.goldLight : colors.bg }]}>
+              <Text style={[styles.noteTagText, { color: isPaid ? '#b45309' : colors.text }]}>
+                {isPaid ? `${note.price}积分` : '免费'}
+              </Text>
+            </View>
+            {note.rating > 0 && (
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={12} color={iOSColors.gold} />
+                <Text style={styles.ratingText}>{note.rating.toFixed(1)}</Text>
+              </View>
+            )}
+            <Text style={styles.noteTime}>{note.purchase_count}人购买</Text>
+            {note.is_purchased && (
+              <View style={styles.purchasedBadge}>
+                <Ionicons name="checkmark-circle" size={12} color={iOSColors.green} />
+                <Text style={styles.purchasedText}>已购</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={iOSColors.muted} />
       </TouchableOpacity>
     );
   };
@@ -230,27 +298,6 @@ export default function NotesPage() {
       </TabPageWrapper>
     );
   }
-
-  // 错误状态
-  if (error && notes.length === 0) {
-    return (
-      <TabPageWrapper hasHeader>
-        <View style={styles.errorContainer}>
-          <Ionicons name="document-text-outline" size={48} color={iOSColors.muted} />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadNotes} activeOpacity={0.7}>
-            <Text style={styles.retryButtonText}>重新加载</Text>
-          </TouchableOpacity>
-        </View>
-      </TabPageWrapper>
-    );
-  }
-
-  // 计算颜色分配
-  const getColorKey = (index: number) => {
-    const keys = ['coral', 'mint', 'gold', 'blue', 'purple'];
-    return keys[index % keys.length];
-  };
 
   return (
     <TabPageWrapper hasHeader>
@@ -275,18 +322,27 @@ export default function NotesPage() {
         >
           <View style={styles.notesBannerText}>
             <Text style={styles.notesBannerTitle}>
-              {t('note.count', { count: notes.length })}
+              {totalNotesCount} 篇笔记
             </Text>
             <Text style={styles.notesBannerDesc}>
               {todayNotes.length > 0
                 ? `今天写了 ${todayNotes.length} 条，继续保持！`
-                : '开始记录你的学习笔记'
-              }
+                : '开始记录你的学习笔记'}
             </Text>
           </View>
-          {/* 插图区域 */}
           <View style={styles.notesBannerIllustration}>
-            <Ionicons name="book" size={40} color={iOSColors.accent} />
+            <Ionicons name="book" size={36} color={iOSColors.accent} />
+            <TouchableOpacity
+              style={styles.bannerWriteBtn}
+              onPress={() => {
+                haptics.medium();
+                router.push('/notes/new' as any);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.bannerWriteBtnText}>写笔记</Text>
+            </TouchableOpacity>
           </View>
         </LinearGradient>
 
@@ -307,117 +363,187 @@ export default function NotesPage() {
           )}
         </View>
 
-        {/* 筛选标签 */}
-        <View style={styles.filterTabs}>
+        {/* Tab切换：我的笔记 / 共享市场 */}
+        <View style={styles.tabSwitcher}>
           <TouchableOpacity
-            style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
-            onPress={() => { haptics.light(); setActiveFilter('all'); }}
+            style={[styles.tabBtn, activeTab === 'my' && styles.tabBtnActive]}
+            onPress={() => { haptics.light(); setActiveTab('my'); }}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.filterTabText, activeFilter === 'all' && styles.filterTabTextActive]}>
-              全部
+            <Ionicons
+              name={activeTab === 'my' ? 'book' : 'book-outline'}
+              size={16}
+              color={activeTab === 'my' ? '#fff' : iOSColors.muted}
+            />
+            <Text style={[styles.tabBtnText, activeTab === 'my' && styles.tabBtnTextActive]}>
+              我的笔记
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterTab, activeFilter === 'free' && styles.filterTabActive]}
-            onPress={() => { haptics.light(); setActiveFilter('free'); }}
+            style={[styles.tabBtn, activeTab === 'market' && styles.tabBtnActive]}
+            onPress={() => { haptics.light(); setActiveTab('market'); }}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.filterTabText, activeFilter === 'free' && styles.filterTabTextActive]}>
-              免费
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterTab, activeFilter === 'paid' && styles.filterTabActive]}
-            onPress={() => { haptics.light(); setActiveFilter('paid'); }}
-          >
-            <Text style={[styles.filterTabText, activeFilter === 'paid' && styles.filterTabTextActive]}>
-              付费
+            <Ionicons
+              name={activeTab === 'market' ? 'storefront' : 'storefront-outline'}
+              size={16}
+              color={activeTab === 'market' ? '#fff' : iOSColors.muted}
+            />
+            <Text style={[styles.tabBtnText, activeTab === 'market' && styles.tabBtnTextActive]}>
+              共享市场
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* 今天 */}
-        {todayNotes.length > 0 && (
-          <View style={styles.sectionBlock}>
-            <View style={styles.sectionLabel}>
-              <Text style={styles.sectionTitle}>今天</Text>
-              <Text style={styles.sectionCount}>{todayNotes.length} 条</Text>
-            </View>
-            <View style={styles.notesList}>
-              {todayNotes.map((note, index) => (
-                <NoteCard key={note.id} note={note} colorKey={getColorKey(index)} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* 本周 */}
-        {weekNotes.length > 0 && (
-          <View style={styles.sectionBlock}>
-            <View style={styles.sectionLabel}>
-              <Text style={styles.sectionTitle}>本周</Text>
-              <Text style={styles.sectionCount}>{weekNotes.length} 条</Text>
-            </View>
-            <View style={styles.notesList}>
-              {weekNotes.map((note, index) => (
-                <NoteCard key={note.id} note={note} colorKey={getColorKey(index + todayNotes.length)} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* 全部笔记（无分组时直接显示） */}
-        {todayNotes.length === 0 && weekNotes.length === 0 && filteredNotes.length > 0 && (
-          <View style={styles.sectionBlock}>
-            <View style={styles.sectionLabel}>
-              <Text style={styles.sectionTitle}>我的笔记</Text>
-              <Text style={styles.sectionCount}>{filteredNotes.length} 条</Text>
-            </View>
-            <View style={styles.notesList}>
-              {filteredNotes.map((note, index) => (
-                <NoteCard key={note.id} note={note} colorKey={getColorKey(index)} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* 空状态 */}
-        {filteredNotes.length === 0 && !isLoading && (
-          <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={64} color={iOSColors.muted} />
-            <Text style={styles.emptyTitle}>暂无笔记</Text>
-            <Text style={styles.emptyDesc}>
-              {searchQuery ? '没有找到匹配的笔记' : '点击右上角开始写笔记'}
-            </Text>
-            {!searchQuery && (
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() => {
-                  haptics.light();
-                  router.push('/notes/new' as any);
-                }}
-              >
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={styles.emptyButtonText}>写笔记</Text>
-              </TouchableOpacity>
+        {/* ====== 我的笔记 Tab ====== */}
+        {activeTab === 'my' && (
+          <>
+            {todayNotes.length > 0 && (
+              <View style={styles.sectionBlock}>
+                <View style={styles.sectionLabel}>
+                  <Text style={styles.sectionTitle}>今天</Text>
+                  <Text style={styles.sectionCount}>{todayNotes.length} 条</Text>
+                </View>
+                <View style={styles.notesList}>
+                  {todayNotes.map((note, index) => (
+                    <MyNoteCard key={note.id} note={note} colorKey={getColorKey(index)} />
+                  ))}
+                </View>
+              </View>
             )}
-          </View>
+
+            {weekNotes.length > 0 && (
+              <View style={styles.sectionBlock}>
+                <View style={styles.sectionLabel}>
+                  <Text style={styles.sectionTitle}>本周</Text>
+                  <Text style={styles.sectionCount}>{weekNotes.length} 条</Text>
+                </View>
+                <View style={styles.notesList}>
+                  {weekNotes.map((note, index) => (
+                    <MyNoteCard key={note.id} note={note} colorKey={getColorKey(index + todayNotes.length)} />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {todayNotes.length === 0 && weekNotes.length === 0 && filteredMyNotes.length > 0 && (
+              <View style={styles.sectionBlock}>
+                <View style={styles.sectionLabel}>
+                  <Text style={styles.sectionTitle}>我的笔记</Text>
+                  <Text style={styles.sectionCount}>{filteredMyNotes.length} 条</Text>
+                </View>
+                <View style={styles.notesList}>
+                  {filteredMyNotes.map((note, index) => (
+                    <MyNoteCard key={note.id} note={note} colorKey={getColorKey(index)} />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {filteredMyNotes.length === 0 && !isLoading && (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-text-outline" size={64} color={iOSColors.muted} />
+                <Text style={styles.emptyTitle}>暂无笔记</Text>
+                <Text style={styles.emptyDesc}>
+                  {searchQuery ? '没有找到匹配的笔记' : '点击右下角开始写笔记'}
+                </Text>
+                {!searchQuery && (
+                  <TouchableOpacity
+                    style={styles.emptyButton}
+                    onPress={() => {
+                      haptics.light();
+                      router.push('/notes/new' as any);
+                    }}
+                  >
+                    <Ionicons name="add" size={18} color="#fff" />
+                    <Text style={styles.emptyButtonText}>写笔记</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ====== 共享市场 Tab ====== */}
+        {activeTab === 'market' && (
+          <>
+            {/* 我共享出去的笔记 */}
+            {mySharedNotes.length > 0 && (
+              <View style={styles.sectionBlock}>
+                <View style={styles.sectionLabel}>
+                  <Text style={styles.sectionTitle}>我共享的</Text>
+                  <Text style={styles.sectionCount}>{mySharedNotes.length} 条</Text>
+                </View>
+                <View style={styles.notesList}>
+                  {mySharedNotes.map((note, index) => (
+                    <TouchableOpacity
+                      key={note.share_code || index}
+                      style={styles.noteItem}
+                      onPress={() => {
+                        haptics.light();
+                        router.push(`/note/${note.share_code}?source=shared` as any);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.noteThumb, { backgroundColor: iOSColors.greenLight }]}>
+                        <Ionicons name="share" size={22} color={iOSColors.green} />
+                      </View>
+                      <View style={styles.noteBody}>
+                        <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
+                        <View style={styles.noteMeta}>
+                          <View style={[styles.noteTag, { backgroundColor: note.is_public ? iOSColors.greenLight : iOSColors.accentLight }]}>
+                            <Text style={[styles.noteTagText, { color: note.is_public ? iOSColors.green : iOSColors.accent }]}>
+                              {note.is_public ? '公开' : '私有'}
+                            </Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Ionicons name="eye-outline" size={12} color={iOSColors.muted} />
+                            <Text style={styles.statText}>{note.view_count}</Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Ionicons name="heart-outline" size={12} color={iOSColors.muted} />
+                            <Text style={styles.statText}>{note.like_count}</Text>
+                          </View>
+                          <Text style={styles.noteTime}>{formatTime(note.created_at)}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={iOSColors.muted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* 市场热门笔记 */}
+            {filteredSharedNotes.length > 0 && (
+              <View style={styles.sectionBlock}>
+                <View style={styles.sectionLabel}>
+                  <Text style={styles.sectionTitle}>热门笔记</Text>
+                  <Text style={styles.sectionCount}>{filteredSharedNotes.length} 条</Text>
+                </View>
+                <View style={styles.notesList}>
+                  {filteredSharedNotes.map((note, index) => (
+                    <SharedNoteCard key={note.id} note={note} index={index} />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {filteredSharedNotes.length === 0 && mySharedNotes.length === 0 && !isLoading && (
+              <View style={styles.emptyState}>
+                <Ionicons name="storefront-outline" size={64} color={iOSColors.muted} />
+                <Text style={styles.emptyTitle}>暂无共享笔记</Text>
+                <Text style={styles.emptyDesc}>
+                  {searchQuery ? '没有找到匹配的笔记' : '成为第一个分享笔记的人'}
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
         {/* 底部占位 */}
         <View style={{ height: 100 }} />
       </ScrollView>
-
-      {/* 悬浮新建按钮 */}
-      <TouchableOpacity
-        style={styles.fabButton}
-        onPress={() => {
-          haptics.medium();
-          router.push('/notes/new' as any);
-        }}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
     </TabPageWrapper>
   );
 }
@@ -433,29 +559,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: iOSColors.muted,
     marginTop: Spacing.sm,
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  errorText: {
-    fontSize: 16,
-    color: iOSColors.fg,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Rounded.md,
-    backgroundColor: iOSColors.accent,
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
   },
 
   // ScrollView
@@ -493,9 +596,25 @@ const styles = StyleSheet.create({
   },
   notesBannerIllustration: {
     width: 80,
-    height: 80,
+    height: 100,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+  },
+  bannerWriteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: iOSColors.accent,
+    borderRadius: Rounded.full,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  bannerWriteBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
 
   // 搜索栏
@@ -518,30 +637,34 @@ const styles = StyleSheet.create({
     color: iOSColors.fg,
   },
 
-  // 筛选标签
-  filterTabs: {
+  // Tab切换
+  tabSwitcher: {
     flexDirection: 'row',
-    gap: Spacing.xs,
-    marginBottom: Spacing.md,
-  },
-  filterTab: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 20,
     backgroundColor: iOSColors.surface,
+    borderRadius: Rounded.full,
+    padding: 3,
+    marginBottom: Spacing.md,
     borderWidth: 0.5,
     borderColor: iOSColors.border,
   },
-  filterTabActive: {
-    backgroundColor: iOSColors.accent,
-    borderColor: iOSColors.accent,
+  tabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Rounded.full,
   },
-  filterTabText: {
-    fontSize: 13,
-    fontWeight: '500',
+  tabBtnActive: {
+    backgroundColor: iOSColors.accent,
+  },
+  tabBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: iOSColors.muted,
   },
-  filterTabTextActive: {
+  tabBtnTextActive: {
     color: '#fff',
   },
 
@@ -578,6 +701,7 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     flexDirection: 'row',
     gap: Spacing.sm,
+    alignItems: 'center',
     minHeight: 44,
     borderWidth: 0.5,
     borderColor: iOSColors.border,
@@ -631,6 +755,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  // 共享笔记特有样式
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  ratingText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: iOSColors.gold,
+  },
+  purchasedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  purchasedText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: iOSColors.green,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  statText: {
+    fontSize: 10,
+    color: iOSColors.muted,
+  },
+
   // 空状态
   emptyState: {
     alignItems: 'center',
@@ -661,23 +816,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
-  },
-
-  // 悬浮按钮
-  fabButton: {
-    position: 'absolute',
-    right: Spacing.md,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: iOSColors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
   },
 });
