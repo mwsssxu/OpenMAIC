@@ -38,6 +38,117 @@ def _safe_uuid(user_id: Optional[str]) -> Optional[uuid.UUID]:
         return None
 
 
+async def _record_usage_fallback(usage_data: Dict[str, Any]) -> None:
+    """
+    Persist an llm_usage_logs row using the app-wide asyncpg pool when
+    callers don't pass `db` or `usage_callback`. Silently swallows errors —
+    cost-tracking must never break the main LLM path.
+
+    Cost is computed from MODEL_PRICING (¥/1k tokens). Uses cost=0 when
+    the model isn't in the table so the row is still recorded for audit.
+    """
+    try:
+        from app.db import database as _dbmod  # late import: avoid cycle
+        pool = getattr(_dbmod, "pool", None)
+        if pool is None:
+            return  # pool not initialized (e.g. one-off scripts)
+
+        provider_id = usage_data.get("provider")
+        model_id = usage_data.get("model")
+        prompt_tokens = usage_data.get("prompt_tokens", 0) or 0
+        completion_tokens = usage_data.get("completion_tokens", 0) or 0
+        total_tokens = usage_data.get("total_tokens", prompt_tokens + completion_tokens) or 0
+        status = usage_data.get("status", "success")
+        duration_ms = usage_data.get("duration_ms", 0) or 0
+        scene_type = usage_data.get("scene_type")
+        user_id = usage_data.get("user_id")
+        error_message = usage_data.get("error_message")
+
+        input_price, output_price = _resolve_pricing(provider_id, model_id)
+        cost_yuan = 0.0
+        if status == "success" and (input_price or output_price):
+            cost_yuan = (prompt_tokens / 1000) * input_price + (completion_tokens / 1000) * output_price
+
+        async with pool.acquire() as conn:
+            if status == "success":
+                await conn.execute(
+                    """
+                    INSERT INTO llm_usage_logs
+                        (user_id, provider, model, scene_type,
+                         prompt_tokens, completion_tokens, total_tokens,
+                         cost_yuan, input_price_per_1k, output_price_per_1k,
+                         status, duration_ms, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                    """,
+                    _safe_uuid(user_id),
+                    provider_id, model_id,
+                    scene_type,
+                    prompt_tokens, completion_tokens, total_tokens,
+                    round(cost_yuan, 6), input_price, output_price,
+                    "success", duration_ms, utcnow(),
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO llm_usage_logs
+                        (user_id, provider, model, scene_type,
+                         cost_yuan, status, error_message, duration_ms, created_at)
+                    VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $8)
+                    """,
+                    _safe_uuid(user_id),
+                    provider_id, model_id,
+                    scene_type,
+                    status, (error_message or "")[:500], duration_ms, utcnow(),
+                )
+    except Exception as e:
+        logger.warning(f"[LLM] usage fallback failed: {e}")
+
+
+# ============================================================================
+# Pricing table (¥/1k tokens) — single source of truth for cost recording.
+#
+# The legacy llm_configs table has PRIMARY KEY (provider) which only allows
+# ONE row per provider, so it can't store per-model pricing. Until that
+# schema is fixed, we maintain prices in code. Add new models here.
+# References: DashScope, OpenAI, Anthropic, DeepSeek public price pages
+# (CNY values approximate USD pricing × 7.2 for non-CN providers).
+# ============================================================================
+MODEL_PRICING: Dict[str, tuple] = {
+    # provider/model -> (input_price_per_1k, output_price_per_1k) in CNY
+    "openai/gpt-4o": (0.018, 0.072),
+    "openai/gpt-4o-mini": (0.0011, 0.0043),
+    "anthropic/claude-3-5-sonnet-20241022": (0.022, 0.108),
+    "anthropic/claude-3-5-sonnet": (0.022, 0.108),
+    "deepseek/deepseek-chat": (0.001, 0.002),
+    "deepseek/deepseek-reasoner": (0.004, 0.016),
+    "qwen/qwen-turbo": (0.0003, 0.0006),
+    "qwen/qwen-plus": (0.004, 0.012),
+    "qwen/qwen-max": (0.020, 0.060),
+    "qwen/qwen3.6-plus": (0.004, 0.012),
+    "qwen/qwen3.7-max": (0.020, 0.060),
+    "qwen/qwq-32b-preview": (0.002, 0.006),
+    "openrouter/z-ai/glm-5.1": (0.002, 0.006),
+    "xfyun/astron-code-latest": (0.001, 0.003),
+}
+
+
+def _resolve_pricing(provider: Optional[str], model: Optional[str]) -> tuple:
+    """Look up (input_price_per_1k, output_price_per_1k) for a provider/model.
+    Returns (0, 0) when unknown. Tries 'provider/model' then bare 'model'.
+    """
+    if not model:
+        return (0.0, 0.0)
+    if provider:
+        key = f"{provider}/{model}"
+        if key in MODEL_PRICING:
+            return MODEL_PRICING[key]
+    # fallback: search by suffix match on bare model
+    for k, v in MODEL_PRICING.items():
+        if k.endswith("/" + model):
+            return v
+    return (0.0, 0.0)
+
+
 # ============================================================================
 # 全局限流器 - 多用户并发场景下的 LLM 调用控制
 # ============================================================================
@@ -298,6 +409,10 @@ async def _call_llm_internal(
                         round(cost_yuan, 6), input_price, output_price,
                         "success", duration_ms, utcnow()
                     )
+                else:
+                    # Fallback: caller passed neither db nor usage_callback —
+                    # use the app-wide pool so usage still gets recorded.
+                    await _record_usage_fallback(usage_data)
             except Exception as e:
                 logger.warning(f"[LLM] 使用量记录失败: {e}")
 
@@ -340,18 +455,20 @@ async def _call_llm_internal(
                 # 记录失败的 LLM 调用
                 try:
                     duration_ms = int((time.time() - call_start) * 1000)
+                    err_payload = {
+                        "user_id": user_id,
+                        "provider": provider_id,
+                        "model": model_id,
+                        "scene_type": scene_type.value if scene_type else None,
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "duration_ms": duration_ms,
+                        "status": "error",
+                        "error_message": str(e)[:500],
+                    }
                     if usage_callback:
-                        await usage_callback({
-                            "user_id": user_id,
-                            "provider": provider_id,
-                            "model": model_id,
-                            "scene_type": scene_type.value if scene_type else None,
-                            "prompt_tokens": 0,
-                            "completion_tokens": 0,
-                            "total_tokens": 0,
-                            "duration_ms": duration_ms,
-                            "status": "error",
-                        })
+                        await usage_callback(err_payload)
                     elif db:
                         await db.execute(
                             """
@@ -364,6 +481,9 @@ async def _call_llm_internal(
                             scene_type.value if scene_type else None,
                             str(e)[:500], duration_ms, utcnow()
                         )
+                    else:
+                        # Fallback: app-wide pool
+                        await _record_usage_fallback(err_payload)
                 except Exception:
                     pass
                 raise
@@ -430,6 +550,9 @@ async def _stream_llm_internal(
     api_key = settings.OPENAI_API_KEY
 
     payload = {"model": model_id, "messages": messages, "temperature": temperature, "stream": True}
+    # Ask OpenAI-compatible providers to include usage stats in the final chunk
+    # (DashScope / OpenAI / DeepSeek / OpenRouter all honour this).
+    payload["stream_options"] = {"include_usage": True}
     if max_tokens:
         payload["max_tokens"] = max_tokens
 
@@ -444,6 +567,9 @@ async def _stream_llm_internal(
 
     url = f"{api_base}/chat/completions"
     timeout = httpx.Timeout(600.0, connect=30.0)
+
+    stream_start = time.time()
+    captured_usage: Optional[Dict[str, Any]] = None
 
     for attempt in range(max_retries):
         try:
@@ -463,6 +589,11 @@ async def _stream_llm_internal(
                                 break
                             try:
                                 data = json.loads(data_str)
+                                # The final chunk (with stream_options.include_usage)
+                                # carries usage and an empty choices array.
+                                u = data.get("usage")
+                                if u:
+                                    captured_usage = u
                                 choices = data.get("choices", [])
                                 if not choices:
                                     continue
@@ -476,6 +607,24 @@ async def _stream_llm_internal(
 
                     if not buffer:
                         yield buffer
+
+                    # Record usage to llm_usage_logs (best-effort, never raises).
+                    if captured_usage:
+                        try:
+                            duration_ms = int((time.time() - stream_start) * 1000)
+                            await _record_usage_fallback({
+                                "user_id": None,
+                                "provider": provider_id,
+                                "model": model_id,
+                                "scene_type": scene_type.value if scene_type else None,
+                                "prompt_tokens": captured_usage.get("prompt_tokens", 0),
+                                "completion_tokens": captured_usage.get("completion_tokens", 0),
+                                "total_tokens": captured_usage.get("total_tokens", 0),
+                                "duration_ms": duration_ms,
+                                "status": "success",
+                            })
+                        except Exception as _e:
+                            logger.warning(f"[LLM Stream] usage record failed: {_e}")
                     return
 
         except httpx.TimeoutException as e:
