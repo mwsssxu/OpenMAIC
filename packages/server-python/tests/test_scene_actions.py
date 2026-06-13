@@ -199,6 +199,119 @@ class TestNormalizeActions:
         assert result[0].data["target_element_id"] == "only_legacy"
 
 
+class TestNormalizeWhiteboardActions:
+    """白板动作 (wb_*) 的 normalize 测试"""
+
+    def test_action_wb_open(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_open", "params": {}}
+        ])
+        assert len(result) == 1
+        assert result[0].type == "wb_open"
+        assert result[0].data == {}
+
+    def test_action_wb_draw_text(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_text", "params": {"content": "Hello", "x": 60, "y": 40, "width": 600, "height": 43, "fontSize": 18}}
+        ])
+        assert result[0].type == "wb_draw_text"
+        assert result[0].data["content"] == "Hello"
+        assert result[0].data["x"] == 60
+        assert result[0].data["fontSize"] == 18
+
+    def test_action_wb_draw_latex(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_latex", "params": {"latex": "\\frac{a}{b}", "x": 100, "y": 80, "height": 80}}
+        ])
+        assert result[0].type == "wb_draw_latex"
+        assert result[0].data["latex"] == "\\frac{a}{b}"
+
+    def test_action_wb_draw_shape(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_shape", "params": {"shape": "rectangle", "x": 60, "y": 200, "width": 200, "height": 100, "fillColor": "#5b9bd5"}}
+        ])
+        assert result[0].type == "wb_draw_shape"
+        assert result[0].data["shape"] == "rectangle"
+
+    def test_action_wb_draw_chart(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_chart", "params": {"chartType": "bar", "x": 100, "y": 150, "width": 500, "height": 300, "data": {"labels": ["Q1"], "series": [[100]]}}}
+        ])
+        assert result[0].type == "wb_draw_chart"
+        assert result[0].data["chartType"] == "bar"
+
+    def test_action_wb_draw_table(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_table", "params": {"x": 100, "y": 200, "width": 500, "height": 150, "data": [["A", "B"], ["1", "2"]]}}
+        ])
+        assert result[0].type == "wb_draw_table"
+
+    def test_action_wb_draw_line(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_line", "params": {"startX": 100, "startY": 300, "endX": 400, "endY": 300, "color": "#333", "width": 2, "points": ["", "arrow"]}}
+        ])
+        assert result[0].type == "wb_draw_line"
+        assert result[0].data["points"] == ["", "arrow"]
+
+    def test_action_wb_draw_code(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_draw_code", "params": {"language": "python", "code": "print(1)", "x": 100, "y": 120, "width": 500, "height": 120}}
+        ])
+        assert result[0].type == "wb_draw_code"
+        assert result[0].data["language"] == "python"
+
+    def test_action_wb_clear(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_clear", "params": {}}
+        ])
+        assert result[0].type == "wb_clear"
+
+    def test_action_wb_close(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_close", "params": {}}
+        ])
+        assert result[0].type == "wb_close"
+
+    def test_action_wb_delete(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_delete", "params": {"elementId": "step1"}}
+        ])
+        assert result[0].type == "wb_delete"
+        assert result[0].data["elementId"] == "step1"
+
+    def test_action_wb_edit_code(self):
+        result = _normalize_actions([
+            {"type": "action", "name": "wb_edit_code", "params": {"elementId": "code1", "operation": "insert_after", "lineId": "L1", "content": "x = 1"}}
+        ])
+        assert result[0].type == "wb_edit_code"
+        assert result[0].data["elementId"] == "code1"
+
+    def test_legacy_wb_draw_text_format(self):
+        """兼容旧格式 {type:'wb_draw_text', data:{...}}"""
+        result = _normalize_actions([
+            {"type": "wb_draw_text", "data": {"content": "Legacy", "x": 50, "y": 50}}
+        ])
+        assert result[0].type == "wb_draw_text"
+        assert result[0].data["content"] == "Legacy"
+
+    def test_mixed_whiteboard_and_speech_sequence(self):
+        result = _normalize_actions([
+            {"type": "text", "content": "让我们推导公式"},
+            {"type": "action", "name": "wb_open", "params": {}},
+            {"type": "action", "name": "wb_draw_text", "params": {"content": "Step 1", "x": 60, "y": 40, "width": 600, "height": 43}},
+            {"type": "action", "name": "wb_draw_latex", "params": {"latex": "E=mc^2", "x": 60, "y": 100, "height": 60}},
+            {"type": "text", "content": "这就是质能方程"},
+            {"type": "action", "name": "wb_close", "params": {}},
+        ])
+        assert len(result) == 6
+        assert result[0].type == "speech"
+        assert result[1].type == "wb_open"
+        assert result[2].type == "wb_draw_text"
+        assert result[3].type == "wb_draw_latex"
+        assert result[4].type == "speech"
+        assert result[5].type == "wb_close"
+
+
 class TestParseJsonResponseForQuiz:
     """验证 quiz 数组解析分支（P0 bug 修复）"""
 

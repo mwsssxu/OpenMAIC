@@ -935,7 +935,7 @@ export default function ClassroomScreen() {
             console.log('[Whiteboard] First whiteboard action, resetting layout');
             mobileActionEngine.resetLayout();
           }
-          mobileActionEngine.execute(action.type, action.data || action);
+          mobileActionEngine.execute(action.type, action.data ?? {});
           setShowWhiteboard(true);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
@@ -947,11 +947,11 @@ export default function ClassroomScreen() {
         },
         onWhiteboardClear: () => {
           mobileActionEngine.execute('wb_clear', {});
-          whiteboardStore.clear();
         },
         onWhiteboardClose: () => {
           setShowWhiteboard(false);
-          whiteboardStore.clear();
+          mobileActionEngine.execute('wb_clear', {});
+          setWhiteboardTextContent(null);
         },
         onDiscussionTrigger: (topic: string, prompt?: string, agentId?: string) => {
           // Show discussion hint badge — non-blocking

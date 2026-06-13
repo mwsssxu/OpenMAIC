@@ -68,22 +68,29 @@ def load_snippet(snippet_id: str) -> str:
         raise
 
 
-def process_snippets(template: str) -> str:
+def process_snippets(template: str, _depth: int = 0) -> str:
     """
-    处理snippet引入 {{snippet:name}}
+    处理snippet引入 {{snippet:name}}，支持递归（snippet内可引用其他snippet）
 
     Args:
         template: 模板文本
+        _depth: 递归深度（防止无限循环）
 
     Returns:
         处理后的文本
     """
+    if _depth > 5:
+        logger.warning("[snippets] Max recursion depth reached, stopping")
+        return template
+
     pattern = r'\{\{snippet:(\w[\w-]*)\}\}'
 
     def replace_snippet(match):
         snippet_id = match.group(1)
         try:
-            return load_snippet(snippet_id)
+            content = load_snippet(snippet_id)
+            # 递归处理snippet内部可能引用的其他snippet
+            return process_snippets(content, _depth + 1)
         except FileNotFoundError:
             # 保留原始占位符，避免破坏模板
             logger.warning(f"Snippet {snippet_id} not found, keeping placeholder")

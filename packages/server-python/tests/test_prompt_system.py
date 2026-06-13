@@ -77,6 +77,33 @@ class TestSnippetProcessing:
         result = process_snippets(template)
         assert "{{snippet:nonexistent}}" in result
 
+    def test_recursive_snippet_processing(self):
+        """snippet内的{{snippet:...}}应被递归展开"""
+        # slide-actions → action-types → whiteboard-reference 链
+        template = "{{snippet:action-types}}"
+        result = process_snippets(template)
+        # action-types 包含 {{snippet:whiteboard-reference}}，递归后应被替换
+        assert "{{snippet:" not in result, f"未替换的snippet占位符: {[l for l in result.split(chr(10)) if '{{snippet:' in l]}"
+        # whiteboard-reference 的标志性内容
+        assert "1000" in result and "563" in result
+        assert "LaTeX JSON Escape" in result
+
+    def test_recursive_depth_limit(self):
+        """递归深度超过5层时停止"""
+        # 直接测试：_depth > 5 时返回原文
+        result = process_snippets("test content", _depth=6)
+        assert result == "test content"
+
+    def test_full_slide_actions_prompt_no_remaining_placeholders(self):
+        """slide-actions 完整prompt无残留snippet占位符"""
+        from app.services.generation.prompts import load_prompt
+        content, _ = load_prompt("slide-actions")
+        result = process_snippets(content)
+        # 不应有任何残留的 snippet 占位符
+        import re
+        remaining = re.findall(r'\{\{snippet:[\w-]+\}\}', result)
+        assert remaining == [], f"残留snippet占位符: {remaining}"
+
 
 class TestConditionalBlocks:
     """测试条件块处理"""

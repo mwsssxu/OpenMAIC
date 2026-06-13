@@ -204,4 +204,3 @@ Before emitting whiteboard actions:
 2. **[Hard bounds]** For each element: `x ≥ 0`, `y ≥ 0`, `x + width ≤ 1000`, `y + height ≤ 563`.
 3. **[Overlap]** Walk existing elements; new bbox overlaps none by more than 30%.
 4. **[Font consistency]** Every `fontSize` comes from the Font Size Table.
-5. **[Leave whiteboard open]** Do not call `wb_close` at the end of a drawing turn.

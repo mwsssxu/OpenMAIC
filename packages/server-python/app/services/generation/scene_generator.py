@@ -726,6 +726,14 @@ def _normalize_actions(raw_items: List[Any]) -> List[Action]:
 
     未知 / 未支持的项会记录 warning 日志以便排查。
     """
+    # 白板动作名称集合
+    WB_ACTION_NAMES = {
+        "wb_open", "wb_close", "wb_clear",
+        "wb_draw_text", "wb_draw_shape", "wb_draw_line",
+        "wb_draw_latex", "wb_draw_chart", "wb_draw_table",
+        "wb_draw_code", "wb_edit_code", "wb_delete",
+    }
+
     results: List[Action] = []
     for item in raw_items:
         if not isinstance(item, dict):
@@ -757,10 +765,17 @@ def _normalize_actions(raw_items: List[Any]) -> List[Action]:
                     type="discussion",
                     data=params,
                 ))
+            elif name in WB_ACTION_NAMES:
+                # 白板动作：直接映射 name → type, params → data
+                results.append(Action(
+                    id=item.get("id") or str(uuid.uuid4()),
+                    type=name,
+                    data=params,
+                ))
             else:
                 logger.warning(f"[actions] skip unsupported action name: {name!r}")
-        elif item_type in ("speech", "spotlight", "laser", "discussion", "wb_draw_text", "wb_draw_shape"):
-            # 兼容旧格式
+        elif item_type in WB_ACTION_NAMES or item_type in ("speech", "spotlight", "laser", "discussion"):
+            # 兼容旧格式：type 直接是 action type
             results.append(Action(
                 id=item.get("id") or str(uuid.uuid4()),
                 type=item_type,
