@@ -7,6 +7,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from app.core.time_utils import utcnow
 import asyncpg
+import uuid
 from app.db.database import get_db
 from app.routes.admin_auth import get_current_admin, check_permission, get_admin_permissions
 
@@ -434,26 +435,41 @@ async def gift_tokens_to_user(
     admin: dict = Depends(require_users_gift),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """Gift tokens to user. Requires users.gift permission."""
+    """Gift tokens to user. Requires users.gift permission.
+
+    Token balance lives in token_accounts (not users). If the user has no
+    account row yet (e.g. early signup before first transaction), we
+    create one — admin gifts must always succeed for active users.
+    """
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    async with db.transaction():
-        await db.execute(
-            "UPDATE users SET token_balance = token_balance + $1 WHERE id = $2",
-            amount, user_id
-        )
+    # 验证用户存在
+    user_exists = await db.fetchval("SELECT 1 FROM users WHERE id = $1", uuid.UUID(user_id))
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="User not found")
 
+    async with db.transaction():
+        # 确保用户有 token_account（首次赠送时可能没有）
+        # token_accounts.id 没数据库默认值，应用侧生成
         new_balance = await db.fetchval(
-            "SELECT token_balance FROM users WHERE id = $1", user_id
+            """
+            INSERT INTO token_accounts (id, user_id, balance, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $4)
+            ON CONFLICT (user_id) DO UPDATE SET
+                balance = token_accounts.balance + EXCLUDED.balance,
+                updated_at = EXCLUDED.updated_at
+            RETURNING balance
+            """,
+            uuid.uuid4(), uuid.UUID(user_id), amount, utcnow()
         )
 
         await db.execute(
             """
-            INSERT INTO token_transactions (user_id, type, amount, balance_after, description, created_at)
-            VALUES ($1, 'gift', $2, $3, $4, $5)
+            INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
+            VALUES ($1, $2, 'gift', $3, $4, $5, $6)
             """,
-            user_id, amount, new_balance, reason, utcnow()
+            uuid.uuid4(), uuid.UUID(user_id), amount, new_balance, reason, utcnow()
         )
 
         await db.execute(
@@ -461,10 +477,11 @@ async def gift_tokens_to_user(
             INSERT INTO admin_logs (admin_id, action, target, details, created_at)
             VALUES ($1, 'gift_tokens', $2, $3, $4)
             """,
-            admin["id"], user_id, f"赠送{amount}Token: {reason}", utcnow()
+            uuid.UUID(admin["id"]) if isinstance(admin["id"], str) else admin["id"],
+            user_id, f"赠送{amount}Token: {reason}", utcnow()
         )
 
-    return {"success": True, "tokens_added": amount}
+    return {"success": True, "tokens_added": amount, "new_balance": new_balance}
 
 
 @router.post("/users/{user_id}/gift-points")

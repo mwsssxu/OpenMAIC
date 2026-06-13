@@ -59,6 +59,15 @@ export default function ProfitabilityPage() {
   const [days, setDays] = useState(7);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 赠送 Token 弹框
+  const [giftTarget, setGiftTarget] = useState<{
+    user_id: string;
+    label: string;
+  } | null>(null);
+  const [giftAmount, setGiftAmount] = useState(50);
+  const [giftReason, setGiftReason] = useState('感谢使用，赠送体验 Token');
+  const [giftSubmitting, setGiftSubmitting] = useState(false);
+  const [giftMsg, setGiftMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats(days);
@@ -91,6 +100,59 @@ export default function ProfitabilityPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function submitGift() {
+    if (!giftTarget) return;
+    if (giftAmount <= 0) {
+      setGiftMsg('数量必须大于 0');
+      return;
+    }
+    setGiftSubmitting(true);
+    setGiftMsg(null);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const token = localStorage.getItem('admin_token');
+      const params = new URLSearchParams({
+        amount: String(giftAmount),
+        reason: giftReason,
+      });
+      const response = await fetch(
+        `${apiUrl}/admin/users/${giftTarget.user_id}/gift-tokens?${params}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (!response.ok) {
+        if (response.status === 403) {
+          setGiftMsg('权限不足：需要 users.gift 权限');
+        } else {
+          const err = await response.text();
+          setGiftMsg(`赠送失败 (${response.status}): ${err.slice(0, 100)}`);
+        }
+        return;
+      }
+      const data = await response.json();
+      setGiftMsg(`✅ 已赠送 ${data.tokens_added} Token`);
+      // 关闭并刷新（延迟让用户看到成功提示）
+      setTimeout(() => {
+        setGiftTarget(null);
+        setGiftMsg(null);
+        fetchStats(days);
+      }, 1200);
+    } catch (e) {
+      setGiftMsg('网络错误，请稍后重试');
+    } finally {
+      setGiftSubmitting(false);
+    }
+  }
+
+  function openGift(user_id: string, label: string) {
+    setGiftTarget({ user_id, label });
+    setGiftAmount(50);
+    setGiftReason('感谢使用，赠送体验 Token');
+    setGiftMsg(null);
   }
 
   // 合并收入与成本趋势：以日期为 key
@@ -335,6 +397,7 @@ export default function ProfitabilityPage() {
         </h2>
         <p className="text-sm text-gray-500 mb-4">
           这些用户消耗了 LLM 成本但还未付费 — 是付费转化的高优先级目标。
+          可直接赠送体验 Token 推动首次付费转化。
         </p>
         {(stats?.cost_only_users?.length ?? 0) === 0 ? (
           <div className="text-gray-500 text-sm">暂无数据 — 所有活跃用户均已付费 🎉</div>
@@ -347,40 +410,139 @@ export default function ProfitabilityPage() {
                   <th className="text-right py-2">调用次数</th>
                   <th className="text-right py-2">已消耗成本</th>
                   <th className="text-right py-2">最近活跃</th>
+                  <th className="text-right py-2">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {stats?.cost_only_users.map((u) => (
-                  <tr key={u.user_id} className="border-b border-gray-100">
-                    <td className="py-2">
-                      <div className="font-medium text-gray-900">
-                        {u.nickname || u.email || u.user_id.slice(0, 8) + '...'}
-                      </div>
-                      {u.email && u.nickname && (
-                        <div className="text-xs text-gray-500">{u.email}</div>
-                      )}
-                    </td>
-                    <td className="text-right py-2 text-gray-600">{u.calls}</td>
-                    <td className="text-right py-2 text-red-600 font-semibold">
-                      ¥{u.cost.toFixed(4)}
-                    </td>
-                    <td className="text-right py-2 text-xs text-gray-500">
-                      {u.last_active
-                        ? new Date(u.last_active).toLocaleString('zh-CN', {
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : '-'}
-                    </td>
-                  </tr>
-                ))}
+                {stats?.cost_only_users.map((u) => {
+                  const label = u.nickname || u.email || u.user_id.slice(0, 8) + '...';
+                  return (
+                    <tr key={u.user_id} className="border-b border-gray-100">
+                      <td className="py-2">
+                        <div className="font-medium text-gray-900">{label}</div>
+                        {u.email && u.nickname && (
+                          <div className="text-xs text-gray-500">{u.email}</div>
+                        )}
+                      </td>
+                      <td className="text-right py-2 text-gray-600">{u.calls}</td>
+                      <td className="text-right py-2 text-red-600 font-semibold">
+                        ¥{u.cost.toFixed(4)}
+                      </td>
+                      <td className="text-right py-2 text-xs text-gray-500">
+                        {u.last_active
+                          ? new Date(u.last_active).toLocaleString('zh-CN', {
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '-'}
+                      </td>
+                      <td className="text-right py-2">
+                        <button
+                          onClick={() => openGift(u.user_id, label)}
+                          className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                        >
+                          赠 Token
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* 赠送 Token 弹框 */}
+      {giftTarget && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => !giftSubmitting && setGiftTarget(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">赠送 Token</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              赠送给：<span className="font-medium text-gray-900">{giftTarget.label}</span>
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Token 数量
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={giftAmount}
+                  onChange={(e) => setGiftAmount(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={giftSubmitting}
+                />
+                <div className="flex gap-2 mt-2">
+                  {[20, 50, 100, 200].map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setGiftAmount(preset)}
+                      className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+                      disabled={giftSubmitting}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  赠送理由（用户可见）
+                </label>
+                <input
+                  type="text"
+                  value={giftReason}
+                  onChange={(e) => setGiftReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={giftSubmitting}
+                  maxLength={100}
+                />
+              </div>
+
+              {giftMsg && (
+                <div
+                  className={`text-sm p-2 rounded ${
+                    giftMsg.startsWith('✅')
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}
+                >
+                  {giftMsg}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setGiftTarget(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded transition"
+                disabled={giftSubmitting}
+              >
+                取消
+              </button>
+              <button
+                onClick={submitGift}
+                disabled={giftSubmitting || giftAmount <= 0}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {giftSubmitting ? '赠送中...' : `确认赠送 ${giftAmount} Token`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
