@@ -82,3 +82,47 @@ one-click gifting in the same view. Pattern:
 
 This closes the loop: spot the cost-burner → reward + retain → watch
 profit_today move. No leaving the dashboard, no copy-pasting UUIDs.
+
+## Always award points via `grant_points()`
+
+`services/gamification_events.grant_points(db, user_uuid, amount, source,
+context)` is the single source of truth. It UPSERTs into `point_accounts`
+(creates the row on first grant), writes the `point_transactions` ledger
+entry, and returns the new balance. Use it from every reward site.
+
+```python
+from app.services.gamification_events import grant_points
+
+new_balance = await grant_points(
+    db, uuid.UUID(user_id), amount,
+    source="assessment",   # short stable identifier for analytics
+    context={"assessment_id": "...", "score": 87},
+)
+```
+
+DO NOT write `UPDATE users SET point_balance ...` — the column doesn't
+exist and never did. DO NOT INSERT directly into `point_transactions`
+with ad-hoc field names — the columns are `(id, user_id, source, amount,
+balance_after, reference_id, created_at)` and `id` has no DB default.
+
+## Audit trail: 8 sites that had this bug, all repaired (2026-06-13)
+
+These were all writing to non-existent users columns. They are listed here
+so future reviewers can recognize the fingerprint:
+
+| File | What it broke |
+|---|---|
+| `admin_full.py` `gift_tokens_to_user` | Admin gift Token never worked |
+| `admin_full.py` `gift_points_to_user` | Admin gift Points never worked |
+| `admin_full.py` `list_users` / `get_user_detail` | Admin user pages 500 |
+| `assessments.py` complete-assessment | Quiz reward path broken (had grant_points fallback below it) |
+| `programming.py` submit | Coding reward never landed |
+| `note_reminders.py` complete | Note reward + broken transaction insert |
+| `depth_levels.py` `/recommend/{course_id}` | 100% 500 (queried league_tier which never existed) |
+| `depth_levels.py` scene-complete | Scene bonus never landed |
+| `share_cards.py` share | Share reward never landed |
+| `personas.py` feedback | Feedback reward silent failure (try/except swallowed) |
+
+If you see `users.token_balance`, `users.point_balance`, or
+`users.league_tier` anywhere in this codebase, **it is a bug**. None of
+those columns exist.
