@@ -35,7 +35,23 @@ interface ProfitabilityStats {
   revenue_trend: { date: string; revenue: number }[];
   cost_trend: { date: string; cost: number; calls: number }[];
   model_usage: { model: string; calls: number; total_cost: number; total_tokens: number }[];
-  user_profit: { user_id: string; revenue: number; cost: number; profit: number }[];
+  user_profit: {
+    user_id: string;
+    email: string | null;
+    nickname: string | null;
+    revenue: number;
+    cost: number;
+    calls: number;
+    profit: number;
+  }[];
+  cost_only_users: {
+    user_id: string;
+    email: string | null;
+    nickname: string | null;
+    cost: number;
+    calls: number;
+    last_active: string | null;
+  }[];
 }
 
 export default function ProfitabilityPage() {
@@ -273,7 +289,8 @@ export default function ProfitabilityPage() {
             <table className="w-full text-sm">
               <thead className="text-gray-500 border-b border-gray-200">
                 <tr>
-                  <th className="text-left py-2">用户ID</th>
+                  <th className="text-left py-2">用户</th>
+                  <th className="text-right py-2">调用次数</th>
                   <th className="text-right py-2">收入</th>
                   <th className="text-right py-2">成本</th>
                   <th className="text-right py-2">利润</th>
@@ -282,9 +299,15 @@ export default function ProfitabilityPage() {
               <tbody>
                 {stats?.user_profit.map((u) => (
                   <tr key={u.user_id} className="border-b border-gray-100">
-                    <td className="py-2 font-mono text-xs">
-                      {u.user_id.slice(0, 8)}...
+                    <td className="py-2">
+                      <div className="font-medium text-gray-900">
+                        {u.nickname || u.email || u.user_id.slice(0, 8) + '...'}
+                      </div>
+                      {u.email && u.nickname && (
+                        <div className="text-xs text-gray-500">{u.email}</div>
+                      )}
                     </td>
+                    <td className="text-right py-2 text-gray-600">{u.calls}</td>
                     <td className="text-right py-2">¥{u.revenue.toFixed(2)}</td>
                     <td className="text-right py-2">¥{u.cost.toFixed(4)}</td>
                     <td
@@ -303,6 +326,60 @@ export default function ProfitabilityPage() {
         <div className="text-xs text-gray-400 mt-3">
           说明：收入仅统计已支付订单 (orders.status=paid)；成本为 LLM API 直接成本，不含基础设施。
         </div>
+      </div>
+
+      {/* 高成本未付费用户（转化目标） */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">
+          高成本未付费用户 (近{days}天)
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          这些用户消耗了 LLM 成本但还未付费 — 是付费转化的高优先级目标。
+        </p>
+        {(stats?.cost_only_users?.length ?? 0) === 0 ? (
+          <div className="text-gray-500 text-sm">暂无数据 — 所有活跃用户均已付费 🎉</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-gray-500 border-b border-gray-200">
+                <tr>
+                  <th className="text-left py-2">用户</th>
+                  <th className="text-right py-2">调用次数</th>
+                  <th className="text-right py-2">已消耗成本</th>
+                  <th className="text-right py-2">最近活跃</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats?.cost_only_users.map((u) => (
+                  <tr key={u.user_id} className="border-b border-gray-100">
+                    <td className="py-2">
+                      <div className="font-medium text-gray-900">
+                        {u.nickname || u.email || u.user_id.slice(0, 8) + '...'}
+                      </div>
+                      {u.email && u.nickname && (
+                        <div className="text-xs text-gray-500">{u.email}</div>
+                      )}
+                    </td>
+                    <td className="text-right py-2 text-gray-600">{u.calls}</td>
+                    <td className="text-right py-2 text-red-600 font-semibold">
+                      ¥{u.cost.toFixed(4)}
+                    </td>
+                    <td className="text-right py-2 text-xs text-gray-500">
+                      {u.last_active
+                        ? new Date(u.last_active).toLocaleString('zh-CN', {
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

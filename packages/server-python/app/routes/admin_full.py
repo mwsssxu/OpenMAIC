@@ -195,7 +195,7 @@ async def get_cost_revenue_stats(
         """
     )
 
-    # 用户利润排行（Top 10）
+    # 用户利润排行（Top 10 按利润降序）— JOIN users 表带出 email/nickname 便于识别
     user_profit = await db.fetch(
         """
         WITH user_revenue AS (
@@ -204,19 +204,52 @@ async def get_cost_revenue_stats(
             GROUP BY user_id
         ),
         user_cost AS (
-            SELECT user_id, COALESCE(SUM(cost_yuan), 0) as cost
-            FROM llm_usage_logs WHERE status = 'success' AND created_at >= NOW() - ($2 || ' days')::interval
+            SELECT user_id, COALESCE(SUM(cost_yuan), 0) as cost,
+                   COUNT(*) as calls
+            FROM llm_usage_logs
+            WHERE status = 'success' AND user_id IS NOT NULL
+              AND created_at >= NOW() - ($2 || ' days')::interval
             GROUP BY user_id
         )
         SELECT
             COALESCE(ur.user_id, uc.user_id) as user_id,
+            u.email,
+            u.nickname,
             COALESCE(ur.revenue, 0) as revenue,
             COALESCE(uc.cost, 0) as cost,
-            COALESCE(ur.revenue, 0) - COALESCE(uc.cost, 0) as profit
-        FROM user_revenue ur FULL OUTER JOIN user_cost uc ON ur.user_id = uc.user_id
+            COALESCE(uc.calls, 0) as calls,
+            COALESCE(ur.revenue, 0) / 100.0 - COALESCE(uc.cost, 0) as profit
+        FROM user_revenue ur
+        FULL OUTER JOIN user_cost uc ON ur.user_id = uc.user_id
+        LEFT JOIN users u ON u.id = COALESCE(ur.user_id, uc.user_id)
         ORDER BY profit DESC LIMIT 10
         """,
         days, days,
+    )
+
+    # 高成本未付费用户（潜在转化目标）— 烧 LLM 但 0 订单
+    cost_only_users = await db.fetch(
+        """
+        SELECT
+            l.user_id,
+            u.email,
+            u.nickname,
+            COALESCE(SUM(l.cost_yuan), 0) as cost,
+            COUNT(*) as calls,
+            MAX(l.created_at) as last_active
+        FROM llm_usage_logs l
+        LEFT JOIN users u ON u.id = l.user_id
+        WHERE l.status = 'success' AND l.user_id IS NOT NULL
+          AND l.created_at >= NOW() - ($1 || ' days')::interval
+          AND NOT EXISTS (
+              SELECT 1 FROM orders o
+              WHERE o.user_id = l.user_id AND o.status = 'paid'
+          )
+        GROUP BY l.user_id, u.email, u.nickname
+        ORDER BY cost DESC
+        LIMIT 10
+        """,
+        days,
     )
 
     return {
@@ -236,8 +269,27 @@ async def get_cost_revenue_stats(
             for r in model_usage
         ],
         "user_profit": [
-            {"user_id": str(r["user_id"]), "revenue": r["revenue"] / 100, "cost": r["cost"], "profit": r["profit"]}
+            {
+                "user_id": str(r["user_id"]),
+                "email": r["email"],
+                "nickname": r["nickname"],
+                "revenue": (r["revenue"] or 0) / 100,
+                "cost": float(r["cost"] or 0),
+                "calls": r["calls"],
+                "profit": float(r["profit"] or 0),
+            }
             for r in user_profit
+        ],
+        "cost_only_users": [
+            {
+                "user_id": str(r["user_id"]),
+                "email": r["email"],
+                "nickname": r["nickname"],
+                "cost": float(r["cost"] or 0),
+                "calls": r["calls"],
+                "last_active": r["last_active"].isoformat() if r["last_active"] else None,
+            }
+            for r in cost_only_users
         ],
     }
 
