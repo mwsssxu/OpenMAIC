@@ -553,17 +553,25 @@ async def rate_persona_session(
     )
 
     # Give points for feedback (via point_accounts ledger)
+    earned_points = 3
+    new_balance: Optional[int] = None
     try:
         from app.services.gamification_events import grant_points
-        await grant_points(
-            db, uuid.UUID(user_id), 3,
+        new_balance = await grant_points(
+            db, uuid.UUID(user_id), earned_points,
             source="persona_feedback",
             context={},
         )
     except Exception as e:
         logger.warning(f"[Persona] Failed to grant points: {e}")
 
-    return {"success": True, "reward": 3}
+    return {
+        "success": True,
+        "earned_points": earned_points if new_balance is not None else 0,
+        "new_balance": new_balance,
+        # legacy field for older clients
+        "reward": earned_points if new_balance is not None else 0,
+    }
 
 
 @router.get("/recommend")

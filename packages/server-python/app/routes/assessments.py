@@ -352,7 +352,7 @@ async def submit_assessment(
     base_points = 10
     bonus = int(result["score"] / 10)  # 1 point per 10% score
     total_points = base_points + bonus
-    await grant_points(
+    new_balance = await grant_points(
         db, uuid.UUID(user_id), total_points,
         source="assessment",
         context={"assessment_id": request.assessment_id, "score": result["score"]},
@@ -388,6 +388,7 @@ async def submit_assessment(
         "time_spent": time_spent,
         "recommendations": recommendations,
         "earned_points": total_points,
+        "new_balance": new_balance,
         "gamification": gamification_result,
         "message": f"测评完成，掌握程度：{result['mastery_level']}"
     }

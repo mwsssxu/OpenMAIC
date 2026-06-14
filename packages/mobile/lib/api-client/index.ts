@@ -2,6 +2,26 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { i18n } from '../i18n';
+import { showReward, type RewardSource } from '@/lib/utils/reward-toast';
+
+/**
+ * 统一的奖励反馈触发器。
+ * 后端在 grant_points() 后会在 response 里返回 earned_points + new_balance；
+ * 这个 helper 让每个奖励接口结尾一行就能触发全局 RewardToast，
+ * 业务页面无需感知反馈逻辑。
+ */
+function tapReward<T>(data: T, source: RewardSource): T {
+  if (data && typeof data === 'object') {
+    const d = data as Record<string, any>;
+    const points = Number(d.earned_points ?? d.reward ?? 0);
+    if (points > 0) {
+      const newBalance =
+        d.new_balance != null ? Number(d.new_balance) : undefined;
+      showReward({ points, newBalance, source });
+    }
+  }
+  return data;
+}
 
 // API 地址配置：
 // - 生产环境：必须设置 EXPO_PUBLIC_API_URL 环境变量
@@ -1595,7 +1615,7 @@ class ApiClient {
       assessment_id: assessmentId,
       answers,
     });
-    return data;
+    return tapReward(data, 'assessment');
   }
 
   async getAssessmentResults(courseId: string) {
@@ -1898,7 +1918,7 @@ class ApiClient {
       rating,
       feedback,
     });
-    return data;
+    return tapReward(data, 'persona_feedback');
   }
 
   async getPersonaSessions(personaId?: string) {
@@ -1924,7 +1944,7 @@ class ApiClient {
       title,
       subtitle,
     });
-    return data;
+    return tapReward(data, 'share_card');
   }
 
   async getMyShareCards() {
@@ -1957,7 +1977,7 @@ class ApiClient {
       code,
       language,
     });
-    return data;
+    return tapReward(data, 'programming');
   }
 
   async getMySubmissions(exerciseId?: string) {
@@ -2002,7 +2022,7 @@ class ApiClient {
     const { data } = await this.client.post(`/note-reminders/${reminderId}/complete`, {
       note_id: noteId,
     });
-    return data;
+    return tapReward(data, 'note_reminder');
   }
 
   async skipNoteReminder(reminderId: string, reason?: string) {

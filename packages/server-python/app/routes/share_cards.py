@@ -490,10 +490,17 @@ async def track_share_event(
 
     # Give share reward points (via point_accounts ledger)
     from app.services.gamification_events import grant_points
-    await grant_points(
-        db, uuid.UUID(user_id), 5,
+    earned_points = 5
+    new_balance = await grant_points(
+        db, uuid.UUID(user_id), earned_points,
         source="share_card",
         context={},
     )
 
-    return {"success": True, "reward": 5}
+    return {
+        "success": True,
+        "earned_points": earned_points,
+        "new_balance": new_balance,
+        # legacy field for older clients
+        "reward": earned_points,
+    }

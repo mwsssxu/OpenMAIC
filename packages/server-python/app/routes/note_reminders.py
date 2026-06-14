@@ -313,7 +313,7 @@ async def submit_note_from_reminder(
     from app.services.gamification_events import grant_points
     base_points = reminder["reward_points"]
     earned_points = int(base_points * bonus_multiplier)
-    await grant_points(
+    new_balance = await grant_points(
         db, uuid.UUID(user_id), earned_points,
         source="note_reminder",
         context={
@@ -338,6 +338,7 @@ async def submit_note_from_reminder(
         "success": True,
         "note_id": str(note_id),
         "earned_points": earned_points,
+        "new_balance": new_balance,
         "bonus_applied": bonus_multiplier > 1.0,
         "message": f"笔记已发布，获得{earned_points}积分{'(含提前奖励)' if is_before_deadline else ''}"
     }

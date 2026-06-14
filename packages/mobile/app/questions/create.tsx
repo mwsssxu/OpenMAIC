@@ -54,8 +54,27 @@ export default function CreateQuestionScreen() {
   const [customTag, setCustomTag] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // 积分余额（从用户信息获取，这里用模拟值）
-  const userBalance = 1000;
+  // 真实积分余额（从后端 point_accounts 拉取）
+  const [userBalance, setUserBalance] = useState<number>(0);
+  const [balanceLoading, setBalanceLoading] = useState(true);
+
+  // 加载余额（认证后再拉，避免无 token 报错）
+  useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiClient.getPointsBalance();
+        if (!cancelled) setUserBalance(Number(data?.balance ?? 0));
+      } catch (e) {
+        // 余额拉取失败不阻塞用户提问，保留 0 占位
+        console.warn('[CreateQuestion] load balance failed:', e);
+      } finally {
+        if (!cancelled) setBalanceLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authLoading, isAuthenticated]);
 
   // 检查登录状态，未登录跳转到登录页
   useEffect(() => {

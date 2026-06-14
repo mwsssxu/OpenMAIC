@@ -323,7 +323,7 @@ async def submit_code(
     # Give points based on score (writes to point_accounts via grant_points)
     from app.services.gamification_events import grant_points
     points = result["score"]
-    await grant_points(
+    new_balance = await grant_points(
         db, uuid.UUID(user_id), points,
         source="programming",
         context={"submission_id": str(submission_id), "score": result["score"]},
@@ -337,7 +337,8 @@ async def submit_code(
         "suggestions": [],
         "execution_time": result["execution_time"],
         "memory_used": result.get("memory_used"),
-        "earned_points": points
+        "earned_points": points,
+        "new_balance": new_balance,
     }
 
 
