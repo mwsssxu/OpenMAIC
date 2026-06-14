@@ -25,6 +25,19 @@ interface Assessment {
   status: string;
 }
 
+interface QuestionResult {
+  question_id: string;
+  content: string;
+  type: string;
+  options?: any;
+  user_answer: string | null;
+  correct_answer: string;
+  is_correct: boolean;
+  explanation: string;
+  points: number;
+  difficulty?: string;
+}
+
 interface Result {
   score: number;
   mastery_level: string;
@@ -32,12 +45,101 @@ interface Result {
   correct_count: number;
   total_questions: number;
   earned_points: number;
+  question_results?: QuestionResult[];
+}
+
+function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const correct = qr.is_correct;
+  const accent = correct ? '#10b981' : '#ef4444';
+  const bg = correct ? '#ecfdf5' : '#fef2f2';
+  const border = correct ? '#a7f3d0' : '#fecaca';
+
+  // 选项渲染（支持单选选项映射）
+  const renderOption = (key: string, value: string, isUserPick: boolean, isCorrectAns: boolean) => {
+    let optStyle = qrCardStyles.optionDefault;
+    let textStyle = qrCardStyles.optionTextDefault;
+    if (isCorrectAns) {
+      optStyle = qrCardStyles.optionCorrect;
+      textStyle = qrCardStyles.optionTextCorrect;
+    } else if (isUserPick && !isCorrectAns) {
+      optStyle = qrCardStyles.optionWrong;
+      textStyle = qrCardStyles.optionTextWrong;
+    }
+    return (
+      <View key={key} style={[qrCardStyles.option, optStyle]}>
+        <Text style={[qrCardStyles.optionKey, textStyle]}>{key}.</Text>
+        <Text style={[qrCardStyles.optionText, textStyle]} numberOfLines={3}>{value}</Text>
+        {isCorrectAns && <Ionicons name="checkmark-circle" size={16} color="#10b981" />}
+        {isUserPick && !isCorrectAns && <Ionicons name="close-circle" size={16} color="#ef4444" />}
+      </View>
+    );
+  };
+
+  // options 可能是 dict {A:"x", B:"y"} 或 array
+  const optionEntries: Array<[string, string]> = qr.options
+    ? Array.isArray(qr.options)
+      ? qr.options.map((v: any, i: number) => [String.fromCharCode(65 + i), String(v)])
+      : Object.entries(qr.options).map(([k, v]) => [k, String(v)])
+    : [];
+
+  return (
+    <TouchableOpacity
+      style={[qrCardStyles.card, { backgroundColor: bg, borderColor: border }]}
+      activeOpacity={0.85}
+      onPress={() => setExpanded(e => !e)}
+    >
+      <View style={qrCardStyles.header}>
+        <View style={qrCardStyles.indexBadge}>
+          <Text style={qrCardStyles.indexText}>{index}</Text>
+        </View>
+        <Text style={qrCardStyles.content} numberOfLines={expanded ? 0 : 2}>{qr.content}</Text>
+        <View style={[qrCardStyles.statusBadge, { backgroundColor: accent }]}>
+          <Ionicons name={correct ? 'checkmark' : 'close'} size={14} color="#fff" />
+        </View>
+      </View>
+      {expanded && (
+        <View style={qrCardStyles.body}>
+          {optionEntries.length > 0 ? (
+            <View style={qrCardStyles.optionsList}>
+              {optionEntries.map(([k, v]) =>
+                renderOption(k, v, qr.user_answer === k, qr.correct_answer === k)
+              )}
+            </View>
+          ) : (
+            <View style={qrCardStyles.answerBlock}>
+              <Text style={qrCardStyles.answerLabel}>你的答案：
+                <Text style={{ color: correct ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                  {qr.user_answer || '（未作答）'}
+                </Text>
+              </Text>
+              {!correct && (
+                <Text style={qrCardStyles.answerLabel}>正确答案：
+                  <Text style={{ color: '#10b981', fontWeight: '600' }}>{qr.correct_answer}</Text>
+                </Text>
+              )}
+            </View>
+          )}
+          {qr.explanation ? (
+            <View style={qrCardStyles.explanationBlock}>
+              <Text style={qrCardStyles.explanationLabel}>解析</Text>
+              <Text style={qrCardStyles.explanationText}>{qr.explanation}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+      <View style={qrCardStyles.footer}>
+        <Text style={qrCardStyles.expandHint}>{expanded ? '收起' : '展开查看详情'}</Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+      </View>
+    </TouchableOpacity>
+  );
 }
 
 export default function AssessmentScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
-  const goBack = useGoBack();
+  const goBack = () => router.back();
   const courseId = params.id as string;
 
   const [token, setToken] = useState<string | null>(null);
@@ -157,6 +259,16 @@ export default function AssessmentScreen() {
               </View>
               <Ionicons name="chevron-forward" size={18} color="#ea580c" />
             </TouchableOpacity>
+          )}
+
+          {/* 逐题回顾 */}
+          {result.question_results && result.question_results.length > 0 && (
+            <View style={reviewCtaStyles.reviewSection}>
+              <Text style={reviewCtaStyles.reviewSectionTitle}>答题回顾</Text>
+              {result.question_results.map((qr, idx) => (
+                <QuestionResultCard key={qr.question_id} qr={qr} index={idx + 1} />
+              ))}
+            </View>
           )}
 
           <TouchableOpacity style={styles.button} onPress={() => {
@@ -334,4 +446,90 @@ const reviewCtaStyles = StyleSheet.create({
   ctaBody: { flex: 1 },
   ctaTitle: { fontSize: 15, fontWeight: '600', color: '#9a3412', marginBottom: 2 },
   ctaDesc: { fontSize: 12, color: '#c2410c' },
+  reviewSection: { marginBottom: 16 },
+  reviewSectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 10,
+    marginTop: 4,
+  },
+});
+
+const qrCardStyles = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 8,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  indexBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  indexText: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  content: { flex: 1, fontSize: 14, lineHeight: 20, color: '#0f172a' },
+  statusBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  body: { marginTop: 12, gap: 8 },
+  optionsList: { gap: 6 },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 8,
+    borderWidth: 1,
+  },
+  optionKey: { fontSize: 13, fontWeight: '600', minWidth: 18 },
+  optionText: { fontSize: 13, flex: 1 },
+  optionDefault: { backgroundColor: '#fff', borderColor: '#e2e8f0' },
+  optionTextDefault: { color: '#475569' },
+  optionCorrect: { backgroundColor: '#ecfdf5', borderColor: '#10b981' },
+  optionTextCorrect: { color: '#065f46', fontWeight: '500' },
+  optionWrong: { backgroundColor: '#fef2f2', borderColor: '#ef4444' },
+  optionTextWrong: { color: '#991b1b', textDecorationLine: 'line-through' },
+  answerBlock: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  answerLabel: { fontSize: 13, color: '#475569' },
+  explanationBlock: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3b82f6',
+  },
+  explanationLabel: { fontSize: 12, fontWeight: '600', color: '#3b82f6', marginBottom: 4 },
+  explanationText: { fontSize: 13, lineHeight: 19, color: '#334155' },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 4,
+  },
+  expandHint: { fontSize: 11, color: '#94a3b8' },
 });

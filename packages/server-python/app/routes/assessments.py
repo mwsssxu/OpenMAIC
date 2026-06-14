@@ -124,15 +124,32 @@ async def analyze_assessment_results(
     correct_count = 0
     total_points = 0
     earned_points = 0
+    question_results: List[dict] = []
 
-    for answer in answers:
-        question = next((q for q in questions if q["id"] == answer["question_id"]), None)
-        if question and answer["answer"] == question["correct_answer"]:
-            correct_count += 1
-            earned_points += question["points"]
+    # 用 dict 索引避免 O(n²)
+    answers_by_qid = {str(a["question_id"]): a for a in answers}
 
     for q in questions:
-        total_points += q["points"]
+        qid = str(q["id"])
+        ans = answers_by_qid.get(qid)
+        user_answer = ans["answer"] if ans else None
+        is_correct = bool(ans and user_answer == q.get("correct_answer"))
+        if is_correct:
+            correct_count += 1
+            earned_points += q.get("points", 0)
+        total_points += q.get("points", 0)
+        question_results.append({
+            "question_id": qid,
+            "content": q.get("content") or q.get("question", ""),
+            "type": q.get("type", "single_choice"),
+            "options": q.get("options"),
+            "user_answer": user_answer,
+            "correct_answer": q.get("correct_answer"),
+            "is_correct": is_correct,
+            "explanation": q.get("explanation", ""),
+            "points": q.get("points", 0),
+            "difficulty": q.get("difficulty"),
+        })
 
     score = (earned_points / total_points * 100) if total_points > 0 else 0
 
@@ -154,7 +171,8 @@ async def analyze_assessment_results(
         "passed": score >= 60,
         "correct_count": correct_count,
         "total_questions": len(questions),
-        "earned_points": earned_points
+        "earned_points": earned_points,
+        "question_results": question_results,
     }
 
 
@@ -408,6 +426,7 @@ async def submit_assessment(
         "earned_points": total_points,
         "new_balance": new_balance,
         "gamification": gamification_result,
+        "question_results": result.get("question_results", []),
         "message": f"测评完成，掌握程度：{result['mastery_level']}"
     }
 
