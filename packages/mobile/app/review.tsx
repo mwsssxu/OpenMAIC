@@ -31,6 +31,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
 import { Colors as RawColors, Rounded, Spacing } from '@/lib/constants/theme';
+import { parseOptions, pickedToKey, difficultyLabel } from '@/lib/utils/question';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { showError } from '@/lib/utils/error-toast';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -56,7 +57,7 @@ type MistakeItem = {
     id: string;
     type?: string;
     content?: string;
-    options?: string[];
+    options?: any;
     correct_answer?: string;
     explanation?: string;
     difficulty?: string;
@@ -251,6 +252,13 @@ export default function ReviewScreen() {
           >
             <Text style={styles.secondaryBtnText}>再来一轮</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tertiaryBtn}
+            onPress={() => router.push('/mistakes' as any)}
+          >
+            <Ionicons name="book-outline" size={18} color={Colors.primary} />
+            <Text style={styles.tertiaryBtnText}>查看错题本</Text>
+          </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     );
@@ -287,12 +295,13 @@ export default function ReviewScreen() {
         showsHorizontalScrollIndicator={false}
         scrollEnabled={false}
         getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <QuestionCard
             item={item}
             width={width}
             answer={answers[item.id]}
             onSubmit={(picked) => handleSubmit(item, picked)}
+            onNext={index < items.length - 1 ? goNext : undefined}
             submitting={submitting}
           />
         )}
@@ -339,21 +348,28 @@ function QuestionCard({
   width,
   answer,
   onSubmit,
+  onNext,
   submitting,
 }: {
   item: MistakeItem;
   width: number;
   answer?: { picked: string; result: AnswerResult };
   onSubmit: (picked: string) => void;
+  onNext?: () => void;
   submitting: boolean;
 }) {
   const q = item.question;
-  const options = q.options || [];
+  const optionEntries = parseOptions(q.options);
   const [picked, setPicked] = useState<string | null>(null);
 
   const answered = !!answer;
   const isCorrect = answer?.result.is_correct;
-  const correctAnswer = answer?.result.correct_answer ?? q.correct_answer;
+  const correctAnswer = answer?.result.correct_answer ?? q.correct_answer ?? '';
+  // 用户提交的 picked 在 answer 里可能是字母也可能是文案，这里归一化为 key 用于 UI 比对
+  const userPickedKey = answered ? pickedToKey(optionEntries, answer.picked) : null;
+  const correctKey = pickedToKey(optionEntries, correctAnswer);
+  // 找到正解的 label（用于无选项题或答错时强调显示）
+  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] || correctAnswer;
 
   return (
     <View style={[questionStyles.page, { width }]}>
@@ -370,51 +386,61 @@ function QuestionCard({
         {/* 题干 */}
         <Text style={questionStyles.stem}>{q.content || '（题干缺失）'}</Text>
 
-        {/* 选项 */}
-        <View style={questionStyles.options}>
-          {options.map((opt, idx) => {
-            const isPicked = answered ? answer.picked === opt : picked === opt;
-            const isRight = answered && opt === correctAnswer;
-            const isWrongPick = answered && answer.picked === opt && !answer.result.is_correct;
+        {/* 选项（有选项的题才渲染） */}
+        {optionEntries.length > 0 ? (
+          <View style={questionStyles.options}>
+            {optionEntries.map(([key, label]) => {
+              const isPicked = answered ? userPickedKey === key : picked === key;
+              const isRight = answered && key === correctKey;
+              const isWrongPick = answered && userPickedKey === key && !isCorrect;
 
-            return (
-              <TouchableOpacity
-                key={idx}
-                style={[
-                  questionStyles.option,
-                  isPicked && !answered && questionStyles.optionPicked,
-                  isRight && questionStyles.optionRight,
-                  isWrongPick && questionStyles.optionWrong,
-                ]}
-                disabled={answered}
-                onPress={() => setPicked(opt)}
-                activeOpacity={0.7}
-              >
-                <Text
+              return (
+                <TouchableOpacity
+                  key={key}
                   style={[
-                    questionStyles.optionLabel,
-                    isPicked && !answered && questionStyles.optionLabelPicked,
-                    isRight && questionStyles.optionLabelRight,
-                    isWrongPick && questionStyles.optionLabelWrong,
+                    questionStyles.option,
+                    isPicked && !answered && questionStyles.optionPicked,
+                    isRight && questionStyles.optionRight,
+                    isWrongPick && questionStyles.optionWrong,
                   ]}
+                  disabled={answered}
+                  onPress={() => setPicked(key)}
+                  activeOpacity={0.7}
                 >
-                  {String.fromCharCode(65 + idx)}
-                </Text>
-                <Text
-                  style={[
-                    questionStyles.optionText,
-                    isRight && { color: Colors.success, fontWeight: '600' },
-                    isWrongPick && { color: Colors.danger },
-                  ]}
-                >
-                  {opt}
-                </Text>
-                {isRight && <Ionicons name="checkmark-circle" size={20} color={Colors.success} />}
-                {isWrongPick && <Ionicons name="close-circle" size={20} color={Colors.danger} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  <Text
+                    style={[
+                      questionStyles.optionLabel,
+                      isPicked && !answered && questionStyles.optionLabelPicked,
+                      isRight && questionStyles.optionLabelRight,
+                      isWrongPick && questionStyles.optionLabelWrong,
+                    ]}
+                  >
+                    {key}
+                  </Text>
+                  <Text
+                    style={[
+                      questionStyles.optionText,
+                      isRight && { color: Colors.success, fontWeight: '600' },
+                      isWrongPick && { color: Colors.danger, textDecorationLine: 'line-through' },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                  {isRight && <Ionicons name="checkmark-circle" size={20} color={Colors.success} />}
+                  {isWrongPick && <Ionicons name="close-circle" size={20} color={Colors.danger} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          // 无选项题（如填空/简答）：只在已答态显示正解
+          answered && (
+            <View style={questionStyles.fillAnswer}>
+              <Text style={questionStyles.fillLabel}>正确答案</Text>
+              <Text style={questionStyles.fillValue}>{correctLabel}</Text>
+            </View>
+          )
+        )}
 
         {/* 反馈区 */}
         {answered && (
@@ -439,6 +465,11 @@ function QuestionCard({
                 {isCorrect ? (answer.result.mastered ? '太棒了，已掌握 🎉' : '答对了！') : '答错了'}
               </Text>
             </View>
+            {!isCorrect && correctLabel && optionEntries.length > 0 && (
+              <Text style={questionStyles.feedbackCorrectHint}>
+                正解：<Text style={{ color: Colors.success, fontWeight: '600' }}>{correctKey}. {correctLabel}</Text>
+              </Text>
+            )}
             {q.explanation && (
               <Text style={questionStyles.feedbackText}>
                 <Text style={questionStyles.feedbackLabel}>解析：</Text>
@@ -449,8 +480,8 @@ function QuestionCard({
         )}
       </ScrollView>
 
-      {/* 提交按钮——未答时显示 */}
-      {!answered && (
+      {/* 底部 CTA */}
+      {!answered ? (
         <View style={questionStyles.submitWrap}>
           <TouchableOpacity
             style={[questionStyles.submitBtn, !picked && questionStyles.submitBtnDisabled]}
@@ -465,26 +496,23 @@ function QuestionCard({
             )}
           </TouchableOpacity>
         </View>
-      )}
+      ) : onNext ? (
+        // 已答 + 还有下一题：显式"下一题"按钮（错答态尤其重要）
+        <View style={questionStyles.submitWrap}>
+          <TouchableOpacity
+            style={[questionStyles.submitBtn, !isCorrect && questionStyles.submitBtnWrong]}
+            onPress={onNext}
+            activeOpacity={0.85}
+          >
+            <Text style={questionStyles.submitBtnText}>
+              {isCorrect ? '下一题' : '记住了，下一题'}
+            </Text>
+            <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
-}
-
-function difficultyLabel(d: string): string {
-  switch (d) {
-    case 'easy':
-      return '简单';
-    case 'medium':
-      return '中等';
-    case 'hard':
-      return '困难';
-    case 'basic':
-      return '基础';
-    case 'advanced':
-      return '进阶';
-    default:
-      return d;
-  }
 }
 
 // ====================== 样式 ======================
@@ -553,6 +581,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryBtnText: { color: Colors.primary, fontSize: 15, fontWeight: '500' },
+  tertiaryBtn: {
+    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tertiaryBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '500' },
   // 完成页
   completeScroll: {
     padding: 24,
@@ -736,4 +774,21 @@ const questionStyles = StyleSheet.create({
   },
   submitBtnDisabled: { backgroundColor: Colors.border },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  submitBtnWrong: { backgroundColor: Colors.danger },
+  feedbackCorrectHint: {
+    fontSize: 14,
+    color: Colors.text,
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  fillAnswer: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: Rounded.md,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: Colors.success,
+  },
+  fillLabel: { fontSize: 12, color: Colors.success, fontWeight: '600', marginBottom: 4 },
+  fillValue: { fontSize: 15, color: Colors.text, fontWeight: '500', lineHeight: 22 },
 });

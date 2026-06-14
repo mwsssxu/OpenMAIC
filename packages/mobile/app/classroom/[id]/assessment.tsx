@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { showError } from '@/lib/utils/error-toast';
+import { parseOptions, pickedToKey } from '@/lib/utils/question';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -76,12 +77,8 @@ function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }
     );
   };
 
-  // options 可能是 dict {A:"x", B:"y"} 或 array
-  const optionEntries: Array<[string, string]> = qr.options
-    ? Array.isArray(qr.options)
-      ? qr.options.map((v: any, i: number) => [String.fromCharCode(65 + i), String(v)])
-      : Object.entries(qr.options).map(([k, v]) => [k, String(v)])
-    : [];
+  // options 可能是 dict {A:"x", B:"y"} 或 array，共享 util 统一归一化
+  const optionEntries = parseOptions(qr.options);
 
   return (
     <TouchableOpacity
