@@ -28,6 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
 import { showError } from '@/lib/utils/error-toast';
+import { parseOptions, pickedToKey, difficultyLabel } from '@/lib/utils/question';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 
 type MistakeListItem = {
@@ -194,11 +195,24 @@ export default function MistakeBookScreen() {
 }
 
 function MistakeCard({ item }: { item: MistakeListItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const haptics = useHaptics();
   const q = item.question || {};
   const isDue = !item.mastered && item.next_review_at && new Date(item.next_review_at) <= new Date();
 
+  const optionEntries = parseOptions(q.options);
+  const correctKey = pickedToKey(optionEntries, q.correct_answer);
+  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] || q.correct_answer || '';
+
   return (
-    <View style={cardStyles.card}>
+    <TouchableOpacity
+      style={cardStyles.card}
+      activeOpacity={0.85}
+      onPress={() => {
+        haptics.light();
+        setExpanded(e => !e);
+      }}
+    >
       <View style={cardStyles.header}>
         <View style={cardStyles.metaRow}>
           {q.difficulty && <Text style={cardStyles.metaTag}>{difficultyLabel(q.difficulty)}</Text>}
@@ -220,28 +234,71 @@ function MistakeCard({ item }: { item: MistakeListItem }) {
           </View>
         )}
       </View>
-      <Text style={cardStyles.content} numberOfLines={3}>
+      <Text style={cardStyles.content} numberOfLines={expanded ? 0 : 3}>
         {q.content || '（题干缺失）'}
       </Text>
-      {q.correct_answer && (
-        <Text style={cardStyles.answer}>
+
+      {/* 折叠态：正解一行提示 */}
+      {!expanded && correctLabel && (
+        <Text style={cardStyles.answer} numberOfLines={1}>
           <Text style={cardStyles.answerLabel}>正解：</Text>
-          <Text style={cardStyles.answerText}>{q.correct_answer}</Text>
+          <Text style={cardStyles.answerText}>
+            {correctKey ? `${correctKey}. ` : ''}{correctLabel}
+          </Text>
         </Text>
       )}
-    </View>
-  );
-}
 
-function difficultyLabel(d: string): string {
-  switch (d) {
-    case 'easy': return '简单';
-    case 'medium': return '中等';
-    case 'hard': return '困难';
-    case 'basic': return '基础';
-    case 'advanced': return '进阶';
-    default: return d;
-  }
+      {/* 展开态：完整选项 + 解析 */}
+      {expanded && (
+        <View style={cardStyles.detail}>
+          {optionEntries.length > 0 ? (
+            <View style={cardStyles.optionsList}>
+              {optionEntries.map(([key, label]) => {
+                const isCorrect = key === correctKey;
+                return (
+                  <View
+                    key={key}
+                    style={[
+                      cardStyles.optionRow,
+                      isCorrect && cardStyles.optionRowCorrect,
+                    ]}
+                  >
+                    <Text style={[cardStyles.optionKey, isCorrect && cardStyles.optionKeyCorrect]}>
+                      {key}.
+                    </Text>
+                    <Text
+                      style={[cardStyles.optionLabel, isCorrect && cardStyles.optionLabelCorrect]}
+                      numberOfLines={3}
+                    >
+                      {label}
+                    </Text>
+                    {isCorrect && <Ionicons name="checkmark-circle" size={16} color="#10b981" />}
+                  </View>
+                );
+              })}
+            </View>
+          ) : correctLabel ? (
+            <View style={cardStyles.fillAnswer}>
+              <Text style={cardStyles.fillLabel}>正确答案</Text>
+              <Text style={cardStyles.fillValue}>{correctLabel}</Text>
+            </View>
+          ) : null}
+          {q.explanation && (
+            <View style={cardStyles.explanationBlock}>
+              <Text style={cardStyles.explanationLabel}>解析</Text>
+              <Text style={cardStyles.explanationText}>{q.explanation}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* 展开/收起 hint */}
+      <View style={cardStyles.footer}>
+        <Text style={cardStyles.footerHint}>{expanded ? '收起' : '展开详情'}</Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+      </View>
+    </TouchableOpacity>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -359,4 +416,51 @@ const cardStyles = StyleSheet.create({
   answer: { fontSize: 12, color: '#64748b' },
   answerLabel: { fontWeight: '600' },
   answerText: { color: '#10b981', fontWeight: '500' },
+  detail: { marginTop: 10, gap: 8 },
+  optionsList: { gap: 6 },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    gap: 8,
+  },
+  optionRowCorrect: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#10b981',
+  },
+  optionKey: { fontSize: 13, fontWeight: '600', color: '#475569', minWidth: 20 },
+  optionKeyCorrect: { color: '#065f46' },
+  optionLabel: { fontSize: 13, flex: 1, color: '#475569', lineHeight: 18 },
+  optionLabelCorrect: { color: '#065f46', fontWeight: '500' },
+  fillAnswer: {
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  fillLabel: { fontSize: 11, color: '#10b981', fontWeight: '600', marginBottom: 2 },
+  fillValue: { fontSize: 14, color: '#065f46', fontWeight: '500' },
+  explanationBlock: {
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderLeftWidth: 3,
+    borderLeftColor: '#3b82f6',
+  },
+  explanationLabel: { fontSize: 11, fontWeight: '600', color: '#3b82f6', marginBottom: 3 },
+  explanationText: { fontSize: 13, lineHeight: 19, color: '#334155' },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  footerHint: { fontSize: 11, color: '#94a3b8' },
 });
