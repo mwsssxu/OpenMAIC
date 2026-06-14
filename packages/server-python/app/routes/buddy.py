@@ -7,6 +7,7 @@ from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 from app.routes.subscriptions import check_and_deduct_tokens_for_action
 import asyncpg
+from app.services.llm import call_llm
 import uuid
 from datetime import datetime, timedelta
 from app.core.time_utils import utcnow
@@ -322,8 +323,25 @@ async def buddy_deep_chat(
     }
     tone_desc = tone_map.get(tone_style, "温暖鼓励")
 
-    # 简单的模板式回复（后续可接入 LLM 生成更智能的回复）
-    response_content = f"[{buddy_name} - {tone_desc}] 收到你的消息：{message[:100]}"
+    # 用 LLM 生成智能回复
+    system_prompt = (
+        f"你是{buddy_name}，一个{tone_desc}风格的学习搭子（{buddy_data['name']}类型）。"
+        f"你的角色：{buddy_data.get('description', '陪伴和帮助用户学习')}。"
+        f"请用{tone_desc}的语气回复用户，保持简洁（100字以内），关注学习和成长。"
+        f"如果是提问，给出建议；如果是分享，给予回应。不要使用markdown。"
+    )
+    try:
+        response_content = await call_llm(
+            prompt=message,
+            system_prompt=system_prompt,
+            temperature=0.8,
+            max_tokens=200,
+            user_id=current_user_id,
+            db=db,
+        )
+    except Exception as e:
+        logger.warning(f"[BuddyDeepChat] LLM failed, fallback to template: {e}")
+        response_content = f"[{buddy_name}] 收到！让我想想怎么帮你..."
 
     # 存储对话记录
     await db.execute(

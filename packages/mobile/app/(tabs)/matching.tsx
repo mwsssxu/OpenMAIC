@@ -299,6 +299,14 @@ export default function MatchingScreen() {
                     <Text style={styles.partnerTags}>共同目标: {p.common_tags.join(', ')}</Text>
                   )}
                 </View>
+                <TouchableOpacity
+                  style={styles.studyTogetherBtn}
+                  onPress={() => router.navigate('/buddy' as any)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chatbubbles-outline" size={14} color="#fff" />
+                  <Text style={styles.studyTogetherText}>互动</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -539,6 +547,12 @@ const styles = StyleSheet.create({
   partnerInfo: { flex: 1 },
   partnerName: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary },
   partnerTags: { fontSize: 12, color: Colors.neutral.textSecondary, marginTop: Spacing.xs },
+  studyTogetherBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: Colors.primary.main, borderRadius: 14,
+  },
+  studyTogetherText: { fontSize: 12, color: '#fff', fontWeight: '500' },
 
   // Empty state
   emptyCard: {

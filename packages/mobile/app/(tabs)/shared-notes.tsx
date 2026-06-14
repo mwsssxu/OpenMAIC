@@ -422,7 +422,7 @@ export default function SharedNotesScreen() {
                 <MyNoteCard
                   key={note.share_code || index}
                   note={note}
-                  onPress={() => {}}
+                  onPress={() => handleNotePress(note.share_code)}
                 />
               ))}
               {myNotes.length === 0 && !isLoading && (

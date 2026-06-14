@@ -1368,6 +1368,14 @@ class ApiClient {
     return data;
   }
 
+  async buddyDeepChat(message: string, buddyType?: string) {
+    const { data } = await this.client.post('/buddy/deep-chat', {
+      message,
+      buddy_type: buddyType,
+    });
+    return data;
+  }
+
   // ==================== Notes ====================
 
   async getNotes(page?: number, limit?: number, sort?: string) {
