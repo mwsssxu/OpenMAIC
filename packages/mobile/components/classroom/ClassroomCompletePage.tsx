@@ -26,6 +26,7 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
+import { useRouter } from 'expo-router';
 import { summarizeScenes, encouragementKey } from '@/lib/classroom/complete-summary';
 import type { Scene, SceneType } from '@/lib/types/scene';
 import { Colors } from '@/lib/constants/theme';
@@ -268,6 +269,7 @@ interface ClassroomCompletePageProps {
   scenes: Scene[];
   title: string;
   quizAnswers?: Record<string, Record<string, string | string[]>>;
+  classroomId?: string;
   onClose?: () => void;
 }
 
@@ -275,9 +277,11 @@ export function ClassroomCompletePage({
   scenes,
   title,
   quizAnswers,
+  classroomId,
   onClose,
 }: ClassroomCompletePageProps) {
   const { t } = useI18n();
+  const router = useRouter();
 
   // 触发震动反馈
   useEffect(() => {
@@ -397,10 +401,25 @@ export function ClassroomCompletePage({
           </View>
         )}
 
-        {/* 完成按钮 */}
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-          <Text style={styles.closeButtonText}>{t('common.done')}</Text>
-        </TouchableOpacity>
+        {/* 操作按钮 */}
+        <View style={styles.actionButtons}>
+          {classroomId && (
+            <TouchableOpacity
+              style={styles.assessButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                router.push(`/classrooms/${classroomId}/assessment` as any);
+              }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="clipboard-outline" size={18} color="#fff" />
+              <Text style={styles.assessButtonText}>去测评</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <Text style={styles.closeButtonText}>{t('common.done')}</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -583,6 +602,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#92400e',
     marginTop: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  assessButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#c45a1a',
+  },
+  assessButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   closeButton: {
     paddingHorizontal: 32,

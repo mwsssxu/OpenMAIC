@@ -1861,6 +1861,7 @@ export default function ClassroomScreen() {
               <ClassroomCompletePage
                 scenes={data?.scenes || []}
                 title={data?.stage?.name || ''}
+                classroomId={id as string}
                 quizAnswers={
                 currentScene?.id
                   ? {
