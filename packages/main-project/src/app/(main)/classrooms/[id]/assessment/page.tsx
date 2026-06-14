@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
-import { Clock, Sparkles } from 'lucide-react';
+import { Clock, Sparkles, CheckCircle2, XCircle, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
 import { showError, showSuccess } from '@/lib/error-toast';
 
 interface Question {
@@ -34,6 +34,19 @@ interface Assessment {
   time_remaining: number;
 }
 
+interface QuestionResult {
+  question_id: string;
+  content: string;
+  type: string;
+  options?: any;
+  user_answer: string | null;
+  correct_answer: string;
+  is_correct: boolean;
+  explanation: string;
+  points: number;
+  difficulty?: string;
+}
+
 interface AssessmentResult {
   assessment_id: string;
   score: number;
@@ -44,6 +57,115 @@ interface AssessmentResult {
   time_spent: number;
   recommendations: any[];
   earned_points: number;
+  question_results?: QuestionResult[];
+}
+
+/** 选项解析：兼容 dict {A:"x"} 和 array ["x"] */
+function parseOptions(options: any): Array<[string, string]> {
+  if (!options) return [];
+  if (typeof options === 'object' && !Array.isArray(options)) {
+    return Object.entries(options).map(([k, v]) => [String(k), String(v ?? '')]);
+  }
+  if (Array.isArray(options)) {
+    return options.map((v: any, i: number) => [String.fromCharCode(65 + i), String(v ?? '')]);
+  }
+  return [];
+}
+
+function pickedToKey(entries: Array<[string, string]>, picked: string | null | undefined): string | null {
+  if (picked == null) return null;
+  if (entries.some(([k]) => k === picked)) return picked;
+  const hit = entries.find(([, label]) => label === picked);
+  return hit ? hit[0] : picked;
+}
+
+function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const correct = qr.is_correct;
+  const optionEntries = parseOptions(qr.options);
+  const correctKey = pickedToKey(optionEntries, qr.correct_answer);
+  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] || qr.correct_answer || '';
+
+  const bgClass = correct
+    ? 'bg-emerald-50 border-emerald-200'
+    : 'bg-red-50 border-red-200';
+  const accentClass = correct ? 'text-emerald-600' : 'text-red-600';
+
+  return (
+    <div
+      className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md ${bgClass}`}
+      onClick={() => setExpanded(e => !e)}
+    >
+      {/* Header: index + content + status */}
+      <div className="flex items-start gap-3">
+        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center text-xs font-semibold text-gray-600">
+          {index}
+        </span>
+        <p className={`flex-1 text-sm leading-relaxed text-gray-800 ${!expanded ? 'line-clamp-2' : ''}`}>
+          {qr.content || '（题干缺失）'}
+        </p>
+        {correct ? (
+          <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+        ) : (
+          <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+        )}
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="mt-3 space-y-2 pl-10">
+          {optionEntries.length > 0 ? (
+            <div className="space-y-1.5">
+              {optionEntries.map(([key, label]) => {
+                const isCorrect = key === correctKey;
+                const isWrongPick = !correct && qr.user_answer === key;
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                      isCorrect
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
+                        : isWrongPick
+                        ? 'bg-red-50 border-red-300 text-red-700 line-through'
+                        : 'bg-white border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    <span className="font-semibold min-w-[20px]">{key}.</span>
+                    <span className="flex-1">{label}</span>
+                    {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                    {isWrongPick && <XCircle className="w-4 h-4 text-red-500" />}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600">
+                你的答案：<span className={accentClass + ' font-semibold'}>{qr.user_answer || '（未作答）'}</span>
+              </p>
+              {!correct && (
+                <p className="text-sm text-gray-600">
+                  正确答案：<span className="text-emerald-600 font-semibold">{correctLabel}</span>
+                </p>
+              )}
+            </div>
+          )}
+          {qr.explanation && (
+            <div className="bg-white rounded-lg p-3 border-l-4 border-blue-400">
+              <p className="text-xs font-semibold text-blue-500 mb-1">解析</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{qr.explanation}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Expand hint */}
+      <div className="flex items-center justify-center gap-1 mt-2 text-xs text-gray-400">
+        {expanded ? '收起' : '展开详情'}
+        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </div>
+    </div>
+  );
 }
 
 export default function AssessmentPage() {
@@ -279,6 +401,21 @@ export default function AssessmentPage() {
                     {rec.title}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* 逐题回顾 */}
+            {result.question_results && result.question_results.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-4 flex items-center gap-2 text-gray-800">
+                  <BookOpen className="w-5 h-5 text-indigo-500" />
+                  答题回顾
+                </h3>
+                <div className="space-y-3">
+                  {result.question_results.map((qr, idx) => (
+                    <QuestionResultCard key={qr.question_id} qr={qr} index={idx + 1} />
+                  ))}
+                </div>
               </div>
             )}
 
