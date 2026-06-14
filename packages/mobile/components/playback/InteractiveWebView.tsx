@@ -156,8 +156,9 @@ export const InteractiveWebView = memo(forwardRef<InteractiveWebViewRef, Interac
       injectJavaScript: (js: string) => {
         if (isWeb) {
           const iframe = (webViewRef as any)._iframeEl as HTMLIFrameElement | null;
-          // iframe 同源策略下通过 eval 注入
-          try { iframe?.contentWindow?.eval(js); } catch { /* cross-origin */ }
+          // iframe 同源策略下通过 Function 注入（TS 不允许 Window.eval）
+          const win = iframe?.contentWindow as any;
+          try { win?.eval?.(js); } catch { /* cross-origin */ }
         } else {
           webViewRef.current?.injectJavaScript(js);
         }

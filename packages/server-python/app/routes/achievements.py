@@ -267,20 +267,17 @@ async def check_and_award_achievements(
 # ==================== 辅助函数 ====================
 
 async def get_user_stats(db: asyncpg.Connection, user_uuid) -> dict:
-    """获取用户学习统计"""
-    # 课程完成数（假设有 completed_at 字段）
+    """获取用户学习统计（真实数据）"""
+    # 课程完成数
     completed_count = await db.fetchval(
-        "SELECT COUNT(*) FROM stages WHERE user_id = $1",
+        "SELECT COUNT(*) FROM course_completions WHERE user_id = $1 AND completion_status = 'completed'",
         user_uuid
     ) or 0
-
-    # 创建数
-    created_count = completed_count  # 目前相同
 
     # 学习天数（过去 30 天）
     learning_days = await db.fetchval(
         """
-        SELECT COUNT(DISTINCT DATE(created_at)) FROM stages
+        SELECT COUNT(DISTINCT DATE(created_at)) FROM course_completions
         WHERE user_id = $1 AND created_at > NOW() - INTERVAL '30 days'
         """,
         user_uuid
@@ -289,14 +286,40 @@ async def get_user_stats(db: asyncpg.Connection, user_uuid) -> dict:
     # 连续学习天数
     streak = await calculate_streak(db, user_uuid)
 
+    # 测评正确率：答对题数 / 总题数
+    correct_count = await db.fetchval(
+        "SELECT COUNT(*) FROM learning_assessments WHERE user_id = $1 AND is_correct = TRUE",
+        user_uuid
+    ) or 0
+    total_count = await db.fetchval(
+        "SELECT COUNT(*) FROM learning_assessments WHERE user_id = $1",
+        user_uuid
+    ) or 0
+    quiz_accuracy = min(1.0, correct_count / total_count) if total_count > 0 else 0.85
+
+    # AI 聊天数（通过 persona_sessions 聚合）
+    chat_count = await db.fetchval(
+        """
+        SELECT COALESCE(SUM(ps.message_count), 0) FROM persona_sessions ps
+        WHERE ps.user_id = $1
+        """,
+        user_uuid
+    ) or 0
+
+    # 白板使用次数
+    whiteboard_count = await db.fetchval(
+        "SELECT COUNT(*) FROM whiteboard_states WHERE user_id = $1",
+        user_uuid
+    ) or 0
+
     return {
         "completed_count": completed_count,
-        "created_count": created_count,
+        "created_count": completed_count,  # 目前相同
         "learning_days": learning_days,
         "streak": streak,
-        "quiz_accuracy": 0.85,  # TODO: 实际计算
-        "chat_count": 0,  # TODO: 实际计算
-        "whiteboard_count": 0,  # TODO: 实际计算
+        "quiz_accuracy": round(quiz_accuracy, 2),
+        "chat_count": chat_count,
+        "whiteboard_count": whiteboard_count,
     }
 
 

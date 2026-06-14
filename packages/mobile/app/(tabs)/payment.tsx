@@ -88,6 +88,7 @@ export default function PaymentScreen() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>('wechat');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -145,9 +146,9 @@ export default function PaymentScreen() {
   const purchasePackage = (pkg: Package) => {
     if (isSubPlan(pkg)) {
       const label = pkg.period === 'monthly' ? '月' : '年';
-      confirmAction(`订阅 ${pkg.name}`, `${pkg.price_label}/${label}\n${pkg.features.join('\n')}`, () => createOrder(pkg.id, 'wechat', 'subscription'), '微信支付');
+      confirmAction(`订阅 ${pkg.name}`, `${pkg.price_label}/${label}\n${pkg.features.join('\n')}`, () => createOrder(pkg.id, payMethod, 'subscription'), `${getMethodLabel(payMethod)}`);
     } else {
-      confirmAction(`购买 ${pkg.name}`, `${pkg.total_tokens} Token = ¥${pkg.price}`, () => createOrder(pkg.id, 'wechat', 'token'), '微信支付');
+      confirmAction(`购买 ${pkg.name}`, `${pkg.total_tokens} Token = ¥${pkg.price}`, () => createOrder(pkg.id, payMethod, 'token'), `${getMethodLabel(payMethod)}`);
     }
   };
 
@@ -308,13 +309,31 @@ export default function PaymentScreen() {
           </View>
         )}
 
+        {/* ========== 支付方式 ========== */}
+        <View style={styles.methodRow}>
+          <TouchableOpacity
+            style={[styles.methodBtn, payMethod === 'wechat' && styles.methodBtnActive]}
+            onPress={() => setPayMethod('wechat')} activeOpacity={0.7}
+          >
+            <View style={[styles.methodDot, { backgroundColor: '#07c160' }]} />
+            <Text style={[styles.methodText, payMethod === 'wechat' && styles.methodTextActive]}>微信支付</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.methodBtn, payMethod === 'alipay' && styles.methodBtnActive]}
+            onPress={() => setPayMethod('alipay')} activeOpacity={0.7}
+          >
+            <View style={[styles.methodDot, { backgroundColor: '#1677ff' }]} />
+            <Text style={[styles.methodText, payMethod === 'alipay' && styles.methodTextActive]}>支付宝</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* ========== 订阅计划 ========== */}
         {subPlans.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>订阅计划</Text>
             <View style={styles.subGrid}>
               {subPlans.map((plan) => {
-                const isCurrent = overview?.subscription?.is_pro && overview?.subscription?.plan_id === plan.id;
+                const isCurrent = overview?.subscription?.is_pro && overview?.subscription?.plan_type === 'pro' && plan.id === 'pro_monthly';
                 const isAnySubscribed = overview?.subscription?.is_pro;
                 return (
                   <TouchableOpacity
@@ -450,6 +469,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bgSolid,
+  },
+  methodRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  methodBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: C.surfaceSolid,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    gap: 6,
+  },
+  methodBtnActive: {
+    borderColor: C.accent,
+    backgroundColor: C.accentLight,
+  },
+  methodDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  methodText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: C.fg,
+  },
+  methodTextActive: {
+    color: C.accent,
+    fontWeight: '600',
   },
   pageHeader: {
     flexDirection: 'row',
