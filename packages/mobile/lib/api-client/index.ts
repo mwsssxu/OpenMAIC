@@ -1618,6 +1618,75 @@ class ApiClient {
     return tapReward(data, 'assessment');
   }
 
+  // ============ Mistake Review (错题复习) ============
+
+  async getTodayMistakes(limit: number = 10) {
+    const { data } = await this.client.get('/mistakes/today', { params: { limit } });
+    return data as {
+      items: Array<{
+        id: string;
+        course_id: string | null;
+        question_id: string;
+        question: {
+          id: string;
+          type?: string;
+          content?: string;
+          options?: string[];
+          correct_answer?: string;
+          explanation?: string;
+          difficulty?: string;
+          points?: number;
+        };
+        attempt_count: number;
+        wrong_count: number;
+        correct_streak: number;
+        next_review_at: string | null;
+        last_reviewed_at: string | null;
+      }>;
+      stats: { total: number; mastered_count: number; due_count: number };
+    };
+  }
+
+  async getMistakeStats() {
+    const { data } = await this.client.get('/mistakes/stats');
+    return data as { total: number; mastered_count: number; due_count: number };
+  }
+
+  async answerMistake(mistakeId: string, answer: string) {
+    const { data } = await this.client.post(`/mistakes/${mistakeId}/answer`, { answer });
+    // tapReward 会读 earned_points + new_balance 自动弹 RewardToast
+    return tapReward(data, 'mistake_review') as {
+      is_correct: boolean;
+      correct_answer: string;
+      explanation: string | null;
+      mastered: boolean;
+      correct_streak: number;
+      wrong_count: number;
+      next_review_at: string | null;
+      earned_points: number;
+      new_balance: number | null;
+    };
+  }
+
+  async getMistakeList(opts?: { course_id?: string; only_unmastered?: boolean; limit?: number; offset?: number }) {
+    const { data } = await this.client.get('/mistakes/list', { params: opts });
+    return data as {
+      items: Array<{
+        id: string;
+        course_id: string | null;
+        question_id: string;
+        question: any;
+        attempt_count: number;
+        wrong_count: number;
+        correct_streak: number;
+        mastered: boolean;
+        next_review_at: string | null;
+        last_reviewed_at: string | null;
+        first_wrong_at: string | null;
+      }>;
+    };
+  }
+
   async getAssessmentResults(courseId: string) {
     const { data } = await this.client.get(`/assessments/results/${courseId}`);
     return data;

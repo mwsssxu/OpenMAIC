@@ -16,7 +16,7 @@ from app.core.config import settings
 logging.basicConfig(level=logging.DEBUG if settings.DEBUG else logging.INFO)
 from app.core.redis import init_redis, close_redis
 from app.db.database import init_db, close_db
-from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin_full, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge, personal_notes, profile, maic_ui_proxy, learning
+from app.routes import auth, classrooms, generate, chat, media, policies, achievements, checkin, sharing, classroom_sessions, tokens, points, questions, answers, invitations, payment, subscriptions, buddy, notes, matching, gamification, recommendations, review, passport, admin_full, admin_auth, video_course, question_course, share_cards, personas, depth_levels, programming, note_reminders, assessments, note_citations, enterprise, tts, knowledge, personal_notes, profile, maic_ui_proxy, learning, mistakes
 from app.routes.quiz import router as quiz_router
 from app.services.tts_service import close_tts_session as close_tts
 
@@ -241,6 +241,7 @@ app.include_router(depth_levels.router, tags=["学习深度分层"])
 app.include_router(programming.router, tags=["编程学习模板"])
 app.include_router(note_reminders.router, tags=["笔记提醒系统"])
 app.include_router(assessments.router, prefix="/assessments", tags=["学习效果测评"])
+app.include_router(mistakes.router, tags=["错题复习"])
 app.include_router(note_citations.router, tags=["笔记引用"])
 app.include_router(enterprise.router, tags=["企业功能"])
 app.include_router(tts.router, prefix="/tts", tags=["TTS"])

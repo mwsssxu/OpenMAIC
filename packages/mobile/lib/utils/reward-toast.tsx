@@ -28,6 +28,7 @@ export type RewardSource =
   | 'depth_progress'
   | 'share_card'
   | 'persona_feedback'
+  | 'mistake_review'
   | 'admin_gift'
   | 'generic';
 
@@ -49,6 +50,7 @@ const SOURCE_TEXT: Record<RewardSource, string> = {
   depth_progress: '完成学习场景',
   share_card: '分享课程',
   persona_feedback: '反馈人格匹配',
+  mistake_review: '错题复习答对',
   admin_gift: '管理员奖励',
   generic: '获得奖励',
 };

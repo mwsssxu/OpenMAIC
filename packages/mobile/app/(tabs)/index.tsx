@@ -293,6 +293,9 @@ export default function HomeScreen() {
   // 我的笔记统计
   const [recentNotes, setRecentNotes] = useState<{ total: number; todayCount: number; weekCount: number }>({ total: 0, todayCount: 0, weekCount: 0 });
 
+  // 错题复习 Banner（due_count > 0 时显示）
+  const [mistakeStats, setMistakeStats] = useState<{ total: number; mastered_count: number; due_count: number }>({ total: 0, mastered_count: 0, due_count: 0 });
+
   // Fetch dashboard stats and recent courses on mount
   useEffect(() => {
     const fetchData = async () => {
@@ -350,6 +353,15 @@ export default function HomeScreen() {
         showError(error);
         console.warn('Failed to fetch shared courses:', error);
         setSharedCourses([]);
+      }
+
+      // Fetch mistake stats（决定是否显示复习 Banner）
+      try {
+        const ms = await apiClient.getMistakeStats();
+        setMistakeStats(ms);
+      } catch (error) {
+        // 静默失败：错题统计不可用不影响首页
+        console.warn('Failed to fetch mistake stats:', error);
       }
     };
 
@@ -420,6 +432,33 @@ export default function HomeScreen() {
             </View>
           </View>
         </TouchableOpacity>
+
+        {/* 错题复习 Banner（仅 due_count>0 时显示） */}
+        {mistakeStats.due_count > 0 && (
+          <TouchableOpacity
+            style={styles.reviewBanner}
+            onPress={() => {
+              haptics.light();
+              router.push('/review' as any);
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`今日有 ${mistakeStats.due_count} 道错题待复习`}
+          >
+            <View style={styles.reviewBannerIcon}>
+              <Text style={styles.reviewBannerIconEmoji}>📌</Text>
+            </View>
+            <View style={styles.reviewBannerBody}>
+              <Text style={styles.reviewBannerTitle}>今日复习 · {mistakeStats.due_count} 道错题</Text>
+              <Text style={styles.reviewBannerDesc}>
+                {mistakeStats.mastered_count > 0
+                  ? `已掌握 ${mistakeStats.mastered_count} 道，再来一轮巩固`
+                  : '5 分钟搞定，养成日活习惯'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={iOSColors.muted} />
+          </TouchableOpacity>
+        )}
 
         {/* Notification 通知卡片 */}
         <TouchableOpacity
@@ -752,6 +791,40 @@ const styles = StyleSheet.create({
     borderColor: iOSColors.border,
     marginBottom: Spacing.lg,
     overflow: 'hidden',
+  },
+  // 错题复习 Banner（橙色品牌色，强调感）
+  reviewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5ed',
+    borderRadius: Rounded.md,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: Spacing.lg,
+    gap: 12,
+    minHeight: 56,
+  },
+  reviewBannerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#fed7aa',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewBannerIconEmoji: { fontSize: 18 },
+  reviewBannerBody: { flex: 1 },
+  reviewBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9a3412',
+    marginBottom: 2,
+  },
+  reviewBannerDesc: {
+    fontSize: 12,
+    color: '#c2410c',
   },
   notificationCardExpanded: {
     // 展开时保持相同的半透明背景

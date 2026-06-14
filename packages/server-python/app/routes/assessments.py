@@ -358,6 +358,24 @@ async def submit_assessment(
         context={"assessment_id": request.assessment_id, "score": result["score"]},
     )
 
+    # Record mistakes for daily review (mistake_records table)
+    # Best-effort: errors here must not block assessment submission.
+    try:
+        from app.services.mistake_service import record_mistakes_from_assessment
+        await record_mistakes_from_assessment(
+            db,
+            user_id=uuid.UUID(user_id),
+            course_id=assessment["course_id"],
+            assessment_id=assessment["id"],
+            questions=questions,
+            answers=request.answers,
+        )
+    except Exception as _exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "[Assessment] failed to record mistakes: %s", _exc
+        )
+
     # Update course completion mastery level
     await db.execute(
         """
