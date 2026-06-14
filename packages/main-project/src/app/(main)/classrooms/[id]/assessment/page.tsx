@@ -433,6 +433,23 @@ export default function AssessmentPage() {
                 </Button>
               </Link>
             </div>
+
+            {/* 错题复习引导 */}
+            {result.question_results && result.question_results.some(qr => !qr.is_correct) && (
+              <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                    <span className="text-lg">📌</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-orange-800 text-sm">
+                      {result.question_results.filter(qr => !qr.is_correct).length} 道错题已进入错题本
+                    </p>
+                    <p className="text-xs text-orange-600 mt-0.5">移动端可随时复习，趁热打铁效果最好</p>
+                  </div>
+                </div>
+              </div>
+            )}
         </div>
       </div>
     );
