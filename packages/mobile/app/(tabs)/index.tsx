@@ -93,6 +93,7 @@ function QuickFunctionBtn({ item, onPress, t, iconSize }: { item: typeof quickFu
       onPressOut={handlePressOut}
       activeOpacity={0.9}
       style={styles.quickFnBtn}
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
         <View style={[styles.quickFnIcon, { backgroundColor: item.bgColor }]}>
@@ -387,6 +388,16 @@ export default function HomeScreen() {
             <Text style={styles.avatarText}>{(user?.nickname || user?.email || '用户').charAt(0)}</Text>
           </View>
           <View style={styles.userInfo}>
+            <Text style={styles.userGreeting}>
+              {(() => {
+                const h = new Date().getHours();
+                if (h < 6) return '🌙 夜深了';
+                if (h < 12) return '☀️ 早上好';
+                if (h < 14) return '🌤 中午好';
+                if (h < 18) return '🌇 下午好';
+                return '🌙 晚上好';
+              })()}，{user?.nickname || user?.email?.split('@')[0] || '同学'}
+            </Text>
             <Text style={styles.userName}>{user?.nickname || user?.email?.split('@')[0] || '林小雨'}</Text>
             <Text style={styles.userStats}>
               {statsLoading ? (
@@ -698,6 +709,11 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
+  },
+  userGreeting: {
+    fontSize: 13,
+    color: iOSColors.muted,
+    marginBottom: 2,
   },
   userName: {
     fontSize: 18,
