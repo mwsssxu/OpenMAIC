@@ -211,6 +211,13 @@ export default function BuddyScreen() {
               style={styles.chatList}
               contentContainerStyle={styles.chatListContent}
             >
+              {chatMessages.length === 0 && !sending && (
+                <View style={styles.emptyChat}>
+                  <Ionicons name="chatbubbles-outline" size={40} color={Colors.neutral.textMuted} />
+                  <Text style={styles.emptyChatTitle}>和你的学习搭子聊聊吧</Text>
+                  <Text style={styles.emptyChatDesc}>随时提问、分享心得，{buddy?.buddy_name || typeInfo.label}陪你一起学</Text>
+                </View>
+              )}
               {chatMessages.map((msg) => (
                 <View
                   key={msg.id}
@@ -386,6 +393,9 @@ const styles = StyleSheet.create({
 
   chatList: { flex: 1 },
   chatListContent: { padding: 16, paddingBottom: 8 },
+  emptyChat: { alignItems: 'center', paddingTop: 60, paddingBottom: 40, paddingHorizontal: 32 },
+  emptyChatTitle: { fontSize: 16, fontWeight: '600', color: Colors.neutral.textPrimary, marginTop: 16 },
+  emptyChatDesc: { fontSize: 13, color: Colors.neutral.textSecondary, marginTop: 6, textAlign: 'center', lineHeight: 18 },
 
   // 消息气泡
   msgBubble: {
