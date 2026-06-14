@@ -244,10 +244,24 @@ export default function ProfileScreen() {
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [dailyGoal, setDailyGoal] = useState('30');
 
+  // 错题本统计（用于"我的学习"区块的迷你看板）
+  const [mistakeStats, setMistakeStats] = useState<{ total: number; mastered_count: number; due_count: number }>({ total: 0, mastered_count: 0, due_count: 0 });
+
   useEffect(() => {
     loadProfileData();
     loadDarkModePreference();
+    loadMistakeStats();
   }, []);
+
+  async function loadMistakeStats() {
+    try {
+      const ms = await apiClient.getMistakeStats();
+      setMistakeStats(ms);
+    } catch (e) {
+      // 静默失败：不阻塞 profile 主流程
+      console.warn('[Profile] mistake stats failed:', e);
+    }
+  }
 
   async function loadDarkModePreference() {
     try {
@@ -412,6 +426,60 @@ export default function ProfileScreen() {
             <AchievementBadge key={achievement.id} achievement={achievement} />
           ))}
         </ScrollView>
+
+        {/* 我的学习数据 */}
+        <Text style={styles.sectionTitle}>我的学习</Text>
+        <TouchableOpacity
+          style={mistakeBookStyles.card}
+          onPress={() => {
+            haptics.light();
+            router.push('/mistakes' as any);
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`错题本，共 ${mistakeStats.total} 题，已掌握 ${mistakeStats.mastered_count} 题`}
+        >
+          <View style={mistakeBookStyles.header}>
+            <View style={mistakeBookStyles.headerLeft}>
+              <View style={mistakeBookStyles.iconWrap}>
+                <Text style={mistakeBookStyles.iconEmoji}>📚</Text>
+              </View>
+              <View>
+                <Text style={mistakeBookStyles.title}>我的错题本</Text>
+                <Text style={mistakeBookStyles.subtitle}>
+                  {mistakeStats.total === 0 ? '暂无错题，继续保持' : `共 ${mistakeStats.total} 题，掌握 ${mistakeStats.mastered_count}`}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+          </View>
+          {mistakeStats.total > 0 && (
+            <View style={mistakeBookStyles.statsRow}>
+              <View style={mistakeBookStyles.statItem}>
+                <Text style={[mistakeBookStyles.statValue, { color: '#ea580c' }]}>{mistakeStats.due_count}</Text>
+                <Text style={mistakeBookStyles.statLabel}>待复习</Text>
+              </View>
+              <View style={mistakeBookStyles.statDivider} />
+              <View style={mistakeBookStyles.statItem}>
+                <Text style={[mistakeBookStyles.statValue, { color: '#10b981' }]}>{mistakeStats.mastered_count}</Text>
+                <Text style={mistakeBookStyles.statLabel}>已掌握</Text>
+              </View>
+              <View style={mistakeBookStyles.statDivider} />
+              <View style={mistakeBookStyles.statItem}>
+                <Text style={[mistakeBookStyles.statValue, { color: '#0f172a' }]}>
+                  {mistakeStats.total > 0 ? Math.round((mistakeStats.mastered_count / mistakeStats.total) * 100) : 0}%
+                </Text>
+                <Text style={mistakeBookStyles.statLabel}>掌握率</Text>
+              </View>
+            </View>
+          )}
+          {mistakeStats.due_count > 0 && (
+            <View style={mistakeBookStyles.cta}>
+              <Ionicons name="flash" size={14} color="#ea580c" />
+              <Text style={mistakeBookStyles.ctaText}>立即复习 →</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
         {/* 设置列表 */}
         <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
@@ -880,5 +948,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
+  },
+});
+
+const mistakeBookStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#fff5ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconEmoji: { fontSize: 22 },
+  title: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#f1f5f9',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fff5ed',
+    borderRadius: 8,
+    gap: 4,
+  },
+  ctaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ea580c',
   },
 });

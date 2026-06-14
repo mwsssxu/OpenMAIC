@@ -123,6 +123,7 @@ export default function AssessmentScreen() {
   }
 
   if (result) {
+    const wrongCount = result.total_questions - result.correct_count;
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView style={styles.content}>
@@ -134,10 +135,29 @@ export default function AssessmentScreen() {
             </Text>
             <View style={styles.statsRow}>
               <Text style={styles.statItem}>正确: {result.correct_count}</Text>
-              <Text style={styles.statItem}>错误: {result.total_questions - result.correct_count}</Text>
+              <Text style={styles.statItem}>错误: {wrongCount}</Text>
             </View>
             <Text style={styles.pointsText}>获得 {result.earned_points} 积分</Text>
           </View>
+
+          {wrongCount > 0 && (
+            <TouchableOpacity
+              style={reviewCtaStyles.cta}
+              onPress={() => router.push('/review' as any)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`立即复习 ${wrongCount} 道错题`}
+            >
+              <View style={reviewCtaStyles.ctaIcon}>
+                <Text style={reviewCtaStyles.ctaIconEmoji}>📌</Text>
+              </View>
+              <View style={reviewCtaStyles.ctaBody}>
+                <Text style={reviewCtaStyles.ctaTitle}>立即复习 {wrongCount} 道错题</Text>
+                <Text style={reviewCtaStyles.ctaDesc}>趁热打铁，5 分钟搞定</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#ea580c" />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.button} onPress={() => {
             setResult(null);
@@ -286,4 +306,32 @@ const styles = StyleSheet.create({
   buttonOutline: { backgroundColor: Colors.neutral.card, padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center' },
   buttonText: { fontSize: 16, color: '#3b82f6' },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.neutral.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: 16 },
+});
+
+const reviewCtaStyles = StyleSheet.create({
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5ed',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    gap: 12,
+    minHeight: 60,
+  },
+  ctaIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#fed7aa',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaIconEmoji: { fontSize: 20 },
+  ctaBody: { flex: 1 },
+  ctaTitle: { fontSize: 15, fontWeight: '600', color: '#9a3412', marginBottom: 2 },
+  ctaDesc: { fontSize: 12, color: '#c2410c' },
 });
