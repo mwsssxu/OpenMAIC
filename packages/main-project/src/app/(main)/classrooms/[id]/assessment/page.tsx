@@ -84,7 +84,8 @@ function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }
   const correct = qr.is_correct;
   const optionEntries = parseOptions(qr.options);
   const correctKey = pickedToKey(optionEntries, qr.correct_answer);
-  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] || qr.correct_answer || '';
+  const userKey = pickedToKey(optionEntries, qr.user_answer);
+  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] ?? qr.correct_answer ?? '';
 
   const bgClass = correct
     ? 'bg-emerald-50 border-emerald-200'
@@ -118,7 +119,7 @@ function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }
             <div className="space-y-1.5">
               {optionEntries.map(([key, label]) => {
                 const isCorrect = key === correctKey;
-                const isWrongPick = !correct && qr.user_answer === key;
+                const isWrongPick = !correct && userKey === key;
                 return (
                   <div
                     key={key}

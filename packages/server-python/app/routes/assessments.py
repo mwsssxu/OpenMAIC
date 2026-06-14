@@ -18,6 +18,9 @@ from app.core.time_utils import utcnow
 import asyncpg
 import uuid
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id
 
@@ -126,8 +129,13 @@ async def analyze_assessment_results(
     earned_points = 0
     question_results: List[dict] = []
 
-    # 用 dict 索引避免 O(n²)
-    answers_by_qid = {str(a["question_id"]): a for a in answers}
+    # 用 dict 索引避免 O(n²)；检测重复 question_id
+    answers_by_qid: dict[str, dict] = {}
+    for a in answers:
+        qid = str(a["question_id"])
+        if qid in answers_by_qid:
+            logger.warning("Duplicate answer for question %s, keeping last", qid)
+        answers_by_qid[qid] = a
 
     for q in questions:
         qid = str(q["id"])

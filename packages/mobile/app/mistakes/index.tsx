@@ -202,7 +202,7 @@ function MistakeCard({ item }: { item: MistakeListItem }) {
 
   const optionEntries = parseOptions(q.options);
   const correctKey = pickedToKey(optionEntries, q.correct_answer);
-  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] || q.correct_answer || '';
+  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] ?? q.correct_answer ?? '';
 
   return (
     <TouchableOpacity

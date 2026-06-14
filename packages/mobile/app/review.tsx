@@ -94,6 +94,8 @@ export default function ReviewScreen() {
   const [correctTotal, setCorrectTotal] = useState(0); // 答对总数
 
   const listRef = useRef<FlatList<MistakeItem>>(null);
+  // ref 防重复提交（避免 answers 闭包过期导致双击）
+  const answeredRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (authLoading) return;
@@ -121,8 +123,9 @@ export default function ReviewScreen() {
   const handleSubmit = useCallback(
     async (item: MistakeItem, picked: string) => {
       if (submitting) return;
-      // 已答过的题不重复提交
-      if (answers[item.id]) return;
+      // ref 防重复提交（比 answers 闭包更可靠，避免双击）
+      if (answeredRef.current.has(item.id)) return;
+      answeredRef.current.add(item.id);
       try {
         setSubmitting(true);
         haptics.light();
@@ -137,12 +140,14 @@ export default function ReviewScreen() {
         }
         // 答完后等用户读完反馈再手动下一题（更可控）
       } catch (e) {
+        // 提交失败回退 ref，允许重试
+        answeredRef.current.delete(item.id);
         showError(e);
       } finally {
         setSubmitting(false);
       }
     },
-    [answers, submitting, haptics],
+    [submitting, haptics],  // answers 不再是依赖 → 消除 N 次重渲染
   );
 
   const goNext = useCallback(() => {
@@ -243,6 +248,7 @@ export default function ReviewScreen() {
           <TouchableOpacity
             style={styles.secondaryBtn}
             onPress={() => {
+              answeredRef.current.clear();
               setAnswers({});
               setCompleted(0);
               setCorrectTotal(0);
@@ -369,7 +375,7 @@ function QuestionCard({
   const userPickedKey = answered ? pickedToKey(optionEntries, answer.picked) : null;
   const correctKey = pickedToKey(optionEntries, correctAnswer);
   // 找到正解的 label（用于无选项题或答错时强调显示）
-  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] || correctAnswer;
+  const correctLabel = optionEntries.find(([k]) => k === correctKey)?.[1] ?? correctAnswer;
 
   return (
     <View style={[questionStyles.page, { width }]}>
