@@ -62,10 +62,27 @@ export default function BuddyScreen() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const data = await apiClient.getMyBuddyConfig();
+      const [data, msgs] = await Promise.all([
+        apiClient.getMyBuddyConfig(),
+        apiClient.getBuddyMessages(1, 20).catch(() => ({ messages: [] })),
+      ]);
       setBuddy(data);
       setSelectedType(data.buddy_type || 'encourager');
       setSelectedTone(data.tone_style || 'warm');
+      // 还原聊天历史
+      if (msgs.messages?.length > 0) {
+        const history: ChatMsg[] = msgs.messages
+          .filter((m: any) => m.trigger_event === 'deep_chat')
+          .reverse()
+          .map((m: any) => ({
+            id: m.id,
+            role: m.message_type === 'user' ? 'user' as const : 'buddy' as const,
+            text: m.content,
+            time: new Date(m.created_at),
+          }));
+        setChatMessages(history);
+        setTimeout(() => scrollRef.current?.scrollToEnd?.(), 200);
+      }
     } catch (error) {
       showError(error);
     } finally {

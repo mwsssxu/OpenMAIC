@@ -323,6 +323,35 @@ async def buddy_deep_chat(
     }
     tone_desc = tone_map.get(tone_style, "温暖鼓励")
 
+    # 存储用户消息
+    await db.execute(
+        """
+        INSERT INTO buddy_messages (id, user_id, trigger_event, message_type, content, created_at)
+        VALUES ($1, $2, 'deep_chat', 'user', $3, $4)
+        """,
+        uuid.uuid4(), user_uuid, message, utcnow()
+    )
+
+    # 读取最近10条对话历史
+    history_rows = await db.fetch(
+        """
+        SELECT message_type, content FROM buddy_messages
+        WHERE user_id = $1 AND trigger_event = 'deep_chat'
+        ORDER BY created_at DESC LIMIT 10
+        """,
+        user_uuid
+    )
+    # 反转为时间正序
+    history_rows = list(reversed(history_rows))
+    # 拼接历史为 prompt 上下文
+    history_lines = []
+    for row in history_rows:
+        if row["message_type"] == "user":
+            history_lines.append(f"用户：{row['content']}")
+        else:
+            history_lines.append(f"{buddy_name}：{row['content']}")
+    history_text = "\n".join(history_lines)
+
     # 用 LLM 生成智能回复
     system_prompt = (
         f"你是{buddy_name}，一个{tone_desc}风格的学习搭子（{buddy_data['name']}类型）。"
@@ -330,9 +359,11 @@ async def buddy_deep_chat(
         f"请用{tone_desc}的语气回复用户，保持简洁（100字以内），关注学习和成长。"
         f"如果是提问，给出建议；如果是分享，给予回应。不要使用markdown。"
     )
+    # 拼接历史+当前消息作为 prompt
+    full_prompt = f"{history_text}\n用户：{message}" if history_text else message
     try:
         response_content = await call_llm(
-            prompt=message,
+            prompt=full_prompt,
             system_prompt=system_prompt,
             temperature=0.8,
             max_tokens=200,

@@ -31,6 +31,7 @@ const iOSColors = {
   accentLight: '#fde8e0',
   secondary: '#1a8a8a',
   secondaryLight: '#e8f5f5',
+  green: '#10b981',
 };
 
 interface Classroom {
@@ -67,6 +68,7 @@ interface ClassroomData {
   scenes: Scene[];
   agents?: any[];
   scenes_completed?: number;
+  completion_status?: string;  // 'completed' | 'in_progress' | 'not_started'
   is_owner?: boolean;
   is_public?: boolean;
   share_code?: string;
@@ -395,6 +397,25 @@ export default function CourseDetailScreen() {
           <Text style={styles.sectionLink}>共 {scenes.length} 节</Text>
         </View>
 
+        {/* 进度条 */}
+        {(() => {
+          const completed = classroom.scenes_completed || 0;
+          const total = scenes.length || 1;
+          const pct = Math.min(100, Math.round((completed / total) * 100));
+          const isDone = classroom.completion_status === 'completed';
+          return (
+            <View style={styles.progressWrap}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { flex: pct / 100 }, isDone && styles.progressFillDone]} />
+                <View style={{ flex: 1 - pct / 100 }} />
+              </View>
+              <Text style={[styles.progressLabel, isDone && styles.progressLabelDone]}>
+                {isDone ? '已完成' : `${completed}/${total} · ${pct}%`}
+              </Text>
+            </View>
+          );
+        })()}
+
         {/* 场景列表 */}
         <View style={styles.chapterGroup}>
           <View style={styles.chapterLessons}>
@@ -658,6 +679,33 @@ const styles = StyleSheet.create({
   sectionLink: {
     fontSize: 12,
     color: iOSColors.accent,
+  },
+
+  // 进度条
+  progressWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: Spacing.md, marginTop: 8, marginBottom: 4,
+    gap: 10,
+  },
+  progressTrack: {
+    flex: 1, flexDirection: 'row',
+    height: 6, borderRadius: 3,
+    backgroundColor: iOSColors.border,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    backgroundColor: iOSColors.accent,
+    borderRadius: 3,
+  },
+  progressFillDone: {
+    backgroundColor: iOSColors.green,
+  },
+  progressLabel: {
+    fontSize: 12, color: iOSColors.muted, fontWeight: '500',
+    minWidth: 70, textAlign: 'right',
+  },
+  progressLabelDone: {
+    color: iOSColors.green,
   },
 
   // 课程简介
