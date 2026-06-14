@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client';
 import { showError } from '@/lib/utils/error-toast';
 import { useState, useCallback, useEffect } from 'react';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
+import { useResponsiveDimensions } from '@/lib/utils/responsive';
 
 interface CourseItem {
   id: string;
@@ -40,10 +41,15 @@ function guessCategory(name: string): string {
 
 export default function DiscoverScreen() {
   const router = useRouter();
+  const { isTablet, breakpoint } = useResponsiveDimensions();
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [sharedCourses, setSharedCourses] = useState<CourseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // 响应式列数
+  const numColumns = isTablet ? 3 : 2;
+  const cardGap = isTablet ? 14 : 10;
 
   const loadData = useCallback(async () => {
     try {
@@ -137,9 +143,9 @@ export default function DiscoverScreen() {
                 <Text style={styles.sectionTitle}>{cat}</Text>
                 <Text style={styles.countBadge}>{items.length}</Text>
               </View>
-              <View style={styles.cardGrid}>
-                {items.slice(0, 4).map((c) => (
-                  <TouchableOpacity key={c.id} style={styles.card} onPress={() => openCourse(c.id)} activeOpacity={0.7}>
+              <View style={[styles.cardGrid, { gap: cardGap }]}>
+                {items.slice(0, isTablet ? 6 : 4).map((c) => (
+                  <TouchableOpacity key={c.id} style={[styles.card, { width: `${Math.floor(100 / numColumns) - 2}%` }]} onPress={() => openCourse(c.id)} activeOpacity={0.7}>
                     <View style={[styles.cardIcon, { backgroundColor: cfg.color + '18' }]}>
                       <Ionicons name={cfg.icon} size={24} color={cfg.color} />
                     </View>
@@ -208,7 +214,7 @@ const styles = StyleSheet.create({
   },
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   card: {
-    width: '48%', padding: Spacing.md, marginBottom: Spacing.sm,
+    padding: Spacing.md, marginBottom: Spacing.sm,
     backgroundColor: Colors.neutral.background, borderRadius: Rounded.md,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.neutral.border,
   },

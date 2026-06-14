@@ -446,6 +446,21 @@ export default function CoursesScreen() {
             </View>
             <Text style={styles.emptyTitle}>{t('courses.emptyTitle')}</Text>
             <Text style={styles.emptyDesc}>{t('courses.emptyDesc')}</Text>
+            <TouchableOpacity
+              style={styles.emptyCta}
+              onPress={() => router.push('/classroom/create' as any)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
+              <Text style={styles.emptyCtaText}>创建第一门课程</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.emptySecondaryCta}
+              onPress={() => router.navigate('/(tabs)/discover' as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.emptySecondaryCtaText}>或去发现课程</Text>
+            </TouchableOpacity>
           </View>
         }
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadClassrooms} colors={[Colors.primary.main]} tintColor={Colors.primary.main} />}
@@ -761,6 +776,14 @@ const styles = StyleSheet.create({
     color: iOSColors.muted,
     lineHeight: 20,
   },
+  emptyCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 20, paddingHorizontal: 24, paddingVertical: 12,
+    backgroundColor: iOSColors.accent, borderRadius: 12,
+  },
+  emptyCtaText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  emptySecondaryCta: { marginTop: 12 },
+  emptySecondaryCtaText: { fontSize: 13, color: iOSColors.accent },
 
   // 错误状态
   errorText: {

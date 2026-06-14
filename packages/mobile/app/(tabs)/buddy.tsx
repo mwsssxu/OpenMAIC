@@ -123,7 +123,14 @@ export default function BuddyScreen() {
       text,
       time: new Date(),
     };
-    setChatMessages(prev => [...prev, userMsg]);
+    // 正在输入占位
+    const typingMsg: ChatMsg = {
+      id: `typing-${Date.now()}`,
+      role: 'buddy',
+      text: '__TYPING__',
+      time: new Date(),
+    };
+    setChatMessages(prev => [...prev, userMsg, typingMsg]);
     setTimeout(() => scrollRef.current?.scrollToEnd?.(), 100);
 
     try {
@@ -134,12 +141,13 @@ export default function BuddyScreen() {
         text: res.content || '...',
         time: new Date(),
       };
-      setChatMessages(prev => [...prev, buddyMsg]);
+      // 替换 typing 占位
+      setChatMessages(prev => [...prev.filter(m => m.id !== typingMsg.id), buddyMsg]);
       setTimeout(() => scrollRef.current?.scrollToEnd?.(), 100);
     } catch (error: any) {
       showError(error?.response?.data?.detail || '搭子回复失败');
-      // 移除用户消息（发送失败）
-      setChatMessages(prev => prev.filter(m => m.id !== userMsg.id));
+      // 移除用户消息和typing占位
+      setChatMessages(prev => prev.filter(m => m.id !== userMsg.id && m.id !== typingMsg.id));
     } finally {
       setSending(false);
     }
@@ -229,9 +237,17 @@ export default function BuddyScreen() {
                     </View>
                   )}
                   <View style={[styles.msgContent, msg.role === 'user' ? styles.msgUserContent : styles.msgBuddyContent]}>
-                    <Text style={[styles.msgText, msg.role === 'user' ? styles.msgUserText : styles.msgBuddyText]}>
-                      {msg.text}
-                    </Text>
+                    {msg.text === '__TYPING__' ? (
+                      <View style={styles.typingDots}>
+                        <View style={[styles.dot, styles.dot1]} />
+                        <View style={[styles.dot, styles.dot2]} />
+                        <View style={[styles.dot, styles.dot3]} />
+                      </View>
+                    ) : (
+                      <Text style={[styles.msgText, msg.role === 'user' ? styles.msgUserText : styles.msgBuddyText]}>
+                        {msg.text}
+                      </Text>
+                    )}
                   </View>
                 </View>
               ))}
@@ -425,6 +441,11 @@ const styles = StyleSheet.create({
   msgText: { fontSize: 15, lineHeight: 20 },
   msgUserText: { color: '#fff' },
   msgBuddyText: { color: iOSColors.fg },
+  typingDots: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 2 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: iOSColors.muted, opacity: 0.4 },
+  dot1: { opacity: 1 },
+  dot2: { opacity: 0.6 },
+  dot3: { opacity: 0.3 },
 
   // 输入栏
   inputBar: {

@@ -49,8 +49,9 @@ interface Result {
   question_results?: QuestionResult[];
 }
 
-function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }) {
+function QuestionResultCard({ qr, index, forceExpand }: { qr: QuestionResult; index: number; forceExpand?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const isExpanded = forceExpand ?? expanded;
   const correct = qr.is_correct;
   const accent = correct ? '#10b981' : '#ef4444';
   const bg = correct ? '#ecfdf5' : '#fef2f2';
@@ -90,12 +91,12 @@ function QuestionResultCard({ qr, index }: { qr: QuestionResult; index: number }
         <View style={qrCardStyles.indexBadge}>
           <Text style={qrCardStyles.indexText}>{index}</Text>
         </View>
-        <Text style={qrCardStyles.content} numberOfLines={expanded ? 0 : 2}>{qr.content}</Text>
+        <Text style={qrCardStyles.content} numberOfLines={isExpanded ? 0 : 2}>{qr.content}</Text>
         <View style={[qrCardStyles.statusBadge, { backgroundColor: accent }]}>
           <Ionicons name={correct ? 'checkmark' : 'close'} size={14} color="#fff" />
         </View>
       </View>
-      {expanded && (
+      {isExpanded && (
         <View style={qrCardStyles.body}>
           {optionEntries.length > 0 ? (
             <View style={qrCardStyles.optionsList}>
@@ -146,6 +147,7 @@ export default function AssessmentScreen() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<Result | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [expandAll, setExpandAll] = useState(false);
 
   useEffect(() => {
     loadToken();
@@ -261,9 +263,20 @@ export default function AssessmentScreen() {
           {/* 逐题回顾 */}
           {result.question_results && result.question_results.length > 0 && (
             <View style={reviewCtaStyles.reviewSection}>
-              <Text style={reviewCtaStyles.reviewSectionTitle}>答题回顾</Text>
+              <View style={reviewCtaStyles.reviewSectionHeader}>
+                <Text style={reviewCtaStyles.reviewSectionTitle}>答题回顾</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    // 切换所有卡片展开状态
+                    setExpandAll(prev => !prev);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={reviewCtaStyles.expandToggle}>{expandAll ? '收起全部' : '展开全部'}</Text>
+                </TouchableOpacity>
+              </View>
               {result.question_results.map((qr, idx) => (
-                <QuestionResultCard key={qr.question_id} qr={qr} index={idx + 1} />
+                <QuestionResultCard key={qr.question_id} qr={qr} index={idx + 1} forceExpand={expandAll} />
               ))}
             </View>
           )}
@@ -444,6 +457,7 @@ const reviewCtaStyles = StyleSheet.create({
   ctaTitle: { fontSize: 15, fontWeight: '600', color: '#9a3412', marginBottom: 2 },
   ctaDesc: { fontSize: 12, color: '#c2410c' },
   reviewSection: { marginBottom: 16 },
+  reviewSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 },
   reviewSectionTitle: {
     fontSize: 15,
     fontWeight: '600',
@@ -451,6 +465,7 @@ const reviewCtaStyles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 4,
   },
+  expandToggle: { fontSize: 13, color: '#3b82f6', fontWeight: '500' },
 });
 
 const qrCardStyles = StyleSheet.create({
