@@ -569,17 +569,6 @@ export function WhiteboardOverlay({
               <View style={styles.dragHandle} />
             </View>
           </GestureDetector>
-
-          {/* 聊天面板内容 — 由外部通过 children 或 renderChat 传入 */}
-          {/* 此处仅提供容器框架，具体聊天内容由 classroom screen 渲染 */}
-          <TouchableOpacity
-            style={styles.chatExpandHint}
-            onPress={onToggleChat}
-            activeOpacity={0.5}
-          >
-            <Ionicons name="chevron-down" size={16} color="#999" />
-            <Text style={styles.chatExpandHintText}>收起对话</Text>
-          </TouchableOpacity>
         </Animated.View>
       )}
     </View>
@@ -962,20 +951,5 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: '#ddd',
     borderRadius: 2,
-  },
-  // 收起对话提示
-  chatExpandHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    backgroundColor: '#fafafa',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  chatExpandHintText: {
-    fontSize: 12,
-    color: '#999',
-    marginLeft: 4,
   },
 });
