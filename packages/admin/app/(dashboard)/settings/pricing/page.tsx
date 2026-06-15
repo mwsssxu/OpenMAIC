@@ -11,8 +11,31 @@ interface PricingConfig {
   description: string;
 }
 
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price_monthly: number;
+  price_yearly: number;
+  days_monthly: number;
+  days_yearly: number;
+  monthly_token_grant: number;
+  features: string[];
+  is_active: boolean;
+}
+
+interface TokenPackage {
+  id: string;
+  name: string;
+  price: number;
+  tokens: number;
+  bonus: number;
+  is_active: boolean;
+}
+
 export default function PricingSettingsPage() {
   const [configs, setConfigs] = useState<PricingConfig[]>([]);
+  const [subPlans, setSubPlans] = useState<SubscriptionPlan[]>([]);
+  const [tokenPkgs, setTokenPkgs] = useState<TokenPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -34,6 +57,8 @@ export default function PricingSettingsPage() {
       if (response.ok) {
         const data = await response.json();
         setConfigs(data.pricing || []);
+        setSubPlans(data.subscription_plans || []);
+        setTokenPkgs(data.token_packages || []);
       } else {
         setError('加载失败，请稍后重试');
       }
@@ -50,14 +75,19 @@ export default function PricingSettingsPage() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const token = localStorage.getItem('admin_token');
 
-      await fetch(`${apiUrl}/admin/settings/pricing`, {
+      const res = await fetch(`${apiUrl}/admin/settings/pricing`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ pricing: configs }),
+        body: JSON.stringify({ pricing: configs, subscription_plans: subPlans, token_packages: tokenPkgs }),
       });
+      if (res.ok) {
+        setError(null);
+      } else {
+        setError('保存失败');
+      }
     } catch {
       setError('保存失败，请稍后重试');
     } finally {

@@ -23,14 +23,22 @@ const iOSColors = {
 const BUDDY_TYPE_MAP: Record<string, { label: string; icon: string; desc: string }> = {
   encourager: { label: '鼓励型', icon: 'sunny', desc: '温暖鼓励，积极正面' },
   challenger: { label: '挑战型', icon: 'fitness', desc: '严格要求，追求进步' },
+  listener: { label: '倾听型', icon: 'ear', desc: '耐心倾听，共情理解' },
+  critic: { label: '毒舌型', icon: 'flame', desc: '犀利点评，幽默吐槽' },
+  scholar: { label: '学者型', icon: 'school', desc: '严谨治学，深入浅出' },
+  partner: { label: '伙伴型', icon: 'people', desc: '共同成长，亦师亦友' },
+  // 向后兼容旧类型值
   explainer: { label: '讲解型', icon: 'school', desc: '耐心讲解，深入浅出' },
   motivator: { label: '激励型', icon: 'flash', desc: '充满激情，目标驱动' },
 };
 
 const TONE_MAP: Record<string, { label: string; emoji: string }> = {
   warm: { label: '温暖', emoji: '🤗' },
-  professional: { label: '专业', emoji: '👔' },
+  strict: { label: '严格', emoji: '💪' },
   humorous: { label: '幽默', emoji: '😄' },
+  serious: { label: '严谨', emoji: '🎓' },
+  // 向后兼容旧tone值
+  professional: { label: '专业', emoji: '👔' },
   calm: { label: '沉稳', emoji: '🧘' },
 };
 
@@ -111,8 +119,8 @@ export default function BuddyScreen() {
     }
   }
 
-  async function sendMessage() {
-    const text = inputText.trim();
+  async function sendMessage(overrideText?: string) {
+    const text = (overrideText ?? inputText).trim();
     if (!text || sending) return;
     setInputText('');
     setSending(true);
@@ -201,11 +209,11 @@ export default function BuddyScreen() {
               <Text style={styles.chatEmptyDesc}>分享你的学习困惑、目标或心情</Text>
               {/* 快捷话题 */}
               <View style={styles.quickTopics}>
-                {['今天学了什么？', '帮我制定学习计划', '我遇到困难了', '给我一些鼓励'].map((topic) => (
+                {['今天学了什么？', '帮我制定学习计划', '我遇到困难了', '给我一些鼓励'].map((topic) =>(
                   <TouchableOpacity
                     key={topic}
                     style={styles.topicChip}
-                    onPress={() => { setInputText(topic); }}
+                    onPress={() => sendMessage(topic)}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.topicText}>{topic}</Text>
@@ -275,12 +283,12 @@ export default function BuddyScreen() {
               multiline
               maxLength={500}
               editable={!sending}
-              onSubmitEditing={sendMessage}
+              onSubmitEditing={() => sendMessage()}
               returnKeyType="send"
             />
             <TouchableOpacity
               style={[styles.sendBtn, (!inputText.trim() || sending) && styles.sendBtnDisabled]}
-              onPress={sendMessage}
+              onPress={() => sendMessage()}
               disabled={!inputText.trim() || sending}
               activeOpacity={0.7}
             >

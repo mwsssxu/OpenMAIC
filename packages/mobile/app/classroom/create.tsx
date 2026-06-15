@@ -272,7 +272,7 @@ const agentCardStyles = StyleSheet.create({
 
 export default function CreateClassroomScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { onSuccess, onError } = useFeedback();
   const insets = useSafeAreaInsets();
 
@@ -392,7 +392,15 @@ export default function CreateClassroomScreen() {
       const result = await apiClient.matchCourseCache(effectiveRequirement, language);
       setCheckingCache(false);
       if (result.matched && result.data) {
-        setCacheMatch(result.data);
+        // 确保 scenes_summary 是数组（后端可能返回 JSON 字符串）
+        const data = result.data;
+        if (typeof data.scenes_summary === 'string') {
+          try { data.scenes_summary = JSON.parse(data.scenes_summary); } catch {}
+        }
+        if (typeof data.outlines === 'string') {
+          try { data.outlines = JSON.parse(data.outlines); } catch {}
+        }
+        setCacheMatch(data);
         setCurrentStep(1);
         // 将缓存的大纲加载到 outlines
         if (result.data.outlines) {
@@ -416,48 +424,27 @@ export default function CreateClassroomScreen() {
     generateOutlines();
   };
 
-  // 使用缓存课程（跳过生成）
+  // 使用缓存课程（直接复制源课程为新课程，无需LLM生成）
   const handleUseCache = async () => {
     if (!cacheMatch) return;
     setLoading(true);
-    setLoadingMessage('正在创建课程...');
+    setLoadingMessage('正在复制课程...');
     setError(null);
 
     try {
-      const effectiveRequirement = requirement.trim() || (pdfFile ? `基于文档「${pdfFile.name}」创建课程` : '');
-
-      // 1. 用缓存的大纲创建课程
-      const result = await apiClient.createFullClassroom(
-        effectiveRequirement.slice(0, 50),
-        effectiveRequirement,
-        outlines,
-        [],
-        language,
+      // 一步完成：从缓存源课程直接复制为新课程（stage + scenes，user_id 为当前用户）
+      const cloneResult = await apiClient.cloneCourseFromCache(
+        cacheMatch.source_stage_id,
+        requirement.trim().slice(0, 50),
       );
-
-      setLoadingMessage('正在加载缓存场景...');
-
-      // 2. 从源课程加载 scenes 并复制到新课程
-      const cacheScenesResult = await apiClient.loadCacheScenes(cacheMatch.source_stage_id);
-      if (cacheScenesResult.scenes && cacheScenesResult.scenes.length > 0) {
-        // 逐个复制 scene 到新课程
-        for (let i = 0; i < cacheScenesResult.scenes.length; i++) {
-          const scene = cacheScenesResult.scenes[i];
-          await apiClient.createScene(result.id, {
-            type: scene.type || 'slide',
-            title: scene.title || scene.name || `场景 ${i + 1}`,
-            description: scene.description || scene.content || '',
-          }, i, language);
-        }
-      }
 
       setLoadingMessage(null);
       setCacheMatch(null);
-      setCreatedClassroomId(result.id);
+      setCreatedClassroomId(cloneResult.id);
       onSuccess();
-      router.replace(`/classroom/${result.id}?totalScenes=${cacheScenesResult.scenes?.length || outlines.length}`);
+      router.replace(`/classroom/${cloneResult.id}?totalScenes=${cloneResult.cloned_count}`);
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '加载缓存课程失败');
+      setError(err.response?.data?.detail || err.message || '复制课程失败');
     } finally {
       setLoading(false);
       setLoadingMessage(null);
@@ -727,23 +714,40 @@ export default function CreateClassroomScreen() {
             已有课程「{cacheMatch.requirement?.slice(0, 30)}」与您的需求匹配度 {(cacheMatch.similarity * 100).toFixed(0)}%
           </Text>
           <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
-            复用已有课程可节省约 80% 的 Token 消耗
+            直接复用已有课程，无需等待AI生成，节省约80%的Token消耗
           </Text>
+          {cacheMatch.scenes_summary && Array.isArray(cacheMatch.scenes_summary) && cacheMatch.scenes_summary.length > 0 && (
+            <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>课程包含 {cacheMatch.scenes_summary.length} 个场景：</Text>
+              {cacheMatch.scenes_summary.slice(0, 5).map((s: any, i: number) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2 }}>
+                  <Ionicons name={s.type === 'quiz' ? 'help-circle-outline' : 'document-text-outline'} size={12} color="#9ca3af" />
+                  <Text style={{ fontSize: 12, color: '#374151', marginLeft: 4 }} numberOfLines={1}>{s.title || `场景 ${i + 1}`}</Text>
+                </View>
+              ))}
+              {cacheMatch.scenes_summary.length > 5 && (
+                <Text style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>...还有 {cacheMatch.scenes_summary.length - 5} 个场景</Text>
+              )}
+            </View>
+          )}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
               style={{ backgroundColor: '#16a34a', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, flex: 1, alignItems: 'center' }}
               onPress={handleUseCache}
               activeOpacity={0.7}
+              disabled={loading}
             >
-              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>使用缓存</Text>
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>直接使用</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={{ backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, flex: 1, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' }}
-              onPress={handleIgnoreCache}
-              activeOpacity={0.7}
-            >
-              <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14 }}>重新生成</Text>
-            </TouchableOpacity>
+            {cacheMatch.source_user_id !== user?.id && (
+              <TouchableOpacity
+                style={{ backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, flex: 1, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' }}
+                onPress={handleIgnoreCache}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14 }}>重新生成</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       ) : (

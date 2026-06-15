@@ -161,10 +161,12 @@ async def find_matching_course(
 
         # 2. 从数据库加载所有缓存条目的 embedding（仅查完整课程）
         rows = await db.fetch(
-            """SELECT id, source_stage_id, requirement_text, embedding, outlines, scenes_summary, language
-               FROM course_cache
-               WHERE language = $1 AND (is_complete IS NULL OR is_complete = true)
-               ORDER BY created_at DESC
+            """SELECT cc.id, cc.source_stage_id, cc.requirement_text, cc.embedding, cc.outlines, cc.scenes_summary, cc.language,
+                      s.user_id as source_user_id
+               FROM course_cache cc
+               LEFT JOIN stages s ON cc.source_stage_id = s.id
+               WHERE cc.language = $1 AND (cc.is_complete IS NULL OR cc.is_complete = true)
+               ORDER BY cc.created_at DESC
                LIMIT $2""",
             language, MAX_CACHE_ENTRIES,
         )
@@ -215,6 +217,7 @@ async def find_matching_course(
             return {
                 "cache_id": str(best_match["id"]),
                 "source_stage_id": str(best_match["source_stage_id"]),
+                "source_user_id": str(best_match["source_user_id"]) if best_match.get("source_user_id") else None,
                 "similarity": round(best_similarity, 4),
                 "requirement": best_match["requirement_text"],
                 "outlines": best_match["outlines"],

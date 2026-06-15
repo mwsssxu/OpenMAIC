@@ -71,6 +71,15 @@ async def daily_checkin(
     # 打卡奖励
     reward_points = 5 if new_streak < 7 else (10 if new_streak < 30 else 20)
 
+    # 打卡成功后触发搭子鼓励消息（best-effort，不阻塞打卡）
+    try:
+        from app.routes.buddy import generate_buddy_message
+        from app.routes.buddy import get_user_buddy_type
+        buddy_type = await get_user_buddy_type(db, user_uuid)
+        await generate_buddy_message(db, user_uuid, 'checkin', buddy_type)
+    except Exception:
+        pass  # 搭子消息失败不影响打卡
+
     return {
         "message": "打卡成功！",
         "already_checked": False,

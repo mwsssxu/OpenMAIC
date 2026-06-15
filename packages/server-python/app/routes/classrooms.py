@@ -806,9 +806,106 @@ async def create_all_scenes_for_classroom(
         "UPDATE stages SET pending_outlines = NULL WHERE id = $1", classroom_uuid
     )
 
+    # 自动缓存课程（供后续语义匹配复用）
+    try:
+        from app.services.course_cache import cache_course
+        await cache_course(
+            requirement=stage["name"],
+            stage_id=classroom_uuid,
+            outlines=[o.model_dump() if hasattr(o, "model_dump") else o for o in outlines],
+            scenes=scenes,
+            db=db,
+            language=language,
+        )
+        logger.info(f"[SceneCreateAll] 课程已自动缓存: {classroom_id}")
+    except Exception as e:
+        logger.warning(f"[SceneCreateAll] 缓存课程失败（不影响主流程）: {e}")
+
     return {
         "scenes": scenes,
         "elapsed_seconds": round(total_elapsed, 2)
+    }
+
+
+@router.post("/clone-from-cache")
+async def clone_course_from_cache(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """
+    从缓存源课程直接复制为新课程（一步完成：复制 stage + scenes，user_id 为当前用户）
+    - source_stage_id: 缓存源课程的 stage_id
+    - name: 新课程名称（可选，默认复用源课程名）
+    - 整个课程内容直接复制，无需LLM生成，零Token消耗
+    """
+    source_stage_id = body.get("source_stage_id")
+    if not source_stage_id:
+        raise HTTPException(status_code=400, detail="source_stage_id is required")
+
+    new_name = body.get("name")
+    user_uuid = validate_uuid(current_user_id, "用户ID")
+    source_uuid = validate_uuid(source_stage_id, "源课程ID")
+
+    # 验证源课程在缓存表中
+    cache_row = await db.fetchrow(
+        "SELECT id FROM course_cache WHERE source_stage_id = $1", source_uuid
+    )
+    if not cache_row:
+        raise HTTPException(status_code=403, detail="该课程不在缓存中，无法复制")
+
+    # 读取源课程
+    source_stage = await db.fetchrow(
+        "SELECT * FROM stages WHERE id = $1", source_uuid
+    )
+    if not source_stage:
+        raise HTTPException(status_code=404, detail="源课程不存在")
+
+    # 1. 复制 stage（换 id 和 user_id）
+    new_stage_id = uuid.uuid4()
+    await db.execute(
+        """INSERT INTO stages (id, user_id, name, description, language_directive, style,
+           pending_outlines, generated_agent_configs, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8)""",
+        new_stage_id, user_uuid,
+        new_name or source_stage["name"],
+        source_stage["description"],
+        source_stage["language_directive"] or "zh-CN",
+        source_stage["style"],
+        source_stage["generated_agent_configs"],
+        utcnow(),
+    )
+
+    # 2. 复制所有 scenes
+    source_scenes = await db.fetch(
+        """SELECT type, title, content, actions, whiteboards
+           FROM scenes WHERE stage_id = $1 ORDER BY order_index""",
+        source_uuid,
+    )
+
+    created_scenes = []
+    for i, src in enumerate(source_scenes):
+        scene_id = uuid.uuid4()
+        await db.execute(
+            """INSERT INTO scenes (id, stage_id, user_id, type, title, content, actions, whiteboards, order_index, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10)""",
+            scene_id, new_stage_id, user_uuid, src["type"], src["title"],
+            src["content"], src["actions"], src["whiteboards"],
+            i, utcnow(),
+        )
+        created_scenes.append({
+            "id": str(scene_id),
+            "type": src["type"],
+            "title": src["title"],
+        })
+
+    logger.info(f"[CloneCourse] 从缓存复制课程 {source_stage_id} -> {new_stage_id}，共 {len(created_scenes)} 个场景")
+
+    return {
+        "id": str(new_stage_id),
+        "name": new_name or source_stage["name"],
+        "cloned_count": len(created_scenes),
+        "scenes": created_scenes,
     }
 
 

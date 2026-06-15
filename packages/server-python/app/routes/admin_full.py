@@ -989,17 +989,50 @@ async def get_pricing_settings(
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Get pricing settings. Requires settings.view permission."""
+    # 兼容旧 pricing_configs 表
     pricing = await db.fetch("SELECT type, name, price, tokens, description FROM pricing_configs ORDER BY type, price")
-    return {"pricing": [dict(p) for p in pricing]}
+    # 新增：订阅计划 + Token 包（列名匹配实际表结构）
+    subscription_plans = await db.fetch("""SELECT id, name, price_monthly, price_yearly, days_monthly, days_yearly, monthly_token_grant, features, active FROM subscription_plans ORDER BY sort_order""")
+    token_packages = await db.fetch("""SELECT id, name, price, tokens, bonus, active FROM token_packages ORDER BY sort_order""")
+    return {
+        "pricing": [dict(p) for p in pricing],
+        "subscription_plans": [
+            {
+                "id": p["id"],
+                "name": p["name"],
+                "price_monthly": p["price_monthly"] / 100 if p["price_monthly"] else 0,
+                "price_yearly": p["price_yearly"] / 100 if p["price_yearly"] else 0,
+                "days_monthly": p["days_monthly"],
+                "days_yearly": p["days_yearly"],
+                "monthly_token_grant": p["monthly_token_grant"],
+                "features": p["features"] or [],
+                "is_active": p["active"],
+            }
+            for p in subscription_plans
+        ],
+        "token_packages": [
+            {
+                "id": p["id"],
+                "name": p["name"],
+                "price": p["price"] / 100 if p["price"] else 0,
+                "tokens": p["tokens"],
+                "bonus": p["bonus"],
+                "is_active": p["active"],
+            }
+            for p in token_packages
+        ],
+    }
 
 
 @router.put("/settings/pricing")
 async def update_pricing_settings(
-    pricing: List[dict],
+    body: dict,
     admin: dict = Depends(require_settings_manage),
     db: asyncpg.Connection = Depends(get_db)
 ):
     """Update pricing settings. Requires settings.edit permission."""
+    # 更新旧 pricing_configs
+    pricing = body.get("pricing", [])
     for p in pricing:
         await db.execute(
             """
@@ -1007,6 +1040,27 @@ async def update_pricing_settings(
             WHERE type = $1 AND name = $2
             """,
             p["type"], p["name"], p["price"], p["tokens"], p["description"], utcnow()
+        )
+
+    # 更新 subscription_plans（列名匹配实际表结构）
+    for sp in body.get("subscription_plans", []):
+        await db.execute(
+            """
+            UPDATE subscription_plans SET price_monthly = $2, price_yearly = $3, monthly_token_grant = $4, active = $5, updated_at = $6
+            WHERE id = $1
+            """,
+            sp["id"], int(sp.get("price_monthly", 0) * 100), int(sp.get("price_yearly", 0) * 100),
+            sp.get("monthly_token_grant", 0), sp.get("is_active", True), utcnow()
+        )
+
+    # 更新 token_packages（列名匹配实际表结构）
+    for tp in body.get("token_packages", []):
+        await db.execute(
+            """
+            UPDATE token_packages SET price = $2, tokens = $3, bonus = $4, active = $5, updated_at = $6
+            WHERE id = $1
+            """,
+            tp["id"], int(tp.get("price", 0) * 100), tp.get("tokens", 0), tp.get("bonus", 0), tp.get("is_active", True), utcnow()
         )
 
     await db.execute(

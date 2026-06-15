@@ -1,7 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "es2020", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es2020",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +24,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -31,5 +38,13 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "dist", "packages/*/src", "packages/docs", "openclaw", "e2e"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "packages/*/src",
+    "packages/docs",
+    "openclaw",
+    "e2e"
+  ],
+  "extends": "expo/tsconfig.base"
 }

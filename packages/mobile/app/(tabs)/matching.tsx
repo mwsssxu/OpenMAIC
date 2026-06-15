@@ -51,6 +51,7 @@ export default function MatchingScreen() {
   const goBack = useGoBack();
   const router = useRouter();
   const [partners, setPartners] = useState<any[]>([]);
+  const [pendingMatches, setPendingMatches] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // 偏好状态
@@ -68,11 +69,13 @@ export default function MatchingScreen() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [matchData, prefsData] = await Promise.all([
+      const [matchData, pendingData, prefsData] = await Promise.all([
         apiClient.getAcceptedMatches(),
+        apiClient.getPendingMatches().catch(() => ({ matches: [] })),
         apiClient.getMatchingPreferences(),
       ]);
       setPartners(matchData.partners || []);
+      setPendingMatches(pendingData.matches || []);
 
       // 加载已有偏好
       if (prefsData && !prefsData.is_default) {
@@ -127,10 +130,14 @@ export default function MatchingScreen() {
     }
     try {
       const results = await apiClient.searchMatches();
+      // 同时刷新待处理和已接受列表
+      const [pendingData, acceptedData] = await Promise.all([
+        apiClient.getPendingMatches().catch(() => ({ matches: [] })),
+        apiClient.getAcceptedMatches().catch(() => ({ partners: [] })),
+      ]);
+      setPendingMatches(pendingData.matches || []);
+      setPartners(acceptedData.partners || []);
       if (results?.matches?.length > 0) {
-        // 刷新伙伴列表
-        const matchData = await apiClient.getAcceptedMatches();
-        setPartners(matchData.partners || []);
         showSuccess(`找到 ${results.matches.length} 个匹配`);
       } else {
         showSuccess('暂无新的匹配，请稍后再试');

@@ -202,6 +202,25 @@ async def get_buddy_messages(
     user_uuid = uuid.UUID(current_user_id)
     offset = (page - 1) * limit
 
+    # 首次进入自动生成欢迎消息（冷启动破局）
+    msg_count = await db.fetchval(
+        "SELECT COUNT(*) FROM buddy_messages WHERE user_id = $1", user_uuid
+    )
+    if msg_count == 0:
+        # 获取搭子配置
+        config = await db.fetchrow(
+            "SELECT buddy_type, buddy_name FROM buddy_configs WHERE user_id = $1", user_uuid
+        )
+        buddy_type = config["buddy_type"] if config else "encourager"
+        buddy_name = config["buddy_name"] if config else BUDDY_TYPES["encourager"]["name"]
+        tone = BUDDY_TYPES.get(buddy_type, BUDDY_TYPES["encourager"])["tone"]
+        welcome_msg = f"嗨！我是{buddy_name}，你的学习搭子。有什么想聊的随时告诉我，一起加油！💪"
+        await db.execute(
+            """INSERT INTO buddy_messages (id, user_id, trigger_event, message_type, content, read, created_at)
+            VALUES ($1, $2, 'welcome', 'text', $3, FALSE, $4)""",
+            uuid.uuid4(), user_uuid, welcome_msg, utcnow()
+        )
+
     if unread_only:
         rows = await db.fetch(
             """

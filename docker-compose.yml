@@ -49,7 +49,6 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--timeout-keep-alive", "300"]
     extra_hosts:
       - "postgres:host-gateway"
-      - "redis:host-gateway"
 
   # 原有 Next.js Web 应用（保留）
   openmaic-web:

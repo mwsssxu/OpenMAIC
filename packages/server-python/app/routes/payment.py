@@ -30,42 +30,109 @@ NEW_USER_DISCOUNT = 0.5  # 50% 折扣
 # ==================== 订单 API ====================
 
 @router.get("/packages")
-async def get_payment_packages():
-    """获取所有购买套餐（Token包 + 订阅套餐）"""
-    token_packages = [
-        {
-            "id": id_,
-            "type": "token",
-            "name": data["name"],
-            "price": data["price"] / 100,  # 转换为元
-            "tokens": data["tokens"],
-            "bonus": data["bonus"],
-            "total_tokens": data["tokens"] + data["bonus"],
-            "price_per_token": round(data["price"] / (data["tokens"] + data["bonus"]), 2),
-        }
-        for id_, data in TOKEN_PACKAGES.items()
-    ]
+async def get_payment_packages(db: asyncpg.Connection = Depends(get_db)):
+    """获取所有购买套餐（Token包 + 订阅套餐） — 优先从数据库读取"""
+    # Token包：优先从数据库 token_packages 表读取
+    db_token_rows = await db.fetch(
+        "SELECT id, name, price, tokens, bonus FROM token_packages WHERE active = TRUE ORDER BY sort_order"
+    )
+    if db_token_rows:
+        token_packages = [
+            {
+                "id": row["id"],
+                "type": "token",
+                "name": row["name"],
+                "price": row["price"] / 100,
+                "tokens": row["tokens"],
+                "bonus": row["bonus"],
+                "total_tokens": row["tokens"] + row["bonus"],
+                "price_per_token": round(row["price"] / (row["tokens"] + row["bonus"]), 2) if row["tokens"] + row["bonus"] > 0 else 0,
+            }
+            for row in db_token_rows
+        ]
+    else:
+        # fallback 到硬编码
+        token_packages = [
+            {
+                "id": id_,
+                "type": "token",
+                "name": data["name"],
+                "price": data["price"] / 100,
+                "tokens": data["tokens"],
+                "bonus": data["bonus"],
+                "total_tokens": data["tokens"] + data["bonus"],
+                "price_per_token": round(data["price"] / (data["tokens"] + data["bonus"]), 2),
+            }
+            for id_, data in TOKEN_PACKAGES.items()
+        ]
 
-    subscription_packages = [
-        {
-            "id": id_,
-            "type": "subscription",
-            "name": data["name"],
-            "price": data["price"] / 100,
-            "days": data["days"],
-            "period": "monthly" if data["days"] <= 31 else "yearly",
-            "price_label": f"¥{data['price'] / 100:.0f}",
-            "price_per_day": round(data["price"] / 100 / data["days"], 2),
-            "popular": id_ == "pro_yearly",
-            "features": [
-                "无限AI问答",
-                "5次/天讨论模式",
-                "5次/天课程生成",
-                f"每月{PRO_MONTHLY_TOKEN_GRANT} Token赠送",
-            ],
-        }
-        for id_, data in SUBSCRIPTION_PACKAGES.items()
-    ]
+    # 订阅计划：优先从数据库 subscription_plans 表读取
+    db_sub_rows = await db.fetch(
+        "SELECT id, name, price_monthly, price_yearly, days_monthly, days_yearly, monthly_token_grant, features FROM subscription_plans WHERE active = TRUE ORDER BY sort_order"
+    )
+    if db_sub_rows:
+        subscription_packages = []
+        for row in db_sub_rows:
+            # 月卡
+            if row["price_monthly"] > 0:
+                subscription_packages.append({
+                    "id": f"{row['id']}_monthly",
+                    "type": "subscription",
+                    "name": row["name"],
+                    "price": row["price_monthly"] / 100,
+                    "days": row["days_monthly"],
+                    "period": "monthly",
+                    "price_label": f"¥{row['price_monthly'] / 100:.0f}",
+                    "price_per_day": round(row["price_monthly"] / 100 / row["days_monthly"], 2),
+                    "popular": False,
+                    "features": [
+                        "无限AI问答",
+                        "无限讨论模式",
+                        "5次/天课程生成",
+                        f"每月{row['monthly_token_grant']} Token赠送",
+                    ],
+                })
+            # 年卡
+            if row["price_yearly"] and row["price_yearly"] > 0:
+                subscription_packages.append({
+                    "id": f"{row['id']}_yearly",
+                    "type": "subscription",
+                    "name": row["name"],
+                    "price": row["price_yearly"] / 100,
+                    "days": row["days_yearly"],
+                    "period": "yearly",
+                    "price_label": f"¥{row['price_yearly'] / 100:.0f}",
+                    "price_per_day": round(row["price_yearly"] / 100 / row["days_yearly"], 2),
+                    "popular": row["id"] == "pro",
+                    "features": [
+                        "无限AI问答",
+                        "无限讨论模式",
+                        "5次/天课程生成",
+                        f"每月{row['monthly_token_grant']} Token赠送",
+                    ],
+                })
+    else:
+        # fallback 到硬编码
+        subscription_packages = [
+            {
+                "id": id_,
+                "type": "subscription",
+                "name": data["name"],
+                "price": data["price"] / 100,
+                "days": data["days"],
+                "period": "monthly" if data["days"] <= 31 else "yearly",
+                "price_label": f"¥{data['price'] / 100:.0f}",
+                "price_per_day": round(data["price"] / 100 / data["days"], 2),
+                "popular": id_ == "pro_yearly",
+                "features": [
+                    "无限AI问答",
+                    "5次/天讨论模式",
+                    "5次/天课程生成",
+                    f"每月{PRO_MONTHLY_TOKEN_GRANT} Token赠送",
+                ],
+            }
+            for id_, data in SUBSCRIPTION_PACKAGES.items()
+        ]
 
     return {
         "token_packages": token_packages,

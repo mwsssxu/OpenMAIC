@@ -408,7 +408,7 @@ export function ClassroomCompletePage({
               style={styles.assessButton}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                router.push(`/classrooms/${classroomId}/assessment` as any);
+                router.push(`/classroom/${classroomId}/assessment` as any);
               }}
               activeOpacity={0.85}
             >

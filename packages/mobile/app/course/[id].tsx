@@ -455,7 +455,9 @@ export default function CourseDetailScreen() {
               const blob = await apiClient.exportClassroomPdf(id as string);
               const courseName = classroom?.stage?.name || 'course';
               const safeName = courseName.replace(/[^a-zA-Z0-9\u4e00-\u9fff_\-]/g, '_').slice(0, 40);
-              const fileUri = `${FileSystem.cacheDirectory}${safeName}.pdf`;
+              // expo-file-system 19.x: Paths.document/cache 是 Directory 对象
+              const dir = FileSystem.Paths?.document || FileSystem.Paths?.cache;
+              const file = dir ? new FileSystem.File(dir, `${safeName}.pdf`) : null;
               // Blob → base64 → 写文件
               const reader = new FileReader();
               const base64 = await new Promise<string>((resolve, reject) => {
@@ -466,17 +468,20 @@ export default function CourseDetailScreen() {
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
               });
-              await FileSystem.writeAsStringAsync(fileUri, base64, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
+              if (file) {
+                await file.write(base64, { encoding: 'base64' });
+              }
+              const fileUri = file?.uri || '';
               // 分享/保存
-              if (await Sharing.isAvailableAsync()) {
+              if (fileUri && await Sharing.isAvailableAsync()) {
                 await Sharing.shareAsync(fileUri, {
                   mimeType: 'application/pdf',
                   dialogTitle: `导出 ${courseName}`,
                 });
-              } else {
+              } else if (fileUri) {
                 showError(`PDF已保存到 ${fileUri}`);
+              } else {
+                showError('文件系统不可用');
               }
             } catch (err: any) {
               showError(err.message || 'PDF生成出错，请稍后重试');

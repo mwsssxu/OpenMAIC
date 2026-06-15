@@ -1211,8 +1211,8 @@ class ApiClient {
     return data;
   }
 
-  async exchangeTokens(points: number) {
-    const { data } = await this.client.post('/tokens/exchange', { points });
+  async exchangeTokens(tier: 'small' | 'standard' | 'large') {
+    const { data } = await this.client.post('/tokens/exchange', { tier });
     return data;
   }
 
@@ -1221,8 +1221,8 @@ class ApiClient {
     return data;
   }
 
-  async purchaseTokens(packageId: string) {
-    const { data } = await this.client.post('/tokens/purchase', { package_id: packageId });
+  async purchaseTokens(packageId: string, paymentMethod: string = 'wechat') {
+    const { data } = await this.client.post('/tokens/purchase', { package: packageId, payment_method: paymentMethod });
     return data;
   }
 
@@ -2586,6 +2586,18 @@ class ApiClient {
   ): Promise<{ scenes: any[] }> {
     const { data } = await this.client.post('/generate/load-cache-scenes', {
       stage_id: stageId,
+    });
+    return data;
+  }
+
+  // 从缓存课程直接复制为新课程（一步完成：复制 stage + scenes，user_id 为当前用户）
+  async cloneCourseFromCache(
+    sourceStageId: string,
+    name?: string,
+  ): Promise<{ id: string; name: string; cloned_count: number; scenes: { id: string; type: string; title: string }[] }> {
+    const { data } = await this.client.post('/classrooms/clone-from-cache', {
+      source_stage_id: sourceStageId,
+      name,
     });
     return data;
   }

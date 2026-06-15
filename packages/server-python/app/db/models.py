@@ -195,6 +195,12 @@ class Order(Base):
     token_amount = Column(Integer, nullable=False)  # Token数量
     payment_method = Column(String(20), nullable=False)  # wechat, alipay
     status = Column(String(20), default='created')  # created, paid, cancelled
+    order_type = Column(String(20), default='token')  # token, subscription
+    subscription_days = Column(Integer)  # 订阅天数（仅订阅订单）
+    subscription_plan = Column(String(20))  # 订阅计划：pro（仅订阅订单）
+    transaction_id = Column(String(64), index=True)  # 支付平台交易号
+    paid_at = Column(DateTime)  # 支付完成时间
+    notify_data = Column(Text)  # 支付回调原始数据
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
