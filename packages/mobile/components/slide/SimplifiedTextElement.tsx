@@ -80,7 +80,8 @@ const THEME = {
  * 判断依据：
  * 1. 元素 ID 前缀（title/desc/point/highlight）
  * 2. HTML 标签（<h1>/<h2>/<strong>）
- * 3. 位置 + 高度推断
+ * 3. fill 属性（带填充色的文本=色块标签）
+ * 4. 位置 + 高度推断
  */
 function detectSemanticRole(element: any): SemanticRole {
   const id = (element.id || '').toLowerCase();
@@ -90,6 +91,8 @@ function detectSemanticRole(element: any): SemanticRole {
   if (id === 'desc' || id.startsWith('desc')) return 'desc';
   if (id.startsWith('point')) return 'point';
   if (id.startsWith('highlight')) return 'highlight';
+  // shape 替换来的文本元素（以 shape_ 或 line_ 开头）
+  if (id.startsWith('shape_') || id.startsWith('line_')) return 'highlight';
 
   // 根据 HTML 内容标签判断
   const content = element.content || '';
@@ -224,7 +227,7 @@ export function SimplifiedTextElement({
         styles.wrapper,
         {
           width: contentWidth,
-          backgroundColor: roleTheme.bg,
+          backgroundColor: el.fill || roleTheme.bg,  // fill 属性覆盖默认背景
           borderRadius: roleTheme.borderRadius,
           paddingHorizontal: padding,
           paddingVertical: role === 'desc' ? 2 : padding,

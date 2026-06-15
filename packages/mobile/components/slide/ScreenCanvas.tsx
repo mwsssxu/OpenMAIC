@@ -58,6 +58,7 @@ export function ScreenCanvas({
   isWhiteboard = false,
 }: ScreenCanvasProps) {
   const containerRef = useRef<View>(null);
+  const wbScrollViewRef = useRef<ScrollView>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // 获取屏幕宽度作为 fallback（用于 scrollable 模式）
@@ -256,10 +257,17 @@ export function ScreenCanvas({
       {/* 白板模式：使用 ScrollView 支持滚动，绝对定位渲染 */}
       {isWhiteboard ? (
         <ScrollView
+          ref={wbScrollViewRef}
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollViewContent, styles.scrollViewContentWhiteboard]}
           showsVerticalScrollIndicator={true}
           nestedScrollEnabled
+          onContentSizeChange={(_w, h) => {
+            // 新内容加入后自动滚动到底部（聚焦最新白板内容）
+            if (h && h > 0) {
+              wbScrollViewRef.current?.scrollToEnd?.({ animated: true });
+            }
+          }}
         >
           <View
             style={[

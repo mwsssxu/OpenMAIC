@@ -32,8 +32,12 @@ export function ScreenElement({ element, theme, scaleX, scaleY, isWhiteboard = f
     case 'image':
       return <ImageElement element={element} scaleX={scaleX} scaleY={scaleY} />;
     case 'shape':
+      // 白板模式下跳过独立 shape 渲染（装饰色块已由 TextElement 背景替代）
+      if (isWhiteboard) return null;
       return <ShapeElement element={element} theme={theme} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'line':
+      // 白板模式下跳过独立 line 渲染（流式布局无法正确定位连接线）
+      if (isWhiteboard) return null;
       return <LineElement element={element} scaleX={scaleX} scaleY={scaleY} isWhiteboard={isWhiteboard} />;
     case 'video':
       return <VideoElement element={element} scaleX={scaleX} scaleY={scaleY} />;

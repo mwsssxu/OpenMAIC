@@ -195,46 +195,68 @@ export class MobileActionEngine {
   }
 
   private drawShape(params: Record<string, any>): void {
-    const height = 100;
-    const pos = getWhiteboardPosition(
-      this.currentY,
-      height,
-    );
+    // 白板流式布局下 shape 无法正确定位，改为文本标签渲染
+    const fillColor = params.fillColor ?? '#5b9bd5';
+    const shapeName = params.shape ?? 'rectangle';
+    const label = params.label || params.text || '';
+    const icon = shapeName === 'circle' ? '●' : shapeName === 'triangle' ? '▲' : '■';
+
+    const content = label
+      ? `<p style="font-size: 16px; color: #ffffff;">${icon} ${label}</p>`
+      : `<p style="font-size: 14px; color: #ffffff;">${icon}</p>`;
+
+    const height = label ? 50 : 36;
+    const pos = getWhiteboardPosition(this.currentY, height);
     this.currentY += height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('shape'),
-      type: 'shape',
-      viewBox: [1000, 1000] as [number, number],
-      path: SHAPE_PATHS[params.shape] ?? SHAPE_PATHS.rectangle,
+      type: 'text',
+      content,
       left: pos.x,
       top: pos.y,
-      width: Math.min(pos.width, pos.height * 1.5),
+      width: pos.width,
       height: pos.height,
       rotate: 0,
-      fill: params.fillColor ?? '#5b9bd5',
-      fixedRatio: false,
+      defaultFontName: 'Microsoft YaHei',
+      defaultColor: '#ffffff',
+      fill: fillColor,
     } as any);
   }
 
   private drawLine(params: Record<string, any>): void {
-    // 线条保持原有坐标（通常用于连接元素）
-    const left = Math.min(params.startX ?? 0, params.endX ?? 100);
-    const top = Math.min(params.startY ?? 0, params.endY ?? 100);
-    const start: [number, number] = [(params.startX ?? 0) - left, (params.startY ?? 0) - top];
-    const end: [number, number] = [(params.endX ?? 100) - left, (params.endY ?? 100) - top];
+    // 白板流式布局下连接线无法正确定位，改为文本箭头
+    const points = params.points || ['', ''];
+    const startLabel = points[0] || '';
+    const endLabel = points[1] || '';
+    const style = params.style ?? 'solid';
+    const arrow = style === 'dashed' ? '⇢' : '→';
+    const color = params.color ?? '#333333';
+
+    let label = '';
+    if (startLabel && endLabel) {
+      label = `${startLabel} ${arrow} ${endLabel}`;
+    } else if (startLabel || endLabel) {
+      label = `${arrow} ${startLabel || endLabel}`;
+    } else {
+      label = arrow;
+    }
+
+    const height = 30;
+    const pos = getWhiteboardPosition(this.currentY, height);
+    this.currentY += height + WHITEBOARD_CARD_GAP;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('line'),
-      type: 'line',
-      left,
-      top,
-      width: params.width ?? 2,
-      start,
-      end,
-      style: params.style ?? 'solid',
-      color: params.color ?? '#333333',
-      points: params.points ?? ['', ''],
+      type: 'text',
+      content: `<p style="font-size: 14px; color: ${color};">${label}</p>`,
+      left: pos.x,
+      top: pos.y,
+      width: pos.width,
+      height: pos.height,
+      rotate: 0,
+      defaultFontName: 'Microsoft YaHei',
+      defaultColor: color,
     } as any);
   }
 

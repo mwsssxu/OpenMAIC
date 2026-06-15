@@ -52,13 +52,13 @@ DEFAULT_AVATARS = [
     "student3.png",
 ]
 
-# 默认语音配置
+# 默认语音配置（使用 DashScope CosyVoice 中文音色，区分男女和性格）
 DEFAULT_VOICE_CONFIGS = [
-    {"provider": "openai", "voice": "alloy", "speed": 1.0},  # teacher
-    {"provider": "openai", "voice": "nova", "speed": 1.0},   # assistant
-    {"provider": "openai", "voice": "shimmer", "speed": 1.1}, # student
-    {"provider": "openai", "voice": "echo", "speed": 1.0},   # student
-    {"provider": "openai", "voice": "fable", "speed": 0.9},  # student
+    {"provider": "qwen", "voice": "longwanlong", "speed": 0.95},  # teacher - 晨煦(沉稳男声)
+    {"provider": "qwen", "voice": "longzhiqi", "speed": 1.0},    # assistant - 知琪(清亮女声)
+    {"provider": "qwen", "voice": "longshuo", "speed": 1.05},    # student - 烁(活力男声)
+    {"provider": "qwen", "voice": "longxiaochun", "speed": 1.05}, # student - 芊悦(甜美女声)
+    {"provider": "qwen", "voice": "longyixuan", "speed": 0.95},   # student - 逸轩(温柔男声)
 ]
 
 
@@ -168,9 +168,9 @@ async def generate_agent_profiles(
                 color="#5b9bd5",
                 priority=10,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="alloy",
-                voice_speed=1.0,
+                voice_provider="qwen",
+                voice_id="longwanlong",
+                voice_speed=0.95,
             ))
 
         return agents
@@ -195,9 +195,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#5b9bd5",
                 priority=10,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="alloy",
-                voice_speed=1.0,
+                voice_provider="qwen",
+                voice_id="longwanlong",
+                voice_speed=0.95,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -208,8 +208,8 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#10b981",
                 priority=7,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="nova",
+                voice_provider="qwen",
+                voice_id="longzhiqi",
                 voice_speed=1.0,
             ),
             AgentProfile(
@@ -221,9 +221,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#f59e0b",
                 priority=5,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="shimmer",
-                voice_speed=1.1,
+                voice_provider="qwen",
+                voice_id="longshuo",
+                voice_speed=1.05,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -234,9 +234,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#8b5cf6",
                 priority=6,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="echo",
-                voice_speed=1.0,
+                voice_provider="qwen",
+                voice_id="longxiaochun",
+                voice_speed=1.05,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -247,9 +247,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#06b6d4",
                 priority=4,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="fable",
-                voice_speed=0.9,
+                voice_provider="qwen",
+                voice_id="longyixuan",
+                voice_speed=0.95,
             ),
         ]
     else:
@@ -263,9 +263,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#5b9bd5",
                 priority=10,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="alloy",
-                voice_speed=1.0,
+                voice_provider="qwen",
+                voice_id="longwanlong",
+                voice_speed=0.95,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -276,8 +276,8 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#10b981",
                 priority=7,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="nova",
+                voice_provider="qwen",
+                voice_id="longzhiqi",
                 voice_speed=1.0,
             ),
             AgentProfile(
@@ -289,9 +289,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#f59e0b",
                 priority=5,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="shimmer",
-                voice_speed=1.1,
+                voice_provider="qwen",
+                voice_id="longshuo",
+                voice_speed=1.05,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -302,9 +302,9 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#8b5cf6",
                 priority=6,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="echo",
-                voice_speed=1.0,
+                voice_provider="qwen",
+                voice_id="longxiaochun",
+                voice_speed=1.05,
             ),
             AgentProfile(
                 id=str(uuid.uuid4()),
@@ -315,8 +315,8 @@ def get_default_agents(language: str = "zh-CN") -> List[AgentProfile]:
                 color="#06b6d4",
                 priority=4,
                 enabled=True,
-                voice_provider="openai",
-                voice_id="shimmer",
-                voice_speed=1.1,
+                voice_provider="qwen",
+                voice_id="longyixuan",
+                voice_speed=0.95,
             ),
         ]
