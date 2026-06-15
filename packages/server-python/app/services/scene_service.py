@@ -199,15 +199,17 @@ def build_slide_content(
     }
 
     # 添加要点元素（最多5个）
+    # 每个要点前加序号图标，移动端可解析为独立图标
+    point_icons = ["1", "2", "3", "4", "5"]
     for j, point in enumerate(key_points[:5]):
         content["canvas"]["elements"].append({
             "id": f"point_{j}",
             "type": "text",
-            "content": f'<p style="font-size: 16px; color: #444444;">• {point}</p>',
+            "content": f'<p style="font-size: 16px; color: #444444;">{point_icons[j]}. {point}</p>',
             "left": 50,
-            "top": 200 + j * 50,
+            "top": 200 + j * 55,
             "width": 900,
-            "height": 40,
+            "height": 42,
             "defaultColor": "#444444",
         })
 
