@@ -308,42 +308,44 @@ export default function BuddyScreen() {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.sectionLabel}>搭子类型</Text>
-              <View style={styles.typeGrid}>
-                {Object.entries(BUDDY_TYPE_MAP).map(([key, val]) => {
-                  const isActive = selectedType === key;
-                  return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.typeCard, isActive && styles.typeCardActive]}
-                    onPress={() => setSelectedType(key)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name={val.icon as any} size={24} color={isActive ? iOSColors.accent : iOSColors.muted} />
-                    <Text style={[styles.typeLabel, isActive && styles.typeLabelActive]}>
-                      {val.label}
-                    </Text>
-                    <Text style={styles.typeDesc}>{val.desc}</Text>
-                  </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                <Text style={styles.sectionLabel}>搭子类型</Text>
+                <View style={styles.typeGrid}>
+                  {Object.entries(BUDDY_TYPE_MAP).map(([key, val]) => {
+                    const isActive = selectedType === key;
+                    return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.typeCard, isActive && styles.typeCardActive]}
+                      onPress={() => setSelectedType(key)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={val.icon as any} size={24} color={isActive ? iOSColors.accent : iOSColors.muted} />
+                      <Text style={[styles.typeLabel, isActive && styles.typeLabelActive]}>
+                        {val.label}
+                      </Text>
+                      <Text style={styles.typeDesc}>{val.desc}</Text>
+                    </TouchableOpacity>
+                    );
+                  })}
+                </View>
 
-              <Text style={styles.sectionLabel}>语气风格</Text>
-              <View style={styles.toneRow}>
-                {Object.entries(TONE_MAP).map(([key, val]) => (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.toneChip, selectedTone === key && styles.toneChipActive]}
-                    onPress={() => setSelectedTone(key)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.toneText, selectedTone === key && styles.toneTextActive]}>
-                      {val.emoji} {val.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                <Text style={styles.sectionLabel}>语气风格</Text>
+                <View style={styles.toneRow}>
+                  {Object.entries(TONE_MAP).map(([key, val]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.toneChip, selectedTone === key && styles.toneChipActive]}
+                      onPress={() => setSelectedTone(key)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.toneText, selectedTone === key && styles.toneTextActive]}>
+                        {val.emoji} {val.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
 
               <TouchableOpacity
                 style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
@@ -489,7 +491,10 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: iOSColors.surfaceSolid,
     borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    padding: 20, maxHeight: '80%',
+    maxHeight: '80%',
+  },
+  modalScroll: {
+    padding: 20,
   },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
