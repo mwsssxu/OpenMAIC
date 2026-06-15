@@ -310,19 +310,23 @@ export default function BuddyScreen() {
 
               <Text style={styles.sectionLabel}>搭子类型</Text>
               <View style={styles.typeGrid}>
-                {(buddyTypes.length > 0 ? buddyTypes : Object.entries(BUDDY_TYPE_MAP).map(([k, v]) => ({ type: k, ...v }))).map((bt: any) => (
+                {Object.entries(BUDDY_TYPE_MAP).map(([key, val]) => {
+                  const isActive = selectedType === key;
+                  return (
                   <TouchableOpacity
-                    key={bt.type || bt.buddy_type}
-                    style={[styles.typeCard, selectedType === (bt.type || bt.buddy_type) && styles.typeCardActive]}
-                    onPress={() => setSelectedType(bt.type || bt.buddy_type)}
+                    key={key}
+                    style={[styles.typeCard, isActive && styles.typeCardActive]}
+                    onPress={() => setSelectedType(key)}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name={bt.icon as any || 'person'} size={24} color={selectedType === (bt.type || bt.buddy_type) ? iOSColors.accent : iOSColors.muted} />
-                    <Text style={[styles.typeLabel, selectedType === (bt.type || bt.buddy_type) && styles.typeLabelActive]}>
-                      {bt.label || bt.name}
+                    <Ionicons name={val.icon as any} size={24} color={isActive ? iOSColors.accent : iOSColors.muted} />
+                    <Text style={[styles.typeLabel, isActive && styles.typeLabelActive]}>
+                      {val.label}
                     </Text>
+                    <Text style={styles.typeDesc}>{val.desc}</Text>
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
               </View>
 
               <Text style={styles.sectionLabel}>语气风格</Text>
@@ -501,6 +505,7 @@ const styles = StyleSheet.create({
   },
   typeCardActive: { borderColor: iOSColors.accent, backgroundColor: iOSColors.accentLight },
   typeLabel: { fontSize: 13, color: iOSColors.muted, marginTop: 6 },
+  typeDesc: { fontSize: 10, color: iOSColors.muted, marginTop: 2, opacity: 0.7 },
   typeLabelActive: { color: iOSColors.accent, fontWeight: '600' },
   toneRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
   toneChip: {
