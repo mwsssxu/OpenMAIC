@@ -854,10 +854,10 @@ export default function ClassroomScreen() {
   async function loadAgents(classroomData: ClassroomData) {
     // 定义统一的默认 fallback agents（4个）
     const defaultFallbackAgents: Agent[] = [
-      { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师，讲解清晰有条理', avatar: 'teacher.png' },
-      { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解，答疑解惑', avatar: 'assistant.png' },
-      { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '好奇心强，喜欢提问', avatar: 'student1.png' },
-      { id: 'student2', name: '学霸小红', role: 'student', color: '#8b5cf6', persona: '学霸型，理解能力强', avatar: 'student2.png' },
+      { id: 'teacher', name: '张老师', role: 'teacher', color: '#5b9bd5', persona: '主讲教师，讲解清晰有条理', avatar: 'teacher.png', voiceConfig: { providerId: 'qwen', voiceId: 'longwanlong' } },
+      { id: 'assistant', name: '李助教', role: 'assistant', color: '#10b981', persona: '辅助讲解，答疑解惑', avatar: 'assistant.png', voiceConfig: { providerId: 'qwen', voiceId: 'longzhiqi' } },
+      { id: 'student1', name: '好奇小明', role: 'student', color: '#f59e0b', persona: '好奇心强，喜欢提问', avatar: 'student1.png', voiceConfig: { providerId: 'qwen', voiceId: 'longshuo' } },
+      { id: 'student2', name: '学霸小红', role: 'student', color: '#8b5cf6', persona: '学霸型，理解能力强', avatar: 'student2.png', voiceConfig: { providerId: 'qwen', voiceId: 'longxiaochun' } },
     ];
 
     // 验证 agent 数据结构的辅助函数（强化验证）
@@ -878,10 +878,16 @@ export default function ClassroomScreen() {
       return true;
     };
 
-    // 规范化 agent 颜色（确保格式正确）
+    // 规范化 agent 颜色（确保格式正确）并补全 voiceConfig
+    const DEFAULT_VOICE_MAP: Record<string, { providerId: string; voiceId: string }> = {
+      teacher: { providerId: 'qwen', voiceId: 'longwanlong' },
+      assistant: { providerId: 'qwen', voiceId: 'longzhiqi' },
+      student: { providerId: 'qwen', voiceId: 'longshuo' },
+    };
     const normalizeAgentColor = (a: Agent): Agent => {
       const validColor = isValidHexColor(a.color) ? a.color : '#888888';
-      return { ...a, color: validColor };
+      const voiceConfig = a.voiceConfig || DEFAULT_VOICE_MAP[a.role] || DEFAULT_VOICE_MAP.student;
+      return { ...a, color: validColor, voiceConfig };
     };
 
     try {

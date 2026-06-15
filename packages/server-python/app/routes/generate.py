@@ -655,10 +655,10 @@ async def generate_agent_profiles_endpoint(
             if available_voices and i < len(available_voices):
                 voice = available_voices[i]
                 if isinstance(voice, dict):
-                    agent.voice_provider = voice.get("providerId", "openai")
-                    agent.voice_id = voice.get("voiceId", "alloy")
+                    agent.voice_provider = voice.get("providerId", "qwen")
+                    agent.voice_id = voice.get("voiceId", "longwanlong")
 
-    return {"agents": [a.model_dump() for a in agents]}
+    return {"agents": [serialize_agent(a) for a in agents]}
 
 
 @router.get("/default-agents")
