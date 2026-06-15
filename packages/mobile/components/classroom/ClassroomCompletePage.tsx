@@ -41,7 +41,22 @@ const SCENE_TYPE_ICONS: Record<SceneType, string> = {
   pbl: 'layers', // 使用 layers 替代 puzzle
 };
 
-const TYPE_ORDER: SceneType[] = ['slide', 'quiz', 'interactive', 'pbl'];
+// 完成度评分维度（幻灯、测试、讨论）
+type ScoreDimension = 'slides' | 'quiz' | 'discussion';
+
+interface DimensionConfig {
+  icon: string;
+  color: string;
+  types: SceneType[];  // 该维度包含的场景类型
+}
+
+const DIMENSION_CONFIG: Record<ScoreDimension, DimensionConfig> = {
+  slides: { icon: 'document-text', color: '#3b82f6', types: ['slide', 'interactive'] },
+  quiz: { icon: 'help-circle', color: '#f59e0b', types: ['quiz'] },
+  discussion: { icon: 'layers', color: '#10b981', types: ['pbl'] },
+};
+
+const DIMENSION_ORDER: ScoreDimension[] = ['slides', 'quiz', 'discussion'];
 
 // Confetti 颜色
 const CONFETTI_COLORS = [
@@ -197,12 +212,6 @@ function Sparkle({ delay, top, left }: { delay: number; top: number; left: numbe
   );
 }
 
-// 数字动画计数器（简化版：直接显示值）
-function AnimatedCounter({ value, delay }: { value: number; delay?: number }) {
-  // delay 参数暂不使用，预留用于后续动画优化
-  return <Text style={styles.statNumber}>{value}</Text>;
-}
-
 // Quiz 进度条（带动画）
 function QuizRing({ pct, delay = 0 }: { pct: number; delay?: number }) {
   const progressWidth = useSharedValue(0);
@@ -227,40 +236,54 @@ function QuizRing({ pct, delay = 0 }: { pct: number; delay?: number }) {
   );
 }
 
-// 统计卡片
-function StatCard({
-  type,
-  count,
+// 评分维度卡片
+function DimensionScoreCard({
+  icon,
+  color,
   label,
+  count,
+  pct,
   delay,
 }: {
-  type: SceneType;
-  count: number;
+  icon: string;
+  color: string;
   label: string;
+  count: number;
+  pct: number;      // 0-100 完成度
   delay: number;
 }) {
   const scale = useSharedValue(0.9);
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(14);
+  const ringPct = useSharedValue(0);
 
   useEffect(() => {
     scale.value = withDelay(delay, withSpring(1, { damping: 20 }));
     opacity.value = withDelay(delay, withTiming(1, { duration: 300 }));
     translateY.value = withDelay(delay, withTiming(0, { duration: 300 }));
-  }, [delay]);
+    ringPct.value = withDelay(delay + 200, withTiming(pct / 100, { duration: 600 }));
+  }, [delay, pct]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }, { translateY: translateY.value }],
     opacity: opacity.value,
   }));
 
-  const iconName = SCENE_TYPE_ICONS[type] as any;
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${ringPct.value * 360}deg` }],
+  }));
 
   return (
-    <Animated.View style={[styles.statCard, animatedStyle]}>
-      <Ionicons name={iconName} size={24} color="#f59e0b" />
-      <AnimatedCounter value={count} delay={delay + 150} />
-      <Text style={styles.statLabel}>{label}</Text>
+    <Animated.View style={[styles.dimensionCard, animatedStyle]}>
+      <View style={[styles.dimensionRing, { borderColor: color + '30' }]}>
+        <Animated.View style={[styles.dimensionRingFill, { borderTopColor: color, borderRightColor: color }, ringStyle]} />
+        <View style={styles.dimensionRingInner}>
+          <Ionicons name={icon as any} size={20} color={color} />
+        </View>
+      </View>
+      <Text style={[styles.dimensionPct, { color }]}>{pct}%</Text>
+      <Text style={styles.dimensionLabel}>{label}</Text>
+      <Text style={styles.dimensionCount}>{count}个</Text>
     </Animated.View>
   );
 }
@@ -295,13 +318,34 @@ export function ClassroomCompletePage({
     return `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
   }, []);
 
-  const trailItems = TYPE_ORDER
-    .filter((type) => (summary.countsByType[type] ?? 0) > 0)
-    .map((type) => ({
-      type,
-      count: summary.countsByType[type] ?? 0,
-      label: t(`classroomComplete.trailLabels.${type}`),
-    }));
+  const trailItems = useMemo(() => {
+    const totalScenes = scenes.length;
+    if (totalScenes <= 1) return [];
+
+    return DIMENSION_ORDER
+      .filter((dim) => {
+        const count = DIMENSION_CONFIG[dim].types.reduce(
+          (sum, t) => sum + (summary.countsByType[t] ?? 0), 0
+        );
+        return count > 0;
+      })
+      .map((dim) => {
+        const config = DIMENSION_CONFIG[dim];
+        const count = config.types.reduce(
+          (sum, t) => sum + (summary.countsByType[t] ?? 0), 0
+        );
+        // 完成度：该维度场景数占总场景数的百分比
+        const pct = Math.round((count / totalScenes) * 100);
+        return {
+          key: dim,
+          icon: config.icon,
+          color: config.color,
+          count,
+          pct,
+          label: t(`classroomComplete.dimensionLabels.${dim}`),
+        };
+      });
+  }, [scenes.length, summary.countsByType, t]);
 
   // Trophy 动画
   const trophyScale = useSharedValue(0.4);
@@ -368,16 +412,18 @@ export function ClassroomCompletePage({
         <Text style={styles.title}>{title || t('classroomComplete.title')}</Text>
         <Text style={styles.dateLabel}>{dateLabel}</Text>
 
-        {/* 统计卡片 */}
+        {/* 评分维度卡片 */}
         {trailItems.length > 0 && (
           <View style={styles.statsGrid}>
-            {trailItems.map((item, idx) => (
-              <StatCard
-                key={item.type}
-                type={item.type}
+            {trailItems.map((item: any, idx: number) => (
+              <DimensionScoreCard
+                key={item.key}
+                icon={item.icon}
+                color={item.color}
                 count={item.count}
+                pct={item.pct}
                 label={item.label}
-                delay={960 + idx * 80}
+                delay={960 + idx * 120}
               />
             ))}
           </View>
@@ -523,32 +569,62 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 12,
+    gap: 16,
     marginBottom: 20,
   },
-  statCard: {
+  dimensionCard: {
     width: 100,
-    padding: 16,
+    padding: 12,
     borderRadius: 16,
     backgroundColor: Colors.neutral.card,
     alignItems: 'center',
-    shadowColor: '#f59e0b',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
   },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 4,
+  dimensionRing: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
-  statLabel: {
-    fontSize: 11,
+  dimensionRingFill: {
+    position: 'absolute',
+    top: -3,
+    left: -3,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 3,
+    borderBottomColor: 'transparent',
+    borderLeftColor: 'transparent',
+  },
+  dimensionRingInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dimensionPct: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 6,
+  },
+  dimensionLabel: {
+    fontSize: 12,
     color: '#6b7280',
-    marginTop: 4,
-    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  dimensionCount: {
+    fontSize: 10,
+    color: '#9ca3af',
   },
   quizCard: {
     flexDirection: 'row',

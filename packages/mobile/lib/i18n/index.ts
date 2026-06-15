@@ -314,6 +314,21 @@ const translations = {
       notFound: '请求的资源不存在',
       tooManyRequests: '操作过于频繁，请稍后再试',
     },
+    // 课程完成
+    classroomComplete: {
+      title: '课程完成',
+      dimensionLabels: {
+        slides: '幻灯',
+        quiz: '测试',
+        discussion: '讨论',
+      },
+      quizScoreLabel: '测试 {correct}/{total}',
+      encouragement: {
+        high: '太棒了！完美表现！',
+        mid: '做得不错，继续加油！',
+        low: '别灰心，下次会更好！',
+      },
+    },
   },
   'en-US': {
     common: {
@@ -606,6 +621,20 @@ const translations = {
       forbidden: 'You do not have permission',
       notFound: 'Resource not found',
       tooManyRequests: 'Too many requests, please try again later',
+    },
+    classroomComplete: {
+      title: 'Course Complete',
+      dimensionLabels: {
+        slides: 'Slides',
+        quiz: 'Quiz',
+        discussion: 'Discussion',
+      },
+      quizScoreLabel: 'Quiz {correct}/{total}',
+      encouragement: {
+        high: 'Excellent! Perfect score!',
+        mid: 'Good job! Keep it up!',
+        low: 'Don\'t give up, you\'ll do better next time!',
+      },
     },
   },
 };

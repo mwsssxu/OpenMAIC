@@ -1856,8 +1856,8 @@ export default function ClassroomScreen() {
             animatedStyle,
             isTablet && styles.contentInnerTablet
           ]}>
-            {/* 课程完成场景：显示庆祝页面 */}
-            {currentScene?.type === 'slide' && (currentScene.title === '课程完成' || currentScene.title === 'Course Complete') ? (
+            {/* 课程完成场景：最后一个场景显示庆祝页面 */}
+            {currentSceneIndex === (data?.scenes?.length ?? 0) - 1 && data?.scenes?.length > 1 ? (
               <ClassroomCompletePage
                 scenes={data?.scenes || []}
                 title={data?.stage?.name || ''}

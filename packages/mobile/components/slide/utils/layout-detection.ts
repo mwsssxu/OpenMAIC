@@ -66,3 +66,51 @@ export function getElementPosition(element: any): {
     height: element.height || 50,
   };
 }
+
+/**
+ * 检测精确格式元素中是否存在多列并排布局
+ *
+ * 判断逻辑：如果有2个或以上text元素，它们的top值接近
+ * （差距 < 较小元素高度的50%）且left值明显不同，
+ * 则认为存在多列并排。
+ *
+ * @param elements - 元素数组
+ * @returns 是否存在多列并排
+ */
+export function detectMultiColumnPrecise(elements: PPTElement[]): boolean {
+  const textElements = elements.filter((el: any) => el.type === 'text');
+  if (textElements.length < 2) return false;
+
+  // 按 top 排序
+  const sorted = [...textElements].sort((a: any, b: any) => {
+    const topA = a.top ?? a.position?.top ?? 0;
+    const topB = b.top ?? b.position?.top ?? 0;
+    return topA - topB;
+  });
+
+  // 检测同行元素
+  for (let i = 0; i < sorted.length - 1; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      const elA = sorted[i] as any;
+      const elB = sorted[j] as any;
+
+      const topA = elA.top ?? elA.position?.top ?? 0;
+      const topB = elB.top ?? elB.position?.top ?? 0;
+      const heightA = elA.height ?? elA.position?.height ?? 50;
+      const heightB = elB.height ?? elB.position?.height ?? 50;
+      const leftA = elA.left ?? elA.position?.left ?? 0;
+      const leftB = elB.left ?? elB.position?.left ?? 0;
+
+      // 同行判断：top差距小，left差距大
+      const topDiff = Math.abs(topA - topB);
+      const leftDiff = Math.abs(leftA - leftB);
+      const minHeight = Math.min(heightA, heightB);
+
+      if (topDiff < minHeight * 0.5 && leftDiff > 100) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}

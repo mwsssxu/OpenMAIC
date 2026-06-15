@@ -9,7 +9,7 @@ import { ScreenElement } from './ScreenElement';
 import { SpotlightOverlay } from './SpotlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
 import { SimplifiedLayout } from './SimplifiedLayout';
-import { detectLayoutMode } from './utils/layout-detection';
+import { detectLayoutMode, detectMultiColumnPrecise } from './utils/layout-detection';
 import type { PPTElement, SlideBackground, SlideTheme, PPTLineElement } from './types';
 import { useSlideBackgroundStyle } from './hooks/useViewportSize';
 import { VIEWPORT_SIZE, VIEWPORT_HEIGHT } from './constants';
@@ -94,6 +94,16 @@ export function ScreenCanvas({
     // 非 scrollable 模式：使用 containerSize
     return containerSize.width > 0 ? containerSize.width : screenWidth - 40;
   }, [scrollable, isWhiteboard, containerSize.width, screenWidth]);
+
+  // 移动端多列检测：精确格式下3列并排在移动端会溢出，降级为简化模式渲染
+  const effectiveLayoutMode = useMemo(() => {
+    if (layoutMode !== 'precise') return layoutMode;
+    const hasMultiColumn = detectMultiColumnPrecise(elements);
+    if (hasMultiColumn && effectiveWidth > 0 && effectiveWidth < 600) {
+      return 'simplified';
+    }
+    return 'precise';
+  }, [layoutMode, elements, effectiveWidth]);
 
   // 白板画布基准尺寸（与 Web 端一致）
   const whiteboardCanvasWidth = 1000;
@@ -279,7 +289,7 @@ export function ScreenCanvas({
           style={[
             styles.canvas,
             backgroundStyle,
-            layoutMode === 'simplified' ? {
+            layoutMode === 'simplified' || effectiveLayoutMode === 'simplified' ? {
               position: 'absolute',
               left: viewportLeft,
               top: viewportTop,
@@ -294,7 +304,7 @@ export function ScreenCanvas({
           ]}
         >
           {/* 简化格式渲染 */}
-          {layoutMode === 'simplified' && (
+          {(layoutMode === 'simplified' || effectiveLayoutMode === 'simplified') && (
             <SimplifiedLayout
               elements={elements}
               theme={activeTheme}
@@ -303,7 +313,7 @@ export function ScreenCanvas({
           )}
 
           {/* 精确格式渲染 */}
-          {layoutMode === 'precise' && (
+          {effectiveLayoutMode === 'precise' && (
             <>
               {/* 内容层 - 元素使用缩放后的坐标 */}
               {elements.map((element) => (

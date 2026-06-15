@@ -21,6 +21,8 @@ interface SimplifiedTextElementProps {
   element: any; // PPTElement（简化格式）
   theme: SlideTheme;
   scale: number;
+  /** 强制使用全宽（多列元素垂直堆叠时） */
+  forceFullWidth?: boolean;
 }
 
 /**
@@ -30,6 +32,7 @@ export function SimplifiedTextElement({
   element,
   theme,
   scale,
+  forceFullWidth = false,
 }: SimplifiedTextElementProps) {
   const el = element;
   const position = useMemo(() => getElementPosition(el), [el]);
@@ -81,8 +84,9 @@ export function SimplifiedTextElement({
 
   // 内容宽度
   const contentWidth = useMemo(() => {
+    if (forceFullWidth) return '100%' as any; // 垂直堆叠时撑满
     return Math.min(position.width * scale, SIMPLIFIED_WIDTH * scale); // 限制最大宽度
-  }, [position.width, scale]);
+  }, [position.width, scale, forceFullWidth]);
 
   // padding（根据scale调整）
   const padding = useMemo(() => {
