@@ -23,7 +23,31 @@ from app.services.generation.scene_generator import (
     generate_scene_actions,
     Action,
 )
-from app.services.generation.agent_generator import generate_agent_profiles, get_default_agents
+from app.services.generation.agent_generator import generate_agent_profiles, get_default_agents, AgentProfile
+
+
+def serialize_agent(agent: AgentProfile) -> dict:
+    """将 AgentProfile 序列化为前端期望的 camelCase 格式"""
+    data: dict = {
+        "id": agent.id,
+        "name": agent.name,
+        "role": agent.role,
+        "persona": agent.persona,
+        "avatar": agent.avatar,
+        "color": agent.color,
+        "priority": agent.priority,
+        "enabled": agent.enabled,
+    }
+    # 嵌套 voiceConfig 对象（前端期望的格式）
+    if agent.voice_provider or agent.voice_id:
+        vc: dict = {
+            "providerId": agent.voice_provider or "qwen",
+            "voiceId": agent.voice_id or "longwanlong",
+        }
+        if agent.voice_speed:
+            vc["speed"] = agent.voice_speed
+        data["voiceConfig"] = vc
+    return data
 from app.services.scene_service import (
     validate_language,
     validate_scene_count,
@@ -643,7 +667,8 @@ async def get_default_agents_endpoint(
 ):
     """获取默认智能体配置（无需认证）"""
     agents = get_default_agents(language)
-    return {"agents": [a.model_dump() for a in agents]}
+    # 映射为前端期望的 camelCase 格式
+    return {"agents": [serialize_agent(a) for a in agents]}
 
 
 @router.post("/classroom")

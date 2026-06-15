@@ -146,8 +146,54 @@ function injectMobileAdaptation(html: string, widgetType?: string): string {
 }
 
 // 清理 JSON 残留内容和扁平化 action 格式的辅助函数
-function cleanJsonFromText(text: string): string {
+
+/**
+ * 清理 TTS 文本 — 去除表格/数据列表，只保留口语讲解
+ *
+ * 策略：
+ * 1. 检测并移除 | 分隔的表格行
+ * 2. 检测并移除连续的短行数据块（对比列表）
+ * 3. 保留自然语言句子
+ */
+function cleanTTSContent(text: string): string {
   if (!text) return '';
+
+  const lines = text.split('\n');
+  const resultLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 跳过空行
+    if (!trimmed) continue;
+
+    // 跳过 markdown 表格行 (| xxx | xxx |)
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) continue;
+    // 跳过表格分隔行 (|---|---|)
+    if (trimmed.match(/^\|[-:]+\|/)) continue;
+
+    // 跳过纯数据行：连续的 "标签 值" 模式（如 "股息分配 固定股息，优先支付"）
+    // 特征：2-4个词，中间无标点，像表格数据
+    if (trimmed.match(/^[\u4e00-\u9fa5a-zA-Z]{2,8}\s+[\u4e00-\u9fa5a-zA-Z，、]+\s+[\u4e00-\u9fa5a-zA-Z，、]+$/)) {
+      // 但如果包含口语连接词（所以、因此、而、那么等），保留
+      if (!trimmed.match(/所以|因此|但是|而且|那么|因为|虽然|不过|然而/)) {
+        continue;
+      }
+    }
+
+    // 跳过纯标题行（"xxx的核心特征"、"xxx vs xxx"）
+    if (trimmed.match(/^[\u4e00-\u9fa5a-zA-Z]{2,20}的?(核心|对比|比较|特征|要点|总结)$/)) continue;
+
+    // 跳过 █ 柱状图
+    if (trimmed.includes('█') && !trimmed.match(/[。，！？；：]/)) continue;
+
+    resultLines.push(trimmed);
+  }
+
+  return resultLines.join('\n').trim();
+}
+
+function cleanJsonFromText(text: string): string {
 
   // 首先检测是否整个响应都是 JSON 格式 [{"type":"text","content":"..."}, ...]
   try {
@@ -1444,7 +1490,7 @@ export default function ClassroomScreen() {
             const agentId = event.agentId || '';
             setSpeakingAgentId(null);
             // TTS播放Agent发言 — 统一使用课程音色
-            const textToSpeak = currentAgentTextRef.current.trim();
+            const textToSpeak = cleanTTSContent(currentAgentTextRef.current.trim());
             if (textToSpeak) {
               console.log('[TTS] Speaking agent text:', textToSpeak.slice(0, 50));
               const agentVC = agentInfoMap[agentId]?.voiceConfig;
@@ -1641,7 +1687,7 @@ export default function ClassroomScreen() {
                 handleDiscussionAction(event.actionName || '', event.params || {});
               } else if (event.type === 'agent_end') {
                 setSpeakingAgentId(null);
-                const text = cleanJsonFromText(currentAgentTextRef.current.trim());
+                const text = cleanTTSContent(cleanJsonFromText(currentAgentTextRef.current.trim()));
                 if (text) {
                   allResponses.push({ agent: agentInfo?.name || agentRole, agentId: agentRole, content: text });
                   // TTS — 统一使用课程音色

@@ -190,13 +190,25 @@ async def get_classroom(
         classroom_uuid
     )
 
-    # 解析 generated_agent_configs
+    # 解析 generated_agent_configs 并映射 voiceConfig 格式
     generated_agent_configs = None
     if stage["generated_agent_configs"]:
         if isinstance(stage["generated_agent_configs"], str):
             generated_agent_configs = json.loads(stage["generated_agent_configs"])
         else:
             generated_agent_configs = stage["generated_agent_configs"]
+        # 映射 snake_case voice 字段为前端期望的 voiceConfig 嵌套对象
+        if isinstance(generated_agent_configs, list):
+            for agent in generated_agent_configs:
+                if isinstance(agent, dict) and "voiceConfig" not in agent:
+                    vp = agent.pop("voice_provider", None)
+                    vi = agent.pop("voice_id", None)
+                    vs = agent.pop("voice_speed", None)
+                    if vp or vi:
+                        vc = {"providerId": vp or "qwen", "voiceId": vi or "longwanlong"}
+                        if vs:
+                            vc["speed"] = vs
+                        agent["voiceConfig"] = vc
 
     # 解析 pending_outlines（待创建的场景大纲）
     pending_outlines = None
