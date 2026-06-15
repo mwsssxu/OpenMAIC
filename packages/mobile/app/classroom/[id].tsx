@@ -2476,6 +2476,7 @@ export default function ClassroomScreen() {
         onToggleChat={() => setShowChatModal(!showChatModal)}
         playbackMode={playbackMode}
         isLandscape={isLandscape}
+        courseId={id}
       />
 
       {/* 场景缩略图导航（可展开） */}

@@ -6,20 +6,17 @@
  */
 
 import React, { memo, useMemo, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, useWindowDimensions, Alert } from 'react-native';
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
-  withTiming,
-  withSpring,
-  runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { ScreenCanvas } from '@/components/slide/ScreenCanvas';
 import { whiteboardStore } from '@/lib/whiteboard/element-store';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
+import { apiClient } from '@/lib/api-client';
 
 // 真正的数学符号（排除基本运算符 = + -，它们在普通文本中很常见）
 const MATH_SYMBOLS = ['∑', '∫', '∂', '√', '∞', 'π', 'α', 'β', 'γ', 'δ', 'θ', 'λ', 'μ', 'σ', 'ω', 'φ', 'ψ', 'Ω', 'Δ', '∇', '±', '≠', '≤', '≥', '×', '÷', '∈', '∉', '⊂', '⊃', '∪', '∩', '∀', '∃', '→', '↔', '⟹', '∝', '∘', '⊥', '∥', '∠', '°', '′', '″', '²', '³', '⁴', '⁵', 'ⁿ', '₀', '₁', '₂', '₃', '₄', '₅', 'ₙ', '‰', '‱'];
@@ -429,6 +426,8 @@ interface WhiteboardOverlayProps {
   playbackMode?: 'idle' | 'playing' | 'paused';
   /** 横屏模式 */
   isLandscape?: boolean;
+  /** 课程 ID（保存笔记时使用） */
+  courseId?: string;
 }
 
 export function WhiteboardOverlay({
@@ -439,6 +438,7 @@ export function WhiteboardOverlay({
   onToggleChat,
   playbackMode = 'idle',
   isLandscape = false,
+  courseId,
 }: WhiteboardOverlayProps) {
   const elements = whiteboardStore.useElements();
   const hasElements = elements.length > 0;
@@ -446,46 +446,81 @@ export function WhiteboardOverlay({
   const { isPhone, isCompact } = useResponsiveDimensions();
   const windowDims = useWindowDimensions();
 
-  // 拖拽调整白板/聊天分割比例
-  const chatSheetPercent = useSharedValue(chatVisible ? 0.45 : 0);
-  const savedChatSheetPercent = useSharedValue(chatVisible ? 0.45 : 0);
+  // 保存笔记中状态
+  const [savingNote, setSavingNote] = useState(false);
 
-  // 当 chatVisible 变化时，动画切换
-  React.useEffect(() => {
-    if (chatVisible) {
-      chatSheetPercent.value = withSpring(0.45, { damping: 20 });
-      savedChatSheetPercent.value = 0.45;
-    } else {
-      chatSheetPercent.value = withSpring(0, { damping: 20 });
-      savedChatSheetPercent.value = 0;
+  /**
+   * 将白板元素转为 Markdown 文本
+   */
+  const whiteboardToMarkdown = useCallback((): string => {
+    const els = whiteboardStore.getElements();
+    if (els.length === 0 && textContent) {
+      return textContent;
     }
-  }, [chatVisible]);
 
-  // 拖拽手势调整聊天面板高度
-  const panGesture = Gesture.Pan()
-    .onUpdate((e) => {
-      // 从底部往上拖 → percent 增大
-      const screenHeight = windowDims.height;
-      const delta = -e.translationY / screenHeight;
-      const newPercent = Math.min(0.7, Math.max(0.2, savedChatSheetPercent.value + delta));
-      chatSheetPercent.value = newPercent;
-    })
-    .onEnd(() => {
-      savedChatSheetPercent.value = chatSheetPercent.value;
-      // 如果拖到很小，自动收起
-      if (chatSheetPercent.value < 0.15 && onToggleChat) {
-        runOnJS(onToggleChat)();
+    const lines: string[] = [];
+    for (const el of els) {
+      if (el.type === 'text' && el.content) {
+        // 提取纯文本（移除HTML标签）
+        const text = el.content.replace(/<[^>]+>/g, '').trim();
+        if (!text) continue;
+
+        const id = (el.id || '').toLowerCase();
+        // 根据语义角色格式化
+        if (id === 'title' || id.startsWith('title')) {
+          lines.push(`## ${text}\n`);
+        } else if (id.startsWith('point')) {
+          lines.push(`- ${text}`);
+        } else if (id.startsWith('highlight') || id.startsWith('shape_') || id.startsWith('line_')) {
+          lines.push(`> ${text}`);
+        } else {
+          lines.push(text);
+        }
       }
-    });
+    }
+    return lines.join('\n');
+  }, [textContent]);
 
-  // 白板区域动画样式（聊天展开时缩小）
+  /**
+   * 一键保存白板内容到笔记
+   */
+  const handleSaveToNote = useCallback(async () => {
+    const markdown = whiteboardToMarkdown();
+    if (!markdown.trim()) {
+      Alert.alert('提示', '白板暂无内容可保存');
+      return;
+    }
+
+    setSavingNote(true);
+    try {
+      // 标题取第一行非空文本，截断到50字
+      const firstLine = markdown.split('\n').find(l => l.trim())?.trim() || '白板笔记';
+      const title = firstLine.replace(/^##\s*/, '').slice(0, 50);
+
+      await apiClient.createPersonalNote({
+        title,
+        content: markdown.trim(),
+        course_id: courseId,
+        category: '白板笔记',
+        color: 'blue',
+        starred: false,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('已保存', '白板内容已加入笔记');
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        Alert.alert('需要登录', '请先登录后再保存笔记');
+      } else {
+        Alert.alert('保存失败', '请稍后重试');
+      }
+    } finally {
+      setSavingNote(false);
+    }
+  }, [whiteboardToMarkdown, courseId]);
+
+  // 白板占满全部空间（聊天面板已移除，由外部独立渲染）
   const whiteboardStyle = useAnimatedStyle(() => ({
-    flex: 1 - chatSheetPercent.value,
-  }));
-
-  // 聊天面板动画样式
-  const chatSheetStyle = useAnimatedStyle(() => ({
-    height: `${chatSheetPercent.value * 100}%` as any,
+    flex: 1,
   }));
 
   if (!visible) return null;
@@ -532,6 +567,21 @@ export function WhiteboardOverlay({
               </TouchableOpacity>
             )}
 
+            {/* 加入笔记按钮 */}
+            {(hasElements || hasTextContent) && (
+              <TouchableOpacity
+                style={styles.saveNoteBtn}
+                onPress={handleSaveToNote}
+                disabled={savingNote}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="bookmark-outline" size={15} color={savingNote ? '#ccc' : '#5b9bd5'} />
+                <Text style={[styles.saveNoteBtnText, savingNote && { color: '#ccc' }]}>
+                  {savingNote ? '保存中...' : '加入笔记'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={18} color="#666" />
             </TouchableOpacity>
@@ -559,18 +609,6 @@ export function WhiteboardOverlay({
           </View>
         </View>
       </Animated.View>
-
-      {/* 聊天面板拖拽区域 + 聊天面板（动画展开/收起） */}
-      {onToggleChat && (
-        <Animated.View style={[styles.chatSheetContainer, chatSheetStyle]}>
-          {/* 拖拽手柄 */}
-          <GestureDetector gesture={panGesture}>
-            <View style={styles.dragHandleArea}>
-              <View style={styles.dragHandle} />
-            </View>
-          </GestureDetector>
-        </Animated.View>
-      )}
     </View>
   );
 }
@@ -642,6 +680,23 @@ const styles = StyleSheet.create({
     borderColor: '#bfdbfe',
   },
   chatToggleText: {
+    fontSize: 12,
+    color: '#5b9bd5',
+    fontWeight: '500',
+    marginLeft: 3,
+  },
+  saveNoteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Rounded.full,
+    marginRight: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  saveNoteBtnText: {
     fontSize: 12,
     color: '#5b9bd5',
     fontWeight: '500',
@@ -927,29 +982,5 @@ const styles = StyleSheet.create({
     color: '#333',
     padding: 10,
     lineHeight: 18,
-  },
-  // 聊天面板容器（覆盖在白板底部）
-  chatSheetContainer: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: Rounded.lg,
-    borderTopRightRadius: Rounded.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 10,
-    overflow: 'hidden',
-  },
-  // 拖拽手柄区域
-  dragHandleArea: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    backgroundColor: '#fafafa',
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#ddd',
-    borderRadius: 2,
   },
 });
