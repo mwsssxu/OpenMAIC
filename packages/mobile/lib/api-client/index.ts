@@ -1372,6 +1372,8 @@ class ApiClient {
     const { data } = await this.client.post('/buddy/deep-chat', {
       message,
       buddy_type: buddyType,
+    }, {
+      timeout: 60000,  // LLM 生成需要 30-40 秒，全局默认 30 秒不够
     });
     return data;
   }

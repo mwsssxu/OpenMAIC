@@ -386,6 +386,7 @@ async def buddy_deep_chat(
             system_prompt=system_prompt,
             temperature=0.8,
             max_tokens=200,
+            model="qwen-turbo",
             user_id=current_user_id,
             db=db,
         )
