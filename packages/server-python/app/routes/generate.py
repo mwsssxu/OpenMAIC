@@ -961,8 +961,8 @@ async def generate_scene_with_actions_endpoint(
     language = body.get("language", "zh-CN")
     model = body.get("model", settings.DEFAULT_MODEL)
     generate_tts_audio = body.get("generate_tts", True)  # 是否预生成 TTS
-    tts_provider = body.get("tts_provider", "openai")
-    tts_voice = body.get("tts_voice", "alloy")
+    tts_provider = body.get("tts_provider", "qwen")
+    tts_voice = body.get("tts_voice", "longwanlong")
 
     if not outline:
         raise HTTPException(status_code=400, detail="outline is required")

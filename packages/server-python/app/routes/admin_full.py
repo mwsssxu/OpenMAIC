@@ -1312,7 +1312,10 @@ async def get_order_detail(
 
     order = await db.fetchrow(
         """
-        SELECT o.*, u.email as user_email, u.nickname as user_name
+        SELECT o.id, o.user_id, o.amount, o.token_amount, o.payment_method,
+               o.status, o.order_type, o.subscription_days, o.subscription_plan,
+               o.transaction_id, o.paid_at, o.created_at, o.updated_at,
+               u.email as user_email, u.nickname as user_name
         FROM orders o
         LEFT JOIN users u ON o.user_id = u.id
         WHERE o.id = $1
@@ -1323,7 +1326,7 @@ async def get_order_detail(
         raise HTTPException(404, "订单不存在")
 
     callbacks = await db.fetch(
-        "SELECT * FROM payment_callbacks WHERE order_id = $1 ORDER BY created_at DESC",
+        "SELECT id, order_id, provider, transaction_id, amount, status, processed, created_at FROM payment_callbacks WHERE order_id = $1 ORDER BY created_at DESC",
         oid
     )
 
@@ -1471,7 +1474,7 @@ async def list_llm_usage(
         FROM llm_usage_logs
         WHERE {where}
         """,
-        *params[:idx-3]
+        *params[:idx-2]
     )
 
     return {
