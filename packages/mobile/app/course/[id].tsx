@@ -258,14 +258,9 @@ export default function CourseDetailScreen() {
   const [isPublic, setIsPublic] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    loadClassroom();
-  }, [id]);
-
-  // 从课堂返回时刷新数据（完成场景数/状态可能已变化）
+  // 页面聚焦时加载数据（首次进入 + 从课堂返回都会触发）
   useFocusEffect(useCallback(() => {
-    // 仅在非首次加载时刷新（首次由 useEffect 处理）
-    if (classroom) loadClassroom();
+    loadClassroom();
   }, [id]));
 
   const loadClassroom = async () => {

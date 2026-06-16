@@ -202,9 +202,11 @@ async def complete_learning(
     )
 
     now = utcnow()
+    completion_id = None
 
     if record:
         # 更新为已完成状态
+        completion_id = record["id"]
         await db.execute(
             """
             UPDATE course_completions
@@ -215,17 +217,19 @@ async def complete_learning(
                 completed_at = $5
             WHERE id = $1
             """,
-            record["id"], total_minutes, scenes_completed, total_scenes, now
+            completion_id, total_minutes, scenes_completed, total_scenes, now
         )
     else:
         # 创建已完成记录
+        new_id = uuid.uuid4()
+        completion_id = new_id
         await db.execute(
             """
             INSERT INTO course_completions
             (id, user_id, course_id, completion_status, time_spent_minutes, scenes_completed, total_scenes, completed_at)
             VALUES ($1, $2, $3, 'completed', $4, $5, $6, $7)
             """,
-            uuid.uuid4(), user_uuid, course_uuid, total_minutes, scenes_completed, total_scenes, now
+            new_id, user_uuid, course_uuid, total_minutes, scenes_completed, total_scenes, now
         )
 
     # 触发成长体系事件（自动打卡+任务进度+搭子默契+积分）
@@ -250,7 +254,7 @@ async def complete_learning(
             ]
             mistakes_recorded = await record_mistakes_from_assessment(
                 db, user_uuid, course_uuid,
-                assessment_id=record["id"] if record else uuid.uuid4(),
+                assessment_id=completion_id or uuid.uuid4(),
                 questions=questions,
                 answers=answers,
             )
