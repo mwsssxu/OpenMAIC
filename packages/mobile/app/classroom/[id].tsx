@@ -2012,10 +2012,10 @@ export default function ClassroomScreen() {
           const quizQuestions = (currentScene?.content as QuizContent)?.questions as QuizQuestion[];
           const totalQuestions = quizQuestions.length;
 
-          // 计算总分
-          const totalEarned = Object.values(quizFlow.questions).reduce((sum, qs) => sum + (qs.result?.earned ?? 0), 0);
+          // 计算当前场景的得分（只统计当前场景的题目，避免多 quiz 场景数据串扰）
+          const totalEarned = quizQuestions.reduce((sum, q) => sum + (quizFlow.questions[q.id]?.result?.earned ?? 0), 0);
           const totalPoints = quizQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
-          const correctCount = Object.values(quizFlow.questions).filter(qs => qs.result?.correct).length;
+          const correctCount = quizQuestions.filter(q => quizFlow.questions[q.id]?.result?.correct).length;
 
           // Summary 阶段：测验奖励效果卡片
           if (quizFlow.phase === 'summary') {
