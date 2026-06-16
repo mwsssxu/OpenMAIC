@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import timedelta
-from typing import List, Optional
+from typing import Any, List, Optional
 import asyncpg
 from app.core.time_utils import utcnow
 
@@ -156,7 +156,16 @@ async def submit_review_answer(
     if isinstance(snapshot, str):
         snapshot = json.loads(snapshot)
     correct_answer = snapshot.get("correct_answer")
-    is_correct = answer == correct_answer
+
+    # 归一化比较：支持单选（string）和多选（list/comma-separated）
+    def _normalize(a: Any) -> str:
+        if isinstance(a, list):
+            return ",".join(sorted(str(x) for x in a))
+        if isinstance(a, str):
+            return a.strip()
+        return str(a) if a is not None else ""
+
+    is_correct = _normalize(answer) == _normalize(correct_answer)
 
     new_attempt = row["attempt_count"] + 1
     if is_correct:

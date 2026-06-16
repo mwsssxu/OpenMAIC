@@ -1679,6 +1679,11 @@ class ApiClient {
     };
   }
 
+  async getAllMistakes(limit: number = 10) {
+    const data = await this.getMistakeList({ only_unmastered: true, limit });
+    return data;
+  }
+
   async getMistakeList(opts?: { course_id?: string; only_unmastered?: boolean; limit?: number; offset?: number }) {
     const { data } = await this.client.get('/mistakes/list', { params: opts });
     return data as {
