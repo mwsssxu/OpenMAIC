@@ -1942,16 +1942,27 @@ export default function ClassroomScreen() {
                 title={data?.stage?.name || ''}
                 classroomId={id as string}
                 quizAnswers={
-                currentScene?.id
-                  ? {
-                      [currentScene.id]: Object.fromEntries(
-                        Object.entries(quizFlow.questions)
-                          .filter(([, qs]) => qs.phase !== 'answering')
-                          .map(([qId, qs]) => [qId, qs.answer])
-                      ) as Record<string, string | string[]>,
-                    } as Record<string, Record<string, string | string[]>>
-                  : undefined
-              }
+                  (() => {
+                    // 收集所有 quiz 场景的答题数据
+                    const allAnswers: Record<string, Record<string, string | string[]>> = {};
+                    for (const scene of (data?.scenes || [])) {
+                      if (scene.type !== 'quiz') continue;
+                      const qs = (scene.content as QuizContent)?.questions;
+                      if (!qs) continue;
+                      const sceneAnswers: Record<string, string | string[]> = {};
+                      for (const q of qs) {
+                        const qState = quizFlow.questions[q.id];
+                        if (qState && qState.phase !== 'answering' && qState.answer !== undefined) {
+                          sceneAnswers[q.id] = qState.answer;
+                        }
+                      }
+                      if (Object.keys(sceneAnswers).length > 0) {
+                        allAnswers[scene.id] = sceneAnswers;
+                      }
+                    }
+                    return Object.keys(allAnswers).length > 0 ? allAnswers : undefined;
+                  })()
+                }
                 onClose={() => goBack()}
               />
             ) : /* Slide类型：使用 ScreenCanvas 渲染 */
