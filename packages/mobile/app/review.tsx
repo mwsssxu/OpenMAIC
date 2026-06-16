@@ -33,6 +33,7 @@ import { apiClient } from '@/lib/api-client';
 import { Colors as RawColors, Rounded, Spacing } from '@/lib/constants/theme';
 import { parseOptions, pickedToKey, difficultyLabel } from '@/lib/utils/question';
 import { useHaptics } from '@/lib/hooks/use-haptics';
+import { QuoteHeader } from '@/lib/components/QuoteHeader';
 import { showError } from '@/lib/utils/error-toast';
 import { useAuth } from '@/lib/auth/auth-context';
 
@@ -183,9 +184,10 @@ export default function ReviewScreen() {
   if (!items || items.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <QuoteHeader />
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="close" size={24} color={Colors.text} />
+            <Ionicons name="chevron-back" size={24} color={Colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>每日复习</Text>
           <View style={styles.iconBtn} />
@@ -212,8 +214,11 @@ export default function ReviewScreen() {
     const masteredJustNow = items.filter((it) => answers[it.id]?.result.mastered).length;
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <QuoteHeader />
         <View style={styles.header}>
-          <View style={styles.iconBtn} />
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="chevron-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>复习完成</Text>
           <View style={styles.iconBtn} />
         </View>
@@ -276,9 +281,10 @@ export default function ReviewScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
+      <QuoteHeader />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="close" size={24} color={Colors.text} />
+          <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {currentIndex + 1} / {items.length}

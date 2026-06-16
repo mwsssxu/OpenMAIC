@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -260,6 +261,12 @@ export default function CourseDetailScreen() {
   useEffect(() => {
     loadClassroom();
   }, [id]);
+
+  // 从课堂返回时刷新数据（完成场景数/状态可能已变化）
+  useFocusEffect(useCallback(() => {
+    // 仅在非首次加载时刷新（首次由 useEffect 处理）
+    if (classroom) loadClassroom();
+  }, [id]));
 
   const loadClassroom = async () => {
     setLoading(true);

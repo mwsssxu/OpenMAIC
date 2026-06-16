@@ -622,8 +622,35 @@ export default function ClassroomScreen() {
       // 计算测验分数（quizFlow.questions 在此时读取最新值）
       const quizScore = calculateQuizScore(data.scenes, quizFlow.questions);
 
-      // 调用完成学习API
-      completeLearning(quizScore);
+      // 收集错题数据
+      const quizAnswers: any[] = [];
+      for (const scene of data.scenes) {
+        if (scene.type !== 'quiz') continue;
+        const qs = (scene.content as any)?.questions as any[] | undefined;
+        if (!qs) continue;
+        for (const q of qs) {
+          const qState = quizFlow.questions[q.id];
+          if (!qState) continue;
+          const correctAnswer = q.answer ? (Array.isArray(q.answer) ? q.answer : [q.answer]) : [];
+          quizAnswers.push({
+            question_id: q.id,
+            correct: !!qState.result?.correct,
+            user_answer: qState.answer,
+            question: {
+              id: q.id,
+              type: q.type,
+              content: q.question,
+              options: q.options,
+              correct_answer: correctAnswer,
+              explanation: q.analysis,
+              points: q.points || 1,
+            },
+          });
+        }
+      }
+
+      // 调用完成学习API（含错题数据）
+      completeLearning(quizScore, quizAnswers);
     }
   }, [data, currentSceneIndex, completeLearning]);
 

@@ -2392,6 +2392,21 @@ class ApiClient {
     scenes_completed: number;
     total_scenes: number;
     quiz_score?: number;
+    quiz_answers?: Array<{
+      question_id: string;
+      correct: boolean;
+      user_answer: string | string[];
+      question: {
+        id: string;
+        type: string;
+        content: string;
+        options?: Array<{ label: string; value: string }>;
+        correct_answer: string | string[];
+        explanation?: string;
+        difficulty?: string;
+        points?: number;
+      };
+    }>;
   }) {
     const { data } = await this.client.post('/learning/complete', {
       course_id: courseId,

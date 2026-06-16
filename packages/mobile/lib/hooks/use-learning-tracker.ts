@@ -92,7 +92,7 @@ export function useLearningTracker(options: LearningTrackerOptions) {
   }, [courseId, isAuthenticated]);
 
   // 完成学习
-  const completeLearning = useCallback(async (quizScore?: number) => {
+  const completeLearning = useCallback(async (quizScore?: number, quizAnswers?: any[]) => {
     if (!isAuthenticated || !startedRef.current || completedRef.current) return;
 
     try {
@@ -113,6 +113,7 @@ export function useLearningTracker(options: LearningTrackerOptions) {
         scenes_completed: scenesCompletedRef.current,
         total_scenes: totalScenes,
         quiz_score: quizScore,
+        quiz_answers: quizAnswers,
       });
 
       // 自动打卡

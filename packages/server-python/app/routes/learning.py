@@ -5,6 +5,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi import Body
 from pydantic import BaseModel
+from typing import List, Optional
 from app.middleware.auth import get_current_user_id
 from app.db.database import get_db
 import asyncpg
@@ -34,6 +35,7 @@ class CompleteLearningRequest(BaseModel):
     scenes_completed: int
     total_scenes: int
     quiz_score: Optional[float] = None
+    quiz_answers: Optional[List[dict]] = None  # [{question_id, correct, user_answer, question: {id, type, content, options, correct_answer, explanation, difficulty, points}}]
 
 
 # ==================== API 端点 ====================
@@ -235,6 +237,24 @@ async def complete_learning(
     )
     streak_bonus = gamification_result.get("checkin", {}).get("reward_points", 0)
 
+    # 记录错题到错题本（从 quiz_answers 提取错题）
+    mistakes_recorded = 0
+    if request.quiz_answers:
+        wrong_items = [qa for qa in request.quiz_answers if not qa.get("correct")]
+        if wrong_items:
+            from app.services.mistake_service import record_mistakes_from_assessment
+            questions = [qa.get("question", {}) for qa in wrong_items]
+            answers = [
+                {"question_id": qa.get("question_id"), "answer": qa.get("user_answer")}
+                for qa in wrong_items
+            ]
+            mistakes_recorded = await record_mistakes_from_assessment(
+                db, user_uuid, course_uuid,
+                assessment_id=record["id"] if record else uuid.uuid4(),
+                questions=questions,
+                answers=answers,
+            )
+
     # 返回结果
     return {
         "message": "课程完成",
@@ -246,6 +266,7 @@ async def complete_learning(
         "streak_bonus": streak_bonus,
         "gamification": gamification_result,
         "quiz_score": quiz_score,
+        "mistakes_recorded": mistakes_recorded,
     }
 
 
