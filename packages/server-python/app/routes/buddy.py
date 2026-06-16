@@ -413,6 +413,7 @@ async def buddy_deep_chat(
 
     # 生成 TTS 语音（仅当客户端请求时）
     audio_base64 = None
+    audio_format = None
     if body.get("with_audio", False):
         try:
             voice_id = BUDDY_VOICE_MAP.get(buddy_type, "longwanlong")
@@ -425,6 +426,7 @@ async def buddy_deep_chat(
             if tts_result and tts_result.get("audio"):
                 import base64
                 audio_base64 = base64.b64encode(tts_result["audio"]).decode("utf-8")
+                audio_format = tts_result.get("format", "wav")
         except Exception as e:
             logger.warning(f"[BuddyDeepChat] TTS generation failed (non-critical): {e}")
 
@@ -434,6 +436,7 @@ async def buddy_deep_chat(
         "tone_style": tone_style,
         "content": response_content,
         "audio": audio_base64,
+        "audio_format": audio_format,
         "token_result": token_result,
     }
 

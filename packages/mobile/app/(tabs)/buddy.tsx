@@ -48,7 +48,8 @@ interface ChatMsg {
   role: 'user' | 'buddy';
   text: string;
   time: Date;
-  audio?: string;  // base64 encoded audio
+  audio?: string;
+  audioFormat?: string;
 }
 
 export default function BuddyScreen() {
@@ -71,6 +72,16 @@ export default function BuddyScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => { loadData(); }, []);
+
+  // 组件卸载时释放音频资源
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, []);
 
   async function loadData() {
     setIsLoading(true);
@@ -154,6 +165,7 @@ export default function BuddyScreen() {
         text: res.content || '...',
         time: new Date(),
         audio: res.audio || undefined,
+        audioFormat: res.audio_format || 'wav',
       };
       // 替换 typing 占位
       setChatMessages(prev => [...prev.filter(m => m.id !== typingMsg.id), buddyMsg]);
@@ -171,7 +183,7 @@ export default function BuddyScreen() {
   const toneInfo = TONE_MAP[buddy?.tone_style || 'warm'] || TONE_MAP.warm;
   const buddyName = buddy?.buddy_name || typeInfo.label;
 
-  async function playAudio(msgId: string, audioBase64: string) {
+  async function playAudio(msgId: string, audioBase64: string, audioFormat: string = 'wav') {
     try {
       // 停止当前播放
       if (soundRef.current) {
@@ -184,7 +196,7 @@ export default function BuddyScreen() {
       }
       setPlayingId(msgId);
       const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/mp3;base64,${audioBase64}` },
+        { uri: `data:audio/${audioFormat};base64,${audioBase64}` },
         { shouldPlay: true },
       );
       soundRef.current = sound;
@@ -294,7 +306,7 @@ export default function BuddyScreen() {
                     )}
                     {msg.role === 'buddy' && msg.audio && msg.text !== '__TYPING__' && (
                       <TouchableOpacity
-                        onPress={() => playAudio(msg.id, msg.audio!)}
+                        onPress={() => playAudio(msg.id, msg.audio!, msg.audioFormat)}
                         style={styles.audioBtn}
                       >
                         <Ionicons
