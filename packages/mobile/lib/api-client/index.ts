@@ -1368,12 +1368,13 @@ class ApiClient {
     return data;
   }
 
-  async buddyDeepChat(message: string, buddyType?: string) {
+  async buddyDeepChat(message: string, buddyType?: string, withAudio?: boolean) {
     const { data } = await this.client.post('/buddy/deep-chat', {
       message,
       buddy_type: buddyType,
+      with_audio: withAudio || false,
     }, {
-      timeout: 60000,  // LLM 生成需要 30-40 秒，全局默认 30 秒不够
+      timeout: 60000,
     });
     return data;
   }

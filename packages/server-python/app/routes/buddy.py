@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.routes.subscriptions import check_and_deduct_tokens_for_action
 import asyncpg
 from app.services.llm import call_llm
+from app.services.tts_service import generate_tts
 import uuid
 from datetime import datetime, timedelta
 from app.core.time_utils import utcnow
@@ -88,8 +89,15 @@ BUDDY_TYPES = {
     },
 }
 
-
-# ==================== API 端点 ====================
+# 搭子类型 → TTS 音色映射（CosyVoice 中文音色）
+BUDDY_VOICE_MAP = {
+    "encourager": "longwanlong",   # 晨煦 — 温暖鼓励
+    "challenger": "longyixuan",    # 一璇 — 坚定有力
+    "listener": "longxiaochun",    # 小春 — 柔和陪伴
+    "critic": "longzhiqi",         # 知琪 — 活泼调侃
+    "scholar": "longshuo",         # 烁 — 沉稳知性
+    "partner": "longwanlong",      # 晨煦 — 亲切友好
+}
 
 @router.get("/types")
 async def get_buddy_types():
@@ -403,11 +411,29 @@ async def buddy_deep_chat(
         uuid.uuid4(), user_uuid, response_content, utcnow()
     )
 
+    # 生成 TTS 语音（仅当客户端请求时）
+    audio_base64 = None
+    if body.get("with_audio", False):
+        try:
+            voice_id = BUDDY_VOICE_MAP.get(buddy_type, "longwanlong")
+            tts_result = await generate_tts(
+                text=response_content,
+                voice=voice_id,
+                provider="qwen",
+                model="qwen3-tts-flash",
+            )
+            if tts_result and tts_result.get("audio"):
+                import base64
+                audio_base64 = base64.b64encode(tts_result["audio"]).decode("utf-8")
+        except Exception as e:
+            logger.warning(f"[BuddyDeepChat] TTS generation failed (non-critical): {e}")
+
     return {
         "buddy_name": buddy_name,
         "buddy_type": buddy_type,
         "tone_style": tone_style,
         "content": response_content,
+        "audio": audio_base64,
         "token_result": token_result,
     }
 

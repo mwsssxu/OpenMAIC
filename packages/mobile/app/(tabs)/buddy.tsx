@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import { apiClient } from '@/lib/api-client';
 import { Colors, Rounded, Spacing } from '@/lib/constants/theme';
 import { showError, showSuccess } from '@/lib/utils/error-toast';
@@ -47,6 +48,7 @@ interface ChatMsg {
   role: 'user' | 'buddy';
   text: string;
   time: Date;
+  audio?: string;  // base64 encoded audio
 }
 
 export default function BuddyScreen() {
@@ -64,6 +66,9 @@ export default function BuddyScreen() {
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -142,12 +147,13 @@ export default function BuddyScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd?.(), 100);
 
     try {
-      const res = await apiClient.buddyDeepChat(text, buddy?.buddy_type);
+      const res = await apiClient.buddyDeepChat(text, buddy?.buddy_type, voiceEnabled);
       const buddyMsg: ChatMsg = {
         id: `b-${Date.now()}`,
         role: 'buddy',
         text: res.content || '...',
         time: new Date(),
+        audio: res.audio || undefined,
       };
       // 替换 typing 占位
       setChatMessages(prev => [...prev.filter(m => m.id !== typingMsg.id), buddyMsg]);
@@ -164,6 +170,36 @@ export default function BuddyScreen() {
   const typeInfo = BUDDY_TYPE_MAP[buddy?.buddy_type || 'encourager'] || BUDDY_TYPE_MAP.encourager;
   const toneInfo = TONE_MAP[buddy?.tone_style || 'warm'] || TONE_MAP.warm;
   const buddyName = buddy?.buddy_name || typeInfo.label;
+
+  async function playAudio(msgId: string, audioBase64: string) {
+    try {
+      // 停止当前播放
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      if (playingId === msgId) {
+        setPlayingId(null);
+        return;
+      }
+      setPlayingId(msgId);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `data:audio/mp3;base64,${audioBase64}` },
+        { shouldPlay: true },
+      );
+      soundRef.current = sound;
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          setPlayingId(null);
+          sound.unloadAsync();
+          soundRef.current = null;
+        }
+      });
+    } catch (e) {
+      console.warn('Audio play failed:', e);
+      setPlayingId(null);
+    }
+  }
 
   return (
     <TabPageWrapper hasHeader>
@@ -256,6 +292,18 @@ export default function BuddyScreen() {
                         {msg.text}
                       </Text>
                     )}
+                    {msg.role === 'buddy' && msg.audio && msg.text !== '__TYPING__' && (
+                      <TouchableOpacity
+                        onPress={() => playAudio(msg.id, msg.audio!)}
+                        style={styles.audioBtn}
+                      >
+                        <Ionicons
+                          name={playingId === msg.id ? 'pause' : 'volume-high'}
+                          size={16}
+                          color={iOSColors.accent}
+                        />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ))}
@@ -274,6 +322,13 @@ export default function BuddyScreen() {
 
           {/* 输入栏 */}
           <View style={styles.inputBar}>
+            <TouchableOpacity
+              onPress={() => setVoiceEnabled(v => !v)}
+              style={[styles.voiceToggle, voiceEnabled && styles.voiceToggleActive]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name={voiceEnabled ? 'volume-high' : 'volume-mute'} size={18} color={voiceEnabled ? iOSColors.accent : iOSColors.muted} />
+            </TouchableOpacity>
             <TextInput
               style={styles.input}
               value={inputText}
@@ -482,6 +537,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   sendBtnDisabled: { backgroundColor: iOSColors.bgSolid },
+  voiceToggle: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: iOSColors.bgSolid,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  voiceToggleActive: {
+    backgroundColor: iOSColors.accentLight,
+  },
+  audioBtn: {
+    marginLeft: 6, padding: 4,
+  },
 
   // 配置 Modal
   modalOverlay: {
