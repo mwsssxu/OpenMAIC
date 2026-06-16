@@ -12,7 +12,6 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    // 检查登录状态
     const token = localStorage.getItem('admin_token');
     if (!token) {
       router.push('/login');
@@ -22,7 +21,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar />
-      <main className="ml-64 p-6">
+      <main className="lg:ml-64 p-4 lg:p-6 pt-16 lg:pt-6">
         {children}
       </main>
     </div>

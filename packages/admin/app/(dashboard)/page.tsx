@@ -62,29 +62,29 @@ export default function DashboardPage() {
           title="总用户数"
           value={stats?.users?.total || 0}
           icon={<Users className="w-6 h-6" />}
-          change={+12}
-          changeLabel="较上月"
+          change={stats?.users?.change || 0}
+          changeLabel="较上周"
         />
         <StatCard
           title="今日新增"
           value={stats?.users?.new_today || 0}
           icon={<Users className="w-6 h-6" />}
-          change={+8}
-          changeLabel="较昨日"
+          change={stats?.users?.change || 0}
+          changeLabel="较上周"
         />
         <StatCard
           title="总课程数"
           value={stats?.courses?.total || 0}
           icon={<BookOpen className="w-6 h-6" />}
-          change={+15}
-          changeLabel="较上月"
+          change={stats?.courses?.change || 0}
+          changeLabel="较上周"
         />
         <StatCard
           title="今日收入"
           value={`¥${((stats?.economy?.revenue_today || 0) / 100).toFixed(2)}`}
           icon={<DollarSign className="w-6 h-6" />}
-          change={+22}
-          changeLabel="较昨日"
+          change={stats?.economy?.change || 0}
+          changeLabel="较上周"
         />
       </div>
 

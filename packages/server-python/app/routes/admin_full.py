@@ -42,20 +42,51 @@ async def get_dashboard_stats(
     admin: dict = Depends(require_dashboard),
     db: asyncpg.Connection = Depends(get_db)
 ):
-    """Get dashboard overview statistics. Requires any admin permission."""
+    """Get dashboard overview statistics. Requires any admin permission.
+    
+    Returns real change percentages by comparing current period vs previous period:
+    - users.change:   new users this week vs last week
+    - courses.change: courses generated this week vs last week
+    - economy.change: revenue this week vs last week
+    - active.change:  active users this week vs last week
+    """
     today = datetime.now().date()
+    week_ago = today - timedelta(days=7)
+    two_weeks_ago = today - timedelta(days=14)
 
-    total_users = await db.fetchval("SELECT COUNT(*) FROM users")
-    new_today = await db.fetchval("SELECT COUNT(*) FROM users WHERE DATE(created_at) = $1", today)
+    # ---- User stats ----
+    total_users = await db.fetchval("SELECT COUNT(*) FROM users") or 0
+    new_today = await db.fetchval("SELECT COUNT(*) FROM users WHERE DATE(created_at) = $1", today) or 0
     active_today = await db.fetchval(
         "SELECT COUNT(DISTINCT user_id) FROM token_transactions WHERE DATE(created_at) = $1",
         today
     ) or 0
 
-    # Fix: table name is 'stages', field name is 'type'
-    total_courses = await db.fetchval("SELECT COUNT(*) FROM stages")
+    # Users: new this week vs last week
+    new_this_week = await db.fetchval(
+        "SELECT COUNT(*) FROM users WHERE DATE(created_at) >= $1", week_ago
+    ) or 0
+    new_last_week = await db.fetchval(
+        "SELECT COUNT(*) FROM users WHERE DATE(created_at) >= $1 AND DATE(created_at) < $2",
+        two_weeks_ago, week_ago
+    ) or 0
+    user_change = round((new_this_week - new_last_week) / new_last_week * 100, 1) if new_last_week > 0 else (100.0 if new_this_week > 0 else 0.0)
+
+    # ---- Course stats ----
+    total_courses = await db.fetchval("SELECT COUNT(*) FROM stages") or 0
     generated_today = await db.fetchval("SELECT COUNT(*) FROM stages WHERE DATE(created_at) = $1", today) or 0
 
+    # Courses: generated this week vs last week
+    courses_this_week = await db.fetchval(
+        "SELECT COUNT(*) FROM stages WHERE DATE(created_at) >= $1", week_ago
+    ) or 0
+    courses_last_week = await db.fetchval(
+        "SELECT COUNT(*) FROM stages WHERE DATE(created_at) >= $1 AND DATE(created_at) < $2",
+        two_weeks_ago, week_ago
+    ) or 0
+    course_change = round((courses_this_week - courses_last_week) / courses_last_week * 100, 1) if courses_last_week > 0 else (100.0 if courses_this_week > 0 else 0.0)
+
+    # ---- Economy stats ----
     revenue_today = await db.fetchval(
         "SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status = 'paid' AND DATE(created_at) = $1",
         today
@@ -69,10 +100,51 @@ async def get_dashboard_stats(
         today
     ) or 0
 
+    # Revenue: this week vs last week
+    revenue_this_week = await db.fetchval(
+        "SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status = 'paid' AND DATE(created_at) >= $1",
+        week_ago
+    ) or 0
+    revenue_last_week = await db.fetchval(
+        "SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status = 'paid' AND DATE(created_at) >= $1 AND DATE(created_at) < $2",
+        two_weeks_ago, week_ago
+    ) or 0
+    revenue_change = round((revenue_this_week - revenue_last_week) / revenue_last_week * 100, 1) if revenue_last_week > 0 else (100.0 if revenue_this_week > 0 else 0.0)
+
+    # Active users: this week vs last week
+    active_this_week = await db.fetchval(
+        "SELECT COUNT(DISTINCT user_id) FROM token_transactions WHERE DATE(created_at) >= $1",
+        week_ago
+    ) or 0
+    active_last_week = await db.fetchval(
+        "SELECT COUNT(DISTINCT user_id) FROM token_transactions WHERE DATE(created_at) >= $1 AND DATE(created_at) < $2",
+        two_weeks_ago, week_ago
+    ) or 0
+    active_change = round((active_this_week - active_last_week) / active_last_week * 100, 1) if active_last_week > 0 else (100.0 if active_this_week > 0 else 0.0)
+
     return {
-        "users": {"total": total_users or 0, "new_today": new_today or 0, "active_today": active_today},
-        "courses": {"total": total_courses or 0, "generated_today": generated_today},
-        "economy": {"revenue_today": revenue_today, "tokens_purchased": tokens_purchased, "points_earned": points_earned}
+        "users": {
+            "total": total_users,
+            "new_today": new_today,
+            "active_today": active_today,
+            "change": user_change,
+        },
+        "courses": {
+            "total": total_courses,
+            "generated_today": generated_today,
+            "change": course_change,
+        },
+        "economy": {
+            "revenue_today": revenue_today,
+            "tokens_purchased": tokens_purchased,
+            "points_earned": points_earned,
+            "change": revenue_change,
+        },
+        "active": {
+            "active_this_week": active_this_week,
+            "active_last_week": active_last_week,
+            "change": active_change,
+        },
     }
 
 
@@ -1156,3 +1228,256 @@ async def get_admin_logs(
     )
 
     return {"logs": [dict(l) for l in logs]}
+
+
+# ==================== 订单管理 ====================
+
+@router.get("/orders")
+async def list_orders(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = None,
+    order_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    admin: dict = Depends(require_finance_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """订单列表。支持按状态/类型/用户筛选。"""
+    conditions = ["1=1"]
+    params = []
+    idx = 1
+
+    if status:
+        conditions.append(f"o.status = ${idx}")
+        params.append(status)
+        idx += 1
+    if order_type:
+        conditions.append(f"o.order_type = ${idx}")
+        params.append(order_type)
+        idx += 1
+    if user_id:
+        try:
+            conditions.append(f"o.user_id = ${idx}")
+            params.append(uuid.UUID(user_id))
+            idx += 1
+        except ValueError:
+            pass
+
+    where = " AND ".join(conditions)
+
+    total = await db.fetchval(
+        f"SELECT COUNT(*) FROM orders o WHERE {where}",
+        *params
+    )
+
+    params.append(limit)
+    idx += 1
+    params.append((page - 1) * limit)
+    idx += 1
+
+    rows = await db.fetch(
+        f"""
+        SELECT o.id, o.user_id, o.amount, o.token_amount, o.payment_method,
+               o.status, o.order_type, o.subscription_days, o.subscription_plan,
+               o.transaction_id, o.paid_at, o.created_at,
+               u.email as user_email, u.nickname as user_name
+        FROM orders o
+        LEFT JOIN users u ON o.user_id = u.id
+        WHERE {where}
+        ORDER BY o.created_at DESC
+        LIMIT ${idx-1} OFFSET ${idx}
+        """,
+        *params
+    )
+
+    return {
+        "orders": [dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@router.get("/orders/{order_id}")
+async def get_order_detail(
+    order_id: str,
+    admin: dict = Depends(require_finance_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """订单详情"""
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(400, "无效的订单ID")
+
+    order = await db.fetchrow(
+        """
+        SELECT o.*, u.email as user_email, u.nickname as user_name
+        FROM orders o
+        LEFT JOIN users u ON o.user_id = u.id
+        WHERE o.id = $1
+        """,
+        oid
+    )
+    if not order:
+        raise HTTPException(404, "订单不存在")
+
+    callbacks = await db.fetch(
+        "SELECT * FROM payment_callbacks WHERE order_id = $1 ORDER BY created_at DESC",
+        oid
+    )
+
+    result = dict(order)
+    result["callbacks"] = [dict(c) for c in callbacks]
+    return result
+
+
+# ==================== 订阅管理 ====================
+
+@router.get("/subscriptions")
+async def list_subscriptions(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = None,
+    plan_type: Optional[str] = None,
+    admin: dict = Depends(require_finance_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """订阅列表"""
+    conditions = ["1=1"]
+    params = []
+    idx = 1
+
+    if status:
+        conditions.append(f"s.status = ${idx}")
+        params.append(status)
+        idx += 1
+    if plan_type:
+        conditions.append(f"s.plan_type = ${idx}")
+        params.append(plan_type)
+        idx += 1
+
+    where = " AND ".join(conditions)
+
+    total = await db.fetchval(
+        f"SELECT COUNT(*) FROM subscriptions s WHERE {where}",
+        *params
+    )
+
+    params.append(limit)
+    idx += 1
+    params.append((page - 1) * limit)
+
+    rows = await db.fetch(
+        f"""
+        SELECT s.id, s.user_id, s.plan_type, s.status, s.started_at, s.expires_at, s.auto_renew,
+               u.email as user_email, u.nickname as user_name
+        FROM subscriptions s
+        LEFT JOIN users u ON s.user_id = u.id
+        WHERE {where}
+        ORDER BY s.created_at DESC
+        LIMIT ${idx-1} OFFSET ${idx}
+        """,
+        *params
+    )
+
+    return {
+        "subscriptions": [dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+# ==================== LLM 用量明细 ====================
+
+@router.get("/llm-usage")
+async def list_llm_usage(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    scene_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    admin: dict = Depends(require_statistics_view),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """LLM 调用明细列表"""
+    conditions = ["1=1"]
+    params = []
+    idx = 1
+
+    if provider:
+        conditions.append(f"provider = ${idx}")
+        params.append(provider)
+        idx += 1
+    if model:
+        conditions.append(f"model = ${idx}")
+        params.append(model)
+        idx += 1
+    if scene_type:
+        conditions.append(f"scene_type = ${idx}")
+        params.append(scene_type)
+        idx += 1
+    if user_id:
+        try:
+            conditions.append(f"user_id = ${idx}")
+            params.append(uuid.UUID(user_id))
+            idx += 1
+        except ValueError:
+            pass
+    if date_from:
+        conditions.append(f"created_at >= ${idx}")
+        params.append(date_from)
+        idx += 1
+    if date_to:
+        conditions.append(f"created_at <= ${idx}")
+        params.append(date_to)
+        idx += 1
+
+    where = " AND ".join(conditions)
+
+    total = await db.fetchval(
+        f"SELECT COUNT(*) FROM llm_usage_logs WHERE {where}",
+        *params
+    )
+
+    params.append(limit)
+    idx += 1
+    params.append((page - 1) * limit)
+
+    rows = await db.fetch(
+        f"""
+        SELECT id, user_id, provider, model, scene_type,
+               prompt_tokens, completion_tokens, total_tokens,
+               cost_yuan, duration_ms, status, error_message, created_at
+        FROM llm_usage_logs
+        WHERE {where}
+        ORDER BY created_at DESC
+        LIMIT ${idx-1} OFFSET ${idx}
+        """,
+        *params
+    )
+
+    # 汇总统计
+    summary = await db.fetchrow(
+        f"""
+        SELECT COUNT(*) as total_calls,
+               COALESCE(SUM(total_tokens), 0) as total_tokens,
+               COALESCE(SUM(cost_yuan), 0) as total_cost,
+               COALESCE(AVG(duration_ms), 0) as avg_duration
+        FROM llm_usage_logs
+        WHERE {where}
+        """,
+        *params[:idx-3]
+    )
+
+    return {
+        "records": [dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "summary": dict(summary) if summary else {},
+    }
