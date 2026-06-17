@@ -840,7 +840,7 @@ const questionStyles = StyleSheet.create({
   },
   scroll: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   metaRow: {
     flexDirection: 'row',
@@ -1036,12 +1036,8 @@ const questionStyles = StyleSheet.create({
     lineHeight: 22,
   },
   submitWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     padding: 16,
-    paddingBottom: 24,
+    paddingBottom: 20,
     backgroundColor: Colors.background,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
