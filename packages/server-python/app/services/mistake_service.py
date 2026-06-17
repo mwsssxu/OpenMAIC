@@ -165,7 +165,24 @@ async def submit_review_answer(
             return a.strip()
         return str(a) if a is not None else ""
 
-    is_correct = _normalize(answer) == _normalize(correct_answer)
+    # 判断题型：short_answer 或无选项 → 模糊匹配
+    q_type = snapshot.get("type", "")
+    has_options = bool(snapshot.get("options"))
+    is_short = q_type == "short_answer" or (not has_options and not isinstance(correct_answer, list))
+
+    if is_short and isinstance(correct_answer, list) and len(correct_answer) > 0:
+        # 问答题关键词匹配：用户答案包含所有关键词则正确
+        answer_lower = answer.strip().lower()
+        is_correct = all(
+            kw.strip().lower() in answer_lower
+            for kw in correct_answer
+        )
+    elif is_short and isinstance(correct_answer, str) and correct_answer:
+        # 单个正确答案的问答题：包含即正确
+        is_correct = correct_answer.strip().lower() in answer.strip().lower()
+    else:
+        # 选择题：严格等号（归一化后）
+        is_correct = _normalize(answer) == _normalize(correct_answer)
 
     new_attempt = row["attempt_count"] + 1
     if is_correct:
@@ -185,9 +202,12 @@ async def submit_review_answer(
             mastered = True
             next_review_at = None
         else:
-            # 推迟到期：first attempt → 1 day; second → 3 days
-            interval = REVIEW_INTERVAL_DAYS[min(new_streak, len(REVIEW_INTERVAL_DAYS) - 1)]
-            next_review = utcnow() + timedelta(days=interval)
+            # 答对1次：推迟到今天结束（今天内仍可复习），而非1天后
+            # 这样用户本轮复习中不会看到题目消失
+            today_end = utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
+            if today_end <= utcnow():
+                today_end = today_end + timedelta(days=1)
+            next_review = today_end
             await db.execute(
                 """
                 UPDATE mistake_records

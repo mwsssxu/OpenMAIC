@@ -22,6 +22,9 @@ import {
   ActivityIndicator,
   FlatList,
   useWindowDimensions,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -478,8 +481,10 @@ function QuestionCard({
 }) {
   const q = item.question;
   const multi = isMultipleChoice(q);
+  const isShortAnswer = q.type === 'short_answer' || (!multi && parseOptions(q.options).length === 0);
   const optionEntries = parseOptions(q.options);
   const [selected, setSelected] = useState<string[]>([]);
+  const [shortAnswer, setShortAnswer] = useState('');
 
   const answered = !!answer;
   const isCorrect = answer?.result.is_correct;
@@ -497,9 +502,17 @@ function QuestionCard({
   };
 
   const handleSubmitAnswer = () => {
-    if (selected.length === 0 || submitting || answered) return;
-    onSubmit(selected);
+    if (submitting || answered) return;
+    if (isShortAnswer) {
+      if (!shortAnswer.trim()) return;
+      onSubmit([shortAnswer.trim()]);
+    } else {
+      if (selected.length === 0) return;
+      onSubmit(selected);
+    }
   };
+
+  const canSubmit = isShortAnswer ? shortAnswer.trim().length > 0 : selected.length > 0;
 
   return (
     <View style={[questionStyles.page, { width }]}>
@@ -508,6 +521,7 @@ function QuestionCard({
         <View style={questionStyles.metaRow}>
           {q.difficulty && <Text style={questionStyles.metaTag}>{difficultyLabel(q.difficulty)}</Text>}
           {multi && <Text style={questionStyles.metaTagMulti}>多选</Text>}
+          {isShortAnswer && <Text style={questionStyles.metaTagShort}>问答</Text>}
           <Text style={questionStyles.metaWrong}>共错 {item.wrong_count} 次</Text>
           {item.correct_streak > 0 && (
             <Text style={questionStyles.metaStreak}>已连对 {item.correct_streak}/2</Text>
@@ -571,20 +585,43 @@ function QuestionCard({
               );
             })}
           </View>
-        ) : (
-          // 无选项题（如填空/简答）：只在已答态显示正解
-          answered && (
-            <View style={questionStyles.fillAnswer}>
-              <Text style={questionStyles.fillLabel}>正确答案</Text>
-              <Text style={questionStyles.fillValue}>
-                {correctKeys.map(k => {
-                  const entry = optionEntries.find(([ek]) => ek === k);
-                  return entry ? `${k}. ${entry[1]}` : k;
-                }).join('、') || normalizeCorrectAnswer(q.correct_answer).join('、')}
-              </Text>
+        ) : isShortAnswer ? (
+          // 问答题：文本输入框
+          !answered ? (
+            <View style={questionStyles.shortAnswerWrap}>
+              <TextInput
+                style={questionStyles.shortAnswerInput}
+                placeholder="请输入你的答案..."
+                placeholderTextColor={Colors.textMuted}
+                value={shortAnswer}
+                onChangeText={setShortAnswer}
+                multiline
+                maxLength={500}
+                editable={!submitting}
+                autoFocus
+              />
+              <Text style={questionStyles.shortAnswerHint}>{shortAnswer.length}/500</Text>
+            </View>
+          ) : (
+            // 已答：显示用户答案 + 正确答案
+            <View style={questionStyles.shortAnswerResult}>
+              <View style={questionStyles.shortAnswerUserWrap}>
+                <Text style={questionStyles.shortAnswerLabel}>你的答案</Text>
+                <Text style={[questionStyles.shortAnswerValue, !isCorrect && { color: Colors.danger }]}>
+                  {answer?.picked[0] || '未作答'}
+                </Text>
+              </View>
+              {!isCorrect && (
+                <View style={questionStyles.fillAnswer}>
+                  <Text style={questionStyles.fillLabel}>正确答案</Text>
+                  <Text style={questionStyles.fillValue}>
+                    {normalizeCorrectAnswer(q.correct_answer).join('、')}
+                  </Text>
+                </View>
+              )}
             </View>
           )
-        )}
+        ) : null}
 
         {/* 反馈区 */}
         {answered && (
@@ -633,8 +670,8 @@ function QuestionCard({
       {!answered ? (
         <View style={questionStyles.submitWrap}>
           <TouchableOpacity
-            style={[questionStyles.submitBtn, selected.length === 0 && questionStyles.submitBtnDisabled]}
-            disabled={selected.length === 0 || submitting}
+            style={[questionStyles.submitBtn, !canSubmit && questionStyles.submitBtnDisabled]}
+            disabled={!canSubmit || submitting}
             onPress={handleSubmitAnswer}
             activeOpacity={0.85}
           >
@@ -828,6 +865,14 @@ const questionStyles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
   },
+  metaTagShort: {
+    fontSize: 12,
+    color: '#0369a1',
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   metaWrong: {
     fontSize: 12,
     color: Colors.danger,
@@ -947,6 +992,49 @@ const questionStyles = StyleSheet.create({
   },
   fillLabel: { fontSize: 12, color: Colors.success, fontWeight: '600', marginBottom: 4 },
   fillValue: { fontSize: 15, color: Colors.text, fontWeight: '500', lineHeight: 22 },
+  shortAnswerWrap: {
+    marginTop: 8,
+  },
+  shortAnswerInput: {
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Rounded.lg,
+    padding: 14,
+    fontSize: 16,
+    color: Colors.text,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    lineHeight: 24,
+  },
+  shortAnswerHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  shortAnswerResult: {
+    marginTop: 8,
+    gap: 12,
+  },
+  shortAnswerUserWrap: {
+    padding: 14,
+    borderRadius: Rounded.md,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  shortAnswerLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  shortAnswerValue: {
+    fontSize: 15,
+    color: Colors.text,
+    lineHeight: 22,
+  },
   submitWrap: {
     position: 'absolute',
     left: 0,
