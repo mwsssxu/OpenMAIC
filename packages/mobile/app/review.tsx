@@ -1,18 +1,13 @@
 /**
- * 每日错题复习（重写版）
+ * 每日错题复习
  *
- * 业务逻辑：
- * 1. 先加载今日到期错题（当天做错的题）
- * 2. 全部答对后，从错题本随机抽取未掌握的题目继续复习
- * 3. 支持单选和多选题
- *
- * UX 设计：
- * - 一屏一题，底部按钮控制翻页
- * - QuoteHeader + 返回按钮
- * - 选项支持多选（multiple 类型）
- * - 答完即时反馈：正确/错误 + 解析
+ * 交互：
+ * 1. 默认按课程汇总展示今日复习错题卡片
+ * 2. 卡片展示课程名称、今日题数、已答/答对/待复习情况
+ * 3. 点击课程进入该课程逐题答题；答完题仍保留在列表中，可继续查看答案/解析
+ * 4. 答案与解析支持复制
  */
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,20 +16,18 @@ import {
   ScrollView,
   ActivityIndicator,
   FlatList,
-  useWindowDimensions,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
-import { Colors as RawColors, Rounded, Spacing } from '@/lib/constants/theme';
+import { Colors as RawColors, Rounded } from '@/lib/constants/theme';
 import { difficultyLabel } from '@/lib/utils/question';
 import { useHaptics } from '@/lib/hooks/use-haptics';
 import { QuoteHeader } from '@/lib/components/QuoteHeader';
-import { showError } from '@/lib/utils/error-toast';
+import { showError, showSuccess } from '@/lib/utils/error-toast';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const Colors = {
@@ -49,6 +42,52 @@ const Colors = {
   textMuted: RawColors.neutral.textMuted,
 };
 
+const UNCATEGORIZED_SENTINEL = '__uncategorized__';
+
+function courseKey(courseId: string | null | undefined): string {
+  return courseId ?? UNCATEGORIZED_SENTINEL;
+}
+
+function isReviewedToday(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const reviewedAt = new Date(iso);
+  const now = new Date();
+  const utcStart = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    0,
+    0,
+    0,
+    0,
+  ));
+  return reviewedAt >= utcStart;
+}
+
+function getQuestionCorrectAnswer(question: { correct_answer?: string | string[]; answer?: string | string[] }): string | string[] | undefined {
+  return question.correct_answer ?? question.answer;
+}
+
+function getQuestionExplanation(question: { explanation?: string; analysis?: string }): string | undefined {
+  return question.explanation ?? question.analysis;
+}
+
+function createReadOnlyAnswer(item: MistakeItem): { picked: string[]; result: AnswerResult } | undefined {
+  if (!isReviewedToday(item.last_reviewed_at)) return undefined;
+  const correctAnswer = getQuestionCorrectAnswer(item.question) ?? [];
+  return {
+    picked: normalizeCorrectAnswer(correctAnswer),
+    result: {
+      is_correct: true,
+      correct_answer: correctAnswer,
+      explanation: getQuestionExplanation(item.question) ?? null,
+      mastered: !!item.mastered,
+      correct_streak: item.correct_streak,
+      reviewed_only: true,
+    },
+  };
+}
+
 type MistakeItem = {
   id: string;
   course_id: string | null;
@@ -59,13 +98,19 @@ type MistakeItem = {
     content?: string;
     options?: any;
     correct_answer?: string | string[];
+    answer?: string | string[];
     explanation?: string;
+    analysis?: string;
     difficulty?: string;
     points?: number;
   };
   attempt_count: number;
   wrong_count: number;
   correct_streak: number;
+  mastered?: boolean;
+  next_review_at?: string | null;
+  last_reviewed_at?: string | null;
+  first_wrong_at?: string | null;
 };
 
 type AnswerResult = {
@@ -74,7 +119,20 @@ type AnswerResult = {
   explanation: string | null;
   mastered: boolean;
   correct_streak: number;
+  reviewed_only?: boolean;
 };
+
+type CourseSummary = {
+  course_id: string | null;
+  course_name: string;
+  total_count: number;
+  unmastered_count: number;
+  mastered_count: number;
+  due_count: number;
+  reviewed_today_count?: number;
+};
+
+type AnswerState = Record<string, { picked: string[]; result: AnswerResult }>;
 
 // ====================== 选项解析 ======================
 
@@ -88,81 +146,158 @@ type AnswerResult = {
 function parseOptions(options: any): [string, string][] {
   if (!options) return [];
 
-  // dict 格式: {A: "内容", B: "内容"}
   if (typeof options === 'object' && !Array.isArray(options)) {
     return Object.entries(options).map(([k, v]) => [String(k), String(v ?? '')]);
   }
 
-  // 数组格式
   if (Array.isArray(options)) {
-    // [{label: "xxx", value: "yyy"}, ...]
     if (options.length > 0 && typeof options[0] === 'object' && options[0] !== null) {
+      const isKeyLike = (value: any) => /^[A-Z]$/.test(String(value ?? '').trim()) || /^\d+$/.test(String(value ?? '').trim());
       return options.map((v: any, i: number) => {
-        const label = v.label ?? String.fromCharCode(65 + i);
-        const value = v.value ?? v.content ?? v.text ?? '';
-        // key 用字母 A/B/C/D，展示文案用 label
-        return [String.fromCharCode(65 + i), String(label)];
+        const fallbackKey = String.fromCharCode(65 + i);
+        const label = v.label;
+        const value = v.value;
+        let key = v.key ?? v.id ?? fallbackKey;
+        let text = v.content ?? v.text ?? v.title;
+
+        if (text == null && label != null && value != null) {
+          if (isKeyLike(label) && !isKeyLike(value)) {
+            key = label;
+            text = value;
+          } else if (isKeyLike(value) && !isKeyLike(label)) {
+            key = value;
+            text = label;
+          } else {
+            key = v.key ?? value ?? label ?? fallbackKey;
+            text = label ?? value;
+          }
+        } else if (text == null) {
+          text = label ?? value ?? '';
+        }
+
+        return [String(key), String(text)];
       });
     }
-    // ["选项1", "选项2"]
     return options.map((v: any, i: number) => [String.fromCharCode(65 + i), String(v ?? '')]);
   }
 
   return [];
 }
 
-/**
- * 判断是否为多选题
- */
 function isMultipleChoice(question: MistakeItem['question']): boolean {
+  const correctAnswer = getQuestionCorrectAnswer(question);
   if (question.type === 'multiple') return true;
-  // correct_answer 是数组且长度 > 1 → 多选
-  if (Array.isArray(question.correct_answer) && question.correct_answer.length > 1) return true;
+  if (Array.isArray(correctAnswer) && correctAnswer.length > 1) return true;
   return false;
 }
 
-/**
- * 归一化 correct_answer 为数组
- */
 function normalizeCorrectAnswer(ca: string | string[] | undefined): string[] {
   if (!ca) return [];
   if (Array.isArray(ca)) return ca;
-  // 可能是逗号分隔的字符串 "A,B" 或单个字母 "A"
   if (typeof ca === 'string' && ca.includes(',')) return ca.split(',').map(s => s.trim());
   return [ca];
 }
 
-/**
- * 将选项 value 转为字母 key
- */
 function valueToKey(entries: [string, string][], val: string): string {
-  // 先按 key 匹配
   const byKey = entries.find(([k]) => k === val);
   if (byKey) return byKey[0];
-  // 再按 value 匹配
   const byVal = entries.find(([, l]) => l === val);
   if (byVal) return byVal[0];
   return val;
 }
 
+function formatCorrectAnswer(item: MistakeItem, result?: AnswerResult): string {
+  const q = item.question;
+  const entries = parseOptions(q.options);
+  const correctAnswer = result?.correct_answer ?? getQuestionCorrectAnswer(q);
+  const correctKeys = normalizeCorrectAnswer(correctAnswer)
+    .map(ca => valueToKey(entries, ca));
+
+  if (entries.length > 0) {
+    return correctKeys.map(k => {
+      const entry = entries.find(([ek]) => ek === k);
+      return entry ? `${k}. ${entry[1]}` : k;
+    }).join('、');
+  }
+
+  return normalizeCorrectAnswer(correctAnswer).join('、');
+}
+
 export default function ReviewScreen() {
   const router = useRouter();
   const haptics = useHaptics();
-  const { width } = useWindowDimensions();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  const [items, setItems] = useState<MistakeItem[]>([]);
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [stats, setStats] = useState({ total: 0, mastered_count: 0, due_count: 0 });
+  const [selectedCourse, setSelectedCourse] = useState<CourseSummary | null>(null);
+  const [items, setItems] = useState<MistakeItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [phase, setPhase] = useState<'today' | 'random'>('today'); // 今天错题 / 随机错题
+  const [detailLoading, setDetailLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, { picked: string[]; result: AnswerResult }>>({});
+  const [answers, setAnswers] = useState<AnswerState>({});
+  const [courseProgress, setCourseProgress] = useState<Record<string, { answered: number; correct: number }>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [completed, setCompleted] = useState(0);
-  const [correctTotal, setCorrectTotal] = useState(0);
 
-  const listRef = useRef<FlatList<MistakeItem>>(null);
   const answeredRef = useRef<Set<string>>(new Set());
+
+  const handleBack = useCallback(() => {
+    if (selectedCourse) {
+      setSelectedCourse(null);
+      setItems([]);
+      setCurrentIndex(0);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)' as any);
+    }
+  }, [router, selectedCourse]);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [statsData, coursesData] = await Promise.all([
+        apiClient.getMistakeStats(),
+        apiClient.getMistakesByCourse({ today_scope: true }),
+      ]);
+      setStats(statsData);
+      setCourses(coursesData);
+      setCourseProgress({});
+    } catch (e) {
+      showError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadCourseItems = useCallback(async (course: CourseSummary) => {
+    try {
+      setDetailLoading(true);
+      const pageSize = 200;
+      const params: any = { today_scope: true, only_unmastered: false, limit: pageSize };
+      if (course.course_id) {
+        params.course_id = course.course_id;
+      } else {
+        params.uncategorized = true;
+      }
+      const allItems: MistakeItem[] = [];
+      let offset = 0;
+      while (true) {
+        const data = await apiClient.getMistakeList({ ...params, offset });
+        allItems.push(...data.items);
+        if (data.items.length < pageSize) break;
+        offset += pageSize;
+      }
+      setItems(allItems);
+      setCurrentIndex(0);
+    } catch (e) {
+      showError(e);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -170,50 +305,17 @@ export default function ReviewScreen() {
       router.replace('/auth/login');
       return;
     }
-    loadToday();
-  }, [authLoading, isAuthenticated]);
+    loadSummary();
+  }, [authLoading, isAuthenticated, loadSummary, router]);
 
-  async function loadToday() {
-    try {
-      setLoading(true);
-      setPhase('today');
-      const data = await apiClient.getTodayMistakes(20);
-      setItems(data.items || []);
-      setStats(data.stats);
-      // 重置答题状态
-      setAnswers({});
-      setCompleted(0);
-      setCorrectTotal(0);
-      setCurrentIndex(0);
-      answeredRef.current.clear();
-    } catch (e) {
-      showError(e);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const handleSelectCourse = useCallback((course: CourseSummary) => {
+    haptics.light();
+    setCurrentIndex(0);
+    setItems([]);
+    setSelectedCourse(course);
+    loadCourseItems(course);
+  }, [haptics, loadCourseItems]);
 
-  async function loadRandom() {
-    try {
-      setLoading(true);
-      setPhase('random');
-      const data = await apiClient.getAllMistakes(10);
-      // 随机打乱
-      const shuffled = [...(data.items || [])].sort(() => Math.random() - 0.5);
-      setItems(shuffled);
-      setAnswers({});
-      setCompleted(0);
-      setCorrectTotal(0);
-      setCurrentIndex(0);
-      answeredRef.current.clear();
-    } catch (e) {
-      showError(e);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // 提交答题
   const handleSubmit = useCallback(
     async (item: MistakeItem, picked: string[]) => {
       if (submitting) return;
@@ -223,14 +325,22 @@ export default function ReviewScreen() {
         setSubmitting(true);
         haptics.light();
 
-        // 多选答案用逗号拼接提交
-        const answerStr = picked.sort().join(',');
+        const answerStr = [...picked].sort().join(',');
         const result = await apiClient.answerMistake(item.id, answerStr);
 
         setAnswers((prev) => ({ ...prev, [item.id]: { picked, result } }));
-        setCompleted((n) => n + 1);
+        setCourseProgress((prev) => {
+          const key = courseKey(item.course_id);
+          const old = prev[key] ?? { answered: 0, correct: 0 };
+          return {
+            ...prev,
+            [key]: {
+              answered: old.answered + 1,
+              correct: old.correct + (result.is_correct ? 1 : 0),
+            },
+          };
+        });
         if (result.is_correct) {
-          setCorrectTotal((n) => n + 1);
           haptics.success();
         } else {
           haptics.warning();
@@ -247,28 +357,28 @@ export default function ReviewScreen() {
 
   const goNext = useCallback(() => {
     if (currentIndex < items.length - 1) {
-      const next = currentIndex + 1;
-      setCurrentIndex(next);
-      listRef.current?.scrollToIndex({ index: next, animated: true });
+      setCurrentIndex(currentIndex + 1);
     }
-  }, [items, currentIndex]);
+  }, [items.length, currentIndex]);
 
   const goPrev = useCallback(() => {
     if (currentIndex > 0) {
-      const prev = currentIndex - 1;
-      setCurrentIndex(prev);
-      listRef.current?.scrollToIndex({ index: prev, animated: true });
+      setCurrentIndex(currentIndex - 1);
     }
   }, [currentIndex]);
 
-  const handleBack = useCallback(() => {
-    // 用 replace 而非 back，确保有历史可回退
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)' as any);
+  const summaryProgress = useMemo(() => {
+    const map: Record<string, { answered: number; correct: number }> = {};
+    for (const course of courses) {
+      const key = courseKey(course.course_id);
+      const local = courseProgress[key] ?? { answered: 0, correct: 0 };
+      map[key] = {
+        answered: (course.reviewed_today_count ?? 0) + local.answered,
+        correct: local.correct,
+      };
     }
-  }, []);
+    return map;
+  }, [courseProgress, courses]);
 
   // ============ Loading ============
   if (loading) {
@@ -283,8 +393,9 @@ export default function ReviewScreen() {
     );
   }
 
-  // ============ 空态 ============
-  if (items.length === 0) {
+  // ============ 课程汇总 ============
+  if (!selectedCourse) {
+    const todayTotal = courses.reduce((sum, c) => sum + c.total_count, 0);
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <QuoteHeader />
@@ -293,100 +404,67 @@ export default function ReviewScreen() {
             <Ionicons name="chevron-back" size={24} color={Colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>每日复习</Text>
-          <View style={styles.iconBtn} />
-        </View>
-        <View style={styles.center}>
-          <Text style={styles.emptyEmoji}>🎉</Text>
-          <Text style={styles.emptyTitle}>今天没有要复习的题</Text>
-          <Text style={styles.emptyDesc}>
-            {stats.total === 0 ? '完成测评后，做错的题会自动进入这里' : `已掌握 ${stats.mastered_count}/${stats.total} 道`}
-          </Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/courses')}>
-            <Text style={styles.primaryBtnText}>去学习</Text>
+          <TouchableOpacity onPress={loadSummary} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="refresh" size={20} color={Colors.textMuted} />
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
-    );
-  }
 
-  const allDone = completed >= items.length;
-
-  // ============ 全部答完 ============
-  if (allDone) {
-    const accuracy = items.length > 0 ? Math.round((correctTotal / items.length) * 100) : 0;
-    const masteredJustNow = items.filter((it) => answers[it.id]?.result.mastered).length;
-    const isTodayPhase = phase === 'today';
-    const allCorrect = correctTotal === items.length;
-
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <QuoteHeader />
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleBack} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="chevron-back" size={24} color={Colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>复习完成</Text>
-          <View style={styles.iconBtn} />
-        </View>
-        <ScrollView contentContainerStyle={styles.completeScroll}>
-          <Text style={styles.completeEmoji}>🎯</Text>
-          <Text style={styles.completeTitle}>本轮复习完成！</Text>
-          <View style={styles.completeStats}>
-            <View style={styles.completeStatItem}>
-              <Text style={styles.completeStatValue}>{items.length}</Text>
-              <Text style={styles.completeStatLabel}>本轮题数</Text>
-            </View>
-            <View style={styles.completeStatDivider} />
-            <View style={styles.completeStatItem}>
-              <Text style={[styles.completeStatValue, { color: Colors.success }]}>{correctTotal}</Text>
-              <Text style={styles.completeStatLabel}>答对</Text>
-            </View>
-            <View style={styles.completeStatDivider} />
-            <View style={styles.completeStatItem}>
-              <Text style={[styles.completeStatValue, { color: Colors.primary }]}>{accuracy}%</Text>
-              <Text style={styles.completeStatLabel}>正确率</Text>
-            </View>
+        <View style={styles.statsCard}>
+          <View style={styles.statBlock}>
+            <Text style={styles.statValue}>{todayTotal}</Text>
+            <Text style={styles.statLabel}>今日题数</Text>
           </View>
-          {masteredJustNow > 0 && (
-            <View style={styles.masteredBadge}>
-              <Ionicons name="star" size={18} color="#f59e0b" />
-              <Text style={styles.masteredBadgeText}>新掌握 {masteredJustNow} 道，已退出错题本</Text>
-            </View>
-          )}
+          <View style={styles.statDivider} />
+          <View style={styles.statBlock}>
+            <Text style={[styles.statValue, { color: Colors.primary }]}>{courses.length}</Text>
+            <Text style={styles.statLabel}>课程</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBlock}>
+            <Text style={[styles.statValue, { color: Colors.success }]}>{stats.mastered_count}</Text>
+            <Text style={styles.statLabel}>已掌握</Text>
+          </View>
+        </View>
 
-          {/* 今日错题全部答对 → 可以继续做随机错题 */}
-          {isTodayPhase && allCorrect && (
-            <TouchableOpacity style={styles.primaryBtn} onPress={loadRandom}>
-              <Ionicons name="shuffle" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>继续复习更多错题</Text>
+        {courses.length === 0 ? (
+          <View style={styles.center}>
+            <Text style={styles.emptyEmoji}>🎉</Text>
+            <Text style={styles.emptyTitle}>今天没有要复习的题</Text>
+            <Text style={styles.emptyDesc}>
+              {stats.total === 0 ? '完成测评后，做错的题会自动进入这里' : `错题本共有 ${stats.total} 道，已掌握 ${stats.mastered_count} 道`}
+            </Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/courses')}>
+              <Text style={styles.primaryBtnText}>去学习</Text>
             </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.secondaryBtn} onPress={handleBack}>
-            <Text style={styles.secondaryBtnText}>完成</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.tertiaryBtn}
-            onPress={() => {
-              answeredRef.current.clear();
-              setAnswers({});
-              setCompleted(0);
-              setCorrectTotal(0);
-              setCurrentIndex(0);
-              loadToday();
+          </View>
+        ) : (
+          <FlatList
+            data={courses}
+            keyExtractor={(item) => item.course_id ?? UNCATEGORIZED_SENTINEL}
+            contentContainerStyle={styles.courseListContent}
+            renderItem={({ item }) => {
+              const key = courseKey(item.course_id);
+              const progress = summaryProgress[key] ?? { answered: item.reviewed_today_count ?? 0, correct: 0 };
+              return (
+                <ReviewCourseCard
+                  course={item}
+                  answered={Math.min(progress.answered, item.total_count)}
+                  correct={progress.correct}
+                  onPress={() => handleSelectCourse(item)}
+                />
+              );
             }}
-          >
-            <Ionicons name="refresh" size={18} color={Colors.primary} />
-            <Text style={styles.tertiaryBtnText}>再来一轮</Text>
-          </TouchableOpacity>
-        </ScrollView>
+          />
+        )}
       </SafeAreaView>
     );
   }
 
-  // ============ 答题中 ============
-  const progress = items.length > 0 ? (completed / items.length) * 100 : 0;
+  // ============ 课程答题详情 ============
+  const answeredCount = items.filter((it) => answers[it.id] || isReviewedToday(it.last_reviewed_at)).length;
+  const itemIds = new Set(items.map((it) => it.id));
+  const correctCount = Object.entries(answers).filter(([id, a]) => itemIds.has(id) && a.result.is_correct).length;
+  const progress = items.length > 0 ? (answeredCount / items.length) * 100 : 0;
   const currentItem = items[currentIndex];
   const currentAnswered = !!answers[currentItem?.id];
 
@@ -397,68 +475,125 @@ export default function ReviewScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {phase === 'today' ? '今日错题' : '随机练习'} · {currentIndex + 1}/{items.length}
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {selectedCourse.course_name} · {items.length === 0 ? 0 : currentIndex + 1}/{items.length}
         </Text>
         <View style={styles.iconBtn} />
       </View>
 
-      {/* 进度条 */}
+      <View style={styles.detailStatsBar}>
+        <Text style={styles.detailStatText}>已答 {answeredCount}/{items.length}</Text>
+        <View style={styles.detailStatDot} />
+        <Text style={styles.detailStatText}>本次答对 {correctCount}</Text>
+        <View style={styles.detailStatDot} />
+        <Text style={styles.detailStatText}>错题会一直保留可查看</Text>
+      </View>
+
       <View style={styles.progressBar}>
         <View style={[styles.progressFill, { width: `${progress}%` }]} />
       </View>
 
-      {/* 题目 FlatList */}
-      <FlatList
-        ref={listRef}
-        data={items}
-        keyExtractor={(it) => it.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEnabled={false}
-        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-        renderItem={({ item, index }) => (
-          <QuestionCard
-            item={item}
-            width={width}
-            answer={answers[item.id]}
-            onSubmit={(picked) => handleSubmit(item, picked)}
-            onNext={index < items.length - 1 ? goNext : undefined}
-            submitting={submitting}
-          />
-        )}
-      />
+      {detailLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>加载课程错题中...</Text>
+        </View>
+      ) : items.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyEmoji}>🎉</Text>
+          <Text style={styles.emptyTitle}>这门课今天没有要复习的题</Text>
+          <Text style={styles.emptyDesc}>返回课程列表看看其他课程吧</Text>
+        </View>
+      ) : (
+        <>
+          <View style={styles.questionArea}>
+            {currentItem && (
+              <QuestionCard
+                key={currentItem.id}
+                item={currentItem}
+                answer={answers[currentItem.id] ?? createReadOnlyAnswer(currentItem)}
+                onSubmit={(picked) => handleSubmit(currentItem, picked)}
+                onNext={currentIndex < items.length - 1 ? goNext : undefined}
+                submitting={submitting}
+              />
+            )}
+          </View>
 
-      {/* 底部导航 */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.footerBtn, currentIndex === 0 && styles.footerBtnDisabled]}
-          onPress={goPrev}
-          disabled={currentIndex === 0}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="chevron-back" size={20} color={currentIndex === 0 ? Colors.textMuted : Colors.text} />
-          <Text style={[styles.footerBtnText, currentIndex === 0 && { color: Colors.textMuted }]}>上一题</Text>
-        </TouchableOpacity>
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={[styles.footerBtn, currentIndex === 0 && styles.footerBtnDisabled]}
+              onPress={goPrev}
+              disabled={currentIndex === 0}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="chevron-back" size={20} color={currentIndex === 0 ? Colors.textMuted : Colors.text} />
+              <Text style={[styles.footerBtnText, currentIndex === 0 && { color: Colors.textMuted }]}>上一题</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.footerBtn, !currentAnswered && styles.footerBtnDisabled]}
-          onPress={() => {
-            if (currentAnswered && currentIndex < items.length - 1) {
-              goNext();
-            }
-          }}
-          disabled={!currentAnswered}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={[styles.footerBtnText, !currentAnswered && { color: Colors.textMuted }]}>
-            {currentIndex >= items.length - 1 ? '查看结果' : '下一题'}
-          </Text>
-          <Ionicons name="chevron-forward" size={20} color={!currentAnswered ? Colors.textMuted : Colors.text} />
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity
+              style={[styles.footerBtn, currentIndex >= items.length - 1 && styles.footerBtnDisabled]}
+              onPress={goNext}
+              disabled={currentIndex >= items.length - 1}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.footerBtnText, currentIndex >= items.length - 1 && { color: Colors.textMuted }]}>
+                下一题
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={currentIndex >= items.length - 1 ? Colors.textMuted : Colors.text} />
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
     </SafeAreaView>
+  );
+}
+
+// ====================== 课程卡片 ======================
+
+function ReviewCourseCard({
+  course,
+  answered,
+  correct,
+  onPress,
+}: {
+  course: CourseSummary;
+  answered: number;
+  correct: number;
+  onPress: () => void;
+}) {
+  const progress = course.total_count > 0 ? Math.round((answered / course.total_count) * 100) : 0;
+  return (
+    <TouchableOpacity style={courseCardStyles.card} activeOpacity={0.85} onPress={onPress}>
+      <View style={courseCardStyles.header}>
+        <View style={courseCardStyles.iconWrap}>
+          <Ionicons name="book" size={20} color={Colors.primary} />
+        </View>
+        <View style={courseCardStyles.titleWrap}>
+          <Text style={courseCardStyles.title} numberOfLines={1}>{course.course_name}</Text>
+          <Text style={courseCardStyles.subtitle}>今日 {course.total_count} 题 · 待复习 {course.due_count} 题</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+      </View>
+
+      <View style={courseCardStyles.statusRow}>
+        <View style={courseCardStyles.statusPill}>
+          <Text style={courseCardStyles.statusLabel}>已答</Text>
+          <Text style={courseCardStyles.statusValue}>{answered}/{course.total_count}</Text>
+        </View>
+        <View style={[courseCardStyles.statusPill, { backgroundColor: '#ecfdf5' }]}>
+          <Text style={[courseCardStyles.statusLabel, { color: Colors.success }]}>本次答对</Text>
+          <Text style={[courseCardStyles.statusValue, { color: Colors.success }]}>{correct}</Text>
+        </View>
+        <View style={[courseCardStyles.statusPill, { backgroundColor: '#fff7ed' }]}>
+          <Text style={[courseCardStyles.statusLabel, { color: Colors.primary }]}>进度</Text>
+          <Text style={[courseCardStyles.statusValue, { color: Colors.primary }]}>{progress}%</Text>
+        </View>
+      </View>
+
+      <View style={courseCardStyles.progressBar}>
+        <View style={[courseCardStyles.progressFill, { width: `${progress}%` }]} />
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -466,31 +601,66 @@ export default function ReviewScreen() {
 
 function QuestionCard({
   item,
-  width,
   answer,
   onSubmit,
   onNext,
   submitting,
 }: {
   item: MistakeItem;
-  width: number;
   answer?: { picked: string[]; result: AnswerResult };
   onSubmit: (picked: string[]) => void;
   onNext?: () => void;
   submitting: boolean;
 }) {
+  const haptics = useHaptics();
   const q = item.question;
   const multi = isMultipleChoice(q);
   const isShortAnswer = q.type === 'short_answer' || (!multi && parseOptions(q.options).length === 0);
   const optionEntries = parseOptions(q.options);
   const [selected, setSelected] = useState<string[]>([]);
   const [shortAnswer, setShortAnswer] = useState('');
+  const [revealed, setRevealed] = useState(false);
 
-  const answered = !!answer;
-  const isCorrect = answer?.result.is_correct;
-  const correctKeys = normalizeCorrectAnswer(answer?.result.correct_answer ?? q.correct_answer)
+  const revealedAnswer = useMemo(() => {
+    if (!revealed || answer) return undefined;
+    const correctAnswer = getQuestionCorrectAnswer(q) ?? [];
+    return {
+      picked: [] as string[],
+      result: {
+        is_correct: true,
+        correct_answer: correctAnswer,
+        explanation: getQuestionExplanation(q) ?? null,
+        mastered: !!item.mastered,
+        correct_streak: item.correct_streak,
+        reviewed_only: true,
+      },
+    };
+  }, [revealed, answer, q, item.mastered, item.correct_streak]);
+
+  const visibleAnswer = answer ?? revealedAnswer;
+  const answered = !!visibleAnswer;
+  const isCorrect = visibleAnswer?.result.is_correct;
+  const correctKeys = normalizeCorrectAnswer(visibleAnswer?.result.correct_answer ?? getQuestionCorrectAnswer(q))
     .map(ca => valueToKey(optionEntries, ca));
-  const userPickedKeys = answer?.picked.map(p => valueToKey(optionEntries, p)) ?? [];
+  const userPickedKeys = visibleAnswer?.picked.map(p => valueToKey(optionEntries, p)) ?? [];
+  const correctAnswerText = formatCorrectAnswer(item, visibleAnswer?.result);
+  const correctAnswerEntries = optionEntries.length > 0
+    ? correctKeys.map((key) => {
+      const entry = optionEntries.find(([entryKey]) => entryKey === key);
+      return { key, label: entry?.[1] ?? key };
+    })
+    : [];
+  const explanationText = visibleAnswer?.result.explanation ?? getQuestionExplanation(q) ?? '';
+
+  const copyText = async (text: string, label: string) => {
+    if (!text.trim()) return;
+    try {
+      await Clipboard.setStringAsync(text);
+      showSuccess(`${label}已复制`);
+    } catch (e) {
+      showError(e);
+    }
+  };
 
   const toggleOption = (key: string) => {
     if (answered) return;
@@ -515,9 +685,13 @@ function QuestionCard({
   const canSubmit = isShortAnswer ? shortAnswer.trim().length > 0 : selected.length > 0;
 
   return (
-    <View style={[questionStyles.page, { width }]}>
-      <ScrollView contentContainerStyle={questionStyles.scroll} showsVerticalScrollIndicator={false}>
-        {/* meta */}
+    <View style={questionStyles.page}>
+      <ScrollView
+        style={questionStyles.scrollView}
+        contentContainerStyle={questionStyles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={questionStyles.metaRow}>
           {q.difficulty && <Text style={questionStyles.metaTag}>{difficultyLabel(q.difficulty)}</Text>}
           {multi && <Text style={questionStyles.metaTagMulti}>多选</Text>}
@@ -528,10 +702,8 @@ function QuestionCard({
           )}
         </View>
 
-        {/* 题干 */}
         <Text style={questionStyles.stem}>{q.content || '（题干缺失）'}</Text>
 
-        {/* 选项 */}
         {optionEntries.length > 0 ? (
           <View style={questionStyles.options}>
             {optionEntries.map(([key, label]) => {
@@ -566,11 +738,7 @@ function QuestionCard({
                     {isWrongPick && <Ionicons name="close" size={14} color="#fff" />}
                     {isMissed && <Ionicons name="checkmark" size={14} color="#fff" />}
                   </View>
-                  <Text style={[
-                    questionStyles.optionKey,
-                  ]}>
-                    {key}
-                  </Text>
+                  <Text style={questionStyles.optionKey}>{key}</Text>
                   <Text
                     style={[
                       questionStyles.optionText,
@@ -586,7 +754,6 @@ function QuestionCard({
             })}
           </View>
         ) : isShortAnswer ? (
-          // 问答题：文本输入框
           !answered ? (
             <View style={questionStyles.shortAnswerWrap}>
               <TextInput
@@ -603,27 +770,17 @@ function QuestionCard({
               <Text style={questionStyles.shortAnswerHint}>{shortAnswer.length}/500</Text>
             </View>
           ) : (
-            // 已答：显示用户答案 + 正确答案
             <View style={questionStyles.shortAnswerResult}>
               <View style={questionStyles.shortAnswerUserWrap}>
                 <Text style={questionStyles.shortAnswerLabel}>你的答案</Text>
                 <Text style={[questionStyles.shortAnswerValue, !isCorrect && { color: Colors.danger }]}>
-                  {answer?.picked[0] || '未作答'}
+                  {visibleAnswer?.picked[0] || '未作答'}
                 </Text>
               </View>
-              {!isCorrect && (
-                <View style={questionStyles.fillAnswer}>
-                  <Text style={questionStyles.fillLabel}>正确答案</Text>
-                  <Text style={questionStyles.fillValue}>
-                    {normalizeCorrectAnswer(q.correct_answer).join('、')}
-                  </Text>
-                </View>
-              )}
             </View>
           )
         ) : null}
 
-        {/* 反馈区 */}
         {answered && (
           <View
             style={[
@@ -643,38 +800,78 @@ function QuestionCard({
                   { color: isCorrect ? Colors.success : Colors.danger },
                 ]}
               >
-                {isCorrect ? (answer!.result.mastered ? '太棒了，已掌握 🎉' : '答对了！') : '答错了'}
+                {visibleAnswer!.result.reviewed_only ? (revealed && !answer ? '已查看答案，可复制答案与解析' : '今天已复习，可继续查看答案') : (isCorrect ? (visibleAnswer!.result.mastered ? '太棒了，已掌握 🎉' : '答对了！') : '答错了')}
               </Text>
             </View>
-            {!isCorrect && correctKeys.length > 0 && optionEntries.length > 0 && (
-              <Text style={questionStyles.feedbackCorrectHint}>
-                正解：<Text style={{ color: Colors.success, fontWeight: '600' }}>
-                  {correctKeys.map(k => {
-                    const entry = optionEntries.find(([ek]) => ek === k);
-                    return entry ? `${k}. ${entry[1]}` : k;
-                  }).join('、')}
-                </Text>
-              </Text>
+
+            {correctAnswerText && (
+              <View style={questionStyles.copyBlock}>
+                <View style={questionStyles.copyBlockHeader}>
+                  <Text style={questionStyles.feedbackLabel}>正确答案</Text>
+                  <TouchableOpacity
+                    style={questionStyles.copyBtn}
+                    onPress={() => copyText(correctAnswerText, '正确答案')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="copy-outline" size={14} color={Colors.primary} />
+                    <Text style={questionStyles.copyBtnText}>复制</Text>
+                  </TouchableOpacity>
+                </View>
+                {correctAnswerEntries.length > 0 ? (
+                  <View style={questionStyles.answerOptionList}>
+                    {correctAnswerEntries.map((entry) => (
+                      <View key={entry.key} style={questionStyles.answerOptionRow}>
+                        <Text style={questionStyles.answerOptionKey}>{entry.key}</Text>
+                        <Text style={questionStyles.answerOptionText}>{entry.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={questionStyles.feedbackCorrectHint}>{correctAnswerText}</Text>
+                )}
+              </View>
             )}
-            {q.explanation && (
-              <Text style={questionStyles.feedbackText}>
-                <Text style={questionStyles.feedbackLabel}>解析：</Text>
-                {q.explanation}
-              </Text>
+
+            {explanationText && (
+              <View style={questionStyles.copyBlock}>
+                <View style={questionStyles.copyBlockHeader}>
+                  <Text style={questionStyles.feedbackLabel}>解析</Text>
+                  <TouchableOpacity
+                    style={questionStyles.copyBtn}
+                    onPress={() => copyText(explanationText, '解析')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="copy-outline" size={14} color={Colors.primary} />
+                    <Text style={questionStyles.copyBtnText}>复制</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={questionStyles.feedbackText}>{explanationText}</Text>
+              </View>
             )}
           </View>
         )}
       </ScrollView>
 
-      {/* 底部 CTA */}
       {!answered ? (
         <View style={questionStyles.submitWrap}>
-          <TouchableOpacity
-            style={[questionStyles.submitBtn, !canSubmit && questionStyles.submitBtnDisabled]}
-            disabled={!canSubmit || submitting}
-            onPress={handleSubmitAnswer}
-            activeOpacity={0.85}
-          >
+          <View style={questionStyles.actionRow}>
+            <TouchableOpacity
+              style={questionStyles.revealBtn}
+              onPress={() => {
+                haptics.light();
+                setRevealed(true);
+              }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="eye-outline" size={16} color={Colors.primary} />
+              <Text style={questionStyles.revealBtnText}>查看答案</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[questionStyles.submitBtn, questionStyles.submitBtnInRow, !canSubmit && questionStyles.submitBtnDisabled]}
+              disabled={!canSubmit || submitting}
+              onPress={handleSubmitAnswer}
+              activeOpacity={0.85}
+            >
             {submitting ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -682,7 +879,8 @@ function QuestionCard({
                 {multi && selected.length > 0 ? `提交（已选${selected.length}项）` : '提交答案'}
               </Text>
             )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : onNext ? (
         <View style={questionStyles.submitWrap}>
@@ -697,7 +895,14 @@ function QuestionCard({
             <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         </View>
-      ) : null}
+      ) : (
+        <View style={questionStyles.submitWrap}>
+          <View style={questionStyles.doneHint}>
+            <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+            <Text style={questionStyles.doneHintText}>本题已作答，可继续查看答案与解析</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -734,10 +939,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
+    flex: 1,
+    textAlign: 'center',
     fontSize: 16,
     fontWeight: '600',
     color: Colors.text,
+    paddingHorizontal: 8,
   },
+  statsCard: {
+    flexDirection: 'row',
+    backgroundColor: Colors.card,
+    borderRadius: Rounded.lg,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  statBlock: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, backgroundColor: Colors.border },
+  statValue: { fontSize: 22, fontWeight: '700', color: Colors.text, marginBottom: 4 },
+  statLabel: { fontSize: 12, color: Colors.textMuted },
+  courseListContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  detailStatsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  detailStatText: { fontSize: 12, color: Colors.textMuted },
+  detailStatDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: Colors.border },
   progressBar: {
     height: 4,
     backgroundColor: Colors.border,
@@ -748,6 +984,13 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: Colors.primary,
+  },
+  questionArea: {
+    flex: 1,
+    minHeight: 0,
+  },
+  questionPager: {
+    flex: 1,
   },
   emptyEmoji: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { fontSize: 20, fontWeight: '600', color: Colors.text, marginBottom: 8 },
@@ -764,63 +1007,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  secondaryBtn: {
-    marginTop: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    backgroundColor: Colors.card,
-    borderRadius: Rounded.lg,
-    minWidth: 200,
-  },
-  secondaryBtnText: { color: Colors.primary, fontSize: 15, fontWeight: '500' },
-  tertiaryBtn: {
-    marginTop: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  tertiaryBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '500' },
-  completeScroll: {
-    padding: 24,
-    alignItems: 'center',
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  completeEmoji: { fontSize: 64, marginBottom: 12 },
-  completeTitle: { fontSize: 24, fontWeight: '700', color: Colors.text, marginBottom: 24 },
-  completeStats: {
-    flexDirection: 'row',
-    backgroundColor: Colors.card,
-    borderRadius: Rounded.lg,
-    padding: 20,
-    marginBottom: 16,
-    width: '100%',
-    maxWidth: 360,
-  },
-  completeStatItem: { flex: 1, alignItems: 'center' },
-  completeStatDivider: { width: 1, backgroundColor: Colors.border, marginVertical: 4 },
-  completeStatValue: { fontSize: 28, fontWeight: '700', color: Colors.text, marginBottom: 4 },
-  completeStatLabel: { fontSize: 12, color: Colors.textMuted },
-  masteredBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fef3c7',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Rounded.full,
-    marginBottom: 24,
-  },
-  masteredBadgeText: { marginLeft: 6, fontSize: 13, color: '#92400e', fontWeight: '500' },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: Colors.background,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
@@ -834,13 +1027,56 @@ const styles = StyleSheet.create({
   footerBtnText: { fontSize: 15, color: Colors.text, marginHorizontal: 4 },
 });
 
+const courseCardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleWrap: { flex: 1, gap: 2 },
+  title: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  subtitle: { fontSize: 12, color: Colors.textMuted },
+  statusRow: { flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 10 },
+  statusPill: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  statusLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 2 },
+  statusValue: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  progressBar: { height: 4, borderRadius: 2, backgroundColor: Colors.border, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: Colors.primary },
+});
+
 const questionStyles = StyleSheet.create({
   page: {
+    flex: 1,
+    width: '100%',
+    minWidth: 0,
+  },
+  scrollView: {
     flex: 1,
   },
   scroll: {
     padding: 20,
-    paddingBottom: 20,
+    // 题卡下面还有外层“上一题/下一题”footer。
+    // 答案/解析较长时必须给底部留出滚动缓冲，否则最后一段内容会被 footer 视觉遮挡。
+    paddingBottom: 112,
+    flexGrow: 1,
   },
   metaRow: {
     flexDirection: 'row',
@@ -890,10 +1126,13 @@ const questionStyles = StyleSheet.create({
   },
   options: {
     gap: 12,
+    width: '100%',
   },
   option: {
+    width: '100%',
+    minWidth: 0,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 14,
     borderRadius: Rounded.lg,
     borderWidth: 1.5,
@@ -927,7 +1166,8 @@ const questionStyles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 10,
+    marginTop: 2,
     backgroundColor: '#f9fafb',
   },
   optionCheckboxPicked: {
@@ -948,6 +1188,7 @@ const questionStyles = StyleSheet.create({
   },
   optionKey: {
     width: 24,
+    flexShrink: 0,
     fontSize: 14,
     fontWeight: '600',
     color: Colors.textMuted,
@@ -955,6 +1196,8 @@ const questionStyles = StyleSheet.create({
   },
   optionText: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     fontSize: 15,
     color: Colors.text,
     lineHeight: 22,
@@ -964,6 +1207,7 @@ const questionStyles = StyleSheet.create({
     padding: 14,
     borderRadius: Rounded.md,
     borderWidth: 1,
+    gap: 12,
   },
   feedbackOk: { borderColor: Colors.success, backgroundColor: '#ecfdf5' },
   feedbackBad: { borderColor: Colors.danger, backgroundColor: '#fef2f2' },
@@ -971,27 +1215,69 @@ const questionStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 6,
   },
   feedbackTitle: { fontSize: 15, fontWeight: '600' },
   feedbackText: { fontSize: 14, color: Colors.text, lineHeight: 22 },
-  feedbackLabel: { fontWeight: '600' },
+  feedbackLabel: { fontWeight: '600', color: Colors.text, fontSize: 13 },
   feedbackCorrectHint: {
     fontSize: 14,
-    color: Colors.text,
-    marginTop: 6,
+    color: Colors.success,
     lineHeight: 20,
+    fontWeight: '500',
   },
-  fillAnswer: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: Rounded.md,
-    backgroundColor: '#ecfdf5',
+  answerOptionList: {
+    gap: 8,
+  },
+  answerOptionRow: {
+    width: '100%',
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#f0fdf4',
     borderWidth: 1,
-    borderColor: Colors.success,
+    borderColor: '#bbf7d0',
   },
-  fillLabel: { fontSize: 12, color: Colors.success, fontWeight: '600', marginBottom: 4 },
-  fillValue: { fontSize: 15, color: Colors.text, fontWeight: '500', lineHeight: 22 },
+  answerOptionKey: {
+    minWidth: 28,
+    flexShrink: 0,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.success,
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 28,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  answerOptionText: {
+    flex: 1,
+    minWidth: 0,
+    color: Colors.text,
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '500',
+  },
+  copyBlock: {
+    gap: 6,
+  },
+  copyBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: Colors.card,
+  },
+  copyBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
   shortAnswerWrap: {
     marginTop: 8,
   },
@@ -1051,7 +1337,42 @@ const questionStyles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  revealBtn: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: Rounded.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  revealBtnText: {
+    color: Colors.primary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  submitBtnInRow: {
+    flex: 1,
+  },
   submitBtnDisabled: { backgroundColor: Colors.border },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   submitBtnWrong: { backgroundColor: Colors.danger },
+  doneHint: {
+    minHeight: 48,
+    borderRadius: Rounded.lg,
+    backgroundColor: '#ecfdf5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  doneHintText: { color: Colors.success, fontSize: 14, fontWeight: '500' },
 });

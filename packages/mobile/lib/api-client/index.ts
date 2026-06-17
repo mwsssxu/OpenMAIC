@@ -1684,7 +1684,7 @@ class ApiClient {
     return data;
   }
 
-  async getMistakeList(opts?: { course_id?: string; only_unmastered?: boolean; limit?: number; offset?: number }) {
+  async getMistakeList(opts?: { course_id?: string; uncategorized?: boolean; only_unmastered?: boolean; today_scope?: boolean; limit?: number; offset?: number }) {
     const { data } = await this.client.get('/mistakes/list', { params: opts });
     return data as {
       items: Array<{
@@ -1701,6 +1701,19 @@ class ApiClient {
         first_wrong_at: string | null;
       }>;
     };
+  }
+
+  async getMistakesByCourse(opts?: { today_scope?: boolean }) {
+    const { data } = await this.client.get('/mistakes/by-course', { params: opts });
+    return data as Array<{
+      course_id: string | null;
+      course_name: string;
+      total_count: number;
+      unmastered_count: number;
+      mastered_count: number;
+      due_count: number;
+      reviewed_today_count?: number;
+    }>;
   }
 
   async getAssessmentResults(courseId: string) {

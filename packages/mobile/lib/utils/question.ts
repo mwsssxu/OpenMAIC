@@ -27,9 +27,36 @@ export function parseOptions(options: any): OptionEntry[] {
     return Object.entries(options).map(([k, v]) => [String(k), String(v ?? '')]);
   }
 
-  // array 形态: ["选项1", "选项2"]
+  // array 形态: ["选项1", "选项2"] 或 [{label:"A", value:"选项1"}, ...]
   if (Array.isArray(options)) {
-    return options.map((v: any, i: number) => [String.fromCharCode(65 + i), String(v ?? '')]);
+    const isKeyLike = (value: any) => /^[A-Z]$/.test(String(value ?? '').trim()) || /^\d+$/.test(String(value ?? '').trim());
+    return options.map((v: any, i: number) => {
+      if (typeof v === 'object' && v !== null) {
+        const fallbackKey = String.fromCharCode(65 + i);
+        const label = v.label;
+        const value = v.value;
+        let key = v.key ?? v.id ?? fallbackKey;
+        let text = v.content ?? v.text ?? v.title;
+
+        if (text == null && label != null && value != null) {
+          if (isKeyLike(label) && !isKeyLike(value)) {
+            key = label;
+            text = value;
+          } else if (isKeyLike(value) && !isKeyLike(label)) {
+            key = value;
+            text = label;
+          } else {
+            key = v.key ?? value ?? label ?? fallbackKey;
+            text = label ?? value;
+          }
+        } else if (text == null) {
+          text = label ?? value ?? '';
+        }
+
+        return [String(key), String(text)];
+      }
+      return [String.fromCharCode(65 + i), String(v ?? '')];
+    });
   }
 
   // 异常 fallback

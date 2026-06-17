@@ -42,7 +42,8 @@ async def record_mistakes_from_assessment(
         if not qid:
             continue
         user_ans = answer_map.get(qid)
-        is_wrong = user_ans != q.get("correct_answer")
+        correct_answer = q.get("correct_answer") if q.get("correct_answer") is not None else q.get("answer")
+        is_wrong = user_ans != correct_answer
         if not is_wrong:
             continue
 
@@ -50,10 +51,10 @@ async def record_mistakes_from_assessment(
         snapshot = {
             "id": qid,
             "type": q.get("type"),
-            "content": q.get("content") or q.get("stem"),
+            "content": q.get("content") or q.get("stem") or q.get("question"),
             "options": q.get("options"),
-            "correct_answer": q.get("correct_answer"),
-            "explanation": q.get("explanation"),
+            "correct_answer": correct_answer,
+            "explanation": q.get("explanation") or q.get("analysis"),
             "difficulty": q.get("difficulty"),
             "points": q.get("points", 1),
         }
@@ -155,7 +156,7 @@ async def submit_review_answer(
     snapshot = row["question_snapshot"]
     if isinstance(snapshot, str):
         snapshot = json.loads(snapshot)
-    correct_answer = snapshot.get("correct_answer")
+    correct_answer = snapshot.get("correct_answer") if snapshot.get("correct_answer") is not None else snapshot.get("answer")
 
     # 归一化比较：支持单选（string）和多选（list/comma-separated）
     def _normalize(a: Any) -> str:

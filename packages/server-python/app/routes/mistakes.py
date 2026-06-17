@@ -14,6 +14,7 @@ import uuid
 from app.db.database import get_db
 from app.middleware.auth import get_current_user_id
 from app.services import mistake_service
+from app.core.time_utils import utcnow
 
 router = APIRouter(prefix="/mistakes", tags=["mistakes"])
 
@@ -96,7 +97,9 @@ async def answer_mistake(
 @router.get("/list")
 async def list_mistakes(
     course_id: Optional[str] = None,
+    uncategorized: bool = False,
     only_unmastered: bool = True,
+    today_scope: bool = False,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_id: str = Depends(get_current_user_id),
@@ -108,9 +111,19 @@ async def list_mistakes(
     # 动态条件
     conditions = ["user_id = $1"]
     params: list = [user_uuid]
-    if only_unmastered:
+    if today_scope:
+        now = utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        conditions.append(
+            f"((mastered = FALSE AND next_review_at <= ${len(params) + 1}) "
+            f"OR last_reviewed_at >= ${len(params) + 2})"
+        )
+        params.extend([now, today_start])
+    elif only_unmastered:
         conditions.append("mastered = FALSE")
-    if course_id:
+    if uncategorized:
+        conditions.append("course_id IS NULL")
+    elif course_id:
         try:
             conditions.append(f"course_id = ${len(params) + 1}")
             params.append(uuid.UUID(course_id))
@@ -126,7 +139,7 @@ async def list_mistakes(
                next_review_at, last_reviewed_at, first_wrong_at
         FROM mistake_records
         WHERE {where_clause}
-        ORDER BY mastered ASC, next_review_at ASC
+        ORDER BY mastered ASC, next_review_at ASC NULLS LAST, first_wrong_at ASC NULLS LAST, id ASC
         LIMIT ${len(params) - 1} OFFSET ${len(params)}
         """,
         *params,
@@ -151,3 +164,55 @@ async def list_mistakes(
             "first_wrong_at": r["first_wrong_at"].isoformat() if r["first_wrong_at"] else None,
         })
     return {"items": out}
+
+
+@router.get("/by-course")
+async def mistakes_by_course(
+    today_scope: bool = False,
+    user_id: str = Depends(get_current_user_id),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """按课程聚合错题统计（错题本/每日复习课程卡片用）。"""
+    user_uuid = uuid.UUID(user_id)
+    now = utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    scope_clause = ""
+    params = [user_uuid, now, today_start]
+    if today_scope:
+        scope_clause = """
+          AND (
+            (m.mastered = FALSE AND m.next_review_at <= $2)
+            OR m.last_reviewed_at >= $3
+          )
+        """
+    rows = await db.fetch(
+        f"""
+        SELECT
+            m.course_id,
+            COALESCE(s.name, '未分类') AS course_name,
+            COUNT(*) AS total_count,
+            COUNT(*) FILTER (WHERE m.mastered = FALSE) AS unmastered_count,
+            COUNT(*) FILTER (WHERE m.mastered = TRUE) AS mastered_count,
+            COUNT(*) FILTER (WHERE m.mastered = FALSE AND m.next_review_at <= $2) AS due_count,
+            COUNT(*) FILTER (WHERE m.last_reviewed_at >= $3) AS reviewed_today_count
+        FROM mistake_records m
+        LEFT JOIN stages s ON m.course_id = s.id AND s.user_id = $1
+        WHERE m.user_id = $1
+        {scope_clause}
+        GROUP BY m.course_id, s.name
+        ORDER BY due_count DESC, total_count DESC
+        """,
+        *params,
+    )
+    return [
+        {
+            "course_id": str(r["course_id"]) if r["course_id"] else None,
+            "course_name": r["course_name"],
+            "total_count": r["total_count"],
+            "unmastered_count": r["unmastered_count"],
+            "mastered_count": r["mastered_count"],
+            "due_count": r["due_count"],
+            "reviewed_today_count": r["reviewed_today_count"],
+        }
+        for r in rows
+    ]
