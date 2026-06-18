@@ -850,11 +850,23 @@ export default function ClassroomScreen() {
 
       // 优先使用从API获取的大纲（更可靠）
       if (pendingOutlinesFromAPI && pendingOutlinesFromAPI.length > 0 && !backgroundCreatingRef.current) {
+        // 幂等保护：如果已有部分场景，说明上一次创建被中断，不要重新创建全部
+        if (existingSceneCount > 0) {
+          console.log(`[LoadClassroom] 已有 ${existingSceneCount} 个场景，pending_outlines 仍有 ${pendingOutlinesFromAPI.length} 项——可能创建中刷新，跳过重复创建`);
+          setShowManualCreateHint(false);
+          return;
+        }
         console.log('[LoadClassroom] Starting parallel scene creation from API outlines...');
         setShowManualCreateHint(false);
         createAllScenesInBackground(pendingOutlinesFromAPI);
       } else if (pendingOutlinesParam && !backgroundCreatingRef.current) {
         // 有完整大纲数据（URL参数），解析后并行创建
+        // 幂等保护：已有场景时跳过（创建中刷新场景）
+        if (existingSceneCount > 0) {
+          console.log(`[LoadClassroom] 已有 ${existingSceneCount} 个场景，URL 参数大纲跳过`);
+          setShowManualCreateHint(false);
+          return;
+        }
         console.log('[LoadClassroom] Starting parallel scene creation from URL param...');
         setShowManualCreateHint(false);
         try {

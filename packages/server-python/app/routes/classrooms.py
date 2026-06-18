@@ -795,6 +795,11 @@ async def create_all_scenes_for_classroom(
 
     logger.info(f"[SceneCreateAll] 并行创建 {len(outlines)} 个场景 - classroom={classroom_id}")
 
+    # 幂等保护：立即清空 pending_outlines，防止刷新导致重复创建
+    await db.execute(
+        "UPDATE stages SET pending_outlines = NULL WHERE id = $1", classroom_uuid
+    )
+
     existing_scenes = await db.fetch(
         "SELECT order_index FROM scenes WHERE stage_id = $1 ORDER BY order_index DESC LIMIT 1",
         classroom_uuid
@@ -813,10 +818,6 @@ async def create_all_scenes_for_classroom(
 
     total_elapsed = time.time() - start_time
     logger.info(f"[SceneCreateAll] 全部场景创建完成 (耗时: {total_elapsed:.2f}s)")
-
-    await db.execute(
-        "UPDATE stages SET pending_outlines = NULL WHERE id = $1", classroom_uuid
-    )
 
     # 自动缓存课程（供后续语义匹配复用）
     try:
