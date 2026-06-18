@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, Image } from 'react-native';
+import { getAvatarImage } from '@/lib/constants/avatar-images';
 
 interface AgentAvatarProps {
   agentId: string;
@@ -8,16 +9,19 @@ interface AgentAvatarProps {
 }
 
 export function AgentAvatar({ agentId, name, avatarUrl, size = 40 }: AgentAvatarProps) {
+  // Try local avatar image first, then URL, then fallback to initial
+  const localImg = getAvatarImage(avatarUrl);
+  const hasUrl = avatarUrl && avatarUrl.startsWith('http');
+
   return (
     <View style={[styles.container, { width: size + 10 }]}>
-      {avatarUrl ? (
-        <Image
-          source={{ uri: avatarUrl }}
-          style={[styles.avatar, { width: size, height: size }]}
-        />
+      {localImg ? (
+        <Image source={localImg} style={[styles.avatar, { width: size, height: size }]} />
+      ) : hasUrl ? (
+        <Image source={{ uri: avatarUrl }} style={[styles.avatar, { width: size, height: size }]} />
       ) : (
         <View style={[styles.placeholder, { width: size, height: size }]}>
-          <Text style={styles.initial}>{name[0] || 'A'}</Text>
+          <Text style={[styles.initial, { fontSize: size * 0.4 }]}>{name[0] || 'A'}</Text>
         </View>
       )}
       <Text style={[styles.name, { maxWidth: size + 10 }]} numberOfLines={1}>
@@ -36,6 +40,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  initial: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  initial: { color: 'white', fontWeight: 'bold' },
   name: { fontSize: 12, marginTop: 4, textAlign: 'center' },
 });

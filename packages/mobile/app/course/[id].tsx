@@ -9,8 +9,10 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
+  Image,
 } from 'react-native';
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
+import { getAvatarImage } from '@/lib/constants/avatar-images';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -78,15 +80,14 @@ interface ClassroomData {
 }
 
 // 辅助函数：从 agents 中提取讲师信息
-function getInstructorInfo(agents?: any[]): { name: string; avatar: string } {
-  if (!agents || agents.length === 0) return { name: 'AI 导师', avatar: 'AI' };
+function getInstructorInfo(agents?: any[]): { name: string; avatar: string; avatarImg: any | null } {
+  if (!agents || agents.length === 0) return { name: 'AI 导师', avatar: 'AI', avatarImg: null };
   const teacher = agents.find((a: any) => a.role === 'teacher');
   if (teacher) {
-    const firstName = teacher.name?.charAt(0) || 'A';
-    return { name: teacher.name || 'AI 导师', avatar: firstName };
+    return { name: teacher.name || 'AI 导师', avatar: teacher.avatar || '', avatarImg: getAvatarImage(teacher.avatar) };
   }
   const first = agents[0];
-  return { name: first.name || 'AI 导师', avatar: first.name?.charAt(0) || 'A' };
+  return { name: first.name || 'AI 导师', avatar: first.avatar || '', avatarImg: getAvatarImage(first.avatar) };
 }
 
 // 辅助函数：估算场景时长（分钟）
@@ -345,7 +346,12 @@ export default function CourseDetailScreen() {
           <View style={styles.courseMetaRow}>
             <View style={styles.instructor}>
               <View style={styles.instructorAvatar}>
-                <Text style={styles.instructorAvatarText}>{getInstructorInfo(classroom.agents).avatar}</Text>
+                {(() => {
+                  const info = getInstructorInfo(classroom.agents);
+                  return info.avatarImg
+                    ? <Image source={info.avatarImg} style={styles.instructorAvatarImg} />
+                    : <Text style={styles.instructorAvatarText}>{info.avatar || 'A'}</Text>;
+                })()}
               </View>
               <Text style={styles.instructorName}>{getInstructorInfo(classroom.agents).name}</Text>
             </View>
@@ -595,6 +601,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#fff',
     fontWeight: '600',
+  },
+  instructorAvatarImg: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
   },
   instructorName: {
     fontSize: 13,

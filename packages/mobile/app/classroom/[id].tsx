@@ -12,12 +12,14 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useGoBack } from '@/lib/utils/navigation';
 import { showError, confirmAction } from '@/lib/utils/error-toast';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { getAvatarImage } from '@/lib/constants/avatar-images';
 import * as Speech from 'expo-speech';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -2579,14 +2581,14 @@ export default function ClassroomScreen() {
             style={[styles.agentAvatarBtn, { backgroundColor: safeColorWithAlpha(agent.color, '20') }]}
             onPress={() => openAgentChat(agent)}
           >
-            {/* 头像显示 - 使用 emoji 或首字母 */}
+            {/* 头像显示 - 使用 DiceBear 头像图片 */}
             <View style={[styles.agentAvatarCircle, { backgroundColor: agent.color }]}>
-              <Text style={styles.agentAvatarInner}>
-                {agent.avatar === 'teacher.png' ? '👨‍🏫' :
-                 agent.avatar === 'assistant.png' ? '👨‍💼' :
-                 agent.avatar?.startsWith('student') ? '👨' :
-                 agent.avatar ? '👤' : agent.name[0]}
-              </Text>
+              {(() => {
+                const img = getAvatarImage(agent.avatar);
+                return img
+                  ? <Image source={img} style={styles.agentAvatarImg} />
+                  : <Text style={styles.agentAvatarInner}>{agent.name[0]}</Text>;
+              })()}
             </View>
             <Text style={[styles.agentName, { color: agent.color }]} numberOfLines={1}>
               {agent.name.length > 4 ? agent.name.slice(0, 4) : agent.name}
@@ -2699,12 +2701,7 @@ export default function ClassroomScreen() {
           <View style={styles.chatPanelHeader}>
             {selectedAgent && (
               <View style={[styles.modalAgentAvatarSmall, { backgroundColor: selectedAgent.color }]}>
-                <Text style={styles.modalAgentAvatarText}>
-                  {selectedAgent.avatar === 'teacher.png' ? '👨‍🏫' :
-                   selectedAgent.avatar === 'assistant.png' ? '👨‍💼' :
-                   selectedAgent.avatar?.startsWith('student') ? '👨' :
-                   selectedAgent.avatar ? '👤' : selectedAgent.name[0]}
-                </Text>
+                {(() => { const img = getAvatarImage(selectedAgent.avatar); return img ? <Image source={img} style={styles.modalAgentAvatarImg} /> : <Text style={styles.modalAgentAvatarText}>{selectedAgent.name[0]}</Text>; })()}
               </View>
             )}
             <Text style={styles.chatPanelTitle}>{selectedAgent?.name || (discussionMode ? '多Agent讨论' : '对话')}</Text>
@@ -2727,9 +2724,7 @@ export default function ClassroomScreen() {
                   const isCurrentSpeaker = agent.id === speakingAgentId;
                   return (
                     <View key={agent.id} style={[styles.participantAvatar, { backgroundColor: agent.color }, isCurrentSpeaker && styles.participantAvatarActive]}>
-                      <Text style={styles.participantAvatarText}>
-                        {agent.avatar === 'teacher.png' ? '👨‍🏫' : agent.avatar === 'assistant.png' ? '👨‍💼' : agent.avatar?.startsWith('student') ? '👨' : agent.avatar ? '👤' : agent.name[0]}
-                      </Text>
+                      {(() => { const img = getAvatarImage(agent.avatar); return img ? <Image source={img} style={styles.participantAvatarImg} /> : <Text style={styles.participantAvatarText}>{agent.name[0]}</Text>; })()}
                     </View>
                   );
                 })}
@@ -2791,12 +2786,7 @@ export default function ClassroomScreen() {
           <View style={styles.modalHeaderCompact}>
             {selectedAgent && (
               <View style={[styles.modalAgentAvatarSmall, { backgroundColor: selectedAgent.color }]}>
-                <Text style={styles.modalAgentAvatarText}>
-                  {selectedAgent.avatar === 'teacher.png' ? '👨‍🏫' :
-                   selectedAgent.avatar === 'assistant.png' ? '👨‍💼' :
-                   selectedAgent.avatar?.startsWith('student') ? '👨' :
-                   selectedAgent.avatar ? '👤' : selectedAgent.name[0]}
-                </Text>
+                {(() => { const img = getAvatarImage(selectedAgent.avatar); return img ? <Image source={img} style={styles.modalAgentAvatarImg} /> : <Text style={styles.modalAgentAvatarText}>{selectedAgent.name[0]}</Text>; })()}
               </View>
             )}
             <Text style={styles.modalTitleCompact}>{selectedAgent?.name || (discussionMode ? '多Agent讨论' : '对话')}</Text>
@@ -2820,9 +2810,7 @@ export default function ClassroomScreen() {
                   const isCurrentSpeaker = agent.id === speakingAgentId;
                   return (
                     <View key={agent.id} style={[styles.participantAvatar, { backgroundColor: agent.color }, isCurrentSpeaker && styles.participantAvatarActive]}>
-                      <Text style={styles.participantAvatarText}>
-                        {agent.avatar === 'teacher.png' ? '👨‍🏫' : agent.avatar === 'assistant.png' ? '👨‍💼' : agent.avatar?.startsWith('student') ? '👨' : agent.avatar ? '👤' : agent.name[0]}
-                      </Text>
+                      {(() => { const img = getAvatarImage(agent.avatar); return img ? <Image source={img} style={styles.participantAvatarImg} /> : <Text style={styles.participantAvatarText}>{agent.name[0]}</Text>; })()}
                       {isCurrentSpeaker && <View style={styles.speakingDot}><Ionicons name="volume-high" size={10} color="white" /></View>}
                     </View>
                   );
@@ -3555,6 +3543,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.neutral.white,
   },
+  agentAvatarImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
   agentName: {
     fontSize: 10,
     marginTop: 2,
@@ -3635,6 +3628,11 @@ const styles = StyleSheet.create({
     fontSize: 12, // 缩小头像文字
     color: 'white',
   },
+  modalAgentAvatarImg: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
   modalTitleCompact: {
     flex: 1,
     fontSize: 14, // 缩小标题字体
@@ -3695,6 +3693,11 @@ const styles = StyleSheet.create({
     fontSize: 12, // 缩小字体
     fontWeight: '600',
     color: 'white',
+  },
+  participantAvatarImg: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   speakingDot: {
     position: 'absolute',

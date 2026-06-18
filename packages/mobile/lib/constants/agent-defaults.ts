@@ -24,19 +24,19 @@ export const AGENT_COLOR_PALETTE = [
 /**
  * Default avatar paths cycled for generated agents.
  *
- * These correspond to avatar files that can be displayed as emojis or icons.
+ * These correspond to local PNG assets in assets/avatars/.
  */
 export const AGENT_DEFAULT_AVATARS = [
-  '/avatars/teacher.png',
-  '/avatars/assist.png',
-  '/avatars/curious.png',
-  '/avatars/thinker.png',
-  '/avatars/note-taker.png',
-  '/avatars/teacher-2.png',
-  '/avatars/assist-2.png',
-  '/avatars/curious-2.png',
-  '/avatars/thinker-2.png',
-  '/avatars/note-taker-2.png',
+  'teacher-1',
+  'assistant-1',
+  'curious-1',
+  'thinker-1',
+  'note-taker-1',
+  'teacher-2',
+  'assistant-2',
+  'curious-2',
+  'thinker-2',
+  'note-taker-2',
 ] as const;
 
 /**
@@ -69,14 +69,14 @@ export function getAvatarEmoji(avatarPath: string): string {
  * Used when generating agents to help LLM pick appropriate avatars
  */
 export const AVATAR_DESCRIPTIONS = [
-  { path: '/avatars/teacher.png', desc: '专业的教师形象，适合主讲老师角色' },
-  { path: '/avatars/assist-2.png', desc: '温和的助教形象，适合辅助教学角色' },
-  { path: '/avatars/curious.png', desc: '好奇的学生形象，适合积极参与的学生角色' },
-  { path: '/avatars/thinker.png', desc: '思考型学生形象，适合深度思考的学生角色' },
-  { path: '/avatars/note-taker.png', desc: '记录型学生形象，适合认真笔记的学生角色' },
-  { path: '/avatars/teacher-2.png', desc: '亲切的女教师形象，适合主讲老师角色' },
-  { path: '/avatars/assist.png', desc: '专业的助教形象，适合辅助教学角色' },
-  { path: '/avatars/curious-2.png', desc: '活泼的学生形象，适合积极互动的学生角色' },
-  { path: '/avatars/thinker-2.png', desc: '沉思型学生形象，适合深度分析的学生角色' },
-  { path: '/avatars/note-taker-2.png', desc: '细致的学生形象，适合记录整理的学生角色' },
+  { path: 'teacher-1', desc: '专业的教师形象，适合主讲老师角色' },
+  { path: 'assistant-1', desc: '温和的助教形象，适合辅助教学角色' },
+  { path: 'curious-1', desc: '好奇的学生形象，适合积极参与的学生角色' },
+  { path: 'thinker-1', desc: '思考型学生形象，适合深度思考的学生角色' },
+  { path: 'note-taker-1', desc: '记录型学生形象，适合认真笔记的学生角色' },
+  { path: 'teacher-2', desc: '亲切的女教师形象，适合主讲老师角色' },
+  { path: 'assistant-2', desc: '专业的助教形象，适合辅助教学角色' },
+  { path: 'curious-2', desc: '活泼的学生形象，适合积极互动的学生角色' },
+  { path: 'thinker-2', desc: '沉思型学生形象，适合深度分析的学生角色' },
+  { path: 'note-taker-2', desc: '细致的学生形象，适合记录整理的学生角色' },
 ] as const;
