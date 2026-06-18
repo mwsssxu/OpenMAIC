@@ -229,6 +229,7 @@ export default function ReviewScreen() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [courseQuery, setCourseQuery] = useState('');
   const [stats, setStats] = useState({ total: 0, mastered_count: 0, due_count: 0 });
   const [selectedCourse, setSelectedCourse] = useState<CourseSummary | null>(null);
   const [items, setItems] = useState<MistakeItem[]>([]);
@@ -380,6 +381,12 @@ export default function ReviewScreen() {
     return map;
   }, [courseProgress, courses]);
 
+  const filteredCourses = useMemo(() => {
+    const keyword = courseQuery.trim().toLowerCase();
+    if (!keyword) return courses;
+    return courses.filter((course) => course.course_name.toLowerCase().includes(keyword));
+  }, [courseQuery, courses]);
+
   // ============ Loading ============
   if (loading) {
     return (
@@ -397,7 +404,7 @@ export default function ReviewScreen() {
   if (!selectedCourse) {
     const todayTotal = courses.reduce((sum, c) => sum + c.total_count, 0);
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <QuoteHeader />
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -438,23 +445,55 @@ export default function ReviewScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <FlatList
-            data={courses}
-            keyExtractor={(item) => item.course_id ?? UNCATEGORIZED_SENTINEL}
-            contentContainerStyle={styles.courseListContent}
-            renderItem={({ item }) => {
-              const key = courseKey(item.course_id);
-              const progress = summaryProgress[key] ?? { answered: item.reviewed_today_count ?? 0, correct: 0 };
-              return (
-                <ReviewCourseCard
-                  course={item}
-                  answered={Math.min(progress.answered, item.total_count)}
-                  correct={progress.correct}
-                  onPress={() => handleSelectCourse(item)}
-                />
-              );
-            }}
-          />
+          <>
+            <View style={styles.courseFilterWrap}>
+              <Ionicons name="search" size={18} color={Colors.textMuted} />
+              <TextInput
+                style={styles.courseFilterInput}
+                value={courseQuery}
+                onChangeText={setCourseQuery}
+                placeholder="按课程名称筛选"
+                placeholderTextColor={Colors.textMuted}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+              {courseQuery.trim().length > 0 && (
+                <TouchableOpacity
+                  style={styles.filterClearBtn}
+                  onPress={() => setCourseQuery('')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {filteredCourses.length === 0 ? (
+              <View style={styles.filterEmpty}>
+                <Text style={styles.filterEmptyTitle}>没有匹配的课程</Text>
+                <Text style={styles.filterEmptyDesc}>换个课程名称关键词试试</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredCourses}
+                keyExtractor={(item) => item.course_id ?? UNCATEGORIZED_SENTINEL}
+                contentContainerStyle={styles.courseListContent}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const key = courseKey(item.course_id);
+                  const progress = summaryProgress[key] ?? { answered: item.reviewed_today_count ?? 0, correct: 0 };
+                  return (
+                    <ReviewCourseCard
+                      course={item}
+                      answered={Math.min(progress.answered, item.total_count)}
+                      correct={progress.correct}
+                      onPress={() => handleSelectCourse(item)}
+                    />
+                  );
+                }}
+              />
+            )}
+          </>
         )}
       </SafeAreaView>
     );
@@ -469,7 +508,7 @@ export default function ReviewScreen() {
   const currentAnswered = !!answers[currentItem?.id];
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <QuoteHeader />
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -963,6 +1002,49 @@ const styles = StyleSheet.create({
   courseListContent: {
     padding: 16,
     paddingBottom: 32,
+  },
+  courseFilterWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    borderRadius: Rounded.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+    gap: 8,
+  },
+  courseFilterInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.text,
+  },
+  filterClearBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  filterEmptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 6,
+  },
+  filterEmptyDesc: {
+    fontSize: 14,
+    color: Colors.textMuted,
   },
   detailStatsBar: {
     flexDirection: 'row',

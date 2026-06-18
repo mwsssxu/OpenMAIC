@@ -2241,6 +2241,7 @@ class ApiClient {
     title: string;
     content: string;
     course_id?: string;
+    scene_id?: string;
     category?: string;
     tags?: string[];
     starred?: boolean;

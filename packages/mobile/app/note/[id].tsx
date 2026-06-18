@@ -21,7 +21,7 @@ import { apiClient } from '@/lib/api-client';
 import { showError, showSuccess } from '@/lib/utils/error-toast';
 import TabPageWrapper from '@/lib/components/TabPageWrapper';
 import { useGoBack } from '@/lib/utils/navigation';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { QuoteHeader } from '@/lib/components/QuoteHeader';
 import { useResponsiveDimensions } from '@/lib/utils/responsive';
 
 // iOS 风格颜色系统
@@ -79,6 +79,9 @@ interface UnifiedNote {
   title: string;
   content: string;
   course?: string;
+  course_id?: string;
+  scene_id?: string;
+  scene_title?: string;
   category?: string;
   starred?: boolean;
   color?: string;
@@ -155,7 +158,6 @@ export default function NoteDetailScreen() {
   const goBack = useGoBack();
   const params = useLocalSearchParams();
   const haptics = useHaptics();
-  const insets = useSafeAreaInsets();
   const { isTablet } = useResponsiveDimensions();
 
   const noteId = params.id as string;
@@ -291,6 +293,12 @@ export default function NoteDetailScreen() {
     }
   }
 
+  function handleOpenCourse() {
+    if (!note?.course_id) return;
+    haptics.light();
+    router.push(`/classroom/${note.course_id}` as any);
+  }
+
   // AI 优化笔记
   async function handleAiOptimize() {
     if (!note || isShared) return;
@@ -367,12 +375,14 @@ export default function NoteDetailScreen() {
 
   return (
     <TabPageWrapper hasHeader>
+      <QuoteHeader />
       <View style={styles.container}>
         {/* 导航栏 */}
-        <View style={[styles.navBar, { paddingTop: Math.max(insets.top, 44) - 44 + 4 }]}>
-          <View style={styles.navLeft}>
-            <NavButton icon="chevron-back" onPress={() => goBack()} />
-          </View>
+        <View style={styles.navBar}>
+          <NavButton icon="chevron-back" onPress={() => goBack()} />
+          <Text style={styles.pageTitle} numberOfLines={1}>
+            {isShared ? '共享笔记' : '笔记详情'}
+          </Text>
           <View style={styles.navRight}>
             {/* 个人笔记：AI优化+编辑+分享 */}
             {!isShared && (
@@ -445,6 +455,16 @@ export default function NoteDetailScreen() {
                 <Ionicons name="person" size={12} color={iOSColors.accent} />
                 <Text style={styles.authorText}>我的笔记</Text>
               </View>
+            )}
+            {!isShared && note.course_id && (note.course || note.scene_title) && (
+              <TouchableOpacity style={styles.courseSceneLink} onPress={handleOpenCourse} activeOpacity={0.75}>
+                <Ionicons name="school-outline" size={16} color={iOSColors.accent} />
+                <View style={styles.courseSceneTextWrap}>
+                  {note.course && <Text style={styles.courseSceneCourse} numberOfLines={1}>{note.course}</Text>}
+                  {note.scene_title && <Text style={styles.courseSceneScene} numberOfLines={1}>场景：{note.scene_title}</Text>}
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={iOSColors.muted} />
+              </TouchableOpacity>
             )}
           </View>
 
@@ -696,10 +716,30 @@ const styles = StyleSheet.create({
 
   // 导航栏
   navBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
   },
-  navLeft: { flexDirection: 'row', gap: Spacing.xs },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: iOSColors.border,
+  },
+  pageTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: iOSColors.fg,
+    letterSpacing: -0.02,
+  },
   navRight: { flexDirection: 'row', gap: Spacing.xs },
   navBtn: {
     width: 44, height: 44, borderRadius: 22,
@@ -734,6 +774,21 @@ const styles = StyleSheet.create({
     backgroundColor: iOSColors.accentLight, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, alignSelf: 'flex-start',
   },
   authorText: { fontSize: 12, fontWeight: '500', color: iOSColors.accent },
+  courseSceneLink: {
+    width: '100%',
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: iOSColors.surfaceSolid,
+    borderWidth: 1,
+    borderColor: iOSColors.border,
+    borderRadius: Rounded.md,
+    padding: Spacing.sm,
+  },
+  courseSceneTextWrap: { flex: 1, minWidth: 0 },
+  courseSceneCourse: { fontSize: 13, fontWeight: '600', color: iOSColors.fg },
+  courseSceneScene: { marginTop: 2, fontSize: 12, color: iOSColors.muted },
 
   // 插图
   illustration: {

@@ -2521,6 +2521,7 @@ export default function ClassroomScreen() {
         playbackMode={playbackMode}
         isLandscape={isLandscape}
         courseId={id}
+        sceneId={currentScene?.id}
       />
 
       {/* 场景缩略图导航（可展开） */}
@@ -3022,7 +3023,7 @@ const styles = StyleSheet.create({
   contentScrollContent: {
     flexGrow: 1,  // 让内容填充可用空间
     paddingHorizontal: Spacing.sm + 3,
-    paddingBottom: Spacing.md, // 底部留出滚动空间
+    paddingBottom: 80, // 底部留出足够滚动空间，避免 quiz 提交按钮被聊天输入栏遮挡
   },
   contentInner: {
     width: '100%',  // 明确设置宽度为100%

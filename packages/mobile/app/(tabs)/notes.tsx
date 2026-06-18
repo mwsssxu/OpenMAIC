@@ -57,6 +57,9 @@ interface MyNoteItem {
   content: string;
   preview?: string;
   course?: string;
+  course_id?: string;
+  scene_id?: string;
+  scene_title?: string;
   category?: string;
   starred?: boolean;
   color?: string;
@@ -87,12 +90,14 @@ interface SharedNoteItem {
 
 // 我共享出去的笔记接口
 interface MyShareItem {
-  share_code: string;
+  id: string;
   title: string;
-  original_name: string;
-  is_public: boolean;
-  view_count: number;
-  like_count: number;
+  visibility: string;
+  price: number;
+  rating: number;
+  rating_count: number;
+  purchase_count: number;
+  status: string;
   created_at: string;
 }
 // 格式化时间显示
@@ -225,10 +230,16 @@ export default function NotesPage() {
           </Text>
           <View style={styles.noteMeta}>
             <View style={[styles.noteTag, { backgroundColor: colors.bg }]}>
-              <Text style={[styles.noteTagText, { color: colors.text }]}>
-                {note.visibility === 'paid' ? `${note.price ?? 0}积分` : '免费'}
+              <Text style={[styles.noteTagText, { color: colors.text }]} numberOfLines={1}>
+                {note.course || note.category || '学习笔记'}
               </Text>
             </View>
+            {note.scene_title && (
+              <View style={styles.noteSceneTag}>
+                <Ionicons name="albums-outline" size={11} color={iOSColors.accent} />
+                <Text style={styles.noteSceneText} numberOfLines={1}>{note.scene_title}</Text>
+              </View>
+            )}
             <Text style={styles.noteTime}>{formatTime(note.created_at)}</Text>
           </View>
         </View>
@@ -475,41 +486,46 @@ export default function NotesPage() {
                   <Text style={styles.sectionCount}>{mySharedNotes.length} 条</Text>
                 </View>
                 <View style={styles.notesList}>
-                  {mySharedNotes.map((note, index) => (
-                    <TouchableOpacity
-                      key={note.share_code || index}
-                      style={styles.noteItem}
-                      onPress={() => {
-                        haptics.light();
-                        router.push(`/note/${note.share_code}?source=shared` as any);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.noteThumb, { backgroundColor: iOSColors.greenLight }]}>
-                        <Ionicons name="share" size={22} color={iOSColors.green} />
-                      </View>
-                      <View style={styles.noteBody}>
-                        <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
-                        <View style={styles.noteMeta}>
-                          <View style={[styles.noteTag, { backgroundColor: note.is_public ? iOSColors.greenLight : iOSColors.accentLight }]}>
-                            <Text style={[styles.noteTagText, { color: note.is_public ? iOSColors.green : iOSColors.accent }]}>
-                              {note.is_public ? '公开' : '私有'}
-                            </Text>
-                          </View>
-                          <View style={styles.statItem}>
-                            <Ionicons name="eye-outline" size={12} color={iOSColors.muted} />
-                            <Text style={styles.statText}>{note.view_count}</Text>
-                          </View>
-                          <View style={styles.statItem}>
-                            <Ionicons name="heart-outline" size={12} color={iOSColors.muted} />
-                            <Text style={styles.statText}>{note.like_count}</Text>
-                          </View>
-                          <Text style={styles.noteTime}>{formatTime(note.created_at)}</Text>
+                  {mySharedNotes.map((note, index) => {
+                    const isPaid = note.visibility === 'paid' && note.price > 0;
+                    return (
+                      <TouchableOpacity
+                        key={note.id || index}
+                        style={styles.noteItem}
+                        onPress={() => {
+                          haptics.light();
+                          router.push(`/note/${note.id}?source=shared` as any);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.noteThumb, { backgroundColor: isPaid ? iOSColors.goldLight : iOSColors.greenLight }]}>
+                          <Ionicons name={isPaid ? 'diamond' : 'share'} size={22} color={isPaid ? iOSColors.gold : iOSColors.green} />
                         </View>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={iOSColors.muted} />
-                    </TouchableOpacity>
-                  ))}
+                        <View style={styles.noteBody}>
+                          <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
+                          <View style={styles.noteMeta}>
+                            <View style={[styles.noteTag, { backgroundColor: isPaid ? iOSColors.goldLight : iOSColors.greenLight }]}>
+                              <Text style={[styles.noteTagText, { color: isPaid ? '#b45309' : iOSColors.green }]}>
+                                {isPaid ? `${note.price}积分` : '免费'}
+                              </Text>
+                            </View>
+                            <View style={styles.statItem}>
+                              <Ionicons name="cart-outline" size={12} color={iOSColors.muted} />
+                              <Text style={styles.statText}>{note.purchase_count}</Text>
+                            </View>
+                            {note.rating > 0 && (
+                              <View style={styles.statItem}>
+                                <Ionicons name="star-outline" size={12} color={iOSColors.muted} />
+                                <Text style={styles.statText}>{note.rating.toFixed(1)}</Text>
+                              </View>
+                            )}
+                            <Text style={styles.noteTime}>{formatTime(note.created_at)}</Text>
+                          </View>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={iOSColors.muted} />
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -731,13 +747,31 @@ const styles = StyleSheet.create({
   noteMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: Spacing.xs,
     marginTop: 6,
   },
   noteTag: {
+    maxWidth: '100%',
     paddingVertical: 2,
     paddingHorizontal: 8,
     borderRadius: 10,
+  },
+  noteSceneTag: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: iOSColors.accentLight,
+  },
+  noteSceneText: {
+    maxWidth: 140,
+    fontSize: 10,
+    fontWeight: '500',
+    color: iOSColors.accent,
   },
   noteTagText: {
     fontSize: 10,

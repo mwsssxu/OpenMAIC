@@ -78,20 +78,20 @@ async def get_personal_notes(
     week_start = today - timedelta(days=today.weekday())  # 本周一
 
     # 构建查询条件
-    conditions = ["user_id = $1"]
+    conditions = ["sn.user_id = $1"]
     if not include_shared:
-        conditions.append("is_personal = TRUE")
+        conditions.append("sn.is_personal = TRUE")
     params = [user_uuid]
     param_idx = 2
 
     if starred_only:
-        conditions.append(f"starred = ${param_idx}")
+        conditions.append(f"sn.starred = ${param_idx}")
         params.append(True)
         param_idx += 1
 
     if filter != "all":
         # 按分类筛选
-        conditions.append(f"category = ${param_idx}")
+        conditions.append(f"sn.category = ${param_idx}")
         params.append(filter)
         param_idx += 1
 
@@ -100,9 +100,20 @@ async def get_personal_notes(
     # 获取笔记列表
     rows = await db.fetch(
         f"""
-        SELECT id, title, preview, category, starred, color, created_at, course_id
-        FROM shared_notes {where_clause}
-        ORDER BY created_at DESC
+        SELECT sn.id, sn.title, sn.preview, sn.category, sn.starred, sn.color, sn.created_at, sn.course_id,
+               st.name AS course_name, nc.scene_id, sc.title AS scene_title
+        FROM shared_notes sn
+        LEFT JOIN stages st ON st.id = sn.course_id
+        LEFT JOIN LATERAL (
+            SELECT nc.scene_id
+            FROM note_citations nc
+            WHERE nc.note_id = sn.id
+            ORDER BY nc.created_at ASC
+            LIMIT 1
+        ) nc ON TRUE
+        LEFT JOIN scenes sc ON sc.id = nc.scene_id
+        {where_clause}
+        ORDER BY sn.created_at DESC
         LIMIT ${param_idx} OFFSET ${param_idx + 1}
         """,
         *params, limit, offset
@@ -111,7 +122,7 @@ async def get_personal_notes(
     # 获取总数
     total = await db.fetchval(
         f"""
-        SELECT COUNT(*) FROM shared_notes {where_clause}
+        SELECT COUNT(*) FROM shared_notes sn {where_clause}
         """,
         *params  # 只传递条件参数，不需要limit和offset
     )
@@ -130,7 +141,11 @@ async def get_personal_notes(
             "starred": row["starred"] or False,
             "color": row["color"] or "coral",
             "time": format_time(row["created_at"]),
+            "created_at": row["created_at"].isoformat(),
             "course_id": str(row["course_id"]) if row["course_id"] else None,
+            "course": row["course_name"],
+            "scene_id": str(row["scene_id"]) if row["scene_id"] else None,
+            "scene_title": row["scene_title"],
         }
 
         if note_date == today:
@@ -201,6 +216,25 @@ async def get_personal_note_detail(
         )
         course_name = course["name"] if course else None
 
+    # 获取关联场景
+    scene_id = None
+    scene_title = None
+    if note["course_id"]:
+        citation = await db.fetchrow(
+            """
+            SELECT nc.scene_id, s.title AS scene_title
+            FROM note_citations nc
+            LEFT JOIN scenes s ON s.id = nc.scene_id
+            WHERE nc.note_id = $1
+            ORDER BY nc.created_at ASC
+            LIMIT 1
+            """,
+            n_uuid
+        )
+        if citation:
+            scene_id = str(citation["scene_id"])
+            scene_title = citation["scene_title"]
+
     # 获取相关笔记（同一课程）
     related_notes = []
     if note["course_id"]:
@@ -229,6 +263,8 @@ async def get_personal_note_detail(
         "content": note["content"],
         "course": course_name,
         "course_id": str(note["course_id"]) if note["course_id"] else None,
+        "scene_id": scene_id,
+        "scene_title": scene_title,
         "category": note["category"] or "学习笔记",
         "starred": note["starred"] or False,
         "color": note["color"] or "coral",
@@ -250,6 +286,7 @@ async def create_personal_note(
     title = body.get("title", "").strip()
     content = body.get("content", "").strip()
     course_id = body.get("course_id")
+    scene_id = body.get("scene_id")
     category = body.get("category", "学习笔记")
     tags = body.get("tags", [])
     starred = body.get("starred", False)
@@ -261,18 +298,92 @@ async def create_personal_note(
     note_id = uuid.uuid4()
     preview = content[:100] if content else title
 
-    await db.execute(
+    try:
+        course_uuid = uuid.UUID(course_id) if course_id else None
+        scene_uuid = uuid.UUID(scene_id) if scene_id else None
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="课程或场景ID格式错误")
+
+    if scene_uuid:
+        scene = await db.fetchrow(
+            """
+            SELECT id, stage_id FROM scenes
+            WHERE id = $1 AND user_id = $2
+            """,
+            scene_uuid, user_uuid
+        )
+        if not scene:
+            raise HTTPException(status_code=404, detail="关联场景不存在")
+        if course_uuid and scene["stage_id"] != course_uuid:
+            raise HTTPException(status_code=400, detail="场景不属于当前课程")
+        course_uuid = scene["stage_id"]
+
+    existing_note = await db.fetchrow(
         """
-        INSERT INTO shared_notes
-        (id, user_id, title, content, preview, course_id, visibility, price, tags,
-         category, starred, color, is_personal, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, 'private', 0, $7, $8, $9, $10, TRUE, 'published', $11)
+        SELECT id FROM shared_notes
+        WHERE user_id = $1
+          AND is_personal = TRUE
+          AND course_id IS NOT DISTINCT FROM $2
+          AND category = $3
+          AND title = $4
+          AND content = $5
+        LIMIT 1
         """,
-        note_id, user_uuid, title, content, preview,
-        uuid.UUID(course_id) if course_id else None,
-        ",".join(tags) if tags else "",
-        category, starred, color, utcnow()
+        user_uuid, course_uuid, category, title, content
     )
+    if existing_note:
+        raise HTTPException(status_code=409, detail="这条内容已添加到笔记")
+
+    async with db.transaction():
+        lock_key = f"personal_note:{user_uuid}:{course_uuid}:{scene_uuid}:{category}:{title}:{content}"
+        await db.fetchval("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", lock_key)
+
+        existing_note = await db.fetchrow(
+            """
+            SELECT id FROM shared_notes
+            WHERE user_id = $1
+              AND is_personal = TRUE
+              AND course_id IS NOT DISTINCT FROM $2
+              AND category = $3
+              AND title = $4
+              AND content = $5
+            LIMIT 1
+            """,
+            user_uuid, course_uuid, category, title, content
+        )
+        if existing_note:
+            raise HTTPException(status_code=409, detail="这条内容已添加到笔记")
+
+        await db.execute(
+            """
+            INSERT INTO shared_notes
+            (id, user_id, title, content, preview, course_id, visibility, price, tags,
+             category, starred, color, is_personal, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, 'private', 0, $7, $8, $9, $10, TRUE, 'published', $11)
+            """,
+            note_id, user_uuid, title, content, preview,
+            course_uuid,
+            ",".join(tags) if tags else "",
+            category, starred, color, utcnow()
+        )
+
+        if scene_uuid and course_uuid:
+            await db.execute(
+                """
+                INSERT INTO note_citations
+                (note_id, scene_id, course_id, content_snippet, citation_type, context, created_at)
+                VALUES ($1, $2, $3, $4, 'whiteboard', $5, $6)
+                ON CONFLICT (note_id, scene_id) DO NOTHING
+                """,
+                note_id, scene_uuid, course_uuid, preview, title, utcnow()
+            )
+            await db.execute(
+                """
+                UPDATE scenes SET citation_count = COALESCE(citation_count, 0) + 1
+                WHERE id = $1
+                """,
+                scene_uuid
+            )
 
     return {
         "id": str(note_id),

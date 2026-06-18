@@ -35,6 +35,9 @@ const iOSColors = {
   secondaryLight: '#e8f5f5',
 };
 
+type CourseStatus = 'completed' | 'in-progress' | 'not-started';
+type CourseFilter = 'all' | 'progress' | 'completed' | 'notstarted';
+
 interface Classroom {
   id: string;
   name: string;
@@ -47,7 +50,7 @@ interface Classroom {
     scenes_completed: number;
     total_scenes: number;
     percentage: number;
-    status: 'completed' | 'in-progress' | 'not-started';
+    status: CourseStatus | 'in_progress' | 'not_started' | string;
   };
 }
 
@@ -57,6 +60,20 @@ const statusConfig = {
   'completed': { labelKey: 'courses.statusCompleted', bgColor: iOSColors.secondaryLight, textColor: iOSColors.secondary },
   'not-started': { labelKey: 'courses.statusNotStarted', bgColor: 'rgba(230, 225, 220, 0.4)', textColor: iOSColors.muted },
 };
+
+function normalizeCourseStatus(classroom: Classroom): CourseStatus {
+  const rawStatus = String(classroom.progress?.status || '').replace(/_/g, '-').toLowerCase();
+  if (rawStatus === 'completed') return 'completed';
+  if (rawStatus === 'in-progress' || rawStatus === 'progress' || rawStatus === 'started') return 'in-progress';
+  if (rawStatus === 'not-started' || rawStatus === 'notstarted') return 'not-started';
+
+  const completedScenes = classroom.progress?.scenes_completed ?? 0;
+  const totalScenes = classroom.progress?.total_scenes ?? 0;
+  const percentage = classroom.progress?.percentage ?? 0;
+  if ((totalScenes > 0 && completedScenes >= totalScenes) || percentage >= 100) return 'completed';
+  if (completedScenes > 0 || percentage > 0) return 'in-progress';
+  return 'not-started';
+}
 
 export default function CoursesScreen() {
   const { t } = useI18n();
@@ -69,7 +86,7 @@ export default function CoursesScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // 筛选状态
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [activeFilter, setActiveFilter] = useState<CourseFilter>('all');
 
   // 视图模式（列表/网格）- 平板默认网格
   const { breakpoint, isTablet } = useResponsiveDimensions();
@@ -82,11 +99,16 @@ export default function CoursesScreen() {
     loadClassrooms();
   }, []);
 
+  const handleFilterPress = (filter: CourseFilter) => {
+    setActiveFilter(filter);
+    haptics.light().catch(() => undefined);
+  };
+
   // 筛选课程（基于真实进度数据）
   const filteredClassrooms = useMemo(() => {
     if (activeFilter === 'all') return classrooms;
     return classrooms.filter(c => {
-      const status = c.progress?.status || 'not-started';
+      const status = normalizeCourseStatus(c);
       if (activeFilter === 'progress') return status === 'in-progress';
       if (activeFilter === 'completed') return status === 'completed';
       if (activeFilter === 'notstarted') return status === 'not-started';
@@ -96,9 +118,9 @@ export default function CoursesScreen() {
 
   // 统计各状态数量（基于真实数据）
   const courseStats = useMemo(() => {
-    const inProgress = classrooms.filter(c => (c.progress?.status || 'not-started') === 'in-progress').length;
-    const completed = classrooms.filter(c => c.progress?.status === 'completed').length;
-    const notStarted = classrooms.filter(c => (c.progress?.status || 'not-started') === 'not-started').length;
+    const inProgress = classrooms.filter(c => normalizeCourseStatus(c) === 'in-progress').length;
+    const completed = classrooms.filter(c => normalizeCourseStatus(c) === 'completed').length;
+    const notStarted = classrooms.filter(c => normalizeCourseStatus(c) === 'not-started').length;
     return { total: classrooms.length, inProgress, completed, notStarted };
   }, [classrooms]);
 
@@ -134,7 +156,7 @@ export default function CoursesScreen() {
 
     // 使用真实进度数据
     const progress = classroom.progress?.percentage ?? 0;
-    const status = classroom.progress?.status ?? 'not-started';
+    const status = normalizeCourseStatus(classroom);
 
     const totalSections = classroom.progress?.total_scenes ?? 0;
     const completedSections = classroom.progress?.scenes_completed ?? 0;
@@ -315,10 +337,7 @@ export default function CoursesScreen() {
       <View style={styles.filterTabs}>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
-          onPress={() => {
-            haptics.light();
-            setActiveFilter('all');
-          }}
+          onPress={() => handleFilterPress('all')}
           activeOpacity={0.7}
           accessibilityLabel={t('accessibility.filterAll')}
           accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterAll') })}
@@ -331,10 +350,7 @@ export default function CoursesScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'progress' && styles.filterTabActive]}
-          onPress={() => {
-            haptics.light();
-            setActiveFilter('progress');
-          }}
+          onPress={() => handleFilterPress('progress')}
           activeOpacity={0.7}
           accessibilityLabel={t('accessibility.filterInProgress')}
           accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterInProgress') })}
@@ -347,10 +363,7 @@ export default function CoursesScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'completed' && styles.filterTabActive]}
-          onPress={() => {
-            haptics.light();
-            setActiveFilter('completed');
-          }}
+          onPress={() => handleFilterPress('completed')}
           activeOpacity={0.7}
           accessibilityLabel={t('accessibility.filterCompleted')}
           accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterCompleted') })}
@@ -363,10 +376,7 @@ export default function CoursesScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'notstarted' && styles.filterTabActive]}
-          onPress={() => {
-            haptics.light();
-            setActiveFilter('notstarted');
-          }}
+          onPress={() => handleFilterPress('notstarted')}
           activeOpacity={0.7}
           accessibilityLabel={t('accessibility.filterNotStarted')}
           accessibilityHint={t('accessibility.filterHint', { status: t('accessibility.filterNotStarted') })}

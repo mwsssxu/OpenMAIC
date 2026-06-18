@@ -428,6 +428,8 @@ interface WhiteboardOverlayProps {
   isLandscape?: boolean;
   /** 课程 ID（保存笔记时使用） */
   courseId?: string;
+  /** 当前场景 ID（保存笔记时关联课程场景） */
+  sceneId?: string;
 }
 
 export function WhiteboardOverlay({
@@ -439,6 +441,7 @@ export function WhiteboardOverlay({
   playbackMode = 'idle',
   isLandscape = false,
   courseId,
+  sceneId,
 }: WhiteboardOverlayProps) {
   const elements = whiteboardStore.useElements();
   const hasElements = elements.length > 0;
@@ -501,6 +504,7 @@ export function WhiteboardOverlay({
         title,
         content: markdown.trim(),
         course_id: courseId,
+        scene_id: sceneId,
         category: '白板笔记',
         color: 'blue',
         starred: false,
@@ -510,13 +514,16 @@ export function WhiteboardOverlay({
     } catch (error: any) {
       if (error.response?.status === 401) {
         Alert.alert('需要登录', '请先登录后再保存笔记');
+      } else if (error.response?.status === 409) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert('已添加过', '这条白板内容已经加入过笔记');
       } else {
         Alert.alert('保存失败', '请稍后重试');
       }
     } finally {
       setSavingNote(false);
     }
-  }, [whiteboardToMarkdown, courseId]);
+  }, [whiteboardToMarkdown, courseId, sceneId]);
 
   // 白板占满全部空间（聊天面板已移除，由外部独立渲染）
   const whiteboardStyle = useAnimatedStyle(() => ({
