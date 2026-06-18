@@ -180,7 +180,7 @@ export class MobileActionEngine {
     // Points: ["arrow"|"dot"|"", "arrow"|"dot"|""]
     const points: [string, string] = [
       params.points?.[0] ?? '',
-      params.points?.[1] ?? params.arrow ? 'arrow' : '',
+      params.points?.[1] ?? (params.arrow ? 'arrow' : ''),
     ];
 
     console.log(`[ActionEngine] drawLine: (${startX},${startY})→(${endX},${endY}) color=${color} w=${lineWidth}`);
