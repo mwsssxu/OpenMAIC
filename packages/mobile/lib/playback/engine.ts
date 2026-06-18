@@ -258,6 +258,8 @@ export class PlaybackEngine {
         case 'wb_draw_code':
         case 'wb_edit_code':
           this.executeWhiteboard(action);
+          // 渐进渲染：每个绘制动作后短暂停顿，让图形逐个出现
+          await this.delay(400);
           break;
         case 'wb_delete':
           this.executeWhiteboardDelete(action);
@@ -376,6 +378,8 @@ export class PlaybackEngine {
         case 'wb_draw_code':
         case 'wb_edit_code':
           this.executeWhiteboard(action);
+          // 渐进渲染：每个绘制动作后短暂停顿，让图形逐个出现
+          await this.delay(400);
           break;
         case 'wb_delete':
           this.executeWhiteboardDelete(action);
@@ -689,6 +693,11 @@ export class PlaybackEngine {
       this.effectTimer = null;
     }
     this.callbacks.onClearEffects?.();
+  }
+
+  /** 渐进渲染延迟：让白板图形逐个出现 */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
