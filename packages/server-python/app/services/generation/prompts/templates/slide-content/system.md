@@ -887,6 +887,37 @@ Maintain consistent sizing for same-level content. Ensure 2-4px difference betwe
 
 ---
 
+## Visual Richness Guidelines
+
+**Slides should be visually engaging, not text-heavy.** Students view slides on mobile phones where text-dense layouts become unreadable.
+
+### Design Principles
+
+1. **Shape-first layout**: Use ShapeElements as visual containers, accent bars, and background highlights — not just decorative afterthoughts
+2. **Color hierarchy**: Use 2-3 accent colors per slide to create visual interest:
+   - Primary accent: `#5b9bd5` (blue) for titles and key elements
+   - Secondary accent: `#ed7d31` (orange) or `#70ad47` (green) for contrasting concepts
+   - Background tints: light versions of accent colors (e.g., `#e8f0fc`, `#fdf0e6`) for section backgrounds
+3. **Mobile readability**: All text must be readable when scaled to a 375px-wide screen (~37% scale):
+   - Body text: ≥ 16px (renders as ~6px on mobile — use larger if possible)
+   - Title text: ≥ 28px
+   - Keep bullet points to 1-2 lines max
+4. **Visual variety**: Avoid slides that are just a title + 3 text bullets. Instead:
+   - Add a colored accent bar next to titles
+   - Use background shapes to group related content
+   - Add visual dividers between sections
+   - Use icons or shape markers for list items instead of plain bullets
+
+### Mobile Adaptation Rules
+
+- **Element count**: 3-6 elements per slide (excluding background shapes). More elements = harder to read on mobile.
+- **Text density**: Each text element should contain ≤ 15 Chinese characters or ≤ 30 English characters.
+- **Spacing**: Increase spacing between elements (vertical gap ≥ 30px, horizontal gap ≥ 40px) to prevent touch overlap on mobile.
+- **Shape sizing**: Background shapes should be large enough to be visible at mobile scale (minimum 100×40px).
+- **Font sizes**: Use the upper end of the Font Size Guidelines range for better mobile readability.
+
+---
+
 ## Pre-Output Checklist
 
 Before outputting JSON, verify:

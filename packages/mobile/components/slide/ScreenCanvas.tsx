@@ -276,6 +276,8 @@ export function ScreenCanvas({
               {
                 width: canvasWidth,
                 minHeight: canvasHeight || minContentHeight,
+                position: 'relative' as const,
+                overflow: 'visible' as const,
               },
             ]}
           >

@@ -1,13 +1,13 @@
 import { whiteboardStore } from './element-store';
-import { WHITEBOARD_CARD_GAP, WHITEBOARD_CARD_PADDING } from '@/lib/utils/scaling';
 
-// 白板基准画布尺寸（与 ScreenCanvas.tsx 保持一致）
-const WHITEBOARD_CANVAS_WIDTH = 1000;
-
+// Shape SVG paths (viewBox: [1000, 1000] — same as slide shapes)
 const SHAPE_PATHS: Record<string, string> = {
   rectangle: 'M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z',
   circle: 'M 500 0 A 500 500 0 1 1 499 0 Z',
   triangle: 'M 500 0 L 1000 1000 L 0 1000 Z',
+  rounded_rectangle: 'M 100 0 L 900 0 Q 1000 0 1000 100 L 1000 900 Q 1000 1000 900 1000 L 100 1000 Q 0 1000 0 900 L 0 100 Q 0 0 100 0 Z',
+  diamond: 'M 500 0 L 1000 500 L 500 1000 L 0 500 Z',
+  hexagon: 'M 250 0 L 750 0 L 1000 500 L 750 1000 L 250 1000 L 0 500 Z',
 };
 
 function generateId(type: string): string {
@@ -21,85 +21,17 @@ function codeToLines(code: string): Array<{ id: string; content: string }> {
   }));
 }
 
-/**
- * 根据白板基准画布计算元素位置
- * 使用 1000px 基准宽度，ScreenCanvas 会自动缩放
- * 垂直排列：从上至下，宽度占满
- */
-function getWhiteboardPosition(
-  startY: number,
-  preferredHeight?: number,
-): { x: number; y: number; width: number; height: number } {
-  const margin = WHITEBOARD_CARD_GAP;
-  // 基准画布上的可用宽度（1000px - 边距）
-  const availableWidth = WHITEBOARD_CANVAS_WIDTH - margin * 2;
-
-  // 默认高度（基准画布上的高度）- 根据内容类型调整
-  // 文本元素需要更大的高度以容纳内容
-  const height = preferredHeight ?? 80;
-
-  const position = {
-    x: margin,
-    y: startY,
-    width: availableWidth,
-    height,
-  };
-
-  return position;
-}
-
-/**
- * 获取白板元素的基准尺寸（用于图表、表格等大型元素）
- */
-function getWhiteboardSize(
-  type: 'chart' | 'table' | 'code' | 'latex',
-  contentInfo?: { rows?: number; lines?: number },
-): { width: number; height: number } {
-  const availableWidth = WHITEBOARD_CANVAS_WIDTH - WHITEBOARD_CARD_GAP * 2;
-
-  switch (type) {
-    case 'chart':
-      return { width: availableWidth, height: 200 };
-    case 'table':
-      const tableRows = contentInfo?.rows ?? 3;
-      return { width: availableWidth, height: tableRows * 30 + 20 };
-    case 'code':
-      const codeLines = contentInfo?.lines ?? 10;
-      return { width: availableWidth, height: codeLines * 15 + 40 };
-    case 'latex':
-      return { width: availableWidth, height: 60 };
-    default:
-      return { width: availableWidth, height: 80 };
-  }
-}
-
 export class MobileActionEngine {
   private lineIdCounter = 0;
-  private currentY = 0; // 当前累计 Y 坐标
 
-  /** 重置布局（用于新白板内容） */
+  /** 重置布局（保留接口兼容，不再需要流式布局） */
   resetLayout(): void {
-    this.currentY = 0;
+    // No-op: absolute positioning mode, no layout state to reset
   }
 
-  /** 从现有元素重新计算 currentY（用于删除元素后保持布局一致） */
+  /** 从现有元素重新计算（保留接口兼容） */
   private recalculateCurrentY(): void {
-    const elements = whiteboardStore.getElements();
-    if (elements.length === 0) {
-      this.currentY = 0;
-      return;
-    }
-    // 找到最底部的元素位置
-    let maxBottom = 0;
-    for (const el of elements) {
-      const top = (el as any).top || 0;
-      const height = (el as any).height || 80;
-      const bottom = top + height;
-      if (bottom > maxBottom) {
-        maxBottom = bottom;
-      }
-    }
-    this.currentY = maxBottom + WHITEBOARD_CARD_GAP;
+    // No-op: absolute positioning mode
   }
 
   execute(actionName: string, params: Record<string, any>): void {
@@ -131,15 +63,12 @@ export class MobileActionEngine {
         this.drawCode(params);
         break;
       case 'wb_clear':
-        console.log('[ActionEngine] wb_clear: resetting currentY to 0');
+        console.log('[ActionEngine] wb_clear: clearing all elements');
         whiteboardStore.clear();
-        this.currentY = 0;
         break;
       case 'wb_delete':
         if (params.elementId) {
           whiteboardStore.deleteElement(params.elementId);
-          // 删除元素后重新计算 currentY
-          this.recalculateCurrentY();
         }
         break;
     }
@@ -161,102 +90,113 @@ export class MobileActionEngine {
       content = `<p style="font-size: ${fontSize}px;">${content}</p>`;
     }
 
-    // 计算文本高度（基准画布上的高度）
-    // 需要考虑：字体大小、行数、padding、边框等
-    const cleanText = content.replace(/<[^>]+>/g, '');
-    const lines = cleanText.split('\n').length;
-    // 每行高度 = fontSize * 1.5 (line-height)，加上 padding
-    const lineHeight = fontSize * 1.5;
-    const padding = WHITEBOARD_CARD_PADDING * 2; // 上下 padding
-    const estimatedHeight = Math.max(80, (lines * lineHeight + padding) * 1.5); // Safety margin for title scaling and decorations
+    // Use LLM-provided absolute coordinates
+    const left = params.x ?? 60;
+    const top = params.y ?? 0;
+    const width = params.width ?? 880;
+    const height = params.height ?? Math.max(40, fontSize * 2);
 
-    console.log(`[ActionEngine] drawText: fontSize=${fontSize}, lines=${lines}, estimatedHeight=${estimatedHeight}, currentY=${this.currentY}`);
-
-    const pos = getWhiteboardPosition(
-      this.currentY,
-      estimatedHeight,
-    );
-
-    // 更新累计 Y 坐标（当前元素高度 + 间距）
-    this.currentY += estimatedHeight + WHITEBOARD_CARD_GAP;
+    console.log(`[ActionEngine] drawText: left=${left}, top=${top}, w=${width}, h=${height}, fontSize=${fontSize}`);
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('text'),
       type: 'text',
       content,
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: pos.height,
+      left,
+      top,
+      width,
+      height,
       rotate: 0,
       defaultFontName: 'Microsoft YaHei',
       defaultColor: params.color ?? '#333333',
+      fill: params.fill ?? params.background,
     } as any);
   }
 
   private drawShape(params: Record<string, any>): void {
-    // 白板流式布局下 shape 无法正确定位，改为文本标签渲染
     const fillColor = params.fillColor ?? '#5b9bd5';
     const shapeName = params.shape ?? 'rectangle';
+    const path = SHAPE_PATHS[shapeName] ?? SHAPE_PATHS.rectangle;
+
+    const left = params.x ?? 60;
+    const top = params.y ?? 0;
+    const width = params.width ?? 200;
+    const height = params.height ?? 80;
+
+    // Shape has text label inside
     const label = params.label || params.text || '';
-    const icon = shapeName === 'circle' ? '●' : shapeName === 'triangle' ? '▲' : '■';
+    const textConfig = label ? {
+      text: {
+        content: label,
+        defaultFontName: 'Microsoft YaHei',
+        defaultColor: params.textColor ?? '#ffffff',
+        align: 'middle' as const,
+      },
+    } : undefined;
 
-    const content = label
-      ? `<p style="font-size: 16px; color: #ffffff;">${icon} ${label}</p>`
-      : `<p style="font-size: 14px; color: #ffffff;">${icon}</p>`;
+    // Outline (border)
+    const outline = params.outline ?? (params.borderColor ? {
+      style: 'solid',
+      width: params.borderWidth ?? 2,
+      color: params.borderColor,
+    } : undefined);
 
-    const height = label ? 50 : 36;
-    const pos = getWhiteboardPosition(this.currentY, height);
-    this.currentY += height + WHITEBOARD_CARD_GAP;
+    console.log(`[ActionEngine] drawShape: ${shapeName} at (${left},${top}) ${width}x${height} fill=${fillColor}`);
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('shape'),
-      type: 'text',
-      content,
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: pos.height,
+      type: 'shape',
+      left,
+      top,
+      width,
+      height,
       rotate: 0,
-      defaultFontName: 'Microsoft YaHei',
-      defaultColor: '#ffffff',
+      viewBox: [1000, 1000] as [number, number],
+      path,
+      fixedRatio: false,
       fill: fillColor,
+      outline,
+      opacity: params.opacity ?? 1,
+      ...textConfig,
     } as any);
   }
 
   private drawLine(params: Record<string, any>): void {
-    // 白板流式布局下连接线无法正确定位，改为文本箭头
-    const points = params.points || ['', ''];
-    const startLabel = points[0] || '';
-    const endLabel = points[1] || '';
-    const style = params.style ?? 'solid';
-    const arrow = style === 'dashed' ? '⇢' : '→';
+    const startX = params.startX ?? 0;
+    const startY = params.startY ?? 0;
+    const endX = params.endX ?? 100;
+    const endY = params.endY ?? 100;
+
+    // Calculate bounding box
+    const left = Math.min(startX, endX);
+    const top = Math.min(startY, endY);
+    const width = Math.abs(endX - startX);
+    const height = Math.abs(endY - startY);
+
     const color = params.color ?? '#333333';
+    const lineWidth = params.width ?? 2;
+    const style = params.style ?? 'solid';
 
-    let label = '';
-    if (startLabel && endLabel) {
-      label = `${startLabel} ${arrow} ${endLabel}`;
-    } else if (startLabel || endLabel) {
-      label = `${arrow} ${startLabel || endLabel}`;
-    } else {
-      label = arrow;
-    }
+    // Points: ["arrow"|"dot"|"", "arrow"|"dot"|""]
+    const points: [string, string] = [
+      params.points?.[0] ?? '',
+      params.points?.[1] ?? params.arrow ? 'arrow' : '',
+    ];
 
-    const height = 30;
-    const pos = getWhiteboardPosition(this.currentY, height);
-    this.currentY += height + WHITEBOARD_CARD_GAP;
+    console.log(`[ActionEngine] drawLine: (${startX},${startY})→(${endX},${endY}) color=${color} w=${lineWidth}`);
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('line'),
-      type: 'text',
-      content: `<p style="font-size: 14px; color: ${color};">${label}</p>`,
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: pos.height,
-      rotate: 0,
-      defaultFontName: 'Microsoft YaHei',
-      defaultColor: color,
+      type: 'line',
+      left,
+      top,
+      width: Math.max(width, 24), // minimum width for visibility
+      height: Math.max(height, 24),
+      start: [startX - left, startY - top] as [number, number],
+      end: [endX - left, endY - top] as [number, number],
+      style,
+      color,
+      points,
     } as any);
   }
 
@@ -264,20 +204,20 @@ export class MobileActionEngine {
     const latex = params.latex ?? params.content ?? '';
     if (!latex) return;
 
-    const size = getWhiteboardSize('latex');
-    const pos = getWhiteboardPosition(
-      this.currentY,
-      size.height,
-    );
-    this.currentY += size.height + WHITEBOARD_CARD_GAP;
+    const left = params.x ?? 60;
+    const top = params.y ?? 0;
+    const width = params.width ?? 880;
+    const height = params.height ?? 60;
+
+    console.log(`[ActionEngine] drawLatex: at (${left},${top}) ${width}x${height}`);
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('latex'),
       type: 'latex',
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: size.height,
+      left,
+      top,
+      width,
+      height,
       rotate: 0,
       latex,
       color: params.color ?? '#000000',
@@ -285,20 +225,18 @@ export class MobileActionEngine {
   }
 
   private drawChart(params: Record<string, any>): void {
-    const size = getWhiteboardSize('chart');
-    const pos = getWhiteboardPosition(
-      this.currentY,
-      size.height,
-    );
-    this.currentY += size.height + WHITEBOARD_CARD_GAP;
+    const left = params.x ?? 60;
+    const top = params.y ?? 0;
+    const width = params.width ?? 880;
+    const height = params.height ?? 200;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('chart'),
       type: 'chart',
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: size.height,
+      left,
+      top,
+      width,
+      height,
       rotate: 0,
       chartType: params.chartType ?? 'bar',
       data: params.data ?? {},
@@ -325,20 +263,18 @@ export class MobileActionEngine {
       })),
     );
 
-    const size = getWhiteboardSize('table', { rows });
-    const pos = getWhiteboardPosition(
-      this.currentY,
-      size.height,
-    );
-    this.currentY += size.height + WHITEBOARD_CARD_GAP;
+    const left = params.x ?? 60;
+    const top = params.y ?? 0;
+    const width = params.width ?? 880;
+    const height = params.height ?? rows * 30 + 20;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('table'),
       type: 'table',
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: size.height,
+      left,
+      top,
+      width,
+      height,
       rotate: 0,
       colWidths,
       cellMinHeight: 30,
@@ -356,20 +292,18 @@ export class MobileActionEngine {
 
     const codeLines = codeToLines(code);
 
-    const size = getWhiteboardSize('code', { lines: codeLines.length });
-    const pos = getWhiteboardPosition(
-      this.currentY,
-      size.height,
-    );
-    this.currentY += size.height + WHITEBOARD_CARD_GAP;
+    const left = params.x ?? 60;
+    const top = params.y ?? 0;
+    const width = params.width ?? 880;
+    const height = params.height ?? codeLines.length * 15 + 40;
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('code'),
       type: 'code',
-      left: pos.x,
-      top: pos.y,
-      width: pos.width,
-      height: size.height,
+      left,
+      top,
+      width,
+      height,
       rotate: 0,
       language: params.language ?? 'text',
       lines: codeLines,

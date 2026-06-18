@@ -46,17 +46,8 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
   const outlineColor = element.outline?.color || 'transparent';
   const strokeDashArray = element.outline?.style === 'dashed' ? '5,3' : undefined;
 
-  // Container style
+  // Container style (unified: absolute positioning for both modes)
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        minHeight: Math.max(40, height),
-        marginBottom: 8,
-        opacity: element.opacity || 1,
-        zIndex: 0,
-      };
-    }
     return {
       position: 'absolute' as const,
       top,
@@ -67,7 +58,7 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       opacity: element.opacity || 1,
       zIndex: 0,
     };
-  }, [element, left, top, width, height, isWhiteboard]);
+  }, [element, left, top, width, height]);
 
   // Flip transform for the View container
   const flipTransform = useMemo(() => {

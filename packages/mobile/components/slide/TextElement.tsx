@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Animated, Easing } from 'react-native';
+import { View, Text, Animated, Easing } from 'react-native';
 import { USE_NATIVE_DRIVER } from '@/lib/configs/animation';
 import type { PPTTextElement, SlideTheme } from './types';
 import { isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
@@ -301,20 +301,7 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
   }, [position.width, scaleX]);
 
   const containerStyle = useMemo(() => {
-    // 白板模式：使用相对定位（流式布局），不依赖预计算的 top 值
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        minHeight: Math.max(40, baseFontSize * 1.5),
-        maxHeight: 500,
-        marginBottom: 8,
-        zIndex: 1,
-        opacity: fadeAnim,
-      };
-    }
-
-    // 非白板模式：使用绝对定位
-    // 不设 maxHeight，允许文本自适应内容高度避免溢出裁剪
+    // 统一使用绝对定位（白板模式也使用 LLM 生成的坐标）
     const minH = position.height > 0 ? position.height * scaleY : 40;
     return {
       position: 'absolute' as const,
@@ -326,7 +313,7 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
       zIndex: 1,
       opacity: fadeAnim,
     };
-  }, [position, element.rotate, scaleX, scaleY, isWhiteboard, effectiveWidth, fadeAnim, baseFontSize]);
+  }, [position, element.rotate, scaleX, scaleY, effectiveWidth, fadeAnim]);
 
   const textWrapperStyle = useMemo(() => ({
     flex: 1,
@@ -372,21 +359,11 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
 
   return (
     <Animated.View style={[containerStyle, { transform: [{ translateY: slideAnim }] }]}>
-      {isWhiteboard ? (
-        <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled>
-          <View style={textWrapperStyle}>
-            <Text style={textStyle} numberOfLines={50} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
-              {textContent}
-            </Text>
-          </View>
-        </ScrollView>
-      ) : (
         <View style={textWrapperStyle}>
-          <Text style={textStyle} maxFontSizeMultiplier={1.2}>
+          <Text style={textStyle} numberOfLines={50} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
             {textContent}
           </Text>
         </View>
-      )}
     </Animated.View>
   );
 };

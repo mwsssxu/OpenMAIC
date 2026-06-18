@@ -59,15 +59,19 @@ Place plain text. Use for notes, steps, labels — **not** for math formulas (us
 Place a geometric shape. Use for annotations, groupings, or simple diagrams.
 
 ```json
-{"type":"action","name":"wb_draw_shape","params":{"shape":"rectangle","x":60,"y":200,"width":200,"height":100,"fillColor":"#5b9bd5"}}
+{"type":"action","name":"wb_draw_shape","params":{"shape":"rectangle","x":60,"y":200,"width":200,"height":100,"fillColor":"#5b9bd5","label":"概念名","textColor":"#ffffff"}}
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `shape` | `"rectangle"` \| `"circle"` \| `"triangle"` | yes | Primitive shape. |
+| `shape` | `"rectangle"` \| `"rounded_rectangle"` \| `"circle"` \| `"triangle"` \| `"diamond"` \| `"hexagon"` | yes | Primitive shape. |
 | `x`, `y` | number | yes | Top-left of the shape's bounding box. |
 | `width`, `height` | number | yes | Bounding box size. |
 | `fillColor` | string | no (default `#5b9bd5`) | Hex fill color. |
+| `label` | string | no | Text label rendered inside the shape. |
+| `textColor` | string | no (default `#ffffff`) | Label text color. |
+| `outline` | object | no | `{width, color, style}` for border. |
+| `opacity` | number | no (default 1) | 0–1 transparency. |
 | `elementId` | string | no | Stable ID. |
 
 #### wb_draw_line

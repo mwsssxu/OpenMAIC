@@ -177,28 +177,6 @@ export function LineElement({ element, scaleX, scaleY, isWhiteboard = false }: L
     return <Defs>{markers}</Defs>;
   }, [element, hasStartPoint, hasEndPoint]);
 
-  if (isWhiteboard) {
-    return (
-      <View style={{ width: '100%', minHeight: svgHeight * avgScale + 20, marginBottom: 8, zIndex: 1 }}>
-        <View style={{ position: 'absolute', left: (element.left + minX) * scaleX, top: (element.top + minY) * scaleY, zIndex: 1 }}>
-          <Svg width={svgWidth * avgScale} height={svgHeight * avgScale} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
-            {markerDefs}
-            <Path
-              d={adjustedPath}
-              stroke={element.color}
-              strokeWidth={lineWidth}
-              strokeDasharray={lineDashArray}
-              fill="none"
-              markerStart={hasStartPoint ? 'url(#start-marker)' : undefined}
-              markerEnd={hasEndPoint ? 'url(#end-marker)' : undefined}
-            />
-          </Svg>
-        </View>
-      </View>
-    );
-  }
-
-  // Non-whiteboard: absolute positioning
   return (
     <View style={{
       position: 'absolute' as const,
