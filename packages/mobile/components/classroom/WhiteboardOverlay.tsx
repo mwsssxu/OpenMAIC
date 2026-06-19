@@ -444,48 +444,68 @@ export function WhiteboardOverlay({
   sceneId,
 }: WhiteboardOverlayProps) {
   const elements = whiteboardStore.useElements();
+  const pages = whiteboardStore.usePages();
   const hasElements = elements.length > 0;
+  const hasPages = pages.length > 0;
   const hasTextContent = !!textContent;
   const { isPhone, isCompact } = useResponsiveDimensions();
   const windowDims = useWindowDimensions();
 
   // 保存笔记中状态
   const [savingNote, setSavingNote] = useState(false);
+  // 历史页查看模式
+  const [viewingHistory, setViewingHistory] = useState(false);
 
   /**
-   * 将白板元素转为 Markdown 文本
+   * 将白板元素转为 Markdown 文本（包含所有页）
    */
   const whiteboardToMarkdown = useCallback((): string => {
-    const els = whiteboardStore.getElements();
-    if (els.length === 0 && textContent) {
-      return textContent;
-    }
-
+    const allPages = whiteboardStore.getPages();
+    const currentEls = whiteboardStore.getElements();
     const lines: string[] = [];
-    for (const el of els) {
-      if (el.type === 'text' && el.content) {
-        // 提取纯文本（移除HTML标签）
-        const text = el.content.replace(/<[^>]+>/g, '').trim();
-        if (!text) continue;
 
-        const id = (el.id || '').toLowerCase();
-        // 根据语义角色格式化
-        if (id === 'title' || id.startsWith('title')) {
-          lines.push(`## ${text}\n`);
-        } else if (id.startsWith('point')) {
-          lines.push(`- ${text}`);
-        } else if (id.startsWith('highlight') || id.startsWith('shape_') || id.startsWith('line_')) {
-          lines.push(`> ${text}`);
-        } else {
-          lines.push(text);
+    const elementsToMarkdown = (els: typeof currentEls, pageNum?: number) => {
+      if (pageNum && els.length > 0) {
+        lines.push(`\n## 白板 ${pageNum}\n`);
+      }
+      for (const el of els) {
+        if (el.type === 'text' && (el as any).content) {
+          const text = (el as any).content.replace(/<[^>]+>/g, '').trim();
+          if (!text) continue;
+          const id = (el.id || '').toLowerCase();
+          if (id === 'title' || id.startsWith('title')) {
+            lines.push(`### ${text}\n`);
+          } else if (id.startsWith('point')) {
+            lines.push(`- ${text}`);
+          } else if (id.startsWith('highlight') || id.startsWith('shape_') || id.startsWith('line_')) {
+            lines.push(`> ${text}`);
+          } else {
+            lines.push(text);
+          }
+        }
+        // shape 和 line 的 label
+        if (el.type === 'shape' && (el as any).text?.content) {
+          const label = (el as any).text.content.replace(/<[^>]+>/g, '').trim();
+          if (label) lines.push(`- ▢ ${label}`);
         }
       }
+    };
+
+    // 历史页
+    allPages.forEach((page, i) => elementsToMarkdown(page.elements, i + 1));
+    // 当前页
+    if (currentEls.length > 0) {
+      elementsToMarkdown(currentEls, allPages.length + 1);
+    }
+
+    if (lines.length === 0 && textContent) {
+      return textContent;
     }
     return lines.join('\n');
   }, [textContent]);
 
   /**
-   * 一键保存白板内容到笔记
+   * 一键保存白板内容到笔记（含所有页）
    */
   const handleSaveToNote = useCallback(async () => {
     const markdown = whiteboardToMarkdown();
@@ -496,7 +516,6 @@ export function WhiteboardOverlay({
 
     setSavingNote(true);
     try {
-      // 标题取第一行非空文本，截断到50字
       const firstLine = markdown.split('\n').find(l => l.trim())?.trim() || '白板笔记';
       const title = firstLine.replace(/^##\s*/, '').slice(0, 50);
 
@@ -525,6 +544,27 @@ export function WhiteboardOverlay({
     }
   }, [whiteboardToMarkdown, courseId, sceneId]);
 
+  /**
+   * 手动清空白板（含历史页）
+   */
+  const handleClearAll = useCallback(() => {
+    Alert.alert(
+      '清空白板',
+      '将清空当前白板和所有历史白板内容，此操作不可撤销。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '清空',
+          style: 'destructive',
+          onPress: () => {
+            whiteboardStore.clearAll();
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          },
+        },
+      ]
+    );
+  }, []);
+
   // 白板占满全部空间（聊天面板已移除，由外部独立渲染）
   const whiteboardStyle = useAnimatedStyle(() => ({
     flex: 1,
@@ -534,6 +574,7 @@ export function WhiteboardOverlay({
 
   const isCompactPhone = isPhone || isCompact;
   const headerPadding = isCompactPhone ? 6 : Spacing.sm;
+  const totalPageCount = pages.length + (hasElements ? 1 : 0);
 
   return (
     <View style={[
@@ -546,7 +587,9 @@ export function WhiteboardOverlay({
           {/* Header */}
           <View style={[styles.header, { padding: headerPadding }]}>
             <Ionicons name="pencil" size={16} color="#5b9bd5" />
-            <Text style={styles.title}>白板</Text>
+            <Text style={styles.title}>
+              白板{totalPageCount > 1 ? ` (${viewingHistory ? '历史' : '当前'} · ${totalPageCount}页)` : ''}
+            </Text>
 
             {/* 语音播放指示器 */}
             {playbackMode === 'playing' && (
@@ -562,6 +605,20 @@ export function WhiteboardOverlay({
               </View>
             )}
 
+            {/* 历史页切换按钮 */}
+            {hasPages && (
+              <TouchableOpacity
+                style={[styles.saveNoteBtn, viewingHistory && { backgroundColor: '#5b9bd5', borderColor: '#5b9bd5' }]}
+                onPress={() => setViewingHistory(!viewingHistory)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name={viewingHistory ? 'pencil' : 'layers-outline'} size={15} color={viewingHistory ? 'white' : '#5b9bd5'} />
+                <Text style={[styles.saveNoteBtnText, viewingHistory && { color: 'white' }]}>
+                  {viewingHistory ? '当前' : `历史${pages.length}`}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* 聊天切换按钮（聊天关闭时显示） */}
             {onToggleChat && !chatVisible && (
               <TouchableOpacity
@@ -575,7 +632,7 @@ export function WhiteboardOverlay({
             )}
 
             {/* 加入笔记按钮 */}
-            {(hasElements || hasTextContent) && (
+            {(hasElements || hasTextContent || hasPages) && (
               <TouchableOpacity
                 style={styles.saveNoteBtn}
                 onPress={handleSaveToNote}
@@ -589,6 +646,16 @@ export function WhiteboardOverlay({
               </TouchableOpacity>
             )}
 
+            {/* 清空按钮 */}
+            {(hasElements || hasPages) && (
+              <TouchableOpacity
+                onPress={handleClearAll}
+                style={styles.closeBtn}
+              >
+                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={18} color="#666" />
             </TouchableOpacity>
@@ -596,10 +663,36 @@ export function WhiteboardOverlay({
 
           {/* Whiteboard content area */}
           <View style={styles.contentArea}>
-            {!hasElements && !hasTextContent ? (
+            {viewingHistory && hasPages ? (
+              // 历史页查看模式：垂直滚动浏览所有历史页
+              <ScrollView style={styles.textScrollView} contentContainerStyle={{ padding: Spacing.sm }}>
+                {pages.map((page, pageIdx) => (
+                  <View key={page.id} style={styles.historyPageCard}>
+                    <View style={styles.historyPageHeader}>
+                      <Text style={styles.historyPageTitle}>白板 {pageIdx + 1}</Text>
+                      <Text style={styles.historyPageCount}>{page.elements.length} 个元素</Text>
+                    </View>
+                    <ScreenCanvas
+                      elements={page.elements}
+                      background={{ type: 'solid', color: '#f8f9fa' }}
+                      isWhiteboard
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+            ) : !hasElements && !hasTextContent ? (
               <View style={styles.emptyState}>
                 <Ionicons name="document-text-outline" size={32} color="#ccc" />
                 <Text style={styles.emptyText}>暂无白板内容</Text>
+                {hasPages && (
+                  <TouchableOpacity
+                    style={styles.viewHistoryBtn}
+                    onPress={() => setViewingHistory(true)}
+                  >
+                    <Ionicons name="layers-outline" size={16} color="#5b9bd5" />
+                    <Text style={styles.viewHistoryText}>查看 {pages.length} 页历史白板</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : hasElements ? (
               <ScreenCanvas
@@ -726,6 +819,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     marginTop: Spacing.sm,
+  },
+  viewHistoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#eff6ff',
+    borderRadius: Rounded.full,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  viewHistoryText: {
+    fontSize: 13,
+    color: '#5b9bd5',
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  historyPageCard: {
+    backgroundColor: 'white',
+    borderRadius: Rounded.md,
+    marginBottom: Spacing.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.neutral.border,
+  },
+  historyPageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral.border,
+  },
+  historyPageTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.neutral.textPrimary,
+  },
+  historyPageCount: {
+    fontSize: 12,
+    color: '#999',
   },
   // 文本图表样式 - 支持内容扩展
   textScrollView: {

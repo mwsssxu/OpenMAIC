@@ -3,17 +3,36 @@ import type { PPTElement } from '@/components/slide/types';
 
 type Listener = () => void;
 
+export interface WhiteboardPage {
+  id: string;
+  elements: PPTElement[];
+  createdAt: number;
+}
+
 class WhiteboardElementStore {
+  /** 当前页的元素 */
   private elements: PPTElement[] = [];
+  /** 已归档的历史页 */
+  private pages: WhiteboardPage[] = [];
   private listeners = new Set<Listener>();
   private idCounter = 0;
+  private pageCounter = 0;
 
   getElements(): PPTElement[] {
     return this.elements;
   }
 
+  getPages(): WhiteboardPage[] {
+    return this.pages;
+  }
+
+  /** 当前页 + 历史页的总元素数 */
+  getTotalElementCount(): number {
+    return this.elements.length + this.pages.reduce((sum, p) => sum + p.elements.length, 0);
+  }
+
   isEmpty(): boolean {
-    return this.elements.length === 0;
+    return this.elements.length === 0 && this.pages.length === 0;
   }
 
   addElement(el: PPTElement): void {
@@ -21,9 +40,6 @@ class WhiteboardElementStore {
     if (!withId.id) {
       (withId as any).id = `wb_${++this.idCounter}_${Date.now().toString(36)}`;
     }
-
-    // 不再自动布局，因为 action-engine.ts 已经计算好了正确的位置
-    // 自动布局会导致位置被重复调整
 
     this.elements = [...this.elements, withId];
     this.notify();
@@ -43,7 +59,28 @@ class WhiteboardElementStore {
     this.notify();
   }
 
-  clear(): void {
+  /** 将当前元素归档为一个新页，然后清空当前元素列表 */
+  archiveCurrentPage(): void {
+    if (this.elements.length === 0) return;
+    const page: WhiteboardPage = {
+      id: `page_${++this.pageCounter}_${Date.now().toString(36)}`,
+      elements: this.elements,
+      createdAt: Date.now(),
+    };
+    this.pages = [...this.pages, page];
+    this.elements = [];
+    this.notify();
+  }
+
+  /** 用户手动清空——清空当前页和所有历史页 */
+  clearAll(): void {
+    this.elements = [];
+    this.pages = [];
+    this.notify();
+  }
+
+  /** 仅清空当前页元素（保留历史页） */
+  clearCurrent(): void {
     this.elements = [];
     this.notify();
   }
@@ -63,6 +100,13 @@ class WhiteboardElementStore {
     return useSyncExternalStore(
       (cb) => this.subscribe(cb),
       () => this.elements,
+    );
+  }
+
+  usePages(): WhiteboardPage[] {
+    return useSyncExternalStore(
+      (cb) => this.subscribe(cb),
+      () => this.pages,
     );
   }
 }

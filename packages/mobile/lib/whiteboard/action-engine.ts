@@ -63,8 +63,8 @@ export class MobileActionEngine {
         this.drawCode(params);
         break;
       case 'wb_clear':
-        console.log('[ActionEngine] wb_clear: clearing all elements');
-        whiteboardStore.clear();
+        console.log('[ActionEngine] wb_clear: clearing all elements (manual)');
+        whiteboardStore.clearAll();
         break;
       case 'wb_delete':
         if (params.elementId) {

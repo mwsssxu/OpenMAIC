@@ -265,11 +265,12 @@ export class PlaybackEngine {
           this.executeWhiteboardDelete(action);
           break;
         case 'wb_clear':
-          this.callbacks.onWhiteboardClear?.();
-          this.clearEffects();
+          // 不自动清空——只有用户手动清空才执行
+          // wb_clear 从 LLM action 流中忽略，清空只由用户按钮触发
           break;
         case 'wb_close':
-          this.callbacks.onWhiteboardClose?.();
+          // 不自动关闭/清空白板——内容保留供学生回顾
+          // wb_close 仅标记当前白板绘制阶段结束
           this.clearEffects();
           break;
 
@@ -385,11 +386,12 @@ export class PlaybackEngine {
           this.executeWhiteboardDelete(action);
           break;
         case 'wb_clear':
-          this.callbacks.onWhiteboardClear?.();
-          this.clearEffects();
+          // 不自动清空——只有用户手动清空才执行
+          // wb_clear 从 LLM action 流中忽略，清空只由用户按钮触发
           break;
         case 'wb_close':
-          this.callbacks.onWhiteboardClose?.();
+          // 不自动关闭/清空白板——内容保留供学生回顾
+          // wb_close 仅标记当前白板绘制阶段结束
           this.clearEffects();
           break;
 

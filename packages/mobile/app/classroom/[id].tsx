@@ -987,10 +987,9 @@ export default function ClassroomScreen() {
           setCurrentSceneIndex(index);
           // 更新已完成的场景数（当前场景之前的都算已完成）
           updateScenesCompleted(index);
-          // 切换场景时清除视觉效果、白板和交互状态
+          // 切换场景时清除视觉效果和交互状态（白板保留）
           setSpotlightElementId(null);
           setLaserElementId(null);
-          setShowWhiteboard(false);
           setDiscussionHint(null);
           setAutoPlayVideoElementId(null);
         },
@@ -1082,7 +1081,7 @@ export default function ClassroomScreen() {
     return () => {
       playbackEngineRef.current?.dispose();
       mobileActionEngine.resetLayout();
-      whiteboardStore.clear();
+      whiteboardStore.clearAll();
     };
   }, []);
 
@@ -1104,12 +1103,11 @@ export default function ClassroomScreen() {
   // 统一的白板动作处理（Chat 和 Discussion 模式共用）
   const handleWhiteboardAction = useCallback((actionName: string, params: any, context: 'Chat' | 'Discussion') => {
     if (actionName === 'wb_clear') {
-      mobileActionEngine.execute('wb_clear', {});
-      setWhiteboardTextContent(null);
+      // 不自动清空——只有用户手动清空才执行
+      return;
     } else if (actionName === 'wb_close') {
-      setShowWhiteboard(false);
-      mobileActionEngine.execute('wb_clear', {});
-      setWhiteboardTextContent(null);
+      // 不自动关闭/清空——白板内容保留供学生回顾
+      return;
     } else if (actionName.startsWith('wb_')) {
       // 如果是第一次添加白板内容，先重置布局
       if (whiteboardStore.isEmpty()) {
@@ -2690,6 +2688,9 @@ export default function ClassroomScreen() {
           onPress={() => setShowWhiteboard(!showWhiteboard)}
         >
           <Ionicons name="pencil" size={20} color={showWhiteboard ? 'white' : '#666'} />
+          {!showWhiteboard && !whiteboardStore.isEmpty() && (
+            <View style={styles.toolBadge} />
+          )}
         </TouchableOpacity>
 
         {/* 提取知识点 */}
@@ -3600,6 +3601,15 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   toolBtnDisabled: { opacity: 0.5, backgroundColor: Colors.neutral.disabled },
+  toolBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#e74c3c',
+  },
 
   // 模态框
   modalContainer: {
