@@ -451,6 +451,10 @@ export function WhiteboardOverlay({
   const { isPhone, isCompact } = useResponsiveDimensions();
   const windowDims = useWindowDimensions();
 
+  // 聊天面板高度 = 屏幕高度 × 45%（与 chatPanelOverWhiteboard 样式一致）
+  // 白板 ScrollView 需要相应底部 padding，否则内容被聊天面板遮挡
+  const chatPanelInset = chatVisible ? Math.round(windowDims.height * 0.45) : 0;
+
   // 保存笔记中状态
   const [savingNote, setSavingNote] = useState(false);
   // 历史页查看模式
@@ -677,6 +681,7 @@ export function WhiteboardOverlay({
                       elements={page.elements}
                       background={{ type: 'solid', color: '#f8f9fa' }}
                       isWhiteboard
+                      bottomInset={chatPanelInset}
                     />
                   </View>
                 ))}
@@ -701,9 +706,10 @@ export function WhiteboardOverlay({
                 background={{ type: 'solid', color: '#f8f9fa' }}
                 scrollable
                 isWhiteboard
+                bottomInset={chatPanelInset}
               />
             ) : (
-              <ScrollView style={styles.textScrollView} contentContainerStyle={styles.textScrollContent}>
+              <ScrollView style={styles.textScrollView} contentContainerStyle={[styles.textScrollContent, chatPanelInset > 0 ? { paddingBottom: chatPanelInset } : undefined]}>
                 <StructuredContent content={textContent!.replace(/```[\w]*\n?/g, '').replace(/```$/g, '')} />
               </ScrollView>
             )}

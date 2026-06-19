@@ -32,15 +32,17 @@ interface ScreenCanvasProps {
   /** Spotlight target element ID */
   spotlightElementId?: string | null;
   /** Spotlight options */
-  spotlightOptions?: { dimness?: number };
+  spotlightOptions?: { dimness?: number } | undefined;
   /** Laser target element ID */
   laserElementId?: string | null;
   /** Laser options */
-  laserOptions?: { color?: string; duration?: number };
+  laserOptions?: { color?: string; duration?: number } | undefined;
   /** Enable scrollable mode - calculates full content height */
   scrollable?: boolean;
   /** Whether rendering in whiteboard mode (adds card backgrounds to text elements) */
   isWhiteboard?: boolean;
+  /** Bottom inset for ScrollView content (e.g. when a panel overlays the bottom) */
+  bottomInset?: number;
 }
 
 /**
@@ -56,6 +58,7 @@ export function ScreenCanvas({
   laserOptions,
   scrollable = false,
   isWhiteboard = false,
+  bottomInset = 0,
 }: ScreenCanvasProps) {
   const containerRef = useRef<View>(null);
   const wbScrollViewRef = useRef<ScrollView>(null);
@@ -259,7 +262,11 @@ export function ScreenCanvas({
         <ScrollView
           ref={wbScrollViewRef}
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollViewContent, styles.scrollViewContentWhiteboard]}
+          contentContainerStyle={[
+            styles.scrollViewContent,
+            styles.scrollViewContentWhiteboard,
+            bottomInset > 0 ? { paddingBottom: bottomInset } : undefined,
+          ]}
           showsVerticalScrollIndicator={true}
           nestedScrollEnabled
           onContentSizeChange={(_w, h) => {
