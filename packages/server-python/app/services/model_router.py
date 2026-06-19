@@ -14,6 +14,7 @@
 """
 
 import logging
+import os
 from typing import Optional, Dict, Any, List
 from enum import Enum
 from dataclasses import dataclass, field
@@ -181,15 +182,17 @@ SCENE_CAPABILITY_MAP: Dict[SceneType, ModelCapability] = {
 }
 
 # 场景到默认模型的映射
+# 文本类场景统一使用 DEFAULT_MODEL 环境变量（docker-compose 配置），便于切换模型版本
+_DEFAULT_TEXT_MODEL = os.environ.get("DEFAULT_MODEL", "qwen3.6-plus")
 SCENE_MODEL_MAP: Dict[SceneType, str] = {
-    SceneType.OUTLINE_GENERATION: "qwen3.6-plus",
-    SceneType.SCENE_GENERATION: "qwen3.6-plus",
-    SceneType.AGENT_CHAT: "qwen3.6-plus",
-    SceneType.QUIZ_GRADING: "qwen-turbo",  # 批改可以用更快的小模型
-    SceneType.INTERACTIVE_GENERATION: "qwen3.6-plus",  # HTML 代码生成用文本模型
-    SceneType.IMAGE_DESCRIPTION: "qwen-vl-max",
-    SceneType.PDF_ANALYSIS: "qwen-vl-max",
-    SceneType.TTS_SYNTHESIS: "qwen3-tts-flash",
+    SceneType.OUTLINE_GENERATION: _DEFAULT_TEXT_MODEL,
+    SceneType.SCENE_GENERATION: _DEFAULT_TEXT_MODEL,
+    SceneType.AGENT_CHAT: _DEFAULT_TEXT_MODEL,
+    SceneType.QUIZ_GRADING: os.environ.get("QUIZ_GRADING_MODEL", "qwen-turbo"),  # 批改可以用更快的小模型
+    SceneType.INTERACTIVE_GENERATION: _DEFAULT_TEXT_MODEL,  # HTML 代码生成用文本模型
+    SceneType.IMAGE_DESCRIPTION: os.environ.get("VISION_MODEL_ID", "qwen-vl-max"),
+    SceneType.PDF_ANALYSIS: os.environ.get("VISION_MODEL_ID", "qwen-vl-max"),
+    SceneType.TTS_SYNTHESIS: os.environ.get("TTS_MODEL_ID", "qwen3-tts-flash"),
 }
 
 
