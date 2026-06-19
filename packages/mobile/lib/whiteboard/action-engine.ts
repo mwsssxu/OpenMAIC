@@ -34,6 +34,28 @@ export class MobileActionEngine {
     // No-op: absolute positioning mode
   }
 
+  /** 画布尺寸（LLM 坐标系） */
+  private static readonly CANVAS_W = 1000;
+  private static readonly CANVAS_H = 563;
+
+  /**
+   * 钳制元素坐标到画布边界内
+   * 如果 left+width 超出画布右边界，将 left 左移使其完全可见
+   * 如果 top+height 超出画布下边界，将 top 上移
+   */
+  private clampToCanvas(left: number, top: number, width: number, height: number): { left: number; top: number; width: number; height: number } {
+    const cw = MobileActionEngine.CANVAS_W;
+    const ch = MobileActionEngine.CANVAS_H;
+    // 限制 width 不超过画布宽度
+    const w = Math.min(width, cw);
+    const h = Math.min(height, ch);
+    // 如果右侧溢出，左移
+    const l = Math.max(0, Math.min(left, cw - w));
+    // 如果底部溢出，上移
+    const t = Math.max(0, Math.min(top, ch - h));
+    return { left: l, top: t, width: w, height: h };
+  }
+
   execute(actionName: string, params: Record<string, any>): void {
     switch (actionName) {
       case 'wb_draw_text':
@@ -90,11 +112,12 @@ export class MobileActionEngine {
       content = `<p style="font-size: ${fontSize}px;">${content}</p>`;
     }
 
-    // Use LLM-provided absolute coordinates
-    const left = params.x ?? 60;
-    const top = params.y ?? 0;
-    const width = params.width ?? 880;
-    const height = params.height ?? Math.max(40, fontSize * 2);
+    // Use LLM-provided absolute coordinates, clamped to canvas
+    const rawLeft = params.x ?? 60;
+    const rawTop = params.y ?? 0;
+    const rawWidth = params.width ?? 880;
+    const rawHeight = params.height ?? Math.max(40, fontSize * 2);
+    const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
 
     console.log(`[ActionEngine] drawText: left=${left}, top=${top}, w=${width}, h=${height}, fontSize=${fontSize}`);
 
@@ -118,11 +141,12 @@ export class MobileActionEngine {
     const shapeName = params.shape ?? 'rectangle';
     const path = SHAPE_PATHS[shapeName] ?? SHAPE_PATHS.rectangle;
 
-    const left = params.x ?? 60;
-    const top = params.y ?? 0;
+    const rawLeft = params.x ?? 60;
+    const rawTop = params.y ?? 0;
     // 最小尺寸保障：移动端缩放后仍可读
-    const width = Math.max(params.width ?? 200, 300);
-    const height = Math.max(params.height ?? 80, 100);
+    const rawWidth = Math.max(params.width ?? 200, 300);
+    const rawHeight = Math.max(params.height ?? 80, 100);
+    const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
 
     // Shape has text label inside
     const label = params.label || params.text || '';
@@ -163,10 +187,10 @@ export class MobileActionEngine {
   }
 
   private drawLine(params: Record<string, any>): void {
-    const startX = params.startX ?? 0;
-    const startY = params.startY ?? 0;
-    const endX = params.endX ?? 100;
-    const endY = params.endY ?? 100;
+    const startX = Math.max(0, Math.min(params.startX ?? 0, 1000));
+    const startY = Math.max(0, Math.min(params.startY ?? 0, 563));
+    const endX = Math.max(0, Math.min(params.endX ?? 100, 1000));
+    const endY = Math.max(0, Math.min(params.endY ?? 100, 563));
 
     // Calculate bounding box top-left
     const left = Math.min(startX, endX);
@@ -204,10 +228,11 @@ export class MobileActionEngine {
     const latex = params.latex ?? params.content ?? '';
     if (!latex) return;
 
-    const left = params.x ?? 60;
-    const top = params.y ?? 0;
-    const width = params.width ?? 880;
-    const height = params.height ?? 60;
+    const rawLeft = params.x ?? 60;
+    const rawTop = params.y ?? 0;
+    const rawWidth = params.width ?? 880;
+    const rawHeight = params.height ?? 60;
+    const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
 
     console.log(`[ActionEngine] drawLatex: at (${left},${top}) ${width}x${height}`);
 
@@ -225,10 +250,9 @@ export class MobileActionEngine {
   }
 
   private drawChart(params: Record<string, any>): void {
-    const left = params.x ?? 60;
-    const top = params.y ?? 0;
-    const width = params.width ?? 880;
-    const height = params.height ?? 200;
+    const { left, top, width, height } = this.clampToCanvas(
+      params.x ?? 60, params.y ?? 0, params.width ?? 880, params.height ?? 200
+    );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('chart'),
@@ -263,10 +287,9 @@ export class MobileActionEngine {
       })),
     );
 
-    const left = params.x ?? 60;
-    const top = params.y ?? 0;
-    const width = params.width ?? 880;
-    const height = params.height ?? rows * 30 + 20;
+    const { left, top, width, height } = this.clampToCanvas(
+      params.x ?? 60, params.y ?? 0, params.width ?? 880, params.height ?? rows * 30 + 20
+    );
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('table'),
