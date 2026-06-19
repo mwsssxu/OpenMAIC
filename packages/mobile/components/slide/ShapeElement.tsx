@@ -96,9 +96,11 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       justifyContent: justifyContent as 'flex-start' | 'flex-end' | 'center',
       alignItems: 'center' as const,
       padding: 8 * Math.min(scaleX, scaleY),
-      overflow: 'visible' as const,
+      // 白板模式允许文字溢出色块（内容可能超出 shape 边界）
+      // 幻灯片模式保持裁切（文字应限定在 shape 内）
+      overflow: (isWhiteboard ? 'visible' : 'hidden') as 'visible' | 'hidden',
     };
-  }, [element, scaleX, scaleY]);
+  }, [element, scaleX, scaleY, isWhiteboard]);
 
   // Gradient definition if present
   const gradientDef = useMemo(() => {
@@ -153,7 +155,7 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       </Svg>
       {textContent && (
         <View style={textContainerStyle}>
-          <Text style={textStyle}>{textContent}</Text>
+          <Text style={textStyle} numberOfLines={isWhiteboard ? undefined : 3}>{textContent}</Text>
         </View>
       )}
     </View>

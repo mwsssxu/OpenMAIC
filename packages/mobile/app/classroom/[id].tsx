@@ -1037,14 +1037,7 @@ export default function ClassroomScreen() {
         onWhiteboardDelete: (elementId: string) => {
           whiteboardStore.deleteElement(elementId);
         },
-        onWhiteboardClear: () => {
-          mobileActionEngine.execute('wb_clear', {});
-        },
-        onWhiteboardClose: () => {
-          setShowWhiteboard(false);
-          mobileActionEngine.execute('wb_clear', {});
-          setWhiteboardTextContent(null);
-        },
+        // onWhiteboardClear/onWhiteboardClose 已移除——白板不自动关闭/清空，由用户手动操作
         onDiscussionTrigger: (topic: string, prompt?: string, agentId?: string) => {
           // Show discussion hint badge — non-blocking
           setDiscussionHint({ topic, prompt, agentId });

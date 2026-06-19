@@ -558,6 +558,7 @@ export function WhiteboardOverlay({
           style: 'destructive',
           onPress: () => {
             whiteboardStore.clearAll();
+            setViewingHistory(false);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           },
         },

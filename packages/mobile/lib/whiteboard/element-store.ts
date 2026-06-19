@@ -26,11 +26,6 @@ class WhiteboardElementStore {
     return this.pages;
   }
 
-  /** 当前页 + 历史页的总元素数 */
-  getTotalElementCount(): number {
-    return this.elements.length + this.pages.reduce((sum, p) => sum + p.elements.length, 0);
-  }
-
   isEmpty(): boolean {
     return this.elements.length === 0 && this.pages.length === 0;
   }
@@ -76,12 +71,6 @@ class WhiteboardElementStore {
   clearAll(): void {
     this.elements = [];
     this.pages = [];
-    this.notify();
-  }
-
-  /** 仅清空当前页元素（保留历史页） */
-  clearCurrent(): void {
-    this.elements = [];
     this.notify();
   }
 
