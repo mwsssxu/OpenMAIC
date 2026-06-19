@@ -157,6 +157,7 @@ MODEL_PRICING: Dict[str, tuple] = {
     "qwen/qwen-plus": (0.004, 0.012),
     "qwen/qwen-max": (0.020, 0.060),
     "qwen/qwen3.6-plus": (0.004, 0.012),
+    "qwen/qwen3.7-plus": (0.004, 0.012),
     "qwen/qwen3.7-max": (0.020, 0.060),
     "qwen/qwq-32b-preview": (0.002, 0.006),
     "openrouter/z-ai/glm-5.1": (0.002, 0.006),

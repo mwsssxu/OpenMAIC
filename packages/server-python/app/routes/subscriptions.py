@@ -72,7 +72,7 @@ PLAN_FEATURES = {
         "passport": "full",                                            # 完整学习护照+导出
         "whiteboard_storage_days": -1,                                 # 永久
         # AI 模型
-        "ai_model": "qwen3.6-plus",                                    # 高级模型
+        "ai_model": "qwen3.7-plus",                                    # 高级模型
         # 赠送
         "token_bonus_pct": 10,                                         # Token奖励加成 10%
         "points_bonus_pct": 20,                                        # 积分奖励加成 20%

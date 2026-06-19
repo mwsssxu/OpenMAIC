@@ -76,6 +76,15 @@ class ProviderConfig:
 
 DEFAULT_MODEL_CONFIGS: Dict[str, ModelConfig] = {
     # 文本模型
+    "qwen3.7-plus": ModelConfig(
+        model_id="qwen3.7-plus",
+        provider="qwen",
+        max_tokens=8192,
+        temperature=0.7,
+        capabilities=[ModelCapability.TEXT],
+        priority=1,
+    ),
+    # 兼容旧配置名
     "qwen3.6-plus": ModelConfig(
         model_id="qwen3.6-plus",
         provider="qwen",
@@ -83,6 +92,7 @@ DEFAULT_MODEL_CONFIGS: Dict[str, ModelConfig] = {
         temperature=0.7,
         capabilities=[ModelCapability.TEXT],
         priority=1,
+        fallback_model="qwen3.7-plus",
     ),
     "qwen-turbo": ModelConfig(
         model_id="qwen-turbo",
@@ -212,7 +222,7 @@ class ModelRouter:
         tts_api_base: Optional[str] = None,
     ):
         # 从settings读取配置，支持环境变量覆盖
-        self.default_text_model = default_text_model or settings.DEFAULT_MODEL or "qwen/qwen3.6-plus"
+        self.default_text_model = default_text_model or settings.DEFAULT_MODEL or "qwen3.7-plus"
         self.default_vision_model = default_vision_model or settings.VISION_MODEL_ID or "qwen-vl-max"
         self.default_tts_model = default_tts_model or settings.TTS_MODEL_ID or "qwen3-tts-flash"
 

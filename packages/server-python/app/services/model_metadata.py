@@ -113,6 +113,12 @@ THINKING_CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "budget_range": {"min": 0, "max": 81920, "step": 1024, "disableValue": 0},
         "default_enabled": True,
     },
+    get_model_key("qwen", "qwen3.7-plus"): {
+        "control": "toggle-budget",
+        "request_adapter": "qwen",
+        "budget_range": {"min": 0, "max": 81920, "step": 1024, "disableValue": 0},
+        "default_enabled": True,
+    },
 
     # Google
     get_model_key("google", "gemini-3.1-pro-preview"): {
