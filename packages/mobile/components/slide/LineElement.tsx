@@ -68,8 +68,12 @@ export function LineElement({ element, scaleX, scaleY, isWhiteboard = false }: L
   const svgWidth = Math.max(rawWidth, 24);
   const svgHeight = Math.max(rawHeight, 24);
 
-  // Line width (element.width from PPTBaseElement)
-  const lineWidth = element.width || 2;
+  // Line width (element.width = stroke thickness from action-engine)
+  // 白板模式：stroke 随画布缩放，保持视觉比例
+  const baseLineWidth = element.width || 2;
+  const lineWidth = isWhiteboard
+    ? Math.max(1.5, baseLineWidth * Math.min(scaleX, scaleY))
+    : baseLineWidth;
   const avgScale = (scaleX + scaleY) / 2;
 
   // Dash array based on style

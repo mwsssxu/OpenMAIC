@@ -75,13 +75,20 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
   }, [element]);
 
   // Text style
-  const textStyle = useMemo(() => ({
-    color: element.text?.defaultColor || theme.fontColor,
-    fontFamily: element.text?.defaultFontName || theme.fontName,
-    fontSize: sFont(14, isSmallScreen ? 9 : 11),
-    lineHeight: sFont(14, isSmallScreen ? 9 : 11) * 1.4,
-    textAlign: 'center' as const,
-  }), [element, theme]);
+  // 白板模式：字体随画布缩放，基于 shape 渲染高度按比例计算
+  const textStyle = useMemo(() => {
+    const baseSize = sFont(14, isSmallScreen ? 9 : 11);
+    const fontSize = isWhiteboard
+      ? Math.max(11, Math.min(22, (element.height || 80) * Math.min(scaleX, scaleY) * 0.42))
+      : baseSize;
+    return {
+      color: element.text?.defaultColor || theme.fontColor,
+      fontFamily: element.text?.defaultFontName || theme.fontName,
+      fontSize,
+      lineHeight: fontSize * 1.4,
+      textAlign: 'center' as const,
+    };
+  }, [element, theme, isWhiteboard, scaleX, scaleY]);
 
   // Text container alignment
   const textContainerStyle = useMemo(() => {

@@ -66,7 +66,7 @@ Place a geometric shape. Use for annotations, groupings, or simple diagrams.
 |---|---|---|---|
 | `shape` | `"rectangle"` \| `"rounded_rectangle"` \| `"circle"` \| `"triangle"` \| `"diamond"` \| `"hexagon"` | yes | Primitive shape. |
 | `x`, `y` | number | yes | Top-left of the shape's bounding box. |
-| `width`, `height` | number | yes | Bounding box size. |
+| `width`, `height` | number | yes | Bounding box size. **Minimum 300×100** for readability on mobile (canvas is 1000×563, shapes smaller than 300×100 render as tiny boxes with unreadable text). |
 | `fillColor` | string | no (default `#5b9bd5`) | Hex fill color. |
 | `label` | string | no | Text label rendered inside the shape. |
 | `textColor` | string | no (default `#ffffff`) | Label text color. |

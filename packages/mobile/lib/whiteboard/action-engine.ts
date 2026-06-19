@@ -120,8 +120,9 @@ export class MobileActionEngine {
 
     const left = params.x ?? 60;
     const top = params.y ?? 0;
-    const width = params.width ?? 200;
-    const height = params.height ?? 80;
+    // 最小尺寸保障：移动端缩放后仍可读
+    const width = Math.max(params.width ?? 200, 300);
+    const height = Math.max(params.height ?? 80, 100);
 
     // Shape has text label inside
     const label = params.label || params.text || '';
@@ -167,11 +168,9 @@ export class MobileActionEngine {
     const endX = params.endX ?? 100;
     const endY = params.endY ?? 100;
 
-    // Calculate bounding box
+    // Calculate bounding box top-left
     const left = Math.min(startX, endX);
     const top = Math.min(startY, endY);
-    const width = Math.abs(endX - startX);
-    const height = Math.abs(endY - startY);
 
     const color = params.color ?? '#333333';
     const lineWidth = params.width ?? 2;
@@ -183,15 +182,16 @@ export class MobileActionEngine {
       params.points?.[1] ?? (params.arrow ? 'arrow' : ''),
     ];
 
-    console.log(`[ActionEngine] drawLine: (${startX},${startY})→(${endX},${endY}) color=${color} w=${lineWidth}`);
+    console.log(`[ActionEngine] drawLine: (${startX},${startY})→(${endX},${endY}) color=${color} strokeWidth=${lineWidth}`);
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('line'),
       type: 'line',
       left,
       top,
-      width: Math.max(width, 24), // minimum width for visibility
-      height: Math.max(height, 24),
+      // width = 线条粗细（stroke thickness），NOT bounding box width
+      // bounding box 由 start/end 坐标定义，LineElement 自行计算
+      width: lineWidth,
       start: [startX - left, startY - top] as [number, number],
       end: [endX - left, endY - top] as [number, number],
       style,
