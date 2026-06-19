@@ -258,13 +258,14 @@ PROVIDER_MODEL_MAP = {
     "deepseek": "deepseek-chat",
 }
 
+_DEFAULT = os.environ.get("DEFAULT_MODEL", "qwen3.7-plus")
 MODEL_REMAP = {
-    "gpt-4o-mini": "qwen3.6-plus",
-    "gpt-4o": "qwen3.6-plus",
-    "gpt-4-turbo": "qwen3.6-plus",
-    "gpt-4": "qwen3.6-plus",
+    "gpt-4o-mini": _DEFAULT,
+    "gpt-4o": _DEFAULT,
+    "gpt-4-turbo": _DEFAULT,
+    "gpt-4": _DEFAULT,
     "gpt-3.5-turbo": "qwen-plus",
-    "claude-3-5-sonnet": "qwen3.6-plus",
+    "claude-3-5-sonnet": _DEFAULT,
     "claude-3-opus": "qwen-max",
 }
 

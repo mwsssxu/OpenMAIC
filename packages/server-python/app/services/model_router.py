@@ -91,7 +91,7 @@ DEFAULT_MODEL_CONFIGS: Dict[str, ModelConfig] = {
         temperature=0.7,
         capabilities=[ModelCapability.TEXT],
         priority=2,
-        fallback_model="qwen3.6-plus",
+        fallback_model=os.environ.get("DEFAULT_MODEL", "qwen3.7-plus"),
     ),
     "deepseek-chat": ModelConfig(
         model_id="deepseek-chat",

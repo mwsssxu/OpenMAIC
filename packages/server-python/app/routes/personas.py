@@ -10,6 +10,7 @@ from typing import Optional, List
 from datetime import datetime
 from app.core.time_utils import utcnow
 import asyncpg
+import os
 import uuid
 import json
 import logging
@@ -272,16 +273,16 @@ async def generate_persona_response(
     logger.info(f"[Persona] 系统提示词长度: {len(system_prompt)}")
     logger.debug(f"[Persona] 用户提示词(截断): {user_prompt[:LOG_TRUNCATION_LENGTH]}...")
 
-    # Chat 专用模型（使用 qwen3.6-plus）
-    CHAT_MODEL = "qwen3.6-plus"
+    # Chat 专用模型（从环境变量读取，docker DEFAULT_MODEL 生效）
+    CHAT_MODEL = os.environ.get("DEFAULT_MODEL", "qwen3.6-plus")
 
     try:
-        # 调用 LLM（使用 qwen3.6-plus）
+        # 调用 LLM
         llm_start = time.time()
         response = await call_llm(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            model=CHAT_MODEL,  # 直接使用 qwen3.6-plus，不经过模型映射
+            model=CHAT_MODEL,  # 从环境变量读取，不经过模型映射
             temperature=0.8,  # 更高的温度让回答更有个性
             max_tokens=1024,
         )

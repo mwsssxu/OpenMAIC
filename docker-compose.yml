@@ -18,13 +18,13 @@ services:
       - DEBUG=true
       - TESTING_MODE=true
       # LLM 提供商 - 阿里云 DashScope
-      - OPENAI_API_KEY=sk-8534df2141cc4c548e30097ae52511b2
-      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      - OPENAI_API_KEY=sk-sp-3a13b0202c924dc0bdb2d06de637ead4
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://coding.dashscope.aliyuncs.com/v1}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-qwen3.7-plus}
       - HTTP_PROXY=  # 禁用代理（DashScope直接访问）
       # TTS - 阿里云百炼 DashScope 兼容模式 API
-      - TTS_API_KEY=${TTS_API_KEY:-sk-8534df2141cc4c548e30097ae52511b2}
-      - TTS_API_BASE=${TTS_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      - TTS_API_KEY=${TTS_API_KEY:-sk-sp-3a13b0202c924dc0bdb2d06de637ead4}
+      - TTS_API_BASE=${TTS_API_BASE:-https://coding.dashscope.aliyuncs.com/v1}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}

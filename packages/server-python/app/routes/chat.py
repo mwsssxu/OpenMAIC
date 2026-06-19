@@ -22,6 +22,7 @@ from app.db.database import get_db
 from app.routes.subscriptions import check_and_deduct_tokens_for_action
 import asyncpg
 import json
+import os
 import uuid
 import logging
 import re
@@ -29,8 +30,8 @@ import re
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Chat 专用模型（使用 qwen3.6-plus）
-CHAT_MODEL = "qwen3.6-plus"
+# Chat 专用模型（从环境变量读取，docker DEFAULT_MODEL 生效）
+CHAT_MODEL = os.environ.get("DEFAULT_MODEL", "qwen3.6-plus")
 
 
 def sse_event(event_type: str, data: dict) -> str:
