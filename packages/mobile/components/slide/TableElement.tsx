@@ -24,13 +24,6 @@ export function TableElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
   const showRowHeader = element.theme?.rowHeader ?? false;
 
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        marginBottom: 8,
-        zIndex: 1,
-      };
-    }
     return {
       position: 'absolute' as const,
       left: element.left * scaleX,
@@ -38,7 +31,7 @@ export function TableElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       width: Math.max(element.width * scaleX, 60),
       zIndex: 1,
     };
-  }, [element, scaleX, scaleY, isWhiteboard]);
+  }, [element, scaleX, scaleY]);
 
   const fontSize = Math.max(isSmallScreen ? 8 : 10, Math.round(12 * effectiveScale));
 

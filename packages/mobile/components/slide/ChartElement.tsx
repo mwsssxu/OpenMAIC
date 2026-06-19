@@ -67,29 +67,18 @@ function BarChartView({ element, scaleX, scaleY, labels, series, colors, isWhite
   const maxVal = Math.max(...series.flatMap((s) => s.data), 1);
 
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        minHeight: 160,
-        backgroundColor: '#fff',
-        borderRadius: 6,
-        padding: 8,
-        marginBottom: 8,
-        zIndex: 1,
-      };
-    }
     return {
       position: 'absolute' as const,
       left: element.left * scaleX,
       top: element.top * scaleY,
       width: Math.max(element.width * scaleX, 60),
-      height: element.height > 0 ? element.height * scaleY : 200,
+      minHeight: element.height > 0 ? element.height * scaleY : 160,
       backgroundColor: '#fff',
       borderRadius: 6,
       padding: 8,
       zIndex: 1,
     };
-  }, [element, scaleX, scaleY, isWhiteboard]);
+  }, [element, scaleX, scaleY]);
 
   const labelSize = sFont(10, 8);
   const valueSize = sFont(9, 7);
@@ -141,29 +130,18 @@ function SimpleBarChart({ element, scaleX, scaleY, items, colors, isWhiteboard }
   const maxVal = Math.max(...items.map((d) => d.value), 1);
 
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        minHeight: 100,
-        backgroundColor: '#fff',
-        borderRadius: 6,
-        padding: 8,
-        marginBottom: 8,
-        zIndex: 1,
-      };
-    }
     return {
       position: 'absolute' as const,
       left: element.left * scaleX,
       top: element.top * scaleY,
       width: Math.max(element.width * scaleX, 60),
-      height: element.height > 0 ? element.height * scaleY : 200,
+      minHeight: element.height > 0 ? element.height * scaleY : 100,
       backgroundColor: '#fff',
       borderRadius: 6,
       padding: 8,
       zIndex: 1,
     };
-  }, [element, scaleX, scaleY, isWhiteboard]);
+  }, [element, scaleX, scaleY]);
 
   const labelSize = sFont(10, 8);
   const valueSize = sFont(9, 7);
@@ -195,29 +173,18 @@ function PieChartView({ element, scaleX, scaleY, labels, series, colors, isWhite
   const total = series[0]?.data.reduce((a, b) => a + b, 0) || 1;
 
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        minHeight: 140,
-        backgroundColor: '#fff',
-        borderRadius: 6,
-        padding: 8,
-        marginBottom: 8,
-        zIndex: 1,
-      };
-    }
     return {
       position: 'absolute' as const,
       left: element.left * scaleX,
       top: element.top * scaleY,
       width: Math.max(element.width * scaleX, 60),
-      height: element.height > 0 ? element.height * scaleY : 160,
+      minHeight: element.height > 0 ? element.height * scaleY : 140,
       backgroundColor: '#fff',
       borderRadius: 6,
       padding: 8,
       zIndex: 1,
     };
-  }, [element, scaleX, scaleY, isWhiteboard]);
+  }, [element, scaleX, scaleY]);
 
   const labelSize = sFont(10, 8);
 
@@ -250,23 +217,12 @@ function PieChartView({ element, scaleX, scaleY, labels, series, colors, isWhite
 /** Fallback for unrecognized chart data */
 function FallbackChart({ element, scaleX, scaleY, isWhiteboard }: { element: PPTChartElement; scaleX: number; scaleY: number; isWhiteboard: boolean }) {
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        minHeight: 80,
-        backgroundColor: '#fff',
-        borderRadius: 6,
-        padding: 8,
-        marginBottom: 8,
-        zIndex: 1,
-      };
-    }
     return {
       position: 'absolute' as const,
       left: element.left * scaleX,
       top: element.top * scaleY,
       width: Math.max(element.width * scaleX, 60),
-      height: element.height > 0 ? element.height * scaleY : 80,
+      minHeight: element.height > 0 ? element.height * scaleY : 80,
       backgroundColor: '#fff',
       borderRadius: 6,
       padding: 8,
@@ -274,7 +230,7 @@ function FallbackChart({ element, scaleX, scaleY, isWhiteboard }: { element: PPT
       alignItems: 'center' as const,
       zIndex: 1,
     };
-  }, [element, scaleX, scaleY, isWhiteboard]);
+  }, [element, scaleX, scaleY]);
 
   return (
     <View style={containerStyle}>

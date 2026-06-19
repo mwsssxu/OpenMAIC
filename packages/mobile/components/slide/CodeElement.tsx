@@ -18,22 +18,15 @@ export function CodeElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
   const baseFontSize = Math.max(isSmallScreen ? 8 : 10, Math.round((element.fontSize ?? 14) * effectiveScale));
 
   const containerStyle = useMemo(() => {
-    if (isWhiteboard) {
-      return {
-        width: '100%' as const,
-        marginBottom: 8,
-        zIndex: 1,
-      };
-    }
     return {
       position: 'absolute' as const,
       left: element.left * scaleX,
       top: element.top * scaleY,
       width: Math.max(element.width * scaleX, 80),
-      height: element.height > 0 ? element.height * scaleY : undefined,
+      minHeight: element.height > 0 ? element.height * scaleY : 40,
       zIndex: 1,
     };
-  }, [element, scaleX, scaleY, isWhiteboard]);
+  }, [element, scaleX, scaleY]);
 
   return (
     <View style={containerStyle}>
