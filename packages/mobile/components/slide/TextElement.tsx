@@ -266,9 +266,16 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
     // 白板模式：字体随画布缩放，但保证最小可读性
     if (isWhiteboard) {
       // 应用缩放（effectiveScale 来自 ScreenCanvas 的 canvasScaleX）
-      const scaledSize = rawSize * effectiveScale;
+      let scaledSize = rawSize * effectiveScale;
       // 确保不低于最小字体
-      return Math.max(minFont, Math.round(scaledSize));
+      scaledSize = Math.max(minFont, Math.round(scaledSize));
+      // 宽度安全：如果容器太窄，按宽度反推最大字体
+      // 屏幕宽度 = position.width * scaleX, 每字约 scaledSize * 0.85px
+      const screenW = position.width * effectiveScale;
+      const plainText = (element.content || '').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ');
+      const longestLine = Math.max(...plainText.split('\\n').map(l => l.length), 1);
+      const maxFontByWidth = (screenW - 16) / (longestLine * 0.85);
+      return Math.max(minFont, Math.min(scaledSize, Math.floor(maxFontByWidth)));
     } else {
       // 非白板模式：直接应用缩放
       return Math.max(minFont, Math.round(rawSize * effectiveScale));

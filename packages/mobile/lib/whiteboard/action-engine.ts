@@ -115,8 +115,20 @@ export class MobileActionEngine {
     // Use LLM-provided absolute coordinates, clamped to canvas
     const rawLeft = params.x ?? 60;
     const rawTop = params.y ?? 0;
-    const rawWidth = params.width ?? 880;
+    let rawWidth = params.width ?? 880;
     const rawHeight = params.height ?? Math.max(40, fontSize * 2);
+
+    // 自动加宽：如果文字内容超出容器宽度，按文字长度估算所需宽度
+    const plainText = content.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ');
+    const lines = plainText.split('\n');
+    const longestLine = Math.max(...lines.map((l: string) => l.length));
+    // 中文每字约 fontSize px，英文约 0.6 fontSize px，混合取 0.85
+    const estimatedTextWidth = longestLine * fontSize * 0.85 + 16; // +16 padding
+    if (estimatedTextWidth > rawWidth) {
+      console.log(`[ActionEngine] drawText: auto-widen ${rawWidth}→${estimatedTextWidth} (text=${longestLine}chars, fontSize=${fontSize})`);
+      rawWidth = estimatedTextWidth;
+    }
+
     const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
 
     console.log(`[ActionEngine] drawText: left=${left}, top=${top}, w=${width}, h=${height}, fontSize=${fontSize}`);
