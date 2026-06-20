@@ -187,8 +187,9 @@ export class MobileActionEngine {
     const plainText = content.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ');
     const lines = plainText.split('\n');
     const longestLine = Math.max(...lines.map((l: string) => l.length));
-    // 中文每字约 fontSize px，英文约 0.6 fontSize px，混合取 0.85
-    const estimatedTextWidth = longestLine * fontSize * 0.85 + 16; // +16 padding
+    // 中文每字约 fontSize px，英文约 0.6 fontSize px
+    // 安全起见用 1.0 系数（宁可靠宽也不溢出）
+    const estimatedTextWidth = longestLine * fontSize * 1.0 + 16; // +16 padding
     if (estimatedTextWidth > rawWidth) {
       console.log(`[ActionEngine] drawText: auto-widen ${rawWidth}→${estimatedTextWidth} (text=${longestLine}chars, fontSize=${fontSize})`);
       rawWidth = estimatedTextWidth;

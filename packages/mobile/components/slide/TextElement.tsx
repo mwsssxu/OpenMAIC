@@ -270,11 +270,11 @@ export function TextElement({ element, theme, scaleX, scaleY, isWhiteboard = fal
       // 确保不低于最小字体
       scaledSize = Math.max(minFont, Math.round(scaledSize));
       // 宽度安全：如果容器太窄，按宽度反推最大字体
-      // 屏幕宽度 = position.width * scaleX, 每字约 scaledSize * 0.85px
+      // 屏幕宽度 = position.width * scaleX, 每字约 scaledSize * 1.0px（中文）
       const screenW = position.width * effectiveScale;
       const plainText = (element.content || '').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ');
       const longestLine = Math.max(...plainText.split('\\n').map(l => l.length), 1);
-      const maxFontByWidth = (screenW - 16) / (longestLine * 0.85);
+      const maxFontByWidth = (screenW - 16) / (longestLine * 1.0);
       return Math.max(minFont, Math.min(scaledSize, Math.floor(maxFontByWidth)));
     } else {
       // 非白板模式：直接应用缩放
