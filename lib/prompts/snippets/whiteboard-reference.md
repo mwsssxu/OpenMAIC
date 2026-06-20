@@ -2,15 +2,15 @@
 
 ### Canvas Specifications
 
-**Dimensions**: 1000 × 563 pixels.
+**Dimensions**: 1000 × ∞ (width fixed at 1000, height unlimited — supports vertical scrolling).
 
-**Coordinate system**: `x = 0` at the left edge, `x = 1000` at the right edge. `y = 0` at the top, `y = 563` at the bottom. Every element has `(left, top)` at its top-left corner.
+**Coordinate system**: `x = 0` at the left edge, `x = 1000` at the right edge. `y = 0` at the top. Height is unlimited — elements can be placed at any y coordinate. Users can scroll vertically to view content below the initial viewport. Every element has `(left, top)` at its top-left corner.
 
-**Safe zone**: keep content within `x ∈ [20, 980]` and `y ∈ [20, 543]` to leave a 20px margin from the canvas edges.
+**Safe zone**: keep content within `x ∈ [20, 980]` and `y ∈ [20, 543]` to leave a 20px margin from the canvas edges. Content below y=543 is visible by scrolling.
 
 **Reference points**:
 - Centered horizontally: `x = (1000 - width) / 2`
-- Centered vertically: `y = (563 - height) / 2`
+- Centered vertically: `y = (563 - height) / 2` (initial viewport only — content can extend below)
 - Two-column layout: left column `x ∈ [20, 480]`, right column `x ∈ [520, 980]` (40px gutter)
 
 ### JSON Output Context
@@ -129,7 +129,7 @@ Render a data chart.
 | `themeColors` | string[] | no | Palette override. |
 | `elementId` | string | no | Stable ID. |
 
-**Common mistake**: placing a chart that extends past `x + width = 1000` or `y + height = 563` — charts silently clip at canvas edges.
+**Common mistake**: placing a chart that extends past `x + width = 1000` — charts silently clip at the left/right canvas edges. (Content can extend below y=563 — users scroll vertically.)
 
 #### wb_draw_table
 
@@ -268,13 +268,15 @@ The JSON parser sees `\f` (form feed), `\p` (kept as `\p`), `\s` (kept as `\s`).
 
 ### Bounds & Overlap
 
-The canvas is **1000 × 563**. Elements that extend past the edges are clipped.
+The canvas is **1000 × ∞** (width fixed, height unlimited with vertical scrolling). Elements that extend past the left/right edges are clipped; elements below the initial viewport are visible by scrolling.
 
 **Hard bounds** (every element):
 - `x ≥ 0` and `x + width ≤ 1000`
-- `y ≥ 0` and `y + height ≤ 563`
+- `y ≥ 0` (no upper bound — content can extend below 563, users can scroll)
 
 **Safe zone** (preferred): `20 ≤ x`, `x + width ≤ 980`, `20 ≤ y`, `y + height ≤ 542`.
+
+**Auto-layout**: the system automatically detects collisions between elements. If a new element overlaps an existing one, it is pushed down vertically to avoid the overlap. You do not need to manually compute collision-free positions — but you should still provide reasonable y coordinates so the auto-push is minimal.
 
 **Spacing**:
 - Minimum gap between adjacent elements: 20px
@@ -289,7 +291,7 @@ The canvas is **1000 × 563**. Elements that extend past the edges are clipped.
 **Before placing every element, walk the existing elements** (listed in the "Current State" section of your context). For each existing `(x, y, width, height)`:
 
 - Reject if the new bbox would cover > 30% of its area.
-- If space is tight, choose one: `wb_delete` the existing element, shrink the new element, or pick a free region by scanning the canvas quadrants.
+- If space is tight, choose one: `wb_delete` the existing element, shrink the new element, or place the new element below existing content (y = max existing bottom + 30).
 
 **Worked example** — adding a formula below an existing chart at (100, 80) size 500×200:
 
@@ -297,7 +299,6 @@ The canvas is **1000 × 563**. Elements that extend past the edges are clipped.
 chart occupies x=100..600, y=80..280
 next safe y  = 80 + 200 + 30 = 310
 formula at (100, 310, height 80) → occupies y=310..390
-check: y + height = 390 ≤ 563  ✓
 check: no overlap with chart (chart ends at y=280, formula starts at y=310) ✓
 ```
 
@@ -350,7 +351,7 @@ Width is auto-computed from `height × aspect_ratio`; `width` acts as a horizont
 Before emitting whiteboard actions, mentally walk through these:
 
 1. **[LaTeX escape]** Every `\` in `latex` params or in any text with math is written as `\\` in the JSON. Scan for single-backslash `\frac`, `\text`, `\theta`, `\times`, `\rightarrow`, `\circ`, `\beta`, `\varphi` — none should appear.
-2. **[Hard bounds]** For each element: `x ≥ 0`, `y ≥ 0`, `x + width ≤ 1000`, `y + height ≤ 563`.
+2. **[Hard bounds]** For each element: `x ≥ 0`, `y ≥ 0`, `x + width ≤ 1000`. No upper bound on `y` — content can extend below the initial viewport and users can scroll vertically.
 3. **[Overlap]** Walk existing elements from the state; new bbox overlaps none by more than 30%. If tight, `wb_delete` first.
 4. **[Font consistency]** Every `fontSize` comes from the Font Size Table (28-32 / 20-24 / 16-18 / 12-14). No 8, 11, 48, 64.
 5. **[LaTeX height]** Every `wb_draw_latex` `height` matches the formula category (see the LaTeX Height Table).

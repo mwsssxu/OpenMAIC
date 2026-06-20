@@ -126,8 +126,16 @@ const InteractiveWhiteboardCanvas = forwardRef<
   const [isResetting, setIsResetting] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const prevElementsLengthRef = useRef(elements.length);
+  const prevCanvasHeightRef = useRef(canvasHeight);
   const resetTimerRef = useRef<number | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  // Refs that always have the latest pan/zoom state (for auto-scroll effect without feedback loops)
+  const panYRef = useRef(panY);
+  panYRef.current = panY;
+  const viewZoomRef = useRef(viewZoom);
+  viewZoomRef.current = viewZoom;
+  const prevElementsCountRef = useRef(elements.length);
 
   const isViewModified = viewZoom !== 1 || panX !== 0 || panY !== 0;
 
@@ -301,6 +309,55 @@ const InteractiveWhiteboardCanvas = forwardRef<
     };
   }, [elements.length, resetView]);
 
+  // Auto-scroll to new content when canvas grows vertically (conversation generates content below)
+  useEffect(() => {
+    const prevHeight = prevCanvasHeightRef.current;
+    prevCanvasHeightRef.current = canvasHeight;
+
+    const wasFirstLoad = prevElementsCountRef.current === 0;
+    prevElementsCountRef.current = elements.length;
+
+    // Only auto-scroll when canvas grew (new content extended below)
+    if (canvasHeight <= prevHeight) return;
+    if (elements.length === 0) return;
+    // Skip first content load — the reset effect above handles that
+    if (wasFirstLoad) return;
+
+    // Don't fight user zoom
+    const zoom = viewZoomRef.current;
+    if (zoom !== 1) return;
+
+    const totalScale = containerScale * zoom;
+    if (totalScale <= 0) return;
+
+    const visibleH = containerHeight / totalScale;
+    const currentY = panYRef.current;
+
+    // Visible bottom in canvas coordinates
+    const visBottom = canvasHeight / 2 + visibleH / 2 - currentY;
+
+    // If new content is already visible, no need to scroll
+    if (visBottom >= canvasHeight - 20) return;
+
+    // Don't auto-scroll if user manually scrolled up to review earlier content
+    if (currentY > 50) return;
+
+    // Smoothly pan to show the new bottom content
+    const targetY = visibleH / 2 - canvasHeight / 2;
+    const clamped = clampPan(0, targetY, zoom);
+
+    setIsResetting(true);
+    setPanY(clamped.y);
+
+    if (resetTimerRef.current) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+    resetTimerRef.current = window.setTimeout(() => {
+      setIsResetting(false);
+      resetTimerRef.current = null;
+    }, 300);
+  }, [canvasHeight, elements.length, containerScale, containerHeight, clampPan]);
+
   const handleDoubleClick = useCallback(
     (e?: React.MouseEvent) => {
       e?.preventDefault();
@@ -402,12 +459,35 @@ export const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, WhiteboardCan
     const elements = useMemo(() => rawElements ?? [], [rawElements]);
 
     const canvasWidth = 1000;
-    const canvasHeight = 562.5;
+    const minCanvasHeight = 562.5;
+
+    // Dynamic canvas height: grows as elements are placed below the initial viewport
+    const canvasHeight = useMemo(() => {
+      if (elements.length === 0) return minCanvasHeight;
+      let maxBottom = 0;
+      for (const el of elements) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const top = (el as any).top ?? 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const height = (el as any).height ?? 0;
+        const bottom = top + height;
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+      // 50px bottom padding, minimum 562.5 (initial viewport)
+      return Math.max(minCanvasHeight, maxBottom + 50);
+    }, [elements]);
 
     const containerScale = useMemo(() => {
       if (containerSize.width === 0 || containerSize.height === 0) return 1;
-      return Math.min(containerSize.width / canvasWidth, containerSize.height / canvasHeight);
-    }, [containerSize.width, containerSize.height, canvasWidth, canvasHeight]);
+      const widthScale = containerSize.width / canvasWidth;
+      const heightScale = containerSize.height / canvasHeight;
+      // When canvas is extended (taller than default), fit width and allow vertical scroll.
+      // When canvas fits in viewport, use min to fit both dimensions.
+      if (canvasHeight > minCanvasHeight && heightScale < widthScale) {
+        return widthScale;
+      }
+      return Math.min(widthScale, heightScale);
+    }, [containerSize.width, containerSize.height, canvasWidth, canvasHeight, minCanvasHeight]);
 
     useEffect(() => {
       const container = containerRef.current;

@@ -36,7 +36,7 @@ import type {
   WidgetAnnotationAction,
   WidgetRevealAction,
 } from '@/lib/types/action';
-import type { CodeLine } from '@/lib/types/slides';
+import type { CodeLine, PPTElement } from '@/lib/types/slides';
 import katex from 'katex';
 import { createLogger } from '@/lib/logger';
 
@@ -324,6 +324,117 @@ export class ActionEngine {
     return null;
   }
 
+  // ==================== Whiteboard Layout Helpers ====================
+
+  /** Canvas width is fixed; height is unlimited (supports vertical scrolling). */
+  private static readonly WB_CANVAS_W = 1000;
+
+  /**
+   * Clamp element coordinates to canvas bounds.
+   * Width is clamped to canvas width. Y has no upper bound (scrollable canvas).
+   */
+  private clampToCanvas(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): { left: number; top: number; width: number; height: number } {
+    const cw = ActionEngine.WB_CANVAS_W;
+    const w = Math.min(width, cw);
+    const h = height;
+    // Clamp x so element stays within [0, canvasWidth - width]
+    const l = Math.max(0, Math.min(left, cw - w));
+    // Y: no upper bound — content can extend below the initial viewport
+    const t = Math.max(0, top);
+    return { left: l, top: t, width: w, height: h };
+  }
+
+  /**
+   * Collision detection: if the new element overlaps an existing one, push it down.
+   * Ported from mobile ActionEngine with identical logic.
+   *
+   * - Checks all type combinations (text-text, text-shape, shape-shape, etc.)
+   * - Skips: line elements (line crossing is normal)
+   * - Skips: text fully inside a large background shape (container scenario)
+   * - Skips: new shape fully containing existing text (background fill scenario)
+   */
+  private resolveCollision(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    type: string,
+    existingElements: PPTElement[],
+  ): { left: number; top: number } {
+    if (existingElements.length === 0) return { left, top };
+
+    const MIN_OVERLAP = 10; // px overlap in both X and Y to count as collision
+    const GAP = 25; // minimum vertical gap after pushing down (increased for visual breathing room)
+    const MAX_PASSES = 8; // multi-pass: handle cascading collisions after push-down
+
+    let adjustedTop = top;
+
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      let changed = false;
+
+      for (const el of existingElements) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const elType = (el as any).type ?? 'text';
+
+        // Skip lines (line crossing is normal)
+        if (elType === 'line' || type === 'line') continue;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const elLeft = (el as any).left ?? 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const elTop = (el as any).top ?? 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const elWidth = (el as any).width ?? 100;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const elHeight = (el as any).height ?? 50;
+
+        // Skip: new text fully inside a large background shape
+        // FIX: use adjustedTop instead of original top — containment changes after push-down
+        const isFullyContained =
+          left >= elLeft &&
+          adjustedTop >= elTop &&
+          left + width <= elLeft + elWidth &&
+          adjustedTop + height <= elTop + elHeight;
+        const shapeMuchLarger = elWidth > width * 1.5 && elHeight > height * 1.5;
+        if (isFullyContained && shapeMuchLarger && elType === 'shape') continue;
+
+        // Skip: new shape is background for existing text
+        const reverseContained =
+          elLeft >= left &&
+          elTop >= adjustedTop &&
+          elLeft + elWidth <= left + width &&
+          elTop + elHeight <= adjustedTop + height;
+        const newShapeMuchLarger = width > elWidth * 1.5 && height > elHeight * 1.5;
+        if (reverseContained && newShapeMuchLarger && type === 'shape') continue;
+
+        const overlapX = Math.min(left + width, elLeft + elWidth) - Math.max(left, elLeft);
+        const overlapY =
+          Math.min(adjustedTop + height, elTop + elHeight) - Math.max(adjustedTop, elTop);
+
+        if (overlapX > MIN_OVERLAP && overlapY > MIN_OVERLAP) {
+          const newTop = elTop + elHeight + GAP;
+          if (newTop > adjustedTop) {
+            log.debug(
+              `[collision] pass ${pass}: ${type} overlapped ${elType} (overlapX=${overlapX.toFixed(0)}, overlapY=${overlapY.toFixed(0)}), pushing top ${adjustedTop}→${newTop}`,
+            );
+            adjustedTop = newTop;
+            changed = true;
+          }
+        }
+      }
+
+      // Converged: no more collisions detected
+      if (!changed) break;
+    }
+
+    return { left, top: adjustedTop };
+  }
+
   // ==================== Synchronous — Whiteboard ====================
 
   /** Auto-open the whiteboard if it's not already open */
@@ -352,15 +463,53 @@ export class ActionEngine {
       htmlContent = `<p style="font-size: ${fontSize}px;">${htmlContent}</p>`;
     }
 
+    // Auto-widen: if text content exceeds container width, estimate needed width
+    let rawWidth = action.width ?? 400;
+    const plainText = htmlContent.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ');
+    const textLines = plainText.split('\n');
+    const longestLine = Math.max(...textLines.map((l: string) => l.length));
+    // Chinese chars ≈ fontSize px each, English ≈ 0.6 fontSize px; use 1.0 coefficient for safety
+    const estimatedTextWidth = longestLine * fontSize * 1.0 + 16;
+    if (estimatedTextWidth > rawWidth) {
+      log.debug(`[wb_draw_text] auto-widen ${rawWidth}→${estimatedTextWidth} (text=${longestLine}chars, fontSize=${fontSize})`);
+      rawWidth = estimatedTextWidth;
+    }
+
+    // Auto-height: estimate wrapped line count for accurate collision detection
+    // Without this, multi-line text gets undersized height, causing subsequent
+    // elements to stack on top of the actual rendered text
+    let rawHeight = action.height ?? 100;
+    const charsPerLine = Math.max(1, Math.floor(rawWidth / (fontSize * 1.0)));
+    let estimatedLines = 0;
+    for (const line of textLines) {
+      if (line.length === 0) {
+        estimatedLines += 1;
+      } else {
+        estimatedLines += Math.ceil(line.length / charsPerLine);
+      }
+    }
+    const estimatedHeight = estimatedLines * fontSize * 1.5 + 16;
+    if (estimatedHeight > rawHeight) {
+      log.debug(`[wb_draw_text] auto-height ${rawHeight}→${estimatedHeight} (${estimatedLines} lines, fontSize=${fontSize})`);
+      rawHeight = estimatedHeight;
+    }
+
+    // Clamp to canvas bounds, then resolve collisions with existing elements
+    const clamped = this.clampToCanvas(action.x, action.y, rawWidth, rawHeight);
+    const existing = wb.data.elements ?? [];
+    const resolved = this.resolveCollision(
+      clamped.left, clamped.top, clamped.width, clamped.height, 'text', existing,
+    );
+
     this.stageAPI.whiteboard.addElement(
       {
         id: action.elementId || '',
         type: 'text',
         content: htmlContent,
-        left: action.x,
-        top: action.y,
-        width: action.width ?? 400,
-        height: action.height ?? 100,
+        left: resolved.left,
+        top: resolved.top,
+        width: clamped.width,
+        height: clamped.height,
         rotate: 0,
         defaultFontName: 'Microsoft YaHei',
         defaultColor: action.color ?? '#333333',
@@ -377,16 +526,23 @@ export class ActionEngine {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
+    // Clamp to canvas bounds, then resolve collisions with existing elements
+    const clamped = this.clampToCanvas(action.x, action.y, action.width, action.height);
+    const existing = wb.data.elements ?? [];
+    const resolved = this.resolveCollision(
+      clamped.left, clamped.top, clamped.width, clamped.height, 'shape', existing,
+    );
+
     this.stageAPI.whiteboard.addElement(
       {
         id: action.elementId || '',
         type: 'shape',
         viewBox: [1000, 1000] as [number, number],
         path: SHAPE_PATHS[action.shape] ?? SHAPE_PATHS.rectangle,
-        left: action.x,
-        top: action.y,
-        width: action.width,
-        height: action.height,
+        left: resolved.left,
+        top: resolved.top,
+        width: clamped.width,
+        height: clamped.height,
         rotate: 0,
         fill: action.fillColor ?? '#5b9bd5',
         fixedRatio: false,
@@ -403,14 +559,21 @@ export class ActionEngine {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
+    // Clamp to canvas bounds, then resolve collisions with existing elements
+    const clamped = this.clampToCanvas(action.x, action.y, action.width, action.height);
+    const existing = wb.data.elements ?? [];
+    const resolved = this.resolveCollision(
+      clamped.left, clamped.top, clamped.width, clamped.height, 'chart', existing,
+    );
+
     this.stageAPI.whiteboard.addElement(
       {
         id: action.elementId || '',
         type: 'chart',
-        left: action.x,
-        top: action.y,
-        width: action.width,
-        height: action.height,
+        left: resolved.left,
+        top: resolved.top,
+        width: clamped.width,
+        height: clamped.height,
         rotate: 0,
         chartType: action.chartType,
         data: action.data,
@@ -427,6 +590,15 @@ export class ActionEngine {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
+    // Clamp to canvas bounds, then resolve collisions with existing elements
+    const rawWidth = action.width ?? 400;
+    const rawHeight = action.height ?? 80;
+    const clamped = this.clampToCanvas(action.x, action.y, rawWidth, rawHeight);
+    const existing = wb.data.elements ?? [];
+    const resolved = this.resolveCollision(
+      clamped.left, clamped.top, clamped.width, clamped.height, 'text', existing,
+    );
+
     try {
       const html = katex.renderToString(action.latex, {
         throwOnError: false,
@@ -438,10 +610,10 @@ export class ActionEngine {
         {
           id: action.elementId || '',
           type: 'latex',
-          left: action.x,
-          top: action.y,
-          width: action.width ?? 400,
-          height: action.height ?? 80,
+          left: resolved.left,
+          top: resolved.top,
+          width: clamped.width,
+          height: clamped.height,
           rotate: 0,
           latex: action.latex,
           html,
@@ -467,6 +639,13 @@ export class ActionEngine {
     const cols = rows > 0 ? action.data[0].length : 0;
     if (rows === 0 || cols === 0) return;
 
+    // Clamp to canvas bounds, then resolve collisions with existing elements
+    const clamped = this.clampToCanvas(action.x, action.y, action.width, action.height);
+    const existing = wb.data.elements ?? [];
+    const resolved = this.resolveCollision(
+      clamped.left, clamped.top, clamped.width, clamped.height, 'table', existing,
+    );
+
     // Build colWidths: equal distribution
     const colWidths = Array(cols).fill(1 / cols);
 
@@ -485,10 +664,10 @@ export class ActionEngine {
       {
         id: action.elementId || '',
         type: 'table',
-        left: action.x,
-        top: action.y,
-        width: action.width,
-        height: action.height,
+        left: resolved.left,
+        top: resolved.top,
+        width: clamped.width,
+        height: clamped.height,
         rotate: 0,
         colWidths,
         cellMinHeight: 36,
@@ -519,13 +698,19 @@ export class ActionEngine {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
+    // Clamp x to canvas width; y is unlimited (scrollable canvas)
+    const startX = Math.max(0, Math.min(action.startX, 1000));
+    const endX = Math.max(0, Math.min(action.endX, 1000));
+    const startY = Math.max(0, action.startY);
+    const endY = Math.max(0, action.endY);
+
     // Calculate bounding box — left/top is the minimum of start/end coordinates
-    const left = Math.min(action.startX, action.endX);
-    const top = Math.min(action.startY, action.endY);
+    const left = Math.min(startX, endX);
+    const top = Math.min(startY, endY);
 
     // Convert absolute coordinates to relative coordinates (relative to left/top)
-    const start: [number, number] = [action.startX - left, action.startY - top];
-    const end: [number, number] = [action.endX - left, action.endY - top];
+    const start: [number, number] = [startX - left, startY - top];
+    const end: [number, number] = [endX - left, endY - top];
 
     this.stageAPI.whiteboard.addElement(
       {
@@ -554,6 +739,15 @@ export class ActionEngine {
 
     const lines = codeToLines(action.code);
 
+    // Clamp to canvas bounds, then resolve collisions with existing elements
+    const rawWidth = action.width ?? 500;
+    const rawHeight = action.height ?? 300;
+    const clamped = this.clampToCanvas(action.x, action.y, rawWidth, rawHeight);
+    const existing = wb.data.elements ?? [];
+    const resolved = this.resolveCollision(
+      clamped.left, clamped.top, clamped.width, clamped.height, 'code', existing,
+    );
+
     this.stageAPI.whiteboard.addElement(
       {
         id: action.elementId || '',
@@ -563,10 +757,10 @@ export class ActionEngine {
         fileName: action.fileName,
         showLineNumbers: true,
         fontSize: 14,
-        left: action.x,
-        top: action.y,
-        width: action.width ?? 500,
-        height: action.height ?? 300,
+        left: resolved.left,
+        top: resolved.top,
+        width: clamped.width,
+        height: clamped.height,
         rotate: 0,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,

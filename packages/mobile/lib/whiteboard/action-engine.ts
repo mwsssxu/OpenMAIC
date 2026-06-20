@@ -45,14 +45,13 @@ export class MobileActionEngine {
    */
   private clampToCanvas(left: number, top: number, width: number, height: number): { left: number; top: number; width: number; height: number } {
     const cw = MobileActionEngine.CANVAS_W;
-    const ch = MobileActionEngine.CANVAS_H;
     // 限制 width 不超过画布宽度
     const w = Math.min(width, cw);
-    const h = Math.min(height, ch);
+    const h = height;
     // 如果右侧溢出，左移
     const l = Math.max(0, Math.min(left, cw - w));
-    // 如果底部溢出，上移
-    const t = Math.max(0, Math.min(top, ch - h));
+    // Y: 无上限——内容可向下无限扩展，ScrollView 自动滚动
+    const t = Math.max(0, top);
     return { left: l, top: t, width: w, height: h };
   }
 
@@ -75,48 +74,55 @@ export class MobileActionEngine {
     const elements = whiteboardStore.getElements();
     if (elements.length === 0) return { left, top };
 
-    // 碰撞判定：X 和 Y 方向重叠都超过 10px 即视为碰撞
-    // （面积阈值对小高度文字元素不友好，改为双轴判定）
-    const MIN_OVERLAP = 10;
-    // 元素间最小垂直间距
-    const GAP = 15;
+    const MIN_OVERLAP = 10; // X/Y 双轴重叠阈值
+    const GAP = 25; // 元素间最小垂直间距（增大以改善视觉呼吸感）
+    const MAX_PASSES = 8; // 多趟迭代：处理级联碰撞（下推后可能与已检查元素重叠）
 
     let adjustedTop = top;
 
-    for (const el of elements) {
-      const elType = (el as any).type ?? 'text';
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      let changed = false;
 
-      // line 类型跳过（线条交叉是正常的）
-      if (elType === 'line' || type === 'line') continue;
+      for (const el of elements) {
+        const elType = (el as any).type ?? 'text';
 
-      const elLeft = (el as any).left ?? 0;
-      const elTop = (el as any).top ?? 0;
-      const elWidth = (el as any).width ?? 100;
-      const elHeight = (el as any).height ?? 50;
+        // line 类型跳过（线条交叉是正常的）
+        if (elType === 'line' || type === 'line') continue;
 
-      // 跳过：text 完全在大型背景 shape 内（背景容器场景）
-      const isFullyContained = left >= elLeft && top >= elTop &&
-        left + width <= elLeft + elWidth && top + height <= elTop + elHeight;
-      const shapeMuchLarger = elWidth > width * 1.5 && elHeight > height * 1.5;
-      if (isFullyContained && shapeMuchLarger && elType === 'shape') continue;
+        const elLeft = (el as any).left ?? 0;
+        const elTop = (el as any).top ?? 0;
+        const elWidth = (el as any).width ?? 100;
+        const elHeight = (el as any).height ?? 50;
 
-      // 跳过：新 shape 是已有 text 的背景（先画文字后补色块）
-      const reverseContained = elLeft >= left && elTop >= top &&
-        elLeft + elWidth <= left + width && elTop + elHeight <= top + height;
-      const newShapeMuchLarger = width > elWidth * 1.5 && height > elHeight * 1.5;
-      if (reverseContained && newShapeMuchLarger && type === 'shape') continue;
+        // 跳过：text 完全在大型背景 shape 内（背景容器场景）
+        // FIX: 用 adjustedTop 替代原始 top——下推后包含关系会变化
+        const isFullyContained = left >= elLeft && adjustedTop >= elTop &&
+          left + width <= elLeft + elWidth && adjustedTop + height <= elTop + elHeight;
+        const shapeMuchLarger = elWidth > width * 1.5 && elHeight > height * 1.5;
+        if (isFullyContained && shapeMuchLarger && elType === 'shape') continue;
 
-      const overlapX = Math.min(left + width, elLeft + elWidth) - Math.max(left, elLeft);
-      const overlapY = Math.min(adjustedTop + height, elTop + elHeight) - Math.max(adjustedTop, elTop);
+        // 跳过：新 shape 是已有 text 的背景（先画文字后补色块）
+        const reverseContained = elLeft >= left && elTop >= adjustedTop &&
+          elLeft + elWidth <= left + width && elTop + elHeight <= adjustedTop + height;
+        const newShapeMuchLarger = width > elWidth * 1.5 && height > elHeight * 1.5;
+        if (reverseContained && newShapeMuchLarger && type === 'shape') continue;
 
-      if (overlapX > MIN_OVERLAP && overlapY > MIN_OVERLAP) {
-        // 下推到该元素下方
-        const newTop = elTop + elHeight + GAP;
-        if (newTop > adjustedTop) {
-          console.log(`[ActionEngine] collision: ${type} overlapped ${elType} (overlapX=${overlapX.toFixed(0)}, overlapY=${overlapY.toFixed(0)}), pushing top ${adjustedTop}→${newTop}`);
-          adjustedTop = newTop;
+        const overlapX = Math.min(left + width, elLeft + elWidth) - Math.max(left, elLeft);
+        const overlapY = Math.min(adjustedTop + height, elTop + elHeight) - Math.max(adjustedTop, elTop);
+
+        if (overlapX > MIN_OVERLAP && overlapY > MIN_OVERLAP) {
+          // 下推到该元素下方
+          const newTop = elTop + elHeight + GAP;
+          if (newTop > adjustedTop) {
+            console.log(`[ActionEngine] collision (pass ${pass}): ${type} overlapped ${elType} (overlapX=${overlapX.toFixed(0)}, overlapY=${overlapY.toFixed(0)}), pushing top ${adjustedTop}→${newTop}`);
+            adjustedTop = newTop;
+            changed = true;
+          }
         }
       }
+
+      // 收敛：没有新的碰撞则退出
+      if (!changed) break;
     }
 
     return { left, top: adjustedTop };
@@ -191,18 +197,36 @@ export class MobileActionEngine {
     const rawLeft = params.x ?? 60;
     const rawTop = params.y ?? 0;
     let rawWidth = params.width ?? 880;
-    const rawHeight = params.height ?? Math.max(40, fontSize * 2);
+    let rawHeight = params.height ?? Math.max(40, fontSize * 2);
 
     // 自动加宽：如果文字内容超出容器宽度，按文字长度估算所需宽度
     const plainText = content.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ');
-    const lines = plainText.split('\n');
-    const longestLine = Math.max(...lines.map((l: string) => l.length));
+    const textLines = plainText.split('\n');
+    const longestLine = Math.max(...textLines.map((l: string) => l.length));
     // 中文每字约 fontSize px，英文约 0.6 fontSize px
     // 安全起见用 1.0 系数（宁可靠宽也不溢出）
     const estimatedTextWidth = longestLine * fontSize * 1.0 + 16; // +16 padding
     if (estimatedTextWidth > rawWidth) {
       console.log(`[ActionEngine] drawText: auto-widen ${rawWidth}→${estimatedTextWidth} (text=${longestLine}chars, fontSize=${fontSize})`);
       rawWidth = estimatedTextWidth;
+    }
+
+    // 自动加高：根据文字内容和容器宽度估算换行后的实际高度
+    // 碰撞检测依赖准确的高度，否则多行文字的实际渲染高度远大于声明高度，
+    // 后续元素会堆叠到当前文字元素上
+    const charsPerLine = Math.max(1, Math.floor(rawWidth / (fontSize * 1.0)));
+    let estimatedLines = 0;
+    for (const line of textLines) {
+      if (line.length === 0) {
+        estimatedLines += 1;
+      } else {
+        estimatedLines += Math.ceil(line.length / charsPerLine);
+      }
+    }
+    const estimatedHeight = estimatedLines * fontSize * 1.5 + 16; // 行高 1.5x + 16px padding
+    if (estimatedHeight > rawHeight) {
+      console.log(`[ActionEngine] drawText: auto-height ${rawHeight}→${estimatedHeight} (${estimatedLines} lines, fontSize=${fontSize})`);
+      rawHeight = estimatedHeight;
     }
 
     const clamped = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
@@ -284,9 +308,9 @@ export class MobileActionEngine {
 
   private drawLine(params: Record<string, any>): void {
     const startX = Math.max(0, Math.min(params.startX ?? 0, 1000));
-    const startY = Math.max(0, Math.min(params.startY ?? 0, 563));
+    const startY = Math.max(0, params.startY ?? 0);
     const endX = Math.max(0, Math.min(params.endX ?? 100, 1000));
-    const endY = Math.max(0, Math.min(params.endY ?? 100, 563));
+    const endY = Math.max(0, params.endY ?? 100);
 
     // Calculate bounding box top-left
     const left = Math.min(startX, endX);

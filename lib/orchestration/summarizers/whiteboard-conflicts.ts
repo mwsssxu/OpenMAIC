@@ -11,7 +11,8 @@
  */
 
 const CANVAS_WIDTH = 1000;
-const CANVAS_HEIGHT = 563;
+// Canvas height is unlimited (supports vertical scrolling).
+// Only left/right/top edges are checked; content can extend below y=563.
 const OVERLAP_THRESHOLD = 0.3; // intersection / min-area; flag if >= 30%
 
 interface BBox {
@@ -172,7 +173,7 @@ function shortId(id: string): string {
  * Detected conflicts:
  * - bbox overlap >= 30% of the smaller element's area
  * - line/arrow path crossing through any non-line element's bbox
- * - any element extending past the 1000×563 canvas bounds
+ * - any element extending past the canvas left/right/top edges (height is unlimited)
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PPTElement variants
 export function buildWhiteboardConflicts(elements: any[]): string {
@@ -216,15 +217,13 @@ export function buildWhiteboardConflicts(elements: any[]): string {
     }
   }
 
-  // Edge clipping
+  // Edge clipping (left/right/top only — canvas height is unlimited)
   for (const b of bboxes) {
     const out: string[] = [];
     if (b.x < 0) out.push(`left edge by ${Math.round(-b.x)}px`);
     if (b.y < 0) out.push(`top edge by ${Math.round(-b.y)}px`);
     if (b.x + b.w > CANVAS_WIDTH)
       out.push(`right edge by ${Math.round(b.x + b.w - CANVAS_WIDTH)}px`);
-    if (b.y + b.h > CANVAS_HEIGHT)
-      out.push(`bottom edge by ${Math.round(b.y + b.h - CANVAS_HEIGHT)}px`);
     if (out.length > 0) {
       conflicts.push(
         `OUT OF CANVAS: ${b.label}${shortId(b.id)} extends past ${out.join(', ')} — content is clipped.`,
