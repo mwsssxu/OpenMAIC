@@ -60,9 +60,10 @@ export class MobileActionEngine {
   private static readonly MAX_ELEMENTS_PER_PAGE = 20;
 
   /**
-   * 碰撞检测：检查新元素是否与已有同类型元素重叠，如果重叠则下推
-   * - shape/text 跨类型不检测（text 叠在 shape 背景上是正常的）
-   * - 同类型（text-text, shape-shape）重叠 > 阈值时自动下推
+   * 碰撞检测：检查新元素是否与已有元素重叠，如果重叠则下推
+   * - 检查所有类型组合（text-text, text-shape, shape-shape）
+   * - 跳过：text 完全在大型背景 shape 内（正常背景叠加）
+   * - 跳过：line 与任何元素（线条交叉是正常的）
    */
   private resolveCollision(
     left: number,
@@ -83,15 +84,20 @@ export class MobileActionEngine {
 
     for (const el of elements) {
       const elType = (el as any).type ?? 'text';
-      // 跨类型跳过：text on shape 是正常的背景叠加
-      const elIsShape = elType === 'shape';
-      const newIsShape = type === 'shape';
-      if (elIsShape !== newIsShape) continue;
+
+      // line 类型跳过（线条交叉是正常的）
+      if (elType === 'line' || type === 'line') continue;
 
       const elLeft = (el as any).left ?? 0;
       const elTop = (el as any).top ?? 0;
       const elWidth = (el as any).width ?? 100;
       const elHeight = (el as any).height ?? 50;
+
+      // 跳过：text 完全在大型背景 shape 内（背景容器场景）
+      const isFullyContained = left >= elLeft && top >= elTop &&
+        left + width <= elLeft + elWidth && top + height <= elTop + elHeight;
+      const shapeMuchLarger = elWidth > width * 1.5 && elHeight > height * 1.5;
+      if (isFullyContained && shapeMuchLarger && elType === 'shape') continue;
 
       const overlapX = Math.min(left + width, elLeft + elWidth) - Math.max(left, elLeft);
       const overlapY = Math.min(adjustedTop + height, elTop + elHeight) - Math.max(adjustedTop, elTop);
