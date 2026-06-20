@@ -75,8 +75,9 @@ export class MobileActionEngine {
     const elements = whiteboardStore.getElements();
     if (elements.length === 0) return { left, top };
 
-    // 最小重叠面积阈值（canvas 坐标系），低于此值不处理
-    const MIN_OVERLAP_AREA = 2000;
+    // 碰撞判定：X 和 Y 方向重叠都超过 10px 即视为碰撞
+    // （面积阈值对小高度文字元素不友好，改为双轴判定）
+    const MIN_OVERLAP = 10;
     // 元素间最小垂直间距
     const GAP = 15;
 
@@ -99,18 +100,21 @@ export class MobileActionEngine {
       const shapeMuchLarger = elWidth > width * 1.5 && elHeight > height * 1.5;
       if (isFullyContained && shapeMuchLarger && elType === 'shape') continue;
 
+      // 跳过：新 shape 是已有 text 的背景（先画文字后补色块）
+      const reverseContained = elLeft >= left && elTop >= top &&
+        elLeft + elWidth <= left + width && elTop + elHeight <= top + height;
+      const newShapeMuchLarger = width > elWidth * 1.5 && height > elHeight * 1.5;
+      if (reverseContained && newShapeMuchLarger && type === 'shape') continue;
+
       const overlapX = Math.min(left + width, elLeft + elWidth) - Math.max(left, elLeft);
       const overlapY = Math.min(adjustedTop + height, elTop + elHeight) - Math.max(adjustedTop, elTop);
 
-      if (overlapX > 0 && overlapY > 0) {
-        const overlapArea = overlapX * overlapY;
-        if (overlapArea > MIN_OVERLAP_AREA) {
-          // 下推到该元素下方
-          const newTop = elTop + elHeight + GAP;
-          if (newTop > adjustedTop) {
-            console.log(`[ActionEngine] collision: ${type} overlapped ${elType} (area=${overlapArea}), pushing top ${adjustedTop}→${newTop}`);
-            adjustedTop = newTop;
-          }
+      if (overlapX > MIN_OVERLAP && overlapY > MIN_OVERLAP) {
+        // 下推到该元素下方
+        const newTop = elTop + elHeight + GAP;
+        if (newTop > adjustedTop) {
+          console.log(`[ActionEngine] collision: ${type} overlapped ${elType} (overlapX=${overlapX.toFixed(0)}, overlapY=${overlapY.toFixed(0)}), pushing top ${adjustedTop}→${newTop}`);
+          adjustedTop = newTop;
         }
       }
     }
