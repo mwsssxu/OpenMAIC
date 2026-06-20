@@ -34,9 +34,9 @@ export class MobileActionEngine {
     // No-op: absolute positioning mode
   }
 
-  /** 画布尺寸（LLM 坐标系） */
+  /** 画布尺寸（LLM 坐标系）— 高度不限，支持滚动 */
   private static readonly CANVAS_W = 1000;
-  private static readonly CANVAS_H = 563;
+  private static readonly CANVAS_H = 5000; // 实际高度由内容决定，ScrollView 自动滚动
 
   /**
    * 钳制元素坐标到画布边界内
@@ -56,8 +56,8 @@ export class MobileActionEngine {
     return { left: l, top: t, width: w, height: h };
   }
 
-  /** 每页最大元素数量，超出时自动归档 */
-  private static readonly MAX_ELEMENTS_PER_PAGE = 8;
+  /** 每页最大元素数量（滚动模式下放宽，仅作安全上限） */
+  private static readonly MAX_ELEMENTS_PER_PAGE = 20;
 
   /**
    * 碰撞检测：检查新元素是否与已有同类型元素重叠，如果重叠则下推

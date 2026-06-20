@@ -2,15 +2,15 @@
 
 ### Canvas Specifications
 
-**Dimensions**: 1000 × 563 pixels.
+**Dimensions**: 1000 × ∞ (width fixed at 1000, height unlimited — supports vertical scrolling).
 
-**Coordinate system**: `x = 0` at the left edge, `x = 1000` at the right edge. `y = 0` at the top, `y = 563` at the bottom. Every element has `(left, top)` at its top-left corner.
+**Coordinate system**: `x = 0` at the left edge, `x = 1000` at the right edge. `y = 0` at the top. Height is unlimited — elements can be placed at any y coordinate. Users can scroll vertically to view content below the initial viewport. Every element has `(left, top)` at its top-left corner.
 
 **Safe zone**: keep content within `x ∈ [20, 980]` and `y ∈ [20, 543]` to leave a 20px margin from the canvas edges.
 
 **Reference points**:
 - Centered horizontally: `x = (1000 - width) / 2`
-- Centered vertically: `y = (563 - height) / 2`
+- Centered vertically: `y = (563 - height) / 2` (initial viewport only — content can extend below)
 - Two-column layout: left column `x ∈ [20, 480]`, right column `x ∈ [520, 980]` (40px gutter)
 
 ### JSON Output Context
@@ -66,7 +66,7 @@ Place a geometric shape. Use for annotations, groupings, or simple diagrams.
 |---|---|---|---|
 | `shape` | `"rectangle"` \| `"rounded_rectangle"` \| `"circle"` \| `"triangle"` \| `"diamond"` \| `"hexagon"` | yes | Primitive shape. |
 | `x`, `y` | number | yes | Top-left of the shape's bounding box. |
-| `width`, `height` | number | yes | Bounding box size. **Minimum 300×100** for readability on mobile (canvas is 1000×563, shapes smaller than 300×100 render as tiny boxes with unreadable text). |
+| `width`, `height` | number | yes | Bounding box size. **Minimum 300×100** for readability on mobile (shapes smaller than 300×100 render as tiny boxes with unreadable text). |
 | `fillColor` | string | no (default `#5b9bd5`) | Hex fill color. |
 | `label` | string | no | Text label rendered inside the shape. |
 | `textColor` | string | no (default `#ffffff`) | Label text color. |
@@ -183,7 +183,7 @@ Characters at risk:
 
 **Hard bounds** (every element):
 - `x ≥ 0` and `x + width ≤ 1000`
-- `y ≥ 0` and `y + height ≤ 563`
+- `y ≥ 0` (no upper bound — content can extend below 563, users can scroll)
 
 **Safe zone**: `20 ≤ x`, `x + width ≤ 980`, `20 ≤ y`, `y + height ≤ 542`.
 
@@ -205,6 +205,6 @@ Characters at risk:
 Before emitting whiteboard actions:
 
 1. **[LaTeX escape]** Every `\` in `latex` params is written as `\\` in JSON.
-2. **[Hard bounds]** For each element: `x ≥ 0`, `y ≥ 0`, `x + width ≤ 1000`, `y + height ≤ 563`.
+2. **[Hard bounds]** For each element: `x ≥ 0`, `y ≥ 0`, `x + width ≤ 1000`. No upper bound on `y` — content can extend below the initial viewport and users can scroll vertically.
 3. **[Overlap]** Walk existing elements; new bbox overlaps none by more than 30%.
 4. **[Font consistency]** Every `fontSize` comes from the Font Size Table.

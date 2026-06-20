@@ -76,11 +76,24 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
 
   // Text style
   // 白板模式：字体随画布缩放，基于 shape 渲染高度按比例计算
+  // 同时按宽度反推最大字号，防止文字溢出色块
   const textStyle = useMemo(() => {
     const baseSize = sFont(14, isSmallScreen ? 9 : 11);
-    const fontSize = isWhiteboard
+    let fontSize = isWhiteboard
       ? Math.max(11, Math.min(22, (element.height || 80) * Math.min(scaleX, scaleY) * 0.42))
       : baseSize;
+
+    // 白板模式：宽度安全——按 shape 屏幕宽度反推最大字号
+    if (isWhiteboard && textContent) {
+      const screenW = (element.width || 100) * scaleX;
+      const padding = 8 * Math.min(scaleX, scaleY);
+      const innerW = screenW - 2 * padding;
+      const longestLine = Math.max(...textContent.split('\n').map(l => l.length), 1);
+      // 中文每字约 fontSize px
+      const maxFontByWidth = innerW / (longestLine * 1.0);
+      fontSize = Math.max(9, Math.min(fontSize, Math.floor(maxFontByWidth)));
+    }
+
     return {
       color: element.text?.defaultColor || theme.fontColor,
       fontFamily: element.text?.defaultFontName || theme.fontName,
@@ -88,7 +101,7 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       lineHeight: fontSize * 1.4,
       textAlign: 'center' as const,
     };
-  }, [element, theme, isWhiteboard, scaleX, scaleY]);
+  }, [element, theme, isWhiteboard, scaleX, scaleY, textContent]);
 
   // Text container alignment
   const textContainerStyle = useMemo(() => {
@@ -103,9 +116,8 @@ export function ShapeElement({ element, theme, scaleX, scaleY, isWhiteboard = fa
       justifyContent: justifyContent as 'flex-start' | 'flex-end' | 'center',
       alignItems: 'center' as const,
       padding: 8 * Math.min(scaleX, scaleY),
-      // 白板模式允许文字溢出色块（内容可能超出 shape 边界）
-      // 幻灯片模式保持裁切（文字应限定在 shape 内）
-      overflow: (isWhiteboard ? 'visible' : 'hidden') as 'visible' | 'hidden',
+      // 白板模式也裁切：文字应限定在 shape 内，防止溢出
+      overflow: 'hidden' as 'visible' | 'hidden',
     };
   }, [element, scaleX, scaleY, isWhiteboard]);
 
