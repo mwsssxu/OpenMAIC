@@ -56,6 +56,71 @@ export class MobileActionEngine {
     return { left: l, top: t, width: w, height: h };
   }
 
+  /** 每页最大元素数量，超出时自动归档 */
+  private static readonly MAX_ELEMENTS_PER_PAGE = 8;
+
+  /**
+   * 碰撞检测：检查新元素是否与已有同类型元素重叠，如果重叠则下推
+   * - shape/text 跨类型不检测（text 叠在 shape 背景上是正常的）
+   * - 同类型（text-text, shape-shape）重叠 > 阈值时自动下推
+   */
+  private resolveCollision(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    type: string,
+  ): { left: number; top: number } {
+    const elements = whiteboardStore.getElements();
+    if (elements.length === 0) return { left, top };
+
+    // 最小重叠面积阈值（canvas 坐标系），低于此值不处理
+    const MIN_OVERLAP_AREA = 2000;
+    // 元素间最小垂直间距
+    const GAP = 15;
+
+    let adjustedTop = top;
+
+    for (const el of elements) {
+      const elType = (el as any).type ?? 'text';
+      // 跨类型跳过：text on shape 是正常的背景叠加
+      const elIsShape = elType === 'shape';
+      const newIsShape = type === 'shape';
+      if (elIsShape !== newIsShape) continue;
+
+      const elLeft = (el as any).left ?? 0;
+      const elTop = (el as any).top ?? 0;
+      const elWidth = (el as any).width ?? 100;
+      const elHeight = (el as any).height ?? 50;
+
+      const overlapX = Math.min(left + width, elLeft + elWidth) - Math.max(left, elLeft);
+      const overlapY = Math.min(adjustedTop + height, elTop + elHeight) - Math.max(adjustedTop, elTop);
+
+      if (overlapX > 0 && overlapY > 0) {
+        const overlapArea = overlapX * overlapY;
+        if (overlapArea > MIN_OVERLAP_AREA) {
+          // 下推到该元素下方
+          const newTop = elTop + elHeight + GAP;
+          if (newTop > adjustedTop) {
+            console.log(`[ActionEngine] collision: ${type} overlapped ${elType} (area=${overlapArea}), pushing top ${adjustedTop}→${newTop}`);
+            adjustedTop = newTop;
+          }
+        }
+      }
+    }
+
+    return { left, top: adjustedTop };
+  }
+
+  /** 检查元素数量，超出时自动归档当前页 */
+  private checkPageCapacity(): void {
+    const count = whiteboardStore.getElements().length;
+    if (count >= MobileActionEngine.MAX_ELEMENTS_PER_PAGE) {
+      console.log(`[ActionEngine] Page capacity (${count} >= ${MobileActionEngine.MAX_ELEMENTS_PER_PAGE}), auto-archiving`);
+      whiteboardStore.archiveCurrentPage();
+    }
+  }
+
   execute(actionName: string, params: Record<string, any>): void {
     switch (actionName) {
       case 'wb_draw_text':
@@ -129,7 +194,11 @@ export class MobileActionEngine {
       rawWidth = estimatedTextWidth;
     }
 
-    const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const clamped = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const { left, top } = this.resolveCollision(clamped.left, clamped.top, clamped.width, clamped.height, 'text');
+    const width = clamped.width;
+    const height = clamped.height;
+    this.checkPageCapacity();
 
     console.log(`[ActionEngine] drawText: left=${left}, top=${top}, w=${width}, h=${height}, fontSize=${fontSize}`);
 
@@ -158,7 +227,11 @@ export class MobileActionEngine {
     // 最小尺寸保障：移动端缩放后仍可读
     const rawWidth = Math.max(params.width ?? 200, 300);
     const rawHeight = Math.max(params.height ?? 80, 100);
-    const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const clamped = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const { left, top } = this.resolveCollision(clamped.left, clamped.top, clamped.width, clamped.height, 'shape');
+    const width = clamped.width;
+    const height = clamped.height;
+    this.checkPageCapacity();
 
     // Shape has text label inside
     const label = params.label || params.text || '';
@@ -244,7 +317,11 @@ export class MobileActionEngine {
     const rawTop = params.y ?? 0;
     const rawWidth = params.width ?? 880;
     const rawHeight = params.height ?? 60;
-    const { left, top, width, height } = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const clamped = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const { left, top } = this.resolveCollision(clamped.left, clamped.top, clamped.width, clamped.height, 'text');
+    const width = clamped.width;
+    const height = clamped.height;
+    this.checkPageCapacity();
 
     console.log(`[ActionEngine] drawLatex: at (${left},${top}) ${width}x${height}`);
 
@@ -262,9 +339,13 @@ export class MobileActionEngine {
   }
 
   private drawChart(params: Record<string, any>): void {
-    const { left, top, width, height } = this.clampToCanvas(
+    const clamped = this.clampToCanvas(
       params.x ?? 60, params.y ?? 0, params.width ?? 880, params.height ?? 200
     );
+    const { left, top } = this.resolveCollision(clamped.left, clamped.top, clamped.width, clamped.height, 'chart');
+    const width = clamped.width;
+    const height = clamped.height;
+    this.checkPageCapacity();
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('chart'),
@@ -299,9 +380,13 @@ export class MobileActionEngine {
       })),
     );
 
-    const { left, top, width, height } = this.clampToCanvas(
+    const clamped = this.clampToCanvas(
       params.x ?? 60, params.y ?? 0, params.width ?? 880, params.height ?? rows * 30 + 20
     );
+    const { left, top } = this.resolveCollision(clamped.left, clamped.top, clamped.width, clamped.height, 'table');
+    const width = clamped.width;
+    const height = clamped.height;
+    this.checkPageCapacity();
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('table'),
@@ -327,10 +412,15 @@ export class MobileActionEngine {
 
     const codeLines = codeToLines(code);
 
-    const left = params.x ?? 60;
-    const top = params.y ?? 0;
-    const width = params.width ?? 880;
-    const height = params.height ?? codeLines.length * 15 + 40;
+    const rawLeft = params.x ?? 60;
+    const rawTop = params.y ?? 0;
+    const rawWidth = params.width ?? 880;
+    const rawHeight = params.height ?? codeLines.length * 15 + 40;
+    const clamped = this.clampToCanvas(rawLeft, rawTop, rawWidth, rawHeight);
+    const { left, top } = this.resolveCollision(clamped.left, clamped.top, clamped.width, clamped.height, 'code');
+    const width = clamped.width;
+    const height = clamped.height;
+    this.checkPageCapacity();
 
     whiteboardStore.addElement({
       id: params.elementId || generateId('code'),
