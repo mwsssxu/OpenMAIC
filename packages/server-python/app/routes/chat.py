@@ -286,7 +286,7 @@ def parse_agent_actions(response_text: str) -> tuple:
 
             # 移除残留的 JSON 关键字
             cleaned_text = re.sub(r'\b(type|action|name|params|elementId)\b', '', cleaned_text)
-            cleaned_text = re.sub(r'\b(content|x|y|width|height|fontSize|color|shape|data|latex|code|language|fileName|startX|startY|endX|endY|points|style|chartType|fillColor)\b', '', cleaned_text)
+            cleaned_text = re.sub(r'\b(content|x|y|width|height|fontSize|color|shape|data|latex|code|language|fileName|startX|startY|endX|endY|points|style|chartType|fillColor|rounded_rectangle|rectangle|circle|triangle|diamond|hexagon|label|textColor|arrow|strokeColor|strokeWidth|opacity|rotate|gradient|direction)\b', '', cleaned_text)
             # 移除 LaTeX 残留
             cleaned_text = re.sub(r'\\[a-zA-Z]+\s*\{[^}]*\}', '', cleaned_text)
             cleaned_text = re.sub(r'\\[a-zA-Z]+', '', cleaned_text)
@@ -356,6 +356,8 @@ def parse_agent_actions(response_text: str) -> tuple:
         fallback_text = re.sub(r'[a-z]*namewb_[a-z_]*', ' ', fallback_text, flags=re.IGNORECASE)
         fallback_text = re.sub(r'[a-z]*wb_dra[a-z_]*', ' ', fallback_text, flags=re.IGNORECASE)
         fallback_text = re.sub(r'w_(text|shape|latex|chart|table|code|line|open|close|clear|delete)[a-z]*', ' ', fallback_text, flags=re.IGNORECASE)
+        # 移除白板参数名和 shape 类型（扁平化文本常见）
+        fallback_text = re.sub(r'\b(rounded_rectangle|rectangle|circle|triangle|diamond|hexagon|label|textColor|arrow|fillColor|strokeColor|strokeWidth|opacity|rotate|gradient|startX|startY|endX|endY|points|style|chartType|fontSize|elementId|fileName|language|direction)\b', ' ', fallback_text, flags=re.IGNORECASE)
         # 移除数字和颜色值
         fallback_text = re.sub(r'#[0-9a-fA-F]{3,6}', ' ', fallback_text)
         fallback_text = re.sub(r'\b\d{2,}\b', ' ', fallback_text)
