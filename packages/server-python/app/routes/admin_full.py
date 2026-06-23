@@ -1335,6 +1335,97 @@ async def get_order_detail(
     return result
 
 
+@router.post("/orders/{order_id}/refund")
+async def refund_order(
+    order_id: str,
+    reason: str = Query(..., description="退款原因"),
+    admin: dict = Depends(require_settings_manage),
+    db: asyncpg.Connection = Depends(get_db)
+):
+    """退款 — 撤销已支付订单的 Token/订阅，标记为 refunded。
+
+    权限: settings.manage（最高管理权限，防止误操作）
+    逻辑:
+      - 仅 paid 订单可退款
+      - Token 订单: 扣回 token（余额不足时扣到 0），记录 refund 流水
+      - 订阅订单: 订阅状态改为 cancelled，到期时间设为现在
+      - 订单状态改为 refunded
+    """
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(400, "无效的订单ID")
+
+    async with db.transaction():
+        # 锁定订单
+        order = await db.fetchrow(
+            """
+            SELECT id, user_id, amount, token_amount, status, order_type,
+                   subscription_days, subscription_plan
+            FROM orders WHERE id = $1 FOR UPDATE
+            """,
+            oid
+        )
+        if not order:
+            raise HTTPException(404, "订单不存在")
+        if order["status"] != "paid":
+            raise HTTPException(400, f"仅已支付订单可退款，当前状态: {order['status']}")
+
+        # 1. 扣回 Token
+        if order["token_amount"] and order["token_amount"] > 0:
+            token_account = await db.fetchrow(
+                "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
+                order["user_id"]
+            )
+            current_balance = token_account["balance"] if token_account else 0
+            # 扣到 0 为止，不产生负余额
+            deduct = min(order["token_amount"], current_balance)
+            new_balance = current_balance - deduct
+            if token_account:
+                await db.execute(
+                    "UPDATE token_accounts SET balance = $1, updated_at = $2 WHERE user_id = $3",
+                    new_balance, utcnow(), order["user_id"]
+                )
+            # 记录退款流水
+            await db.execute(
+                """
+                INSERT INTO token_transactions (id, user_id, type, amount, balance_after, description, created_at)
+                VALUES ($1, $2, 'refund', $3, $4, $5, $6)
+                """,
+                uuid.uuid4(), order["user_id"], -deduct, new_balance,
+                f"退款-{reason}", utcnow()
+            )
+
+        # 2. 撤销订阅
+        if order["order_type"] == "subscription" and order["subscription_plan"]:
+            await db.execute(
+                """
+                UPDATE subscriptions SET status = 'cancelled', auto_renew = FALSE,
+                                         expires_at = $1, updated_at = $1
+                WHERE user_id = $2 AND status = 'active'
+                """,
+                utcnow(), order["user_id"]
+            )
+
+        # 3. 更新订单状态
+        await db.execute(
+            "UPDATE orders SET status = 'refunded', updated_at = $1 WHERE id = $2",
+            utcnow(), oid
+        )
+
+        # 4. 清除余额缓存
+        from app.core.redis import invalidate_balance_cache
+        await invalidate_balance_cache(str(order["user_id"]))
+
+    return {
+        "order_id": str(oid),
+        "status": "refunded",
+        "refunded_tokens": order["token_amount"] or 0,
+        "subscription_cancelled": order["order_type"] == "subscription",
+        "reason": reason,
+    }
+
+
 # ==================== 订阅管理 ====================
 
 @router.get("/subscriptions")
