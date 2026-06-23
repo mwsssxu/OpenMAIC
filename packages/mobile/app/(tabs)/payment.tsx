@@ -89,7 +89,7 @@ export default function PaymentScreen() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>('wechat');
+  const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>('alipay');
   const [paying, setPaying] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
