@@ -35,6 +35,9 @@ nanoid==2.0.0
 httpx==0.28.0
 redis==5.2.0
 
+# 支付宝
+python-alipay-sdk==3.1.0
+
 # 工具
 pypdf>=4.0.0
 

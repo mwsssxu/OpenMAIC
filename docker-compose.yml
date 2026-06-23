@@ -38,6 +38,14 @@ services:
       - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - WECHAT_APP_ID=${WECHAT_APP_ID:-}
+      # 支付宝
+      - ALIPAY_APP_ID=${ALIPAY_APP_ID:-}
+      - ALIPAY_APP_PRIVATE_KEY=${ALIPAY_APP_PRIVATE_KEY:-}
+      - ALIPAY_PUBLIC_KEY=${ALIPAY_PUBLIC_KEY:-}
+      - ALIPAY_GATEWAY=${ALIPAY_GATEWAY:-https://openapi.alipay.com/gateway.do}
+      - ALIPAY_NOTIFY_URL=${ALIPAY_NOTIFY_URL:-}
+      - ALIPAY_RETURN_URL=${ALIPAY_RETURN_URL:-}
+      - ALIPAY_SANDBOX=${ALIPAY_SANDBOX:-false}
       # CORS - 开发模式允许所有来源
       - ALLOWED_ORIGINS=["http://localhost:3030","http://localhost:3031","http://localhost:3000","http://localhost:3001","http://localhost:3003","http://localhost:8081","http://localhost:8082","http://localhost:19000","http://localhost:19006"]
       # MAIC-UI 服务配置（交互式内容生成）

@@ -1330,6 +1330,11 @@ class ApiClient {
     return data;
   }
 
+  async getPaymentOrderDetail(orderId: string) {
+    const { data } = await this.client.get(`/payment/orders/${orderId}`);
+    return data;
+  }
+
   async mockPayment(orderId: string) {
     const { data } = await this.client.post(`/payment/mock-pay/${orderId}`);
     return data;

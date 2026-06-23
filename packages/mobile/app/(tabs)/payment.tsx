@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { apiClient } from '@/lib/api-client';
 import { Rounded, Spacing } from '@/lib/constants/theme';
 import { useFeedback } from '@/lib/hooks/use-feedback';
@@ -89,6 +90,7 @@ export default function PaymentScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>('wechat');
+  const [paying, setPaying] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -156,17 +158,44 @@ export default function PaymentScreen() {
     try {
       const result = await apiClient.createPaymentOrder(packageId, method, type);
 
-      confirmAction('模拟支付', '测试环境将自动完成支付', async () => {
-              try {
-                await apiClient.mockPayment(result.order_id);
-                onSuccess();
-                showSuccess(type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
-                loadData();
-              } catch (error) {
-                onError();
-                showError('支付失败');
-              }
-            });
+      if (method === 'alipay' && result.alipay_url && !result.alipay_url.includes('mock_order_id')) {
+        // 真实支付宝 H5 支付：打开支付页面，返回后轮询订单状态
+        setPaying(true);
+        await WebBrowser.openBrowserAsync(result.alipay_url);
+        // 浏览器关闭后轮询订单（回调可能需要几秒处理）
+        const maxAttempts = 10;
+        for (let i = 0; i < maxAttempts; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+            const order = await apiClient.getPaymentOrderDetail(result.order_id);
+            if (order.status === 'paid') {
+              setPaying(false);
+              onSuccess();
+              showSuccess(type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
+              loadData();
+              return;
+            }
+          } catch {
+            // 轮询失败，继续重试
+          }
+        }
+        // 超时未到账
+        setPaying(false);
+        Alert.alert('支付确认中', '如果已完成支付，请稍后刷新查看。也可联系客服核实。');
+      } else {
+        // 模拟支付（开发环境 / 微信支付未接入）
+        confirmAction('模拟支付', '测试环境将自动完成支付', async () => {
+          try {
+            await apiClient.mockPayment(result.order_id);
+            onSuccess();
+            showSuccess(type === 'subscription' ? '订阅已激活！' : 'Token 已充值！');
+            loadData();
+          } catch (error) {
+            onError();
+            showError('支付失败');
+          }
+        });
+      }
     } catch (error: any) {
       onError();
       showError(error.response?.data?.detail || '创建订单失败');
@@ -460,6 +489,15 @@ export default function PaymentScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {paying && (
+        <View style={styles.payingOverlay}>
+          <View style={styles.payingCard}>
+            <ActivityIndicator size="large" color={C.accent} />
+            <Text style={styles.payingText}>支付确认中...</Text>
+          </View>
+        </View>
+      )}
       </View>
     </TabPageWrapper>
   );
@@ -956,5 +994,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: C.muted,
     marginTop: Spacing.sm,
+  },
+  payingOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  payingCard: {
+    backgroundColor: C.surfaceSolid,
+    borderRadius: Rounded.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  payingText: {
+    fontSize: 14,
+    color: C.fg,
+    fontWeight: '500',
   },
 });

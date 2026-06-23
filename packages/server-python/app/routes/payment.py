@@ -213,9 +213,23 @@ async def create_payment_order(
         }
         payment_url = None
     elif payment_method == "alipay":
-        # TODO: 实际调用支付宝 API
+        # 支付宝 H5 手机网站支付 (alipay.trade.wap.pay)
+        from app.services.alipay import create_wap_pay_url, is_alipay_configured
+
+        if not is_alipay_configured():
+            # 未配置支付宝密钥——开发环境回退到 mock
+            if not settings.TESTING_MODE:
+                raise HTTPException(status_code=503, detail="支付宝支付未配置")
+            logger.warning("支付宝未配置，使用 mock URL — 仅限开发环境")
+            payment_url = f"https://openapi.alipay.com/gateway.do?mock_order_id={order_id.hex}"
+        else:
+            subject = f"侧伴{package['name']}"
+            payment_url = create_wap_pay_url(
+                out_trade_no=order_id.hex,
+                total_amount=f"{actual_price / 100:.2f}",
+                subject=subject,
+            )
         payment_params = None
-        payment_url = f"https://openapi.alipay.com/gateway.do?mock_order_id={order_id.hex}"
     else:
         raise HTTPException(status_code=400, detail="不支持的支付方式")
 
@@ -350,13 +364,10 @@ def verify_wechat_signature(body: bytes, signature: str, api_key: str) -> bool:
     expected_sig = hmac.new(api_key.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(signature, expected_sig)
 
-def verify_alipay_signature(params: dict, alipay_public_key: str) -> bool:
-    """支付宝签名验证框架 - 生产环境必须实现"""
-    # TODO: 使用支付宝SDK实现RSA2签名验证
-    # from alipay import AliPay
-    # alipay = AliPay(alipay_public_key=alipay_public_key)
-    # return alipay.verify(params)
-    return False  # 默认返回False，生产环境必须实现
+def verify_alipay_signature(params: dict) -> bool:
+    """支付宝 RSA2 回调签名验证 — 委托 app.services.alipay 服务。"""
+    from app.services.alipay import verify_callback
+    return verify_callback(params)
 
 
 @router.post("/callback/wechat")
@@ -427,7 +438,7 @@ async def alipay_callback(
     # SECURITY: 签名验证 - 生产环境强制启用
     alipay_public_key = settings.ALIPAY_PUBLIC_KEY
     if alipay_public_key:
-        if not verify_alipay_signature(form_dict, alipay_public_key):
+        if not verify_alipay_signature(form_dict):
             logger.warning("支付宝签名验证失败")
             return "fail"
     elif not settings.TESTING_MODE:
@@ -440,10 +451,29 @@ async def alipay_callback(
 
     out_trade_no = form_data.get("out_trade_no", "")
     transaction_id = form_data.get("trade_no", "")
+    trade_status = form_data.get("trade_status", "")
+
+    # 只处理支付成功的通知，忽略 WAIT_BUYER_PAY 等中间状态
+    if trade_status not in ("TRADE_SUCCESS", "TRADE_FINISHED"):
+        logger.info(f"支付宝回调忽略非成功状态: trade_status={trade_status}, order={out_trade_no}")
+        return "success"  # 告知支付宝收到，不要重试
 
     try:
         order_id = uuid.UUID(out_trade_no.replace("mock_", ""))
     except ValueError:
+        return "fail"
+
+    # SECURITY: 金额校验 — 回调金额必须与订单金额一致，防止篡改
+    # 用 round 而非 int，避免浮点精度丢分（如 19.90 * 100 = 1989.9999... → int 截断为 1989）
+    callback_amount = round(float(form_data.get("total_amount", 0)) * 100)
+    order_amount = await db.fetchval("SELECT amount FROM orders WHERE id = $1", order_id)
+    if order_amount is None:
+        logger.warning(f"支付宝回调: 订单不存在 {order_id}")
+        return "fail"
+    if callback_amount != order_amount:
+        logger.error(
+            f"支付宝回调金额不匹配: order={order_id}, callback={callback_amount}, db={order_amount}"
+        )
         return "fail"
 
     # 记录回调
@@ -453,7 +483,7 @@ async def alipay_callback(
         VALUES ($1, $2, 'alipay', $3, $4, 'success', $5, $6)
         """,
         uuid.uuid4(), order_id, transaction_id,
-        int(float(form_data.get("total_amount", 0)) * 100),
+        callback_amount,
         json.dumps(dict(form_data)), utcnow()
     )
 
