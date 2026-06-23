@@ -72,7 +72,7 @@ export default function OrdersPage() {
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('order_type', filterType);
 
-      const res = await fetch(`${API_BASE}/api/admin/orders?${params}`, {
+      const res = await fetch(`${API_BASE}/admin/orders?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -92,7 +92,7 @@ export default function OrdersPage() {
     setDetailOrder(null);
     try {
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}`, {
+      const res = await fetch(`${API_BASE}/admin/orders/${orderId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -113,7 +113,7 @@ export default function OrdersPage() {
       const token = localStorage.getItem('admin_token');
       const params = new URLSearchParams({ reason: refundReason });
       const res = await fetch(
-        `${API_BASE}/api/admin/orders/${detailOrder.id}/refund?${params}`,
+        `${API_BASE}/admin/orders/${detailOrder.id}/refund?${params}`,
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       );
       if (res.ok) {

@@ -1372,6 +1372,7 @@ async def refund_order(
             raise HTTPException(400, f"仅已支付订单可退款，当前状态: {order['status']}")
 
         # 1. 扣回 Token
+        deducted_tokens = 0
         if order["token_amount"] and order["token_amount"] > 0:
             token_account = await db.fetchrow(
                 "SELECT balance FROM token_accounts WHERE user_id = $1 FOR UPDATE",
@@ -1380,6 +1381,7 @@ async def refund_order(
             current_balance = token_account["balance"] if token_account else 0
             # 扣到 0 为止，不产生负余额
             deduct = min(order["token_amount"], current_balance)
+            deducted_tokens = deduct
             new_balance = current_balance - deduct
             if token_account:
                 await db.execute(
@@ -1397,7 +1399,9 @@ async def refund_order(
             )
 
         # 2. 撤销订阅
+        subscription_cancelled = False
         if order["order_type"] == "subscription" and order["subscription_plan"]:
+            subscription_cancelled = True
             await db.execute(
                 """
                 UPDATE subscriptions SET status = 'cancelled', auto_renew = FALSE,
@@ -1413,15 +1417,26 @@ async def refund_order(
             utcnow(), oid
         )
 
-        # 4. 清除余额缓存
-        from app.core.redis import invalidate_balance_cache
-        await invalidate_balance_cache(str(order["user_id"]))
+        # 4. 审计日志
+        await db.execute(
+            """
+            INSERT INTO admin_logs (admin_id, action, target, details, created_at)
+            VALUES ($1, 'order_refund', $2, $3, $4)
+            """,
+            admin["id"], str(oid),
+            f"退款-{reason}; 扣回Token={deducted_tokens}; 订阅取消={'是' if subscription_cancelled else '否'}",
+            utcnow()
+        )
+
+    # 5. 清除余额缓存（事务外，非关键路径）
+    from app.core.redis import invalidate_balance_cache
+    await invalidate_balance_cache(str(order["user_id"]))
 
     return {
         "order_id": str(oid),
         "status": "refunded",
-        "refunded_tokens": order["token_amount"] or 0,
-        "subscription_cancelled": order["order_type"] == "subscription",
+        "refunded_tokens": deducted_tokens,
+        "subscription_cancelled": subscription_cancelled,
         "reason": reason,
     }
 
