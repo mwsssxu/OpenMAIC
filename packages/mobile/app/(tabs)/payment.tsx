@@ -468,8 +468,17 @@ export default function PaymentScreen() {
               <View key={order.id} style={styles.orderCard}>
                 <View style={styles.orderHeader}>
                   <View style={styles.orderTokenInfo}>
-                    <Ionicons name="diamond" size={18} color={C.purple} />
-                    <Text style={styles.orderTokens}>{order.token_amount} Token</Text>
+                    {order.token_amount > 0 ? (
+                      <>
+                        <Ionicons name="diamond" size={18} color={C.purple} />
+                        <Text style={styles.orderTokens}>{order.token_amount} Token</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="ribbon" size={18} color={C.gold} />
+                        <Text style={styles.orderTokens}>订阅会员</Text>
+                      </>
+                    )}
                   </View>
                   <View style={[styles.orderStatus, { backgroundColor: getStatusColor(order.status) + '20' }]}>
                     <Text style={[styles.orderStatusText, { color: getStatusColor(order.status) }]}>
@@ -479,7 +488,7 @@ export default function PaymentScreen() {
                 </View>
                 <View style={styles.orderMeta}>
                   <Text style={styles.orderMethod}>{getMethodLabel(order.payment_method)}</Text>
-                  <Text style={styles.orderPrice}>¥{order.amount}</Text>
+                  <Text style={styles.orderPrice}>¥{order.amount.toFixed(2)}</Text>
                   <Text style={styles.orderDate}>{new Date(order.created_at).toLocaleDateString()}</Text>
                 </View>
               </View>
