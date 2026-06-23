@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { Users, BookOpen, DollarSign, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 interface DashboardStats {
-  users: { total: number; new_today: number; active_today: number };
-  courses: { total: number; generated_today: number };
-  economy: { revenue_today: number; tokens_purchased: number; points_earned: number };
+  users: { total: number; new_today: number; active_today: number; change?: number };
+  courses: { total: number; generated_today: number; change?: number };
+  economy: { revenue_today: number; tokens_purchased: number; points_earned: number; change?: number };
 }
 
 export default function DashboardPage() {
