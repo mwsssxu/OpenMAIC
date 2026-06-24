@@ -416,8 +416,15 @@ def _parse_widget_response(response: str, outline: Any) -> Dict[str, Any]:
             }
         logger.warning(f"[SceneGenerator] Invalid widgetType '{widget_type}', fallback to slide")
 
-    # 3. Fallback: 返回 slide 空画布（向后兼容，不阻断流程）
-    return {"type": "slide", "canvas": {"elements": []}}
+    # 3. Fallback: 返回 function-plotter 默认配置（不返回空 slide，保证有交互内容）
+    logger.warning(f"[SceneGenerator] Widget parse failed or invalid type, fallback to function-plotter")
+    return {
+        "type": "interactive",
+        "widgetType": "function-plotter",
+        "widgetParams": {"a": 1, "b": 0, "c": 0, "xRange": 10},
+        "description": outline.description or "",
+        "key_points": outline.key_points or [],
+    }
 
 
 def _parse_interactive_json(response: str, widget_type: str) -> Dict[str, Any]:
