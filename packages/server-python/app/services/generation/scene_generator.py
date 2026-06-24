@@ -414,7 +414,7 @@ def _parse_widget_response(response: str, outline: Any) -> Dict[str, Any]:
                 "description": parsed.get("description", outline.description or ""),
                 "key_points": parsed.get("key_points", outline.key_points or []),
             }
-        logger.warning(f"[SceneGenerator] Invalid widgetType '{widget_type}', fallback to slide")
+        logger.warning(f"[SceneGenerator] Invalid widgetType '{widget_type}', fallback to function-plotter")
 
     # 3. Fallback: 返回 function-plotter 默认配置（不返回空 slide，保证有交互内容）
     logger.warning(f"[SceneGenerator] Widget parse failed or invalid type, fallback to function-plotter")
@@ -425,110 +425,6 @@ def _parse_widget_response(response: str, outline: Any) -> Dict[str, Any]:
         "description": outline.description or "",
         "key_points": outline.key_points or [],
     }
-
-
-def _parse_interactive_json(response: str, widget_type: str) -> Dict[str, Any]:
-    """
-    专门解析 diagram/simulation 的 LLM JSON 输出。
-    mermaid 字段含换行符，普通 JSON 解析容易失败。
-    策略：先尝试标准解析，失败则用正则提取关键字段。
-    """
-    # 1. 直接解析原始响应
-    try:
-        return json.loads(response.strip())
-    except Exception:
-        pass
-
-    # 2. 通过 parse_json_response 解析（处理 markdown 围栏等）
-    try:
-        return parse_json_response(response, "interactive")
-    except Exception:
-        pass
-
-    # 2. 清理 markdown 围栏后再试
-    cleaned = response.strip()
-    cleaned = re.sub(r"^```(?:json)?\s*|\s*```\s*$", "", cleaned, flags=re.S).strip()
-    try:
-        return json.loads(cleaned)
-    except Exception:
-        pass
-
-    # 3. 正则提取关键字段
-    result: Dict[str, Any] = {"type": "interactive", "widgetType": widget_type}
-
-    if widget_type == "diagram":
-        # 提取 mermaid 内容（可能在 JSON 值中，也可能独立出现）
-        # 尝试匹配 "mermaid": "..." 中的值
-        mermaid_match = re.search(r'"mermaid"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned, re.S)
-        if mermaid_match:
-            result["mermaid"] = mermaid_match.group(1).replace('\\n', '\n')
-        else:
-            # 尝试匹配独立的 mermaid 代码块
-            mermaid_block = re.search(r'```mermaid\s*\n(.*?)```', response, re.S)
-            if mermaid_block:
-                result["mermaid"] = mermaid_block.group(1).strip()
-            else:
-                # 最后手段：找 graph TD/LR 或 mindmap 开头的行
-                lines = cleaned.split('\n')
-                mermaid_lines = []
-                started = False
-                for line in lines:
-                    if re.match(r'^(graph |flowchart |mindmap|sequenceDiagram|classDiagram|stateDiagram)', line.strip()):
-                        started = True
-                    if started:
-                        mermaid_lines.append(line)
-                if mermaid_lines:
-                    result["mermaid"] = '\n'.join(mermaid_lines)
-
-        # 提取 chartType
-        ct_match = re.search(r'"chartType"\s*:\s*"([^"]*)"', cleaned)
-        if ct_match:
-            result["chartType"] = ct_match.group(1)
-
-        # 提取 title
-        t_match = re.search(r'"title"\s*:\s*"([^"]*)"', cleaned)
-        if t_match:
-            result["title"] = t_match.group(1)
-
-        # 提取 description
-        d_match = re.search(r'"description"\s*:\s*"([^"]*)"', cleaned)
-        if d_match:
-            result["description"] = d_match.group(1)
-
-        # 提取 keyPoints
-        kp_match = re.search(r'"keyPoints"\s*:\s*\[(.*?)\]', cleaned, re.S)
-        if kp_match:
-            try:
-                result["keyPoints"] = json.loads('[' + kp_match.group(1) + ']')
-            except Exception:
-                pass
-
-    elif widget_type == "simulation":
-        # 提取 parameters
-        p_match = re.search(r'"parameters"\s*:\s*(\[.*?\])', cleaned, re.S)
-        if p_match:
-            try:
-                result["parameters"] = json.loads(p_match.group(1))
-            except Exception:
-                result["parameters"] = [
-                    {"id": "p1", "name": "参数1", "min": 0, "max": 100, "step": 1, "default": 50, "unit": ""}
-                ]
-
-        # 提取 formulas
-        f_match = re.search(r'"formulas"\s*:\s*(\[.*?\])', cleaned, re.S)
-        if f_match:
-            try:
-                result["formulas"] = json.loads(f_match.group(1))
-            except Exception:
-                pass
-
-        # 提取 title/description
-        for field in ("title", "description", "initialResult", "calculationLogic"):
-            m = re.search(rf'"{field}"\s*:\s*"([^"]*)"', cleaned)
-            if m:
-                result[field] = m.group(1)
-
-    return result
 
 
 def parse_json_response(response: str, content_type: str) -> Dict[str, Any]:

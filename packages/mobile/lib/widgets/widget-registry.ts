@@ -493,8 +493,9 @@ export function renderWidget(
 ): string {
   const renderer = RENDERERS[widgetType];
   if (!renderer) {
+    const safeType = String(widgetType).replace(/[^a-zA-Z0-9_-]/g, '');
     return `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;color:#94a3b8;background:#0f172a">
-      <p>未知组件类型: ${widgetType}</p>
+      <p>未知组件类型: ${safeType}</p>
       <p>可用组件: ${Object.keys(RENDERERS).join(', ')}</p>
     </body></html>`;
   }
