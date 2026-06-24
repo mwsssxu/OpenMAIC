@@ -18,10 +18,19 @@ import { SIMPLIFIED_WIDTH } from './constants';
 import { isSmallScreen } from '@/lib/utils/scaling';
 
 /** 元素语义类型 */
-type SemanticRole = 'title' | 'desc' | 'point' | 'highlight' | 'body';
+type SemanticRole = 'title' | 'desc' | 'point' | 'highlight' | 'label' | 'body';
 
 /** 配色方案 */
-const THEME = {
+const THEME: Record<SemanticRole, {
+  bg: string;
+  accentBar: string | null;
+  text: string;
+  fontSizeScale: number;
+  fontWeight: string;
+  borderLeft: number;
+  borderRadius: number;
+  shadowOpacity: number;
+}> = {
   title: {
     bg: '#eff6ff',         // 浅蓝底
     accentBar: '#3b82f6',  // 蓝色左边条
@@ -62,6 +71,16 @@ const THEME = {
     borderRadius: 8,
     shadowOpacity: 0,
   },
+  label: {
+    bg: '#f1f5f9',         // 浅灰底
+    accentBar: null,
+    text: '#475569',
+    fontSizeScale: 0.9,
+    fontWeight: '600',
+    borderLeft: 0,
+    borderRadius: 6,
+    shadowOpacity: 0,
+  },
   body: {
     bg: '#f8fafc',
     accentBar: null,
@@ -91,8 +110,16 @@ function detectSemanticRole(element: any): SemanticRole {
   if (id === 'desc' || id.startsWith('desc')) return 'desc';
   if (id.startsWith('point')) return 'point';
   if (id.startsWith('highlight')) return 'highlight';
-  // shape 替换来的文本元素（以 shape_ 或 line_ 开头）
-  if (id.startsWith('shape_') || id.startsWith('line_')) return 'highlight';
+
+  // shape/line 替换来的文本元素
+  if (id.startsWith('shape_') || id.startsWith('line_')) {
+    const content = element.content || '';
+    const text = content.replace(/<[^>]+>/g, '').trim();
+    // 短文本（变量名、符号、标签）→ label 角色，不占满宽
+    if (text.length <= 12) return 'label';
+    // 较长文本才作为 highlight
+    return 'highlight';
+  }
 
   // 根据 HTML 内容标签判断
   const content = element.content || '';
@@ -110,6 +137,11 @@ function detectSemanticRole(element: any): SemanticRole {
   if (position.top >= 80 && position.top < 200 && text.length < 80) return 'desc';
   // 以圆点或数字开头 = 要点
   if (/^[•●▪▸➤\d]/.test(text.trim())) return 'point';
+  // 短文本 + 有显式颜色 = 标签（如 v₀, θ, vx 等物理量符号）
+  const explicitColor = element.style?.color || element.defaultColor;
+  if (text.trim().length <= 8 && explicitColor && explicitColor !== '#333333' && explicitColor !== '#444444') {
+    return 'label';
+  }
 
   return 'body';
 }
@@ -210,14 +242,17 @@ export function SimplifiedTextElement({
   // 内容宽度
   const contentWidth = useMemo(() => {
     if (forceFullWidth) return '100%' as any;
+    // label 角色：auto 宽度（不撑满），跟随内容自适应
+    if (role === 'label') return 'auto' as any;
     return Math.min(position.width * scale, SIMPLIFIED_WIDTH * scale);
-  }, [position.width, scale, forceFullWidth]);
+  }, [position.width, scale, forceFullWidth, role]);
 
   // padding
   const padding = useMemo(() => {
     if (role === 'title') return Math.max(10, 16 * scale);
     if (role === 'desc') return Math.max(4, 6 * scale);
     if (role === 'point') return Math.max(8, 12 * scale);
+    if (role === 'label') return Math.max(4, 8 * scale);
     return Math.max(8, 12 * scale);
   }, [scale, role]);
 

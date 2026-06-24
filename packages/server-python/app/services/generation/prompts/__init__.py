@@ -26,6 +26,7 @@ PROMPT_IDS = {
     "SLIDE_ACTIONS": "slide-actions",
     "QUIZ_CONTENT": "quiz-content",
     "QUIZ_ACTIONS": "quiz-actions",
+    "INTERACTIVE_WIDGET": "interactive-widget",
     "INTERACTIVE_ACTIONS": "interactive-actions",
     "INTERACTIVE_HTML": "interactive-html",
     "INTERACTIVE_SCIENTIFIC_MODEL": "interactive-scientific-model",

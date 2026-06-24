@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ import { WhiteboardOverlay } from '@/components/classroom/WhiteboardOverlay';
 import { BottomSheetModal } from '@/components/common/BottomSheetModal';
 import { HintToast } from '@/components/common/HintToast';
 import { InteractiveWebView, InteractiveWebViewRef } from '@/components/playback/InteractiveWebView';
+import { renderWidget, getDefaultParams } from '@/lib/widgets/widget-registry';
 import { DiagramView, SimulationView } from '@/components/playback/DiagramView';
 import { ClassroomCompletePage } from '@/components/classroom/ClassroomCompletePage';
 import { useFirstTimeHint } from '@/lib/hooks/use-first-time-hint';
@@ -1081,6 +1082,15 @@ export default function ClassroomScreen() {
   // 当前场景（用于各种函数，必须在条件返回之前定义）
   // 注意：data 可能为 null，所以使用可选链
   const currentScene = data?.scenes?.[currentSceneIndex];
+
+  // Interactive widget HTML — 仅在 widgetType 场景时计算
+  const widgetHtml = useMemo(() => {
+    if (currentScene?.type !== 'interactive') return null;
+    const content = currentScene?.content as InteractiveContent;
+    if (!content?.widgetType) return null;
+    const params = content.widgetParams ?? getDefaultParams(content.widgetType);
+    return renderWidget(content.widgetType, params);
+  }, [currentScene]);
 
   function goToScene(index: number) {
     if (index !== currentSceneIndex) {
@@ -2400,11 +2410,44 @@ export default function ClassroomScreen() {
           );
         })()}
 
-        {/* Interactive 类型：已弃用，降级为 slide 渲染 */}
+        {/* Interactive 类型：widget 交互渲染（预构件模式） */}
         {currentScene?.type === 'interactive' && (() => {
           const content = currentScene?.content as any;
-          // 新生成的 interactive 场景 content.type 已经是 slide
-          // 旧数据的 interactive 场景尝试用 canvas 渲染，无 canvas 则显示占位
+
+          // 优先路径：widgetType 存在 → 通过 widget-registry 渲染交互组件
+          if (content?.widgetType && widgetHtml) {
+            return (
+              <View style={styles.webviewContainer}>
+                <InteractiveWebView
+                  ref={interactiveWebViewRef}
+                  sceneId={currentScene.id}
+                  htmlContent={widgetHtml}
+                  onComplete={handleInteractiveComplete}
+                  onMessage={handleInteractiveMessage}
+                  style={styles.webview}
+                />
+              </View>
+            );
+          }
+
+          // 兼容路径：旧数据有 url 或 html → 直接用 InteractiveWebView
+          if (content?.url || content?.html) {
+            return (
+              <View style={styles.webviewContainer}>
+                <InteractiveWebView
+                  ref={interactiveWebViewRef}
+                  sceneId={currentScene.id}
+                  url={content.url}
+                  htmlContent={content.html}
+                  onComplete={handleInteractiveComplete}
+                  onMessage={handleInteractiveMessage}
+                  style={styles.webview}
+                />
+              </View>
+            );
+          }
+
+          // 兼容路径：旧数据有 canvas → 用 ScreenCanvas 渲染
           if (content?.canvas?.elements?.length > 0) {
             return (
               <View style={{ flex: 1 }}>
@@ -2420,7 +2463,8 @@ export default function ClassroomScreen() {
               </View>
             );
           }
-          // 无 canvas 内容：显示简洁占位 + 完成/跳过按钮
+
+          // Fallback：无内容 → 占位 + 继续按钮
           return (
             <View style={styles.center}>
               <Ionicons name="document-text-outline" size={48} color="#ccc" />

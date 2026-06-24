@@ -282,20 +282,38 @@ async def generate_scene_content(
             )
 
     elif outline.type == "interactive":
-        # Interactive 场景已弃用，降级为 slide 类型
-        # 原因：LLM 生成交互代码成功率极低（85%空白/无法操作）
-        logger.info(f"[SceneGenerator] interactive scene '{outline.title}' downgraded to slide")
-        # 复用 slide 的 prompt 生成逻辑
+        # Interactive 场景：LLM 从预构件库选择 widget + 生成参数 JSON
+        # 移动端 widget-registry.ts 消费 widgetType + widgetParams 渲染交互组件
+        widget_catalog = (
+            '- type: "function-plotter" | 函数图像绘制器 | tags: [数学/函数/图像/二次函数/三角函数/指数/对数] | params: a(-5~5, default:1), b(-5~5, default:0), c(-5~5, default:0), xRange(5~30, default:10)\n'
+            '- type: "projectile-motion" | 抛体运动模拟 | tags: [物理/力学/抛体/运动/重力/角度] | params: angle(0~90, default:45°), velocity(5~50, default:20m/s), gravity(1~20, default:9.8m/s²)\n'
+        )
+        # 大纲阶段推断的 widget 类型作为推荐（LLM 可参考但可覆盖）
+        inferred_widget = getattr(outline, 'widget_type', '') or ''
+        inferred_hint = f'\n大纲推荐组件: "{inferred_widget}"（如合适请直接使用，不合适可从组件库重新选择）' if inferred_widget else ''
         system_prompt, user_prompt = build_prompt(
-            PROMPT_IDS.get("SCENE_CONTENT_SLIDE", "scene-content-slide"),
+            PROMPT_IDS.get("INTERACTIVE_WIDGET", "interactive-widget"),
             {
                 "title": outline.title,
                 "description": outline.description,
                 "keyPoints": ", ".join(outline.key_points or []),
+                "widgetCatalog": widget_catalog,
+                "inferredHint": inferred_hint,
                 "languageDirective": lang_directive,
             },
         )
-        outline_type_for_prompt = "slide"
+        if not system_prompt or not user_prompt:
+            # DEBT: prompt 模板缺失时的最小兜底，天花板=模板系统正常工作后可删
+            logger.warning("[SceneGenerator] interactive-widget template not found, minimal fallback")
+            system_prompt = "你是教育交互组件选择专家。只输出JSON。"
+            user_prompt = (
+                f"标题：{outline.title}\n"
+                f"描述：{outline.description}\n"
+                f"要点：{', '.join(outline.key_points or [])}\n"
+                f"{lang_directive}\n"
+                f"可用组件:\n{widget_catalog}\n"
+                '输出 JSON: {"widgetType":"function-plotter","widgetParams":{"a":1,"b":0,"c":0},"description":"...","key_points":["..."]}'
+            )
 
     else:
         # pbl等其他类型暂时返回默认结构
@@ -341,28 +359,65 @@ async def generate_scene_content(
         )
 
     # 解析响应内容
-    # interactive 场景已降级为 slide，走 slide 解析路径
     if outline.type == "interactive":
-        # interactive 降级为 slide，用 slide 的解析逻辑
-        content = parse_json_response(response, "slide")
-        # 确保 canvas 结构存在
-        if not content.get("canvas"):
-            content = {"type": "slide", "canvas": {"elements": []}}
-        content["type"] = "slide"  # 强制标记为 slide 类型
+        # 解析 widget 选择 JSON: { widgetType, widgetParams, description, key_points }
+        content = _parse_widget_response(response, outline)
     else:
         content = parse_json_response(response, outline.type)
 
-    # 后处理
-    if (outline.type == "slide" or outline.type == "interactive") and content.get("canvas"):
+    # 后处理：slide 的 canvas 修正
+    if outline.type == "slide" and content.get("canvas"):
         content = fix_element_format(content)
         # 安全网：如果LLM没有生成ShapeElement，自动注入装饰色条
         content = _ensure_visual_shapes(content)
 
-    # Interactive场景确保返回 slide 类型
-    if outline.type == "interactive":
-        content["type"] = "slide"
-
     return content
+
+
+def _parse_widget_response(response: str, outline: Any) -> Dict[str, Any]:
+    """
+    解析 interactive-widget LLM 输出。
+
+    期望 JSON: { "widgetType": "...", "widgetParams": {...}, "description": "...", "key_points": [...] }
+    解析失败时 fallback 为 slide 空画布，保证不阻断课程生成。
+    """
+    valid_widgets = {"function-plotter", "projectile-motion"}
+
+    # 1. 尝试标准 JSON 解析（含 markdown 围栏清理）
+    parsed = None
+    cleaned = response.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```\s*$", "", cleaned, flags=re.S).strip()
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        try:
+            parsed = parse_json_response(response, "interactive")
+        except Exception:
+            pass
+
+    # 2. 校验 widgetType
+    if parsed and isinstance(parsed, dict):
+        widget_type = parsed.get("widgetType", "")
+        if widget_type in valid_widgets:
+            params = parsed.get("widgetParams") or parsed.get("params") or {}
+            # 确保参数值是数值类型
+            clean_params: Dict[str, Any] = {}
+            for k, v in params.items():
+                try:
+                    clean_params[k] = float(v) if isinstance(v, (int, float, str)) else v
+                except (ValueError, TypeError):
+                    clean_params[k] = v
+            return {
+                "type": "interactive",
+                "widgetType": widget_type,
+                "widgetParams": clean_params,
+                "description": parsed.get("description", outline.description or ""),
+                "key_points": parsed.get("key_points", outline.key_points or []),
+            }
+        logger.warning(f"[SceneGenerator] Invalid widgetType '{widget_type}', fallback to slide")
+
+    # 3. Fallback: 返回 slide 空画布（向后兼容，不阻断流程）
+    return {"type": "slide", "canvas": {"elements": []}}
 
 
 def _parse_interactive_json(response: str, widget_type: str) -> Dict[str, Any]:

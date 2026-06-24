@@ -21,6 +21,23 @@ import { isSmallScreen, isWideScreen } from '@/lib/utils/scaling';
 
 const MARGIN = isSmallScreen ? 12 : isWideScreen ? 30 : 20;
 
+/**
+ * 检测元素是否为标签角色（短文本，用于 label+body 配对）
+ * 与 SimplifiedTextElement 的 detectSemanticRole 逻辑保持一致
+ */
+function _isLabelElement(element: any, text: string): boolean {
+  const id = (element.id || '').toLowerCase();
+  if (id.startsWith('shape_') || id.startsWith('line_')) {
+    return text.length <= 12;
+  }
+  // 短文本 + 有显式颜色
+  const explicitColor = element.style?.color || element.defaultColor;
+  if (text.length <= 8 && explicitColor && explicitColor !== '#333333' && explicitColor !== '#444444') {
+    return true;
+  }
+  return false;
+}
+
 interface SimplifiedLayoutProps {
   elements: PPTElement[];
   theme: SlideTheme;
@@ -112,9 +129,64 @@ export function SimplifiedLayout({
   const isMobile = containerSize.width < 600;
 
   // 多列分组
-  const { rows, isMultiColumnRow } = useMemo(() => {
+  const { rows } = useMemo(() => {
     return groupColumnsForMobile(sortedElements, isMobile);
   }, [sortedElements, isMobile]);
+
+  // 标签+描述配对：短标签（label 角色）与紧邻的长文本合并为一行
+  type RenderItem =
+    | { kind: 'single'; element: any; originalIndex: number }
+    | { kind: 'multi'; elements: any[] }
+    | { kind: 'pair'; label: any; body: any; labelIndex: number; bodyIndex: number };
+
+  const renderItems = useMemo((): RenderItem[] => {
+    const items: RenderItem[] = [];
+    const consumed = new Set<number>(); // 已被配对消耗的 row index
+
+    for (let i = 0; i < rows.length; i++) {
+      if (consumed.has(i)) continue;
+      const row = rows[i];
+
+      // 仅单元素行可以配对
+      if (row.length === 1) {
+        const el = row[0] as any;
+        if (el.type !== 'text') {
+          items.push({ kind: 'single', element: el, originalIndex: sortedElements.indexOf(el) });
+          continue;
+        }
+
+        // 检测是否为 label 角色
+        const text = (el.content || '').replace(/<[^>]+>/g, '').trim();
+        const isLabel = _isLabelElement(el, text);
+
+        // 尝试与下一行配对
+        if (isLabel && i + 1 < rows.length && rows[i + 1].length === 1) {
+          const nextEl = rows[i + 1][0] as any;
+          if (nextEl.type === 'text') {
+            const nextText = (nextEl.content || '').replace(/<[^>]+>/g, '').trim();
+            // 下一行文本较长（> 8 字）= 描述性内容，可以配对
+            if (nextText.length > 8) {
+              items.push({
+                kind: 'pair',
+                label: el,
+                body: nextEl,
+                labelIndex: sortedElements.indexOf(el),
+                bodyIndex: sortedElements.indexOf(nextEl),
+              });
+              consumed.add(i + 1);
+              continue;
+            }
+          }
+        }
+
+        items.push({ kind: 'single', element: el, originalIndex: sortedElements.indexOf(el) });
+      } else {
+        items.push({ kind: 'multi', elements: row });
+      }
+    }
+
+    return items;
+  }, [rows, sortedElements]);
 
   // 计算元素间距（根据原始 position）
   const getElementSpacing = useCallback((index: number): number => {
@@ -147,48 +219,71 @@ export function SimplifiedLayout({
         },
       ]}
     >
-      {rows.map((row, rowIndex) => {
-        if (row.length === 1) {
-          // 单列元素：保持原样
-          const element = row[0];
-          const el = element as any;
-          const originalIndex = sortedElements.indexOf(element);
+      {renderItems.map((item, itemIndex) => {
+        const spacing = itemIndex < renderItems.length - 1
+          ? getElementSpacing(
+              item.kind === 'pair' ? item.bodyIndex
+                : item.kind === 'single' ? item.originalIndex
+                : 0
+            )
+          : 0;
 
-          if (el.type === 'text') {
-            return (
-              <View
-                key={element.id}
-                style={{ marginBottom: getElementSpacing(originalIndex) }}
-              >
+        if (item.kind === 'pair') {
+          // 标签+描述配对行：label badge 在左侧，body 在右侧填充
+          return (
+            <View key={`pair-${item.labelIndex}`} style={[styles.pairRow, { marginBottom: spacing }]}>
+              <SimplifiedTextElement
+                element={item.label}
+                theme={theme}
+                scale={scale}
+              />
+              <View style={styles.pairBody}>
                 <SimplifiedTextElement
-                  element={el}
+                  element={item.body}
                   theme={theme}
                   scale={scale}
+                  forceFullWidth={true}
                 />
               </View>
-            );
-          }
-          return null;
+            </View>
+          );
         }
 
-        // 多列元素：移动端垂直堆叠，每列撑满宽度
-        return (
-          <View key={`row-${rowIndex}`} style={styles.multiColumnRow}>
-            {row.map((element) => {
-              const el = element as any;
-              if (el.type !== 'text') return null;
+        if (item.kind === 'multi') {
+          // 多列元素：移动端垂直堆叠
+          return (
+            <View key={`row-${itemIndex}`} style={[styles.multiColumnRow, { marginBottom: spacing }]}>
+              {item.elements.map((element) => {
+                const el = element as any;
+                if (el.type !== 'text') return null;
+                return (
+                  <View key={element.id} style={styles.stackedColumn}>
+                    <SimplifiedTextElement
+                      element={el}
+                      theme={theme}
+                      scale={scale}
+                      forceFullWidth={true}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          );
+        }
 
-              return (
-                <View key={element.id} style={styles.stackedColumn}>
-                  <SimplifiedTextElement
-                    element={el}
-                    theme={theme}
-                    scale={scale}
-                    forceFullWidth={true}
-                  />
-                </View>
-              );
-            })}
+        // 单元素行
+        const el = item.element as any;
+        if (el.type !== 'text') return null;
+        return (
+          <View
+            key={el.id || `item-${itemIndex}`}
+            style={{ marginBottom: spacing }}
+          >
+            <SimplifiedTextElement
+              element={el}
+              theme={theme}
+              scale={scale}
+            />
           </View>
         );
       })}
@@ -199,6 +294,14 @@ export function SimplifiedLayout({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#ffffff',
+  },
+  pairRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  pairBody: {
+    flex: 1,
   },
   multiColumnRow: {
     gap: 8,

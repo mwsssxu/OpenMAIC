@@ -20,15 +20,25 @@ import time
 logger = logging.getLogger(__name__)
 
 
-# 关键词 → widget 类型映射（用于智能推断）
+# 关键词 → widget 类型映射（移动端预构件库）
+# 移动端 widget-registry.ts 中注册的组件类型优先
 _WIDGET_TYPE_KEYWORDS: Dict[str, list] = {
+    "function-plotter": [
+        "函数", "图像", "二次函数", "三角函数", "正弦", "余弦", "指数", "对数",
+        "抛物线", "曲线", "坐标", "方程", "导数", "积分",
+        "function", "graph", "parabola", "curve", "coordinate",
+    ],
+    "projectile-motion": [
+        "抛体", "运动", "速度", "加速度", "力", "重力", "角度", "发射",
+        "弹道", "自由落体", "平抛", "斜抛",
+        "projectile", "motion", "velocity", "force", "gravity",
+    ],
+    # 以下类型为 Web 端兼容保留，移动端暂无预构件，会 fallback 到 slide
     "simulation": [
-        "力", "运动", "速度", "加速度", "抛体", "波动", "电路", "电压", "电流",
+        "波动", "电路", "电压", "电流",
         "化学反应", "分子", "pH", "细胞", "生态",
-        "函数", "图像", "概率", "统计分布",
-        "force", "motion", "velocity", "projectile", "wave", "circuit",
-        "reaction", "molecule", "cell", "ecosystem",
-        "function", "graph", "probability",
+        "概率", "统计分布",
+        "wave", "circuit", "reaction", "molecule", "cell", "ecosystem", "probability",
     ],
     "visualization3d": [
         "3D", "三维", "立体", "分子结构", "原子", "太阳系", "行星", "轨道",
@@ -58,7 +68,8 @@ def _infer_widget_type(outline: "SceneOutline") -> str:
     """根据大纲标题和描述中的关键词推断最合适的 widget 类型。"""
     text = f"{outline.title} {outline.description} {' '.join(outline.key_points or [])}".lower()
 
-    best_type = "simulation"
+    # 移动端预构件优先匹配
+    best_type = "function-plotter"  # 默认 fallback：移动端有渲染器
     best_score = 0
 
     for widget_type, keywords in _WIDGET_TYPE_KEYWORDS.items():
@@ -77,7 +88,24 @@ def _build_widget_outline(outline: "SceneOutline") -> Dict[str, Any]:
     description = outline.description or ""
     key_points = outline.key_points or []
 
-    if widget_type == "simulation":
+    if widget_type == "function-plotter":
+        return {
+            "conceptName": title,
+            "subject": "数学",
+            "conceptOverview": description,
+            "keyPoints": ", ".join(key_points),
+            "designIdea": "可调系数的函数图像，用户通过滑块控制 a/b/c 参数，实时查看曲线变化",
+        }
+    elif widget_type == "projectile-motion":
+        return {
+            "conceptName": title,
+            "subject": "物理",
+            "conceptOverview": description,
+            "keyPoints": ", ".join(key_points),
+            "scientificConstraints": "模拟需遵循抛体运动物理规律",
+            "designIdea": "可调角度/初速度/重力的抛体模拟，用户发射后实时查看轨迹和射程",
+        }
+    elif widget_type == "simulation":
         return {
             "conceptName": title,
             "subject": "综合学习",
