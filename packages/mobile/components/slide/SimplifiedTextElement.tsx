@@ -142,6 +142,11 @@ function detectSemanticRole(element: any): SemanticRole {
   if (text.trim().length <= 8 && explicitColor && explicitColor !== '#333333' && explicitColor !== '#444444') {
     return 'label';
   }
+  // 极短文本（≤ 6 字）即使无显式颜色也视为标签
+  // 典型场景：坐标轴标签 F/N、x/m、O
+  if (text.trim().length <= 6) {
+    return 'label';
+  }
 
   return 'body';
 }

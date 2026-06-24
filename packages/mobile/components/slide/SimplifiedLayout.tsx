@@ -35,7 +35,19 @@ function _isLabelElement(element: any, text: string): boolean {
   if (text.length <= 8 && explicitColor && explicitColor !== '#333333' && explicitColor !== '#444444') {
     return true;
   }
+  // 极短文本（≤ 6 字）即使无显式颜色也视为标签
+  // 典型场景：坐标轴标签 F/N、x/m、O，物理量符号 v₀、θ 等
+  if (text.length <= 6) {
+    return true;
+  }
   return false;
+}
+
+/**
+ * 提取元素的纯文本
+ */
+function _getText(element: any): string {
+  return (element.content || '').replace(/<[^>]+>/g, '').trim();
 }
 
 interface SimplifiedLayoutProps {
@@ -137,7 +149,8 @@ export function SimplifiedLayout({
   type RenderItem =
     | { kind: 'single'; element: any; originalIndex: number }
     | { kind: 'multi'; elements: any[] }
-    | { kind: 'pair'; label: any; body: any; labelIndex: number; bodyIndex: number };
+    | { kind: 'pair'; label: any; body: any; labelIndex: number; bodyIndex: number }
+    | { kind: 'badges'; elements: any[]; indices: number[] };
 
   const renderItems = useMemo((): RenderItem[] => {
     const items: RenderItem[] = [];
@@ -147,7 +160,6 @@ export function SimplifiedLayout({
       if (consumed.has(i)) continue;
       const row = rows[i];
 
-      // 仅单元素行可以配对
       if (row.length === 1) {
         const el = row[0] as any;
         if (el.type !== 'text') {
@@ -156,14 +168,14 @@ export function SimplifiedLayout({
         }
 
         // 检测是否为 label 角色
-        const text = (el.content || '').replace(/<[^>]+>/g, '').trim();
+        const text = _getText(el);
         const isLabel = _isLabelElement(el, text);
 
         // 尝试与下一行配对
         if (isLabel && i + 1 < rows.length && rows[i + 1].length === 1) {
           const nextEl = rows[i + 1][0] as any;
           if (nextEl.type === 'text') {
-            const nextText = (nextEl.content || '').replace(/<[^>]+>/g, '').trim();
+            const nextText = _getText(nextEl);
             // 下一行文本较长（> 8 字）= 描述性内容，可以配对
             if (nextText.length > 8) {
               items.push({
@@ -181,7 +193,48 @@ export function SimplifiedLayout({
 
         items.push({ kind: 'single', element: el, originalIndex: sortedElements.indexOf(el) });
       } else {
-        items.push({ kind: 'multi', elements: row });
+        // 多列行：尝试内部 label+body 配对
+        const textEls = row.filter((e: any) => e.type === 'text');
+        const labels = textEls.filter((e: any) => _isLabelElement(e, _getText(e)));
+        const bodies = textEls.filter((e: any) => !_isLabelElement(e, _getText(e)));
+
+        if (labels.length >= 1 && bodies.length >= 1) {
+          // 有标签有描述：配对渲染
+          // 一个 label 配一个 body；多余的 label 或 body 单独渲染
+          const paired = Math.min(labels.length, bodies.length);
+          for (let j = 0; j < paired; j++) {
+            items.push({
+              kind: 'pair',
+              label: labels[j],
+              body: bodies[j],
+              labelIndex: sortedElements.indexOf(labels[j]),
+              bodyIndex: sortedElements.indexOf(bodies[j]),
+            });
+          }
+          // 剩余的 body 作为单元素
+          for (let j = paired; j < bodies.length; j++) {
+            items.push({ kind: 'single', element: bodies[j], originalIndex: sortedElements.indexOf(bodies[j]) });
+          }
+          // 剩余的 label 归入 badges
+          if (labels.length > paired) {
+            const remaining = labels.slice(paired);
+            items.push({
+              kind: 'badges',
+              elements: remaining,
+              indices: remaining.map((e: any) => sortedElements.indexOf(e)),
+            });
+          }
+        } else if (labels.length === textEls.length && textEls.length > 0) {
+          // 全是短标签：水平 badge 行
+          items.push({
+            kind: 'badges',
+            elements: textEls,
+            indices: textEls.map((e: any) => sortedElements.indexOf(e)),
+          });
+        } else {
+          // 全是长文本：垂直堆叠
+          items.push({ kind: 'multi', elements: row });
+        }
       }
     }
 
@@ -271,7 +324,28 @@ export function SimplifiedLayout({
           );
         }
 
+        if (item.kind === 'badges') {
+          // 全短标签：水平 badge 行
+          return (
+            <View key={`badges-${itemIndex}`} style={[styles.badgeRow, { marginBottom: spacing }]}>
+              {item.elements.map((element, badgeIdx) => {
+                const el = element as any;
+                if (el.type !== 'text') return null;
+                return (
+                  <SimplifiedTextElement
+                    key={el.id || `badge-${badgeIdx}`}
+                    element={el}
+                    theme={theme}
+                    scale={scale}
+                  />
+                );
+              })}
+            </View>
+          );
+        }
+
         // 单元素行
+        if (item.kind !== 'single') return null;
         const el = item.element as any;
         if (el.type !== 'text') return null;
         return (
@@ -302,6 +376,12 @@ const styles = StyleSheet.create({
   },
   pairBody: {
     flex: 1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: 6,
   },
   multiColumnRow: {
     gap: 8,
