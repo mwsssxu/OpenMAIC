@@ -247,8 +247,8 @@ export function SimplifiedTextElement({
   // 内容宽度
   const contentWidth = useMemo(() => {
     if (forceFullWidth) return '100%' as any;
-    // label 角色：auto 宽度（不撑满），跟随内容自适应
-    if (role === 'label') return 'auto' as any;
+    // label 角色：不设宽度，用 alignSelf 自适应内容
+    if (role === 'label') return undefined;
     return Math.min(position.width * scale, SIMPLIFIED_WIDTH * scale);
   }, [position.width, scale, forceFullWidth, role]);
 
@@ -267,6 +267,8 @@ export function SimplifiedTextElement({
         styles.wrapper,
         {
           width: contentWidth,
+          // label 角色：自适应内容宽度，不撑满父容器
+          ...(role === 'label' ? { alignSelf: 'flex-start' } : {}),
           backgroundColor: el.fill || roleTheme.bg,  // fill 属性覆盖默认背景
           borderRadius: roleTheme.borderRadius,
           paddingHorizontal: padding,
