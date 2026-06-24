@@ -439,22 +439,11 @@ class ApiClient {
       language: language || 'zh-CN',
       agents,
     };
-    const maxRetries = 1;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const { data } = await this.client.post(`/classrooms/${classroomId}/scenes/create-all`, config, {
-          timeout: 600000,
-        });
-        return data;
-      } catch (err: any) {
-        if (attempt < maxRetries) {
-          console.warn(`[createAllScenes] 第 ${attempt + 1} 次尝试失败，重试中...`, err.message);
-          await new Promise(r => setTimeout(r, 3000));
-        } else {
-          throw err;
-        }
-      }
-    }
+    // 不重试：create-all 是非幂等操作，重试会导致重复创建场景
+    const { data } = await this.client.post(`/classrooms/${classroomId}/scenes/create-all`, config, {
+      timeout: 600000,
+    });
+    return data;
   }
 
   async updateClassroom(id: string, name?: string, description?: string) {

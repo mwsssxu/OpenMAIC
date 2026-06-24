@@ -800,11 +800,20 @@ async def create_all_scenes_for_classroom(
         "UPDATE stages SET pending_outlines = NULL WHERE id = $1", classroom_uuid
     )
 
+    # 并发锁保护：如果已有场景且数量 >= 大纲数，说明已生成过，拒绝重复创建
     existing_scenes = await db.fetch(
         "SELECT order_index FROM scenes WHERE stage_id = $1 ORDER BY order_index DESC LIMIT 1",
         classroom_uuid
     )
     existing_count = existing_scenes[0]["order_index"] if existing_scenes else 0
+    if existing_count >= len(outlines):
+        logger.warning(
+            f"[SceneCreateAll] 拒绝重复创建: existing={existing_count}, requested={len(outlines)} - classroom={classroom_id}"
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"场景已生成（{existing_count}个），请勿重复创建。如需重新生成，请先删除现有场景。"
+        )
 
     scenes = await create_all_scenes(
         outlines=outlines,
