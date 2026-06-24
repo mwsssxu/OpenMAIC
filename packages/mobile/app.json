@@ -4,15 +4,15 @@
     "slug": "openmaic-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "openmaic",
+    "scheme": "ceban",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.openmaic.mobile"
+      "bundleIdentifier": "com.ceban.mobile"
     },
     "android": {
-      "package": "com.openmaic.mobile"
+      "package": "com.ceban.mobile"
     },
     "web": {
       "bundler": "metro",

@@ -8,7 +8,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| **应用包名** | `com.openmaic.mobile` |
+| **应用包名** | `com.ceban.mobile` |
 | **应用签名 (SHA1)** | `17:46:F9:28:A6:35:55:7A:03:DD:20:56:7E:E6:0C:24:B4:88:45:BA` |
 | **应用签名 (MD5)** | `22:38:15:6A:E7:4E:C2:4B:ED:E7:93:F8:3E:49:E0:74` |
 | **应用签名 (SHA256)** | `7E:4F:03:CA:F5:E8:DC:51:A7:A0:02:58:D5:E4:EC:8E:34:D3:4F:93:B7:83:98:CA:75:70:F0:A1:06:04:F7:6A` |
@@ -29,13 +29,13 @@
 ### 微信开放平台填写说明
 
 在微信开放平台 (open.weixin.qq.com) 创建移动应用时：
-- **应用包名**: 填 `com.openmaic.mobile`
+- **应用包名**: 填 `com.ceban.mobile`
 - **应用签名**: 填 MD5（去掉冒号，全小写）= `2238156ae74ec24bede793f83e49e074`
 
 ### 支付宝开放平台填写说明
 
 在支付宝开放平台 (open.alipay.com) 创建应用时：
-- **Android 应用包名**: `com.openmaic.mobile`
+- **Android 应用包名**: `com.ceban.mobile`
 - **Android 应用签名**: 填 SHA1 = `17:46:F9:28:A6:35:55:7A:03:DD:20:56:7E:E6:0C:24:B4:88:45:BA`
 
 ---
@@ -44,7 +44,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| **Bundle ID** | `com.openmaic.mobile` |
+| **Bundle ID** | `com.ceban.mobile` |
 | **Team ID** | 待确认（Apple Developer 账号） |
 | **App ID** | 待确认（Apple Developer 后台创建后获取） |
 
@@ -65,7 +65,7 @@
     "apps": [],
     "details": [
       {
-        "appID": "[Team ID].com.openmaic.mobile",
+        "appID": "[Team ID].com.ceban.mobile",
         "paths": ["/app/*"]
       }
     ]
@@ -127,7 +127,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| **URL Scheme** | `openmaic` |
+| **URL Scheme** | `ceban` |
 
 > 用于应用内深链接跳转，不适用于支付回跳（支付回跳必须用 Universal Links）。
 
