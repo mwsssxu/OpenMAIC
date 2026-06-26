@@ -63,39 +63,18 @@ OSS_BUCKET=...
 OSS_ENDPOINT=oss-cn-beijing.aliyuncs.com
 ```
 
-### 支付宝配置（证书模式）
+### 支付宝配置（公钥模式 + AES 内容加密）
 
 ```env
 # 支付宝（APPID: 2021006168684071）
 ALIPAY_APP_ID=2021006168684071
 ALIPAY_APP_PRIVATE_KEY=MIIEvgIBADANBgkqhkiG...    # 应用私钥（裸 base64）
-ALIPAY_APP_CERT_PATH=certs/alipay/appCertPublicKey.crt
-ALIPAY_PUBLIC_CERT_PATH=certs/alipay/alipayCertPublicKey_RSA2.crt
-ALIPAY_ROOT_CERT_PATH=certs/alipay/alipayRootCert.crt
+ALIPAY_PUBLIC_KEY=MIIBIjANBgkqhkiG9w0BAQ...        # 支付宝公钥（裸 base64）
+ALIPAY_AES_KEY=                                    # AES内容加密密钥（base64编码）
 ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do
 ALIPAY_NOTIFY_URL=https://api.palansoft.cn/api/payment/callback/alipay
 ALIPAY_RETURN_URL=https://api.palansoft.cn/payment/return
 ALIPAY_SANDBOX=false
-```
-
-证书文件部署：
-
-```bash
-# 证书目录结构
-packages/server-python/certs/alipay/
-├── appCertPublicKey.crt          # 应用公钥证书
-├── alipayCertPublicKey_RSA2.crt  # 支付宝公钥证书
-└── alipayRootCert.crt            # 支付宝根证书
-
-# 设置文件权限（生产环境必须）
-chmod 600 packages/server-python/certs/alipay/*.crt
-```
-
-Docker Compose 自动将证书目录只读挂载到容器 `/app/certs/`：
-
-```yaml
-volumes:
-  - ./packages/server-python/certs:/app/certs:ro
 ```
 
 > 详见 [支付宝集成文档](../alipay-integration.md)

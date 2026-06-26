@@ -66,14 +66,13 @@ class Settings(BaseSettings):
 
     # Payment - 支付签名验证密钥 (生产环境必须配置)
     WECHAT_PAY_API_KEY: str = ""  # 微信支付API密钥
-    # Payment - 支付宝（证书模式，APPID: 2021006168684071）
+    # Payment - 支付宝（公钥模式 + AES内容加密，APPID: 2021006168684071）
     ALIPAY_APP_ID: str = ""           # 支付宝应用 APPID
     ALIPAY_APP_PRIVATE_KEY: str = ""  # 应用私钥（PKCS1/PKCS8，不含 BEGIN/END 标记）
-    ALIPAY_APP_CERT_PATH: str = ""    # 应用公钥证书路径（.crt 文件）
-    ALIPAY_PUBLIC_CERT_PATH: str = "" # 支付宝公钥证书路径（.crt 文件）
-    ALIPAY_ROOT_CERT_PATH: str = ""   # 支付宝根证书路径（.crt 文件）
+    ALIPAY_PUBLIC_KEY: str = ""       # 支付宝公钥（不含 BEGIN/END 标记）
+    ALIPAY_AES_KEY: str = ""          # AES内容加密密钥（base64编码，开放平台配置后获取）
     ALIPAY_GATEWAY: str = "https://openapi.alipay.com/gateway.do"  # 沙箱用 https://openapi-sandbox.dl.alipaydev.com/gateway.do
-    ALIPAY_NOTIFY_URL: str = ""       # 异步回调地址（公网可达，如 https://api.ceban.com/api/payment/callback/alipay）
+    ALIPAY_NOTIFY_URL: str = ""       # 异步回调地址（公网可达，如 https://api.palansoft.cn/api/payment/callback/alipay）
     ALIPAY_RETURN_URL: str = ""       # 同步跳转地址（支付完成后浏览器跳转）
     ALIPAY_SANDBOX: bool = False      # 沙箱模式
 
