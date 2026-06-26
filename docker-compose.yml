@@ -38,8 +38,8 @@ services:
       - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - WECHAT_APP_ID=${WECHAT_APP_ID:-}
-      # 支付宝（证书模式，APPID: 2021003176655051）
-      - ALIPAY_APP_ID=${ALIPAY_APP_ID:-2021003176655051}
+      # 支付宝（证书模式，APPID: 2021006168684071）
+      - ALIPAY_APP_ID=${ALIPAY_APP_ID:-2021006168684071}
       - ALIPAY_APP_PRIVATE_KEY=${ALIPAY_APP_PRIVATE_KEY:-}
       - ALIPAY_APP_CERT_PATH=/app/certs/alipay/appCertPublicKey.crt
       - ALIPAY_PUBLIC_CERT_PATH=/app/certs/alipay/alipayCertPublicKey_RSA2.crt

@@ -1,7 +1,7 @@
 """
 支付宝集成服务 — H5 手机网站支付 (alipay.trade.wap.pay)
 
-证书模式（APPID: 2021003176655051）
+证书模式（APPID: 2021006168684071）
 依赖: python-alipay-sdk (pip install python-alipay-sdk)
 文档: https://opendocs.alipay.com/open/02ivbs
 

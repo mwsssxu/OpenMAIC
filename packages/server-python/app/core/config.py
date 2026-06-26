@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     # Payment - 支付签名验证密钥 (生产环境必须配置)
     WECHAT_PAY_API_KEY: str = ""  # 微信支付API密钥
-    # Payment - 支付宝（证书模式，APPID: 2021003176655051）
+    # Payment - 支付宝（证书模式，APPID: 2021006168684071）
     ALIPAY_APP_ID: str = ""           # 支付宝应用 APPID
     ALIPAY_APP_PRIVATE_KEY: str = ""  # 应用私钥（PKCS1/PKCS8，不含 BEGIN/END 标记）
     ALIPAY_APP_CERT_PATH: str = ""    # 应用公钥证书路径（.crt 文件）

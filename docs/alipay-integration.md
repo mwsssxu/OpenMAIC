@@ -1,6 +1,6 @@
 # 支付宝 H5 支付集成文档（证书模式）
 
-> APPID: 2021003176655051 | 出品方: 南京帕兰数字科技有限公司
+> APPID: 2021006168684071 | 出品方: 南京帕兰数字科技有限公司
 
 ---
 
@@ -8,7 +8,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| **APPID** | `2021003176655051` |
+| **APPID** | `2021006168684071` |
 | **加签方式** | 证书模式（RSA2） |
 | **SDK** | python-alipay-sdk==3.1.0 |
 | **SDK 类** | `DCAliPay`（数字证书版） |
@@ -35,8 +35,8 @@
 ### .env 文件
 
 ```bash
-# 支付宝（证书模式，APPID: 2021003176655051）
-ALIPAY_APP_ID=2021003176655051
+# 支付宝（证书模式，APPID: 2021006168684071）
+ALIPAY_APP_ID=2021006168684071
 ALIPAY_APP_PRIVATE_KEY=MIIEvgIBADANBgkqhkiG...    # appPrivateKey.txt 的内容（裸 base64，不含 PEM 标记）
 ALIPAY_APP_CERT_PATH=certs/alipay/appCertPublicKey.crt
 ALIPAY_PUBLIC_CERT_PATH=certs/alipay/alipayCertPublicKey_RSA2.crt
@@ -51,7 +51,7 @@ ALIPAY_SANDBOX=false
 
 ```yaml
 environment:
-  - ALIPAY_APP_ID=2021003176655051
+  - ALIPAY_APP_ID=2021006168684071
   - ALIPAY_APP_PRIVATE_KEY=${ALIPAY_APP_PRIVATE_KEY}
   - ALIPAY_APP_CERT_PATH=/app/certs/alipay/appCertPublicKey.crt
   - ALIPAY_PUBLIC_CERT_PATH=/app/certs/alipay/alipayCertPublicKey_RSA2.crt
@@ -73,7 +73,7 @@ ALIPAY_SANDBOX=true
 ALIPAY_GATEWAY=https://openapi-sandbox.dl.alipaydev.com/gateway.do
 ```
 
-> 沙箱环境使用独立的沙箱 APPID 和密钥，不是 2021003176655051。
+> 沙箱环境使用独立的沙箱 APPID 和密钥，不是 2021006168684071。
 
 ---
 

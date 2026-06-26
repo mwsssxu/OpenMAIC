@@ -66,8 +66,8 @@ OSS_ENDPOINT=oss-cn-beijing.aliyuncs.com
 ### 支付宝配置（证书模式）
 
 ```env
-# 支付宝（APPID: 2021003176655051）
-ALIPAY_APP_ID=2021003176655051
+# 支付宝（APPID: 2021006168684071）
+ALIPAY_APP_ID=2021006168684071
 ALIPAY_APP_PRIVATE_KEY=MIIEvgIBADANBgkqhkiG...    # 应用私钥（裸 base64）
 ALIPAY_APP_CERT_PATH=certs/alipay/appCertPublicKey.crt
 ALIPAY_PUBLIC_CERT_PATH=certs/alipay/alipayCertPublicKey_RSA2.crt
