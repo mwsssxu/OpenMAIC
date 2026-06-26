@@ -90,3 +90,6 @@ e2e/__screenshots-619/
 # Android keystore (支付签名凭据，禁止提交)
 *.keystore
 *.jks
+
+# 支付宝证书和私钥（敏感凭据，禁止提交）
+packages/server-python/certs/

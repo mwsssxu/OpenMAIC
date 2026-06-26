@@ -1,13 +1,16 @@
 """
 支付宝集成服务 — H5 手机网站支付 (alipay.trade.wap.pay)
 
+证书模式（APPID: 2021003176655051）
 依赖: python-alipay-sdk (pip install python-alipay-sdk)
 文档: https://opendocs.alipay.com/open/02ivbs
 
 配置 (config.py / .env):
     ALIPAY_APP_ID              应用 APPID
     ALIPAY_APP_PRIVATE_KEY     应用私钥（PKCS1/PKCS8，可含或不含 PEM 标记）
-    ALIPAY_PUBLIC_KEY          支付宝公钥（可含或不含 PEM 标记）
+    ALIPAY_APP_CERT_PATH       应用公钥证书路径（.crt 文件）
+    ALIPAY_PUBLIC_CERT_PATH    支付宝公钥证书路径（.crt 文件）
+    ALIPAY_ROOT_CERT_PATH      支付宝根证书路径（.crt 文件）
     ALIPAY_GATEWAY             网关地址（生产/沙箱）
     ALIPAY_NOTIFY_URL          异步回调地址（公网可达）
     ALIPAY_RETURN_URL          同步跳转地址
@@ -16,14 +19,15 @@
 
 import logging
 from functools import lru_cache
+from pathlib import Path
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def _normalize_key(key: str, is_private: bool = True) -> str:
-    """将裸密钥文本规范化为合法 PEM 格式。
+def _normalize_private_key(key: str) -> str:
+    """将裸私钥文本规范化为合法 PEM 格式。
 
     环境变量中存储的密钥通常不含 BEGIN/END 标记（避免换行问题），
     pycryptodome 的 RSA.importKey 需要完整 PEM 格式才能解析。
@@ -36,23 +40,25 @@ def _normalize_key(key: str, is_private: bool = True) -> str:
     body = "".join(key.split())
     lines = [body[i : i + 64] for i in range(0, len(body), 64)]
 
-    if is_private:
-        # PKCS8 格式（支付宝密钥工具默认生成）
-        # 拼接构建 PEM 标记，避免被安全过滤替换
-        header = "-----" + "BEGIN PRIVATE KEY" + "-----"
-        footer = "-----" + "END PRIVATE KEY" + "-----"
-    else:
-        header = "-----BEGIN PUBLIC KEY-----"
-        footer = "-----END PUBLIC KEY-----"
+    # PKCS8 格式（支付宝密钥工具默认生成）
+    header = "-----" + "BEGIN PRIVATE KEY" + "-----"
+    footer = "-----" + "END PRIVATE KEY" + "-----"
     return f"{header}\n" + "\n".join(lines) + f"\n{footer}"
 
 
+def _read_cert(path: str) -> str:
+    """读取证书文件内容。"""
+    return Path(path).read_text(encoding="utf-8")
+
+
 def is_alipay_configured() -> bool:
-    """检查支付宝必要配置是否齐全。"""
+    """检查支付宝必要配置是否齐全（证书模式）。"""
     return bool(
         settings.ALIPAY_APP_ID
         and settings.ALIPAY_APP_PRIVATE_KEY
-        and settings.ALIPAY_PUBLIC_KEY
+        and settings.ALIPAY_APP_CERT_PATH
+        and settings.ALIPAY_PUBLIC_CERT_PATH
+        and settings.ALIPAY_ROOT_CERT_PATH
     )
 
 
@@ -60,37 +66,35 @@ def is_alipay_configured() -> bool:
 def get_alipay_client():
     """获取 AliPay 客户端单例（线程安全，配置不变时复用）。
 
-    注意: SDK 的 debug=True 会使用旧沙箱网关，但实际支付 URL
-    使用 settings.ALIPAY_GATEWAY 拼接，因此 sandbox 开关仅影响 SDK 内部行为。
+    证书模式：使用三件套证书（应用公钥证书 + 支付宝公钥证书 + 支付宝根证书）。
     """
     if not is_alipay_configured():
         raise RuntimeError(
-            "支付宝未配置: 需设置 ALIPAY_APP_ID / ALIPAY_APP_PRIVATE_KEY / ALIPAY_PUBLIC_KEY"
+            "支付宝未配置: 需设置 ALIPAY_APP_ID / ALIPAY_APP_PRIVATE_KEY / "
+            "ALIPAY_APP_CERT_PATH / ALIPAY_PUBLIC_CERT_PATH / ALIPAY_ROOT_CERT_PATH"
         )
 
-    from alipay import AliPay
+    from alipay import DCAliPay
 
-    client = AliPay(
+    client = DCAliPay(
         appid=settings.ALIPAY_APP_ID,
+        app_private_key_string=_normalize_private_key(settings.ALIPAY_APP_PRIVATE_KEY),
+        app_public_key_cert_string=_read_cert(settings.ALIPAY_APP_CERT_PATH),
+        alipay_public_key_cert_string=_read_cert(settings.ALIPAY_PUBLIC_CERT_PATH),
+        alipay_root_cert_string=_read_cert(settings.ALIPAY_ROOT_CERT_PATH),
         app_notify_url=settings.ALIPAY_NOTIFY_URL or None,
-        app_private_key_string=_normalize_key(settings.ALIPAY_APP_PRIVATE_KEY, is_private=True),
-        alipay_public_key_string=_normalize_key(settings.ALIPAY_PUBLIC_KEY, is_private=False),
         sign_type="RSA2",
         debug=settings.ALIPAY_SANDBOX,
     )
     logger.info(
-        f"[Alipay] 客户端已初始化 (appid={settings.ALIPAY_APP_ID}, sandbox={settings.ALIPAY_SANDBOX})"
+        f"[Alipay] 客户端已初始化 (appid={settings.ALIPAY_APP_ID}, "
+        f"sandbox={settings.ALIPAY_SANDBOX}, mode=certificate)"
     )
     return client
 
 
 def _get_gateway() -> str:
-    """获取支付网关 URL — 沙箱模式自动使用沙箱网关。
-
-    SDK 的 debug=True 使用旧沙箱地址 (openapi.alipaydev.com)，
-    但支付宝沙箱已迁移到新域名。这里根据 SANDBOX 开关强制覆盖，
-    确保 create_wap_pay_url 拼接的网关与密钥环境一致。
-    """
+    """获取支付网关 URL — 沙箱模式自动使用沙箱网关。"""
     if settings.ALIPAY_SANDBOX:
         return "https://openapi-sandbox.dl.alipaydev.com/gateway.do"
     return settings.ALIPAY_GATEWAY
