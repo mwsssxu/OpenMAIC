@@ -12,8 +12,8 @@
 | **应用类型** | 移动应用 |
 | **加签方式** | 公钥模式（RSA2） |
 | **内容加密** | AES-128-CBC |
-| **SDK** | python-alipay-sdk==3.1.0 |
-| **SDK 类** | `AliPay`（公钥模式） |
+| **SDK** | alipay-sdk-python（支付宝官方 SDK） |
+| **SDK 类** | `DefaultAlipayClient` + `AlipayClientConfig`（官方 SDK） |
 
 ---
 
@@ -203,7 +203,7 @@ App → GET /payment/orders/{order_id} (轮询，每2秒，最多10次)
 | `app/services/alipay.py` | AliPay 客户端封装 + AES 加密 + wap.pay URL 生成 + 回调验签 |
 | `app/routes/payment.py` | 支付下单 + 回调处理路由 |
 | `certs/alipay/appPrivateKey.txt` | 应用私钥（.gitignore 保护） |
-| `requirements.txt` | `python-alipay-sdk==3.1.0` |
+| `requirements.txt` | `alipay-sdk-python>=3.7.0`, `rsa>=4.9`, `pycryptodome>=3.20` |
 
 ### 移动端（packages/mobile）
 
