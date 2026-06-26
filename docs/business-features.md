@@ -151,7 +151,7 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 
 # CORS
-ALLOWED_ORIGINS=["https://yourdomain.com"]
+ALLOWED_ORIGINS=["https://palansoft.cn"]
 ```
 
 可选配置：

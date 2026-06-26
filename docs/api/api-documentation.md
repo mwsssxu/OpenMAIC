@@ -1,7 +1,7 @@
 # OpenMAIC API 文档
 
 > **版本:** v0.23.0
-> **端点:** http://localhost:8000 (开发) / https://api.yourdomain.com (生产)
+> **端点:** http://localhost:8000 (开发) / https://api.palansoft.cn (生产)
 
 ---
 

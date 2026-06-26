@@ -77,7 +77,7 @@
 # 无初始超级管理员 + 默认角色 + 权限码, 系统无法使用
 # 
 # **操作**: 创建 `scripts/seed_admin.py`
-# - 创建超级管理员 (admin@ceban.ai / 密码)
+# - 创建超级管理员 (admin@palansoft.cn / 密码)
 # - 创建默认角色: super_admin, content_admin, finance_admin
 # - 创建默认权限码: user_manage, content_review, finance_view, system_config
 # 

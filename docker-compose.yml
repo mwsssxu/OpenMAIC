@@ -38,10 +38,12 @@ services:
       - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - WECHAT_APP_ID=${WECHAT_APP_ID:-}
-      # 支付宝
-      - ALIPAY_APP_ID=${ALIPAY_APP_ID:-}
+      # 支付宝（证书模式，APPID: 2021003176655051）
+      - ALIPAY_APP_ID=${ALIPAY_APP_ID:-2021003176655051}
       - ALIPAY_APP_PRIVATE_KEY=${ALIPAY_APP_PRIVATE_KEY:-}
-      - ALIPAY_PUBLIC_KEY=${ALIPAY_PUBLIC_KEY:-}
+      - ALIPAY_APP_CERT_PATH=/app/certs/alipay/appCertPublicKey.crt
+      - ALIPAY_PUBLIC_CERT_PATH=/app/certs/alipay/alipayCertPublicKey_RSA2.crt
+      - ALIPAY_ROOT_CERT_PATH=/app/certs/alipay/alipayRootCert.crt
       - ALIPAY_GATEWAY=${ALIPAY_GATEWAY:-https://openapi.alipay.com/gateway.do}
       - ALIPAY_NOTIFY_URL=${ALIPAY_NOTIFY_URL:-}
       - ALIPAY_RETURN_URL=${ALIPAY_RETURN_URL:-}
@@ -54,6 +56,7 @@ services:
       - MAIC_UI_SERVICE_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxODEwODg0OTkyLCJ0eXBlIjoiYWNjZXNzIn0.SK9LKP1SSPJ9FthLSAi6_gBkfiOzo0zRyR5rjPJRk5k
     volumes:
       - ./packages/server-python/app:/app/app  # 开发时热重载（去掉 :ro，watchfiles 需要可写才能检测变化）
+      - ./packages/server-python/certs:/app/certs:ro  # 支付宝证书（只读挂载）
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--timeout-keep-alive", "300"]
     extra_hosts:
       - "postgres:host-gateway"

@@ -102,7 +102,7 @@ EXPO_PUBLIC_API_URL=http://localhost:8000
 EXPO_PUBLIC_API_URL=http://192.168.1.110:8000
 
 # 生产环境
-EXPO_PUBLIC_API_URL=https://api.yourdomain.com
+EXPO_PUBLIC_API_URL=https://api.palansoft.cn
 ```
 
 代码中通过环境变量读取（`lib/api-client/index.ts:5`）：

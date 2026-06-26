@@ -1,6 +1,6 @@
 # 部署指南
 
-> OpenMAIC Business 生产环境部署配置
+> 侧伴(CeBan) 生产环境部署配置 | 出品方: 南京帕兰数字科技有限公司
 
 ---
 
@@ -49,11 +49,12 @@ REDIS_URL=redis://host:6379/0
 SECRET_KEY=your-production-secret-key
 
 # CORS
-ALLOWED_ORIGINS=["https://yourdomain.com","https://admin.yourdomain.com"]
+ALLOWED_ORIGINS=["https://palansoft.cn","https://admin.palansoft.cn"]
 
 # LLM（至少一个）
 OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+DEFAULT_MODEL=qwen3.6-plus
 
 # OSS（可选）
 OSS_ACCESS_KEY_ID=...
@@ -62,10 +63,47 @@ OSS_BUCKET=...
 OSS_ENDPOINT=oss-cn-beijing.aliyuncs.com
 ```
 
+### 支付宝配置（证书模式）
+
+```env
+# 支付宝（APPID: 2021003176655051）
+ALIPAY_APP_ID=2021003176655051
+ALIPAY_APP_PRIVATE_KEY=MIIEvgIBADANBgkqhkiG...    # 应用私钥（裸 base64）
+ALIPAY_APP_CERT_PATH=certs/alipay/appCertPublicKey.crt
+ALIPAY_PUBLIC_CERT_PATH=certs/alipay/alipayCertPublicKey_RSA2.crt
+ALIPAY_ROOT_CERT_PATH=certs/alipay/alipayRootCert.crt
+ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do
+ALIPAY_NOTIFY_URL=https://api.palansoft.cn/api/payment/callback/alipay
+ALIPAY_RETURN_URL=https://api.palansoft.cn/payment/return
+ALIPAY_SANDBOX=false
+```
+
+证书文件部署：
+
+```bash
+# 证书目录结构
+packages/server-python/certs/alipay/
+├── appCertPublicKey.crt          # 应用公钥证书
+├── alipayCertPublicKey_RSA2.crt  # 支付宝公钥证书
+└── alipayRootCert.crt            # 支付宝根证书
+
+# 设置文件权限（生产环境必须）
+chmod 600 packages/server-python/certs/alipay/*.crt
+```
+
+Docker Compose 自动将证书目录只读挂载到容器 `/app/certs/`：
+
+```yaml
+volumes:
+  - ./packages/server-python/certs:/app/certs:ro
+```
+
+> 详见 [支付宝集成文档](../alipay-integration.md)
+
 ### Frontend 必需变量
 
 ```env
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+NEXT_PUBLIC_API_URL=https://api.palansoft.cn
 ```
 
 ---
@@ -79,7 +117,7 @@ NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openmaic-backend
+  name: ceban-backend
 spec:
   replicas: 3
   selector:
@@ -143,7 +181,7 @@ metadata:
   name: openmaic-ingress
 spec:
   rules:
-  - host: api.yourdomain.com
+  - host: api.palansoft.cn
     http:
       paths:
       - path: /
@@ -153,7 +191,7 @@ spec:
             name: backend-service
             port:
               number: 8000
-  - host: yourdomain.com
+  - host: palansoft.cn
     http:
       paths:
       - path: /
@@ -163,7 +201,7 @@ spec:
             name: main-service
             port:
               number: 3000
-  - host: admin.yourdomain.com
+  - host: admin.palansoft.cn
     http:
       paths:
       - path: /
@@ -280,8 +318,8 @@ spec:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-  - api.yourdomain.com
-  - yourdomain.com
+  - api.palansoft.cn
+  - palansoft.cn
 ```
 
 ### 速率限制

@@ -54,8 +54,8 @@
 
 | 项目 | 值 |
 |------|-----|
-| **Universal Link** | `https://[待确认域名]/app/` |
-| **apple-app-site-association 路径** | `https://[待确认域名]/.well-known/apple-app-site-association` |
+| **Universal Link** | `https://palansoft.cn/app/` |
+| **apple-app-site-association 路径** | `https://palansoft.cn/.well-known/apple-app-site-association` |
 
 #### apple-app-site-association 文件内容
 
@@ -75,13 +75,13 @@
 
 #### 微信支付 Universal Link 配置
 
-- 微信开放平台填写: `https://[待确认域名]/app/`
-- iOS 项目 Associated Domains 添加: `applinks:[待确认域名]`
+- 微信开放平台填写: `https://palansoft.cn/app/`
+- iOS 项目 Associated Domains 添加: `applinks:palansoft.cn`
 
 #### 支付宝 Universal Link 配置
 
-- 支付宝开放平台填写: `https://[待确认域名]/app/`
-- iOS 项目 Associated Domains 添加: `applinks:[待确认域名]`
+- 支付宝开放平台填写: `https://palansoft.cn/app/`
+- iOS 项目 Associated Domains 添加: `applinks:palansoft.cn`
 
 ---
 
@@ -89,7 +89,7 @@
 
 > 以下域名需要确认后替换文档中的 `[待确认域名]` 占位符：
 
-- [ ] 注册/确认正式域名（建议 `ceban.com.cn` 或 `ceban.cn`）
+- [x] 确认正式域名: `palansoft.cn`
 - [ ] 域名备案（国内服务器必须）
 - [ ] 配置 HTTPS 证书
 - [ ] 部署 `apple-app-site-association` 文件到服务器 `/.well-known/` 目录
