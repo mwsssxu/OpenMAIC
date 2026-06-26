@@ -79,6 +79,132 @@ ALIPAY_SANDBOX=false
 
 > 详见 [支付宝集成文档](../alipay-integration.md)
 
+---
+
+## 三、支付系统部署
+
+### 域名架构
+
+支付功能涉及以下域名，生产环境必须全部配置 DNS 解析 + HTTPS 证书：
+
+| 域名 | 用途 | 支付相关说明 |
+|------|------|-------------|
+| `api.palansoft.cn` | 后端 API | 支付下单接口 + 支付宝异步回调入口 |
+| `app.palansoft.cn` | 主应用（侧伴） | iOS Universal Link 前缀 |
+| `palansoft.cn` | 官网 | AASA 文件托管（Universal Links 必须） |
+
+### 支付链路
+
+```
+用户 App → POST api.palansoft.cn/api/payment/create-order
+         ← 返回支付宝 H5 支付 URL
+用户浏览器 → 打开支付宝 URL → 完成支付
+支付宝服务器 → POST api.palansoft.cn/api/payment/callback/alipay（异步通知）
+用户浏览器 → 跳转 api.palansoft.cn/payment/return（同步跳转）
+```
+
+### Nginx 路由配置
+
+支付回调需要以下 Nginx 路由（已包含在 `nginx.conf` 中）：
+
+```nginx
+# 1. 支付宝异步回调 — POST /api/payment/callback/alipay
+#    走默认 API 反代，无需特殊配置
+
+# 2. Apple Universal Links — iOS 支付回跳必须
+location /.well-known/apple-app-site-association {
+    default_type application/json;
+    root /etc/nginx/ssl;
+}
+
+# 3. 同步跳转 — GET /payment/return
+#    走默认 API 反代，无需特殊配置
+```
+
+### AASA 文件部署
+
+iOS Universal Links 要求 `https://palansoft.cn/.well-known/apple-app-site-association` 返回 JSON。部署步骤：
+
+```bash
+# 1. 创建 AASA 文件
+mkdir -p /etc/nginx/ssl/.well-known
+cat > /etc/nginx/ssl/.well-known/apple-app-site-association << 'EOF'
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.ceban.mobile"],
+        "components": [
+          { "/": "/app/*" }
+        ]
+      }
+    ]
+  }
+}
+EOF
+
+# 2. 验证（需 HTTPS 可达）
+curl -sI https://palansoft.cn/.well-known/apple-app-site-association
+# 应返回 200 + Content-Type: application/json
+```
+
+### SDK 依赖
+
+后端 Python 服务需要以下依赖（已包含在 `requirements.txt`）：
+
+```
+alipay-sdk-python>=3.7.0    # 支付宝官方 SDK
+rsa>=4.9                     # RSA 签名（SDK 依赖）
+pycryptodome>=3.20           # AES 加密 + RSA 密钥加载
+```
+
+### 支付宝开放平台配置清单
+
+在 https://openhome.alipay.com/develop/manage 找到 APPID `2021006168684071` 的应用，逐项确认：
+
+| 配置项 | 值 | 状态 |
+|--------|-----|------|
+| 应用类型 | 移动应用 | ☐ |
+| Android 应用包名 | `com.ceban.mobile` | ☐ |
+| Android 应用签名 (SHA1) | `17:46:F9:28:A6:35:55:7A:03:DD:20:56:7E:E6:0C:24:B4:88:45:BA` | ☐ |
+| iOS Bundle ID | `com.ceban.mobile` | ☐ |
+| iOS Universal Link | `https://palansoft.cn/app/` | ☐ |
+| 接口加签方式 | 公钥模式（RSA2） | ☐ |
+| 接口内容加密方式 | AES（128-CBC） | ☐ |
+| 应用网关 URL | `https://api.palansoft.cn/api/payment/callback/alipay` | ☐ |
+| 授权回调地址 | `https://api.palansoft.cn/api/auth/alipay/callback` | ☐ |
+| 支付宝网关地址 | `https://openapi.alipay.com/gateway.do` | ☐ |
+| 已开通产品 | 手机网站支付 (alipay.trade.wap.pay) | ☐ |
+
+### 生产环境变量清单
+
+部署前确认 `.env` 中以下变量已正确填入（非空）：
+
+```bash
+# 必填 — 支付功能不可用的缺项
+ALIPAY_APP_ID=2021006168684071
+ALIPAY_APP_PRIVATE_KEY=<应用私钥，从 certs/alipay/appPrivateKey.txt 获取>
+ALIPAY_PUBLIC_KEY=<支付宝公钥，从支付宝开放平台获取>
+ALIPAY_AES_KEY=<AES密钥，从支付宝开放平台配置AES加密后获取>
+
+# 必填 — 回调地址
+ALIPAY_NOTIFY_URL=https://api.palansoft.cn/api/payment/callback/alipay
+ALIPAY_RETURN_URL=https://api.palansoft.cn/payment/return
+
+# 固定值
+ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do
+ALIPAY_SANDBOX=false
+```
+
+### 安全注意事项
+
+1. **私钥保护**: `ALIPAY_APP_PRIVATE_KEY` 通过环境变量注入，不写入代码或 Dockerfile
+2. **回调验签**: 生产环境 (`TESTING_MODE=false`) 强制验签，未配置公钥时拒绝回调
+3. **金额校验**: 回调金额与数据库订单金额比对，防止篡改
+4. **HTTPS 必须**: 支付宝回调仅支持 HTTPS，Nginx 必须配置有效 SSL 证书
+5. **回调白名单**: 支付宝服务器 IP 可达 `api.palansoft.cn:443`，防火墙勿拦截
+
 ### Frontend 必需变量
 
 ```env
@@ -87,7 +213,7 @@ NEXT_PUBLIC_API_URL=https://api.palansoft.cn
 
 ---
 
-## 三、Kubernetes 部署
+## 四、Kubernetes 部署
 
 ### Deployment 配置
 
@@ -106,7 +232,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: openmaic/backend:v0.23.0
+        image: ceban/backend:latest
         ports:
         - containerPort: 8000
         envFrom:
@@ -157,7 +283,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: openmaic-ingress
+  name: ceban-ingress
 spec:
   rules:
   - host: api.palansoft.cn
@@ -170,7 +296,7 @@ spec:
             name: backend-service
             port:
               number: 8000
-  - host: palansoft.cn
+  - host: app.palansoft.cn
     http:
       paths:
       - path: /
@@ -178,6 +304,26 @@ spec:
         backend:
           service:
             name: main-service
+            port:
+              number: 3000
+  - host: palansoft.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: website-service
+            port:
+              number: 3000
+  - host: www.palansoft.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: website-service
             port:
               number: 3000
   - host: admin.palansoft.cn
@@ -194,7 +340,7 @@ spec:
 
 ---
 
-## 四、监控配置
+## 五、监控配置
 
 ### Prometheus 监控
 
@@ -219,7 +365,7 @@ scrape_configs:
 
 ---
 
-## 五、备份策略
+## 六、备份策略
 
 ### 数据库备份
 
@@ -246,7 +392,7 @@ cp /var/lib/redis/dump.rdb /backups/redis_$DATE.rdb
 
 ---
 
-## 六、日志配置
+## 七、日志配置
 
 ### 结构化日志
 
@@ -280,7 +426,7 @@ clients:
 
 ---
 
-## 七、安全配置
+## 八、安全配置
 
 ### HTTPS 配置
 
@@ -290,15 +436,18 @@ clients:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: openmaic-tls
+  name: ceban-tls
 spec:
-  secretName: openmaic-tls-secret
+  secretName: ceban-tls-secret
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
   - api.palansoft.cn
+  - app.palansoft.cn
   - palansoft.cn
+  - www.palansoft.cn
+  - admin.palansoft.cn
 ```
 
 ### 速率限制
@@ -315,7 +464,7 @@ location /api/ {
 
 ---
 
-## 八、扩展配置
+## 九、扩展配置
 
 ### 水平扩展
 
