@@ -18,6 +18,7 @@ SDK: alipay-sdk-python（支付宝官方 Python SDK）
 
 import base64
 import logging
+import re
 from typing import Any
 
 from app.core.config import settings
@@ -59,7 +60,6 @@ try:
     def _import_key(key_str):
         """从 PEM 字符串或裸 base64 加载 RSA 密钥，兼容 PKCS1/PKCS8。"""
         if "-----BEGIN" in key_str:
-            import re
             b64 = re.sub(r"-----[^-]+-----", "", key_str).replace("\n", "").replace("\r", "").strip()
             return _RSA.import_key(base64.b64decode(b64))
         # 裸 base64（SDK setter 不加 PEM 标记）
@@ -84,8 +84,15 @@ try:
             sign = sign.encode()
         if isinstance(message, str):
             message = message.encode()
-        digest = _SHA256.new(message)
-        return bool(signer.verify(digest, base64.b64decode(sign)))
+        sign_bytes = base64.b64decode(sign)
+        # SDK 的 verify_with_rsa 用于 RSA 和 RSA2 两种验签，
+        # 原始实现用 rsa.verify() 自动检测哈希算法。
+        # 这里先试 SHA256(RSA2)，再试 SHA1(RSA)，保持兼容。
+        for hash_cls in (_SHA256, _SHA1):
+            digest = hash_cls.new(message)
+            if signer.verify(digest, sign_bytes):
+                return True
+        return False
 
     _enc.aes_encrypt_content = _aes_encrypt
     _enc.aes_decrypt_content = _aes_decrypt
@@ -194,15 +201,15 @@ def verify_callback(params: dict) -> bool:
     """
     from alipay.aop.api.util.SignatureUtils import verify_with_rsa
 
-    sign = params.pop("sign", "")
-    sign_type = params.pop("sign_type", "")
+    sign = params.get("sign", "")
+    sign_type = params.get("sign_type", "")
 
     if not sign:
         logger.warning("[Alipay] 回调缺少 sign 参数")
         return False
 
     # 按字典序拼接参数（排除 sign 和 sign_type）
-    sorted_params = sorted(params.items())
+    sorted_params = sorted((k, v) for k, v in params.items() if k not in ("sign", "sign_type"))
     raw_content = "&".join(f"{k}={v}" for k, v in sorted_params)
 
     try:
